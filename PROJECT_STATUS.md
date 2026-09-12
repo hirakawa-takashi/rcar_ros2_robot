@@ -50,6 +50,7 @@
 - `/scan`・`/imu/data`・`/odom` の各ノードが未実装のため、ダッシュボードのテレメトリは現状 null
 - HailoRT ドライバ/CLI が未導入のため、AI HAT+ は PCIe 検出まで。NPU 使用率・温度は `hailo-all` 導入後に取得可能
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
+- Pi に websockets/wsproto が未導入のため WebSocket が使えず、画面は `/api/status` の1秒ポーリングで動作中（`sudo apt install -y python3-websockets` で WebSocket 配信に戻る）
 
 ## テスト結果
 - `colcon build --symlink-install`: 2パッケージ成功
@@ -60,6 +61,7 @@
   - `POST /api/cmd_vel {linear_x:1.0, angular_z:0.5}` → `{linear_x:0.3, angular_z:0.5}`（最大速度でスケール）
 - `system_monitor_node`: `/system_status` の JSON 取得成功（CPU 48.3℃ / 合計 2.17W / EXT5V 4.84V / Hailo-8 PCIe 検出）
 - `GET /api/status` に `system` フィールドが含まれることを確認
+- ブラウザ表示確認: CPU / メモリ / 電源 / AI HAT+ の各カードが実値で更新されることを確認（ポーリングフォールバック経由）
   - `/cmd_vel` トピック publish と指令タイムアウト停止のログを確認
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 

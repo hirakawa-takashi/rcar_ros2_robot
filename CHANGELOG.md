@@ -28,3 +28,6 @@
   - PROJECT_RULES.md: 開発方針・禁止事項
   - PROJECT_STATUS.md: 実装状況・課題管理
   - CHANGELOG.md: 本ファイル
+
+### Fixed
+- WebSocket が利用できない環境（uvicorn に websockets/wsproto 未導入）では `/api/status` の1秒ポーリングへ自動フォールバックするようにした

@@ -292,17 +292,42 @@ function render(d) {
   renderSystem(d.system);
 }
 
+let pollTimer = null;
+
+function setConn(on, text) {
+  document.getElementById('dot').classList.toggle('on', on);
+  document.getElementById('conn').textContent = text;
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  setConn(true, 'ポーリング接続（WebSocket未使用）');
+  pollTimer = setInterval(() => {
+    fetch('/api/status')
+      .then(r => r.json())
+      .then(render)
+      .catch(() => setConn(false, '切断（再接続します）'));
+  }, 1000);
+}
+
 function connect() {
+  let opened = false;
   const ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onopen = () => {
-    document.getElementById('dot').classList.add('on');
-    document.getElementById('conn').textContent = '接続中';
+    opened = true;
+    clearInterval(pollTimer);
+    pollTimer = null;
+    setConn(true, '接続中');
   };
   ws.onmessage = ev => render(JSON.parse(ev.data));
   ws.onclose = () => {
-    document.getElementById('dot').classList.remove('on');
-    document.getElementById('conn').textContent = '切断（再接続します）';
-    setTimeout(connect, 2000);
+    if (opened) {
+      setConn(false, '切断（再接続します）');
+      setTimeout(connect, 2000);
+    } else {
+      // uvicorn に WebSocket ライブラリが無い環境では REST ポーリングへ切り替える
+      startPolling();
+    }
   };
 }
 connect();
