@@ -1,0 +1,12 @@
+dashboard_node:
+  ros__parameters:
+    host: "0.0.0.0"
+    port: 8080
+    cmd_vel_topic: "/cmd_vel"
+    scan_topic: "/scan"
+    imu_topic: "/imu/data"
+    odom_topic: "/odom"
+    max_linear_speed: 0.3
+    max_angular_speed: 1.0
+    cmd_timeout: 0.7
+    telemetry_rate: 5.0

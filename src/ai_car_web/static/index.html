@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AT-CAR ダッシュボード</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 16px; font-family: system-ui, sans-serif;
+         background: #15181d; color: #e8eaed; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .status { font-size: 13px; margin-bottom: 16px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+         background: #b33; margin-right: 6px; }
+  .dot.on { background: #3b3; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 16px; }
+  .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
+  .card h2 { font-size: 14px; margin: 0 0 10px; color: #9fb0c7; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 3px 0; }
+  td.k { color: #9fb0c7; }
+  td.v { text-align: right; font-variant-numeric: tabular-nums; }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  button { background: #2a3340; color: #e8eaed; border: 1px solid #3a4657;
+           border-radius: 6px; padding: 14px 0; font-size: 15px; cursor: pointer; }
+  button:active { background: #3c4a5e; }
+  button.stop { grid-column: 2; background: #7a2530; border-color: #a33; }
+  .speed { margin-top: 12px; font-size: 13px; color: #9fb0c7; }
+  input[type=range] { width: 100%; }
+</style>
+</head>
+<body>
+<h1>AT-CAR ダッシュボード</h1>
+<div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
+
+<div class="grid">
+  <div class="card">
+    <h2>手動操作</h2>
+    <div class="pad">
+      <button data-x="1" data-y="1" data-z="0">⭦</button>
+      <button data-x="1" data-y="0" data-z="0">前進</button>
+      <button data-x="1" data-y="-1" data-z="0">⭧</button>
+      <button data-x="0" data-y="1" data-z="0">左平行</button>
+      <button data-x="0" data-y="0" data-z="0" class="stop">停止</button>
+      <button data-x="0" data-y="-1" data-z="0">右平行</button>
+      <button data-x="-1" data-y="0" data-z="0">後退</button>
+      <button data-x="0" data-y="0" data-z="1">左旋回</button>
+      <button data-x="0" data-y="0" data-z="-1">右旋回</button>
+    </div>
+    <div class="speed">
+      出力: <span id="gainval">50</span>%
+      <input id="gain" type="range" min="10" max="100" value="50">
+    </div>
+    <div class="speed">押している間だけ動作します（離すと停止）。</div>
+  </div>
+
+  <div class="card">
+    <h2>速度指令 (/cmd_vel)</h2>
+    <table>
+      <tr><td class="k">linear.x [m/s]</td><td class="v" id="cx">-</td></tr>
+      <tr><td class="k">linear.y [m/s]</td><td class="v" id="cy">-</td></tr>
+      <tr><td class="k">angular.z [rad/s]</td><td class="v" id="cz">-</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>LiDAR (/scan)</h2>
+    <table>
+      <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
+      <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
+      <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>IMU (/imu/data)</h2>
+    <table>
+      <tr><td class="k">roll [deg]</td><td class="v" id="i_roll">-</td></tr>
+      <tr><td class="k">pitch [deg]</td><td class="v" id="i_pitch">-</td></tr>
+      <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>オドメトリ (/odom)</h2>
+    <table>
+      <tr><td class="k">x / y [m]</td><td class="v" id="o_pos">-</td></tr>
+      <tr><td class="k">yaw [deg]</td><td class="v" id="o_yaw">-</td></tr>
+      <tr><td class="k">速度 [m/s]</td><td class="v" id="o_vel">-</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+const gain = document.getElementById('gain');
+gain.addEventListener('input', () => {
+  document.getElementById('gainval').textContent = gain.value;
+});
+
+function send(x, y, z) {
+  const g = gain.value / 100;
+  fetch('/api/cmd_vel', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({linear_x: x * g, linear_y: y * g, angular_z: z * g})
+  }).catch(() => {});
+}
+
+let holdTimer = null;
+document.querySelectorAll('.pad button').forEach(btn => {
+  const x = Number(btn.dataset.x), y = Number(btn.dataset.y), z = Number(btn.dataset.z);
+  const start = ev => {
+    ev.preventDefault();
+    send(x, y, z);
+    clearInterval(holdTimer);
+    holdTimer = setInterval(() => send(x, y, z), 200);
+  };
+  const end = () => {
+    clearInterval(holdTimer);
+    holdTimer = null;
+    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+  };
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('touchstart', start, {passive: false});
+  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(e =>
+    btn.addEventListener(e, end));
+});
+
+document.addEventListener('keydown', ev => {
+  const map = {ArrowUp: [1,0,0], ArrowDown: [-1,0,0], ArrowLeft: [0,0,1],
+               ArrowRight: [0,0,-1], a: [0,1,0], d: [0,-1,0], ' ': [0,0,0]};
+  const v = map[ev.key];
+  if (v) { ev.preventDefault(); send(v[0], v[1], v[2]); }
+});
+document.addEventListener('keyup', ev => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','a','d'].includes(ev.key)) {
+    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+  }
+});
+
+function fmt(v, digits = 2) {
+  return (v === null || v === undefined) ? '-' : Number(v).toFixed(digits);
+}
+
+function render(d) {
+  document.getElementById('cx').textContent = fmt(d.cmd_vel.linear_x);
+  document.getElementById('cy').textContent = fmt(d.cmd_vel.linear_y);
+  document.getElementById('cz').textContent = fmt(d.cmd_vel.angular_z);
+
+  const s = d.scan;
+  document.getElementById('s_count').textContent = s ? s.count : '-';
+  document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
+  document.getElementById('s_range').textContent =
+    s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
+
+  const i = d.imu;
+  document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';
+  document.getElementById('i_pitch').textContent = i ? fmt(i.pitch_deg, 1) : '-';
+  document.getElementById('i_yaw').textContent = i ? fmt(i.yaw_deg, 1) : '-';
+
+  const o = d.odom;
+  document.getElementById('o_pos').textContent =
+    o ? `${fmt(o.x)} / ${fmt(o.y)}` : '-';
+  document.getElementById('o_yaw').textContent = o ? fmt(o.yaw_deg, 1) : '-';
+  document.getElementById('o_vel').textContent = o ? fmt(o.linear_x) : '-';
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => {
+    document.getElementById('dot').classList.add('on');
+    document.getElementById('conn').textContent = '接続中';
+  };
+  ws.onmessage = ev => render(JSON.parse(ev.data));
+  ws.onclose = () => {
+    document.getElementById('dot').classList.remove('on');
+    document.getElementById('conn').textContent = '切断（再接続します）';
+    setTimeout(connect, 2000);
+  };
+}
+connect();
+</script>
+</body>
+</html>
