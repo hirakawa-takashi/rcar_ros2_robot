@@ -61,6 +61,7 @@ class DashboardNode(Node):
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('odom_topic', '/odom')
+        self.declare_parameter('system_status_topic', '/system_status')
         self.declare_parameter('max_linear_speed', 0.3)
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
@@ -90,6 +91,9 @@ class DashboardNode(Node):
             Imu, self.get_parameter('imu_topic').value, self._imu_cb, sensor_qos)
         self.create_subscription(
             Odometry, self.get_parameter('odom_topic').value, self._odom_cb, 10)
+        self.create_subscription(
+            String, self.get_parameter('system_status_topic').value,
+            self._system_cb, 10)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -98,6 +102,7 @@ class DashboardNode(Node):
         self._scan = None
         self._imu = None
         self._odom = None
+        self._system = None
 
         self.create_timer(0.1, self._watchdog_cb)
         self.get_logger().info(
@@ -141,6 +146,15 @@ class DashboardNode(Node):
                 'linear_x': round(msg.twist.twist.linear.x, 3),
                 'angular_z': round(msg.twist.twist.angular.z, 3),
             }
+
+    def _system_cb(self, msg: String):
+        try:
+            system = json.loads(msg.data)
+        except json.JSONDecodeError:
+            self.get_logger().warn('system_status の JSON を解析できません')
+            return
+        with self._lock:
+            self._system = system
 
     @staticmethod
     def _stamp_to_sec(stamp):
@@ -217,6 +231,7 @@ class DashboardNode(Node):
                 'scan': self._scan,
                 'imu': self._imu,
                 'odom': self._odom,
+                'system': self._system,
                 'limits': {
                     'max_linear_speed': self.max_linear,
                     'max_angular_speed': self.max_angular,

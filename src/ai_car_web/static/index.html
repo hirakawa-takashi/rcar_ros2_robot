@@ -28,6 +28,19 @@
   button.stop { grid-column: 2; background: #7a2530; border-color: #a33; }
   .speed { margin-top: 12px; font-size: 13px; color: #9fb0c7; }
   input[type=range] { width: 100%; }
+  .bar { position: relative; height: 8px; background: #2a3340; border-radius: 4px;
+         overflow: hidden; margin: 4px 0 8px; }
+  .bar > span { position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+                background: #4a90d9; transition: width .3s; }
+  .bar > span.warn { background: #d98e2b; }
+  .bar > span.crit { background: #d9534f; }
+  .cores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+  .core { font-size: 11px; color: #9fb0c7; text-align: center; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+           background: #2a3340; color: #9fb0c7; }
+  .badge.ok { background: #1e4a2b; color: #8fe0a4; }
+  .badge.warn { background: #5a4416; color: #f0c674; }
+  .note { font-size: 12px; color: #9fb0c7; margin-top: 8px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -80,6 +93,50 @@
       <tr><td class="k">pitch [deg]</td><td class="v" id="i_pitch">-</td></tr>
       <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
     </table>
+  </div>
+
+  <div class="card">
+    <h2>Raspberry Pi 5 — CPU</h2>
+    <div class="bar"><span id="cpu_bar"></span></div>
+    <table>
+      <tr><td class="k">CPU使用率</td><td class="v" id="cpu_pct">-</td></tr>
+      <tr><td class="k">クロック [MHz]</td><td class="v" id="cpu_freq">-</td></tr>
+      <tr><td class="k">温度 [℃]</td><td class="v" id="cpu_temp">-</td></tr>
+      <tr><td class="k">ロードアベレージ</td><td class="v" id="cpu_load">-</td></tr>
+    </table>
+    <div class="cores" id="cores"></div>
+  </div>
+
+  <div class="card">
+    <h2>メモリ / ストレージ</h2>
+    <div class="bar"><span id="mem_bar"></span></div>
+    <table>
+      <tr><td class="k">メモリ [MB]</td><td class="v" id="mem">-</td></tr>
+      <tr><td class="k">Swap使用率</td><td class="v" id="swap">-</td></tr>
+      <tr><td class="k">ディスク [GB]</td><td class="v" id="disk">-</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>電源 (PMIC)</h2>
+    <table>
+      <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
+      <tr><td class="k">入力電圧 EXT5V [V]</td><td class="v" id="pwr_in">-</td></tr>
+      <tr><td class="k">コア電圧 [V]</td><td class="v" id="pwr_core">-</td></tr>
+      <tr><td class="k">スロットリング</td><td class="v" id="throttle">-</td></tr>
+    </table>
+    <table id="rails"></table>
+  </div>
+
+  <div class="card">
+    <h2>AI HAT+ (Hailo-8)</h2>
+    <table>
+      <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
+      <tr><td class="k">デバイス</td><td class="v" id="h_dev">-</td></tr>
+      <tr><td class="k">ファームウェア</td><td class="v" id="h_fw">-</td></tr>
+      <tr><td class="k">温度 [℃]</td><td class="v" id="h_temp">-</td></tr>
+    </table>
+    <div class="note" id="h_note"></div>
   </div>
 
   <div class="card">
@@ -143,6 +200,73 @@ function fmt(v, digits = 2) {
   return (v === null || v === undefined) ? '-' : Number(v).toFixed(digits);
 }
 
+function setBar(el, percent) {
+  el.style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
+  el.className = percent >= 90 ? 'crit' : percent >= 70 ? 'warn' : '';
+}
+
+function renderSystem(s) {
+  if (!s) return;
+  const c = s.cpu || {};
+  document.getElementById('cpu_pct').textContent = fmt(c.percent, 1) + ' %';
+  setBar(document.getElementById('cpu_bar'), c.percent);
+  document.getElementById('cpu_freq').textContent = fmt(c.freq_mhz, 0);
+  document.getElementById('cpu_temp').textContent = fmt(c.temperature_c, 1);
+  document.getElementById('cpu_load').textContent =
+    (c.load_average || []).map(v => fmt(v, 2)).join(' / ');
+  const cores = document.getElementById('cores');
+  cores.innerHTML = (c.per_core || [])
+    .map((v, i) => `<div class="core">C${i}<div class="bar"><span style="width:${v}%"></span></div>${fmt(v, 0)}%</div>`)
+    .join('');
+
+  const m = s.memory || {};
+  document.getElementById('mem').textContent =
+    `${fmt(m.used_mb, 0)} / ${fmt(m.total_mb, 0)} (${fmt(m.percent, 0)}%)`;
+  setBar(document.getElementById('mem_bar'), m.percent);
+  document.getElementById('swap').textContent = fmt(m.swap_percent, 1) + ' %';
+  document.getElementById('disk').textContent =
+    `${fmt(m.disk_used_gb, 1)} / ${fmt(m.disk_total_gb, 1)} (${fmt(m.disk_percent, 0)}%)`;
+
+  const p = s.power;
+  document.getElementById('pwr_total').textContent = p ? fmt(p.total_w, 2) : '-';
+  document.getElementById('pwr_in').textContent = p ? fmt(p.input_volt, 2) : '-';
+  document.getElementById('pwr_core').textContent = p ? fmt(p.core_volt, 3) : '-';
+
+  const t = p && p.throttled;
+  const thEl = document.getElementById('throttle');
+  if (!t) {
+    thEl.textContent = '-';
+  } else {
+    const now = ['under_voltage_now', 'throttled_now', 'arm_freq_capped_now',
+                 'soft_temp_limit_now'].filter(k => t[k]);
+    const past = ['under_voltage_occurred', 'throttled_occurred',
+                  'arm_freq_capped_occurred', 'soft_temp_limit_occurred'].filter(k => t[k]);
+    thEl.innerHTML = now.length
+      ? `<span class="badge warn">${now.join(', ')}</span>`
+      : past.length
+        ? `<span class="badge ok">正常</span> <span class="badge">過去: ${past.length}件</span>`
+        : '<span class="badge ok">正常</span>';
+  }
+
+  const rails = document.getElementById('rails');
+  rails.innerHTML = p && p.rails
+    ? Object.entries(p.rails).slice(0, 5).map(([name, r]) =>
+        `<tr><td class="k">${name}</td><td class="v">${fmt(r.watt, 2)} W</td></tr>`).join('')
+    : '';
+
+  const h = s.hailo || {};
+  const state = !h.enabled ? '<span class="badge">無効</span>'
+    : h.driver_ready ? '<span class="badge ok">稼働中</span>'
+    : h.detected ? '<span class="badge warn">ドライバ未導入</span>'
+    : '<span class="badge warn">未検出</span>';
+  document.getElementById('h_state').innerHTML = state;
+  document.getElementById('h_dev').textContent =
+    h.device_architecture || (h.pci ? 'Hailo-8 (PCIe)' : '-');
+  document.getElementById('h_fw').textContent = h.firmware_version || '-';
+  document.getElementById('h_temp').textContent = fmt(h.temperature_c, 1);
+  document.getElementById('h_note').textContent = h.note || '';
+}
+
 function render(d) {
   document.getElementById('cx').textContent = fmt(d.cmd_vel.linear_x);
   document.getElementById('cy').textContent = fmt(d.cmd_vel.linear_y);
@@ -164,6 +288,8 @@ function render(d) {
     o ? `${fmt(o.x)} / ${fmt(o.y)}` : '-';
   document.getElementById('o_yaw').textContent = o ? fmt(o.yaw_deg, 1) : '-';
   document.getElementById('o_vel').textContent = o ? fmt(o.linear_x) : '-';
+
+  renderSystem(d.system);
 }
 
 function connect() {

@@ -15,6 +15,15 @@
   - static/index.html: メカナム操作UIとテレメトリ表示
   - config/dashboard.yaml、launch/dashboard.launch.py
   - 無指令タイムアウトによる自動停止
+- system_monitor_node を新規作成（Raspberry Pi 5 / AI HAT+ 監視）
+  - CPU使用率（全体・コア別）・クロック・温度・ロードアベレージ
+  - メモリ・Swap・ディスク使用量
+  - `vcgencmd pmic_read_adc` による電源レール別の電圧・電流・電力と合計消費電力
+  - `vcgencmd get_throttled` のスロットリング状態（現在・過去）
+  - AI HAT+ (Hailo-8) の PCIe 検出状態、HailoRT 導入済みならデバイス情報・温度
+  - `/system_status`（std_msgs/String, JSON）を 1Hz で publish
+  - dashboard_node が `/system_status` を購読し、REST / WebSocket の `system` フィールドで配信
+  - index.html に CPU / メモリ / 電源 / AI HAT+ のカードを追加
 - プロジェクト管理ファイルを作成
   - PROJECT_RULES.md: 開発方針・禁止事項
   - PROJECT_STATUS.md: 実装状況・課題管理

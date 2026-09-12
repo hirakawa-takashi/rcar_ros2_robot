@@ -6,7 +6,15 @@ dashboard_node:
     scan_topic: "/scan"
     imu_topic: "/imu/data"
     odom_topic: "/odom"
+    system_status_topic: "/system_status"
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
     telemetry_rate: 5.0
+
+system_monitor_node:
+  ros__parameters:
+    publish_rate: 1.0
+    topic: "/system_status"
+    enable_pmic: true
+    enable_hailo: true

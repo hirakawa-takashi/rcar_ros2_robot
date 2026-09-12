@@ -27,6 +27,7 @@ setup(
     entry_points={
         'console_scripts': [
             'dashboard_node = ai_car_web.dashboard_node:main',
+            'system_monitor_node = ai_car_web.system_monitor_node:main',
         ],
     },
 )
