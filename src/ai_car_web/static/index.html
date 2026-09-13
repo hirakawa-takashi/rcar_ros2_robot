@@ -55,6 +55,9 @@
   .note { font-size: 12px; color: #9fb0c7; margin-top: 8px; line-height: 1.5; }
   .cam { width: 100%; aspect-ratio: 4 / 3; background: #11161d; border-radius: 6px;
          object-fit: contain; display: block; }
+  .camwrap { position: relative; }
+  .camwrap .cam_overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+         pointer-events: none; }
   .map { width: 100%; aspect-ratio: 1 / 1; background: #11161d; border-radius: 6px;
          display: block; margin-bottom: 8px; }
 </style>
@@ -97,7 +100,10 @@
 
   <div class="card">
     <h2>カメラ (/camera/image_raw/compressed)</h2>
-    <img class="cam" id="cam" alt="camera">
+    <div class="camwrap">
+      <img class="cam" id="cam" alt="camera">
+      <canvas class="cam_overlay" id="cam_overlay" width="640" height="480"></canvas>
+    </div>
     <table>
       <tr><td class="k">状態</td><td class="v" id="cam_state">-</td></tr>
       <tr><td class="k">受信フレーム</td><td class="v" id="cam_frames">-</td></tr>
@@ -289,7 +295,7 @@ function renderSystem(s) {
 }
 
 // LiDAR の 360度スキャンを上から見た点群として描画する（+X = 正面 = 上）。
-function drawScanMap(scan) {
+function drawScanMap(scan, danger) {
   const canvas = document.getElementById('scan_map');
   const ctx = canvas.getContext('2d');
   const size = canvas.width;
@@ -314,9 +320,11 @@ function drawScanMap(scan) {
   ctx.moveTo(0, cy); ctx.lineTo(size, cy);
   ctx.stroke();
 
-  ctx.fillStyle = '#4a90d9';
   for (const [x, y] of points) {
-    ctx.fillRect(cx - y * scale - 1, cy - x * scale - 1, 2, 2);
+    const near = Math.hypot(x, y) <= danger;
+    ctx.fillStyle = near ? '#e04b4b' : '#4a90d9';
+    const s = near ? 4 : 2;
+    ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
   }
 
   ctx.fillStyle = '#d9534f';
@@ -369,8 +377,10 @@ function render(d) {
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
-  drawScanMap(s);
+  const danger = (d.obstacle && d.obstacle.danger_distance) || 0.3;
+  drawScanMap(s, danger);
   renderObstacle(d.obstacle);
+  drawDetections(d.obstacle);
 
   const i = d.imu;
   document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';
@@ -385,6 +395,31 @@ function render(d) {
 
   renderSystem(d.system);
   renderCamera(d.camera);
+}
+
+// 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑）。
+function drawDetections(o) {
+  const canvas = document.getElementById('cam_overlay');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const danger = (o && o.danger_distance) || 0.3;
+  for (const d of (o && o.detections) || []) {
+    const [x1, y1, x2, y2] = d.box;
+    const near = d.distance != null && d.distance <= danger;
+    ctx.strokeStyle = near ? '#e04b4b' : '#5cb85c';
+    ctx.lineWidth = near ? 3 : 2;
+    ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
+    const text = d.distance != null
+      ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
+    ctx.font = 'bold 16px sans-serif';
+    const tw = ctx.measureText(text).width + 8;
+    const ty = Math.max(0, y1 * h - 20);
+    ctx.fillStyle = near ? '#e04b4b' : '#5cb85c';
+    ctx.fillRect(x1 * w, ty, tw, 20);
+    ctx.fillStyle = '#0e1116';
+    ctx.fillText(text, x1 * w + 4, ty + 15);
+  }
 }
 
 let camStreaming = false;

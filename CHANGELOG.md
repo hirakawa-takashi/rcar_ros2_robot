@@ -27,6 +27,9 @@
   - `dashboard_node` が `/obstacle_status` を購読して `/api/status` の `obstacle` で配信し、前進指令に `speed_scale` を適用（`obstacle_guard`）
   - index.html に「障害物判定（LiDAR 主 / AI HAT+ 補助）」カードを追加
   - `dashboard.launch.py` に `use_perception` 引数を追加
+  - 検出物体の距離を LiDAR と連動して算出（画像の横位置を `camera_hfov_deg`（66°）で方位角へ変換し、その角度範囲の最近距離を採用）
+  - カメラ映像に検出枠と距離をオーバーレイ表示。`danger_distance`（0.3m）以内は赤枠、それ以外は緑枠
+  - LiDAR 点群マップで `danger_distance` 以内の点を赤点で強調
 - AI HAT+ カードから PCIe リンク使用率・リンク速度の表示を削除し、温度をカード最上部に移動
 - ダッシュボードの CPU / AI HAT+ の温度を横バーグラフ表示に変更（0–100℃ スケール、70℃ で警告色、85℃ で危険色）
 - AI HAT+ (Hailo-8) のオンチップ温度を HailoRT C API `hailo_get_chip_temperature()`（ctypes 直接呼び出し）で取得し、ダッシュボードの温度欄に表示（ts0/ts1 の平均）

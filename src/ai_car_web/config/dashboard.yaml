@@ -35,6 +35,8 @@ perception_node:
     hef_path: "/home/super/AI-CAR_ws/models/yolov8n.hef"
     inference_rate: 4.0
     score_threshold: 0.4
+    camera_hfov_deg: 66.0
+    danger_distance: 0.3
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0

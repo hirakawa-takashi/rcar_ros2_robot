@@ -91,6 +91,8 @@ class PerceptionNode(Node):
         self.declare_parameter('hef_path', '')
         self.declare_parameter('inference_rate', 4.0)
         self.declare_parameter('score_threshold', 0.4)
+        self.declare_parameter('camera_hfov_deg', 66.0)
+        self.declare_parameter('danger_distance', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
@@ -110,6 +112,7 @@ class PerceptionNode(Node):
         self._scan_front = None
         self._scan_sectors = None
         self._scan_stamp = 0.0
+        self._scan_bearings = []
         self._frame = None
         self._frame_stamp = 0.0
         self._cpu_temp = None
@@ -155,6 +158,8 @@ class PerceptionNode(Node):
         self.slow_distance = float(self.get_parameter('slow_distance').value)
         self.inference_rate = float(self.get_parameter('inference_rate').value)
         self.score_threshold = float(self.get_parameter('score_threshold').value)
+        self.camera_hfov = math.radians(float(self.get_parameter('camera_hfov_deg').value))
+        self.danger_distance = float(self.get_parameter('danger_distance').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
         self.hailo_temp_warn = float(self.get_parameter('hailo_temp_warn').value)
@@ -168,6 +173,8 @@ class PerceptionNode(Node):
             'slow_distance': lambda v: setattr(self, 'slow_distance', float(v)),
             'inference_rate': lambda v: setattr(self, 'inference_rate', float(v)),
             'score_threshold': lambda v: setattr(self, 'score_threshold', float(v)),
+            'camera_hfov_deg': lambda v: setattr(self, 'camera_hfov', math.radians(float(v))),
+            'danger_distance': lambda v: setattr(self, 'danger_distance', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
             'hailo_temp_warn': lambda v: setattr(self, 'hailo_temp_warn', float(v)),
@@ -184,10 +191,13 @@ class PerceptionNode(Node):
         half = self.front_angle / 2.0
         front = []
         sectors = {'left': [], 'front': [], 'right': []}
+        bearings = []
         for i, r in enumerate(msg.ranges):
             if not math.isfinite(r) or r <= msg.range_min or r > msg.range_max:
                 continue
             angle = self._normalize(msg.angle_min + i * msg.angle_increment)
+            if abs(angle) <= math.pi / 2.0:
+                bearings.append((angle, r))
             if abs(angle) <= half:
                 front.append(r)
                 if angle > half / 3.0:
@@ -200,6 +210,7 @@ class PerceptionNode(Node):
             self._scan_front = min(front) if front else None
             self._scan_sectors = {
                 k: (round(min(v), 3) if v else None) for k, v in sectors.items()}
+            self._scan_bearings = bearings
             self._scan_stamp = time.time()
 
     def _camera_cb(self, msg: CompressedImage):
@@ -217,6 +228,21 @@ class PerceptionNode(Node):
         with self._lock:
             self._cpu_temp = cpu
             self._hailo_temp = hailo
+
+    def _distance_for_box(self, x_min: float, x_max: float):
+        """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
+
+        画像左端が +HFOV/2、右端が -HFOV/2（ROS の左旋回正）に対応する。
+        """
+        half = self.camera_hfov / 2.0
+        angle_max = (0.5 - x_min) * self.camera_hfov
+        angle_min = (0.5 - x_max) * self.camera_hfov
+        angle_min = max(-half, angle_min)
+        angle_max = min(half, angle_max)
+        with self._lock:
+            bearings = self._scan_bearings
+        hits = [r for angle, r in bearings if angle_min <= angle <= angle_max]
+        return round(min(hits), 3) if hits else None
 
     # --- サーマルガバナ ---
     def _update_thermal(self):
@@ -290,7 +316,10 @@ class PerceptionNode(Node):
                     continue
                 y_min, x_min, y_max, x_max = (float(v) for v in box[:4])
                 cx = (x_min + x_max) / 2.0
+                distance = self._distance_for_box(x_min, x_max)
                 detections.append({
+                    'distance': distance,
+                    'danger': distance is not None and distance <= self.danger_distance,
                     'label': COCO_CLASSES[class_id] if class_id < len(COCO_CLASSES)
                     else str(class_id),
                     'score': round(score, 3),
@@ -330,7 +359,10 @@ class PerceptionNode(Node):
             detections = []
 
         # 前方セクターに写っている物体のみ障害物種別として扱う
-        labels = [d['label'] for d in detections if 0.25 <= d['center_x'] <= 0.75]
+        labels = [
+            f"{d['label']} {d['distance']:.2f}m" if d['distance'] is not None else d['label']
+            for d in detections if 0.25 <= d['center_x'] <= 0.75
+        ]
 
         payload = {
             'stamp': round(now, 3),
@@ -340,6 +372,8 @@ class PerceptionNode(Node):
             'sectors': sectors,
             'stop_distance': self.stop_distance,
             'slow_distance': self.slow_distance,
+            'danger_distance': self.danger_distance,
+            'camera_hfov_deg': round(math.degrees(self.camera_hfov), 1),
             'speed_scale': 0.0 if level == 'stop' else (0.5 if level == 'slow' else 1.0),
             'detections': detections,
             'front_labels': labels,
