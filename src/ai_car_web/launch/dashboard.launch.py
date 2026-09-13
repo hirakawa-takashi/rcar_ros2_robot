@@ -49,6 +49,8 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file],
             additional_env=_rpicam_env(),
+            respawn=True,
+            respawn_delay=5.0,
             condition=IfCondition(use_camera),
         ),
     ] if camera_available else []
@@ -66,6 +68,8 @@ def generate_launch_description():
             name='rplidar',
             output='screen',
             parameters=[params_file],
+            respawn=True,
+            respawn_delay=5.0,
             condition=IfCondition(use_lidar),
         ),
     ] if lidar_available else []
