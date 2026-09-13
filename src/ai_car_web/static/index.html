@@ -58,6 +58,11 @@
 <div class="grid">
   <div class="card">
     <h2>Raspberry Pi 5 — CPU</h2>
+    <div class="barrow">
+      <span class="k">温度</span>
+      <span class="bar"><span id="cpu_temp_bar"></span></span>
+      <span class="v" id="cpu_temp">-</span>
+    </div>
     <div class="bar"><span id="cpu_bar"></span></div>
     <table>
       <tr><td class="k">CPU使用率</td><td class="v" id="cpu_pct">-</td></tr>
@@ -65,11 +70,6 @@
       <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
       <tr><td class="k">ロードアベレージ</td><td class="v" id="cpu_load">-</td></tr>
     </table>
-    <div class="barrow">
-      <span class="k">温度</span>
-      <span class="bar"><span id="cpu_temp_bar"></span></span>
-      <span class="v" id="cpu_temp">-</span>
-    </div>
     <div class="cores" id="cores"></div>
   </div>
 
