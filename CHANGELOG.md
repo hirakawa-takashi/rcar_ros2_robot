@@ -19,6 +19,14 @@
   - `dashboard_node`: LaserScan を直交座標の点群（最大720点に間引き）へ変換して `/api/status` の `scan.points` で配信
   - `dashboard.launch.py`: `rplidar_ros`（`rplidar_composition`）を `use_lidar` 引数で起動
   - `config/dashboard.yaml`: RPLIDAR のシリアルポート（by-id）・ボーレート・`frame_id` を追加
+- 障害物判定ノード `perception_node` を新規作成（LiDAR 主・カメラ/AI HAT+ 補助）
+  - `/scan` の前方 ±30°（`front_angle_deg`）を左/中央/右セクターに分けて最近距離を算出し、`stop_distance`（0.35m）/`slow_distance`（0.8m）で 停止 / 減速 / 安全 / 不明 を判定
+  - `/camera/image_raw/compressed` を Hailo-8（`yolov8n.hef`、HailoRT 4.24 Python バインディング）で推論し、前方に写る物体名を補足情報として付与（推論約8ms）
+  - サーマルガバナ: CPU 70℃ / AI HAT+ 75℃ で推論レートを 40% に低下、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR による安全判定は継続）
+  - 判定結果を `/obstacle_status`（std_msgs/String, JSON）で 5Hz publish。距離・推論レート・温度閾値は実行中にパラメータ変更可能
+  - `dashboard_node` が `/obstacle_status` を購読して `/api/status` の `obstacle` で配信し、前進指令に `speed_scale` を適用（`obstacle_guard`）
+  - index.html に「障害物判定（LiDAR 主 / AI HAT+ 補助）」カードを追加
+  - `dashboard.launch.py` に `use_perception` 引数を追加
 - AI HAT+ カードから PCIe リンク使用率・リンク速度の表示を削除し、温度をカード最上部に移動
 - ダッシュボードの CPU / AI HAT+ の温度を横バーグラフ表示に変更（0–100℃ スケール、70℃ で警告色、85℃ で危険色）
 - AI HAT+ (Hailo-8) のオンチップ温度を HailoRT C API `hailo_get_chip_temperature()`（ctypes 直接呼び出し）で取得し、ダッシュボードの温度欄に表示（ts0/ts1 の平均）

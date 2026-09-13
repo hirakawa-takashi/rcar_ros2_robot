@@ -9,6 +9,8 @@ dashboard_node:
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"
     camera_stream_rate: 10.0
+    obstacle_topic: "/obstacle_status"
+    obstacle_guard: true
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
@@ -20,6 +22,23 @@ system_monitor_node:
     topic: "/system_status"
     enable_pmic: true
     enable_hailo: true
+
+perception_node:
+  ros__parameters:
+    scan_topic: "/scan"
+    camera_topic: "/camera/image_raw/compressed"
+    system_status_topic: "/system_status"
+    obstacle_topic: "/obstacle_status"
+    front_angle_deg: 60.0
+    stop_distance: 0.35
+    slow_distance: 0.8
+    hef_path: "/home/super/AI-CAR_ws/models/yolov8n.hef"
+    inference_rate: 4.0
+    score_threshold: 0.4
+    cpu_temp_warn: 70.0
+    cpu_temp_crit: 78.0
+    hailo_temp_warn: 75.0
+    hailo_temp_crit: 85.0
 
 rplidar:
   ros__parameters:

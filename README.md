@@ -115,6 +115,29 @@ sudo cmake --install build && sudo ldconfig
 hailortcli fw-control identify
 ```
 
+### Python バインディング（`perception_node` の推論に必要）
+
+```bash
+cmake -S ~/hailort/hailort/libhailort/bindings/python/src -B ~/pyhailort_build \
+      -DPYBIND11_PYTHON_VERSION=3.12 -DCMAKE_BUILD_TYPE=Release
+cmake --build ~/pyhailort_build -j4
+cp ~/pyhailort_build/_pyhailort*.so \
+   ~/hailort/hailort/libhailort/bindings/python/platform/hailo_platform/pyhailort/
+pip3 install --user --break-system-packages \
+   ~/hailort/hailort/libhailort/bindings/python/platform
+python3 -c "from hailo_platform import VDevice; print('ok')"
+```
+
+### 物体検出モデル
+
+```bash
+mkdir -p ~/AI-CAR_ws/models
+curl -L -o ~/AI-CAR_ws/models/yolov8n.hef \
+  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8n.hef
+```
+
+パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する（未設定なら LiDAR 判定のみで動作）。
+
 ## 依存
 
 ```bash

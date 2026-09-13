@@ -28,6 +28,8 @@
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点に間引き、表示範囲は自動スケール）として描画。カード順は CPU → AI HAT+ → カメラ → LiDAR
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`
   - カメラノード: `camera_ros`（libcamera）を `dashboard.launch.py` の `use_camera` で起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
+  - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像は AI HAT+（Hailo-8, `yolov8n.hef`）で推論して物体名を補助情報として付与。結果は `/obstacle_status`（JSON, 5Hz）
+  - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
   - 画面（`static/index.html`）: メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止
   - パラメータ: `config/dashboard.yaml`（host/port/各トピック名/最大速度/タイムアウト/配信レート）
@@ -52,6 +54,7 @@
 - `/imu/data`・`/odom` の各ノードが未実装のため、それらのテレメトリは現状 null
 - LiDAR は `ros-jazzy-rplidar-ros` の導入と `super` の `dialout` グループ所属が必要
 - AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。温度は HailoRT C API `hailo_get_chip_temperature()` で取得済み。NPU 使用率と電力はダッシュボードでは扱わない（使用率は `HAILO_MONITOR=1` の推論アプリがある間のみ `hailortcli monitor` で参照可）。電力は未取得（`measure-power` は `UNSUPPORTED_OPCODE`、`query_health_stats()`/`query_performance_stats()` は HAILO8 非対応、`hatctl` は Ubuntu に存在せず Hailo 専用 hwmon も無し、PMIC に HAT 専用レール無し。外付け INA219 等が必要）
+- `perception_node` の推論には HailoRT の Python バインディング（`hailo_platform`）が必要。apt には無いため HailoRT 4.24.0 のソースからビルドして導入する（手順は README 参照）。未導入の場合は LiDAR 判定のみで動作し、`/obstacle_status` の `note` に理由を表示する
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
 - Pi に websockets/wsproto が未導入のため WebSocket が使えず、画面は `/api/status` の1秒ポーリングで動作中（`sudo apt install -y python3-websockets` で WebSocket 配信に戻る）
@@ -72,7 +75,14 @@
 - カメラ（IMX708）: Raspberry Pi 版 libcamera v0.7.2+rpt20260817 / libpisp v1.7.0 を `~/opt/rpicam` にビルドし、`cam -l` でカメラ認識を確認
 - `ros2 launch ai_car_web dashboard.launch.py`（カメラ含む）: `/camera/image_raw/compressed` 30Hz、`/api/status` の `camera.available: true`、`GET /api/camera/snapshot` → 200（約74KB JPEG）を確認
 - LiDAR（RPLIDAR, CP2102 USB）: `rplidar_composition` 起動で `/scan` を 約8Hz で受信。ダッシュボードの点群マップに720点（正面 0.17m / 最大 3.05m）が描画されることをブラウザで確認
+- 障害物判定: `/obstacle_status` で `level: stop`（前方 0.177m）を確認。Hailo-8 推論は約 8ms、YOLOv8n で物体検出（例: bed 0.61 / sink 0.50）を確認。温度閾値を一時的に下げて warn（推論 40%）→ critical（推論停止、LiDAR 判定は継続）→ 復帰を確認
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
+
+## カメラ仕様（実測）
+- 解像度: 640x480（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`）
+- ROS 配信レート: 約 25〜30Hz（`/camera/image_raw/compressed`）
+- ダッシュボード MJPEG: 10fps（`camera_stream_rate`）
+- AI HAT+ 推論: 640x640 にリサイズして 4Hz（`inference_rate`、高温時は自動低下）
 
 ## 次回作業
 - モーター制御ノード（`/cmd_vel` 購読 → Motor HAT 駆動）を実装する

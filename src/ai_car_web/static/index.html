@@ -46,6 +46,12 @@
            background: #2a3340; color: #9fb0c7; }
   .badge.ok { background: #1e4a2b; color: #8fe0a4; }
   .badge.warn { background: #5a4416; color: #f0c674; }
+  .badge.crit { background: #5a1f1f; color: #f09a9a; }
+  .level { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .level.clear { color: #8fe0a4; }
+  .level.slow { color: #f0c674; }
+  .level.stop { color: #f09a9a; }
+  .level.unknown { color: #9fb0c7; }
   .note { font-size: 12px; color: #9fb0c7; margin-top: 8px; line-height: 1.5; }
   .cam { width: 100%; aspect-ratio: 4 / 3; background: #11161d; border-radius: 6px;
          object-fit: contain; display: block; }
@@ -109,6 +115,20 @@
       <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
       <tr><td class="k">表示範囲 [m]</td><td class="v" id="s_scale">-</td></tr>
     </table>
+  </div>
+
+  <div class="card">
+    <h2>障害物判定（LiDAR 主 / AI HAT+ 補助）</h2>
+    <div class="level unknown" id="o_level">-</div>
+    <table>
+      <tr><td class="k">前方距離 [m]</td><td class="v" id="o_front">-</td></tr>
+      <tr><td class="k">左 / 中央 / 右 [m]</td><td class="v" id="o_sectors">-</td></tr>
+      <tr><td class="k">前進速度制限</td><td class="v" id="o_scale">-</td></tr>
+      <tr><td class="k">検出物体（カメラ）</td><td class="v" id="o_labels">-</td></tr>
+      <tr><td class="k">推論時間 [ms]</td><td class="v" id="o_infer">-</td></tr>
+      <tr><td class="k">サーマル制御</td><td class="v" id="o_thermal">-</td></tr>
+    </table>
+    <div class="note" id="o_note"></div>
   </div>
 
   <div class="card">
@@ -312,6 +332,33 @@ function drawScanMap(scan) {
   }
 }
 
+const LEVEL_TEXT = { clear: '安全', slow: '減速', stop: '停止', unknown: '不明' };
+const THERMAL_TEXT = { normal: '通常', warn: '高温のため推論レート低下', critical: '危険温度のため推論停止' };
+
+function renderObstacle(o) {
+  const level = document.getElementById('o_level');
+  if (!o) {
+    level.textContent = '/obstacle_status 未受信';
+    level.className = 'level unknown';
+    return;
+  }
+  level.textContent = LEVEL_TEXT[o.level] || o.level;
+  level.className = `level ${o.level}`;
+  document.getElementById('o_front').textContent = fmt(o.front_distance);
+  const sec = o.sectors || {};
+  document.getElementById('o_sectors').textContent =
+    `${fmt(sec.left)} / ${fmt(sec.front)} / ${fmt(sec.right)}`;
+  document.getElementById('o_scale').textContent =
+    `${Math.round((o.speed_scale ?? 1) * 100)} %`;
+  const labels = o.front_labels || [];
+  document.getElementById('o_labels').textContent = labels.length ? labels.join(', ') : '-';
+  document.getElementById('o_infer').textContent = fmt(o.inference_ms, 1);
+  const th = o.thermal || {};
+  document.getElementById('o_thermal').textContent =
+    `${THERMAL_TEXT[th.state] || '-'}（推論 ${Math.round((th.inference_scale ?? 1) * 100)} %）`;
+  document.getElementById('o_note').textContent = o.note || o.reason || '';
+}
+
 function render(d) {
   document.getElementById('cx').textContent = fmt(d.cmd_vel.linear_x);
   document.getElementById('cy').textContent = fmt(d.cmd_vel.linear_y);
@@ -323,6 +370,7 @@ function render(d) {
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
   drawScanMap(s);
+  renderObstacle(d.obstacle);
 
   const i = d.imu;
   document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';

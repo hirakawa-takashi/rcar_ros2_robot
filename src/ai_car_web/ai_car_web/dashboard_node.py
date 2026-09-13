@@ -67,6 +67,8 @@ class DashboardNode(Node):
         self.declare_parameter('system_status_topic', '/system_status')
         self.declare_parameter('camera_topic', '/camera/image_raw/compressed')
         self.declare_parameter('camera_stream_rate', 10.0)
+        self.declare_parameter('obstacle_topic', '/obstacle_status')
+        self.declare_parameter('obstacle_guard', True)
         self.declare_parameter('max_linear_speed', 0.3)
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
@@ -79,6 +81,7 @@ class DashboardNode(Node):
         self.cmd_timeout = float(self.get_parameter('cmd_timeout').value)
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
+        self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
 
         sensor_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -103,6 +106,8 @@ class DashboardNode(Node):
         self.create_subscription(
             CompressedImage, self.get_parameter('camera_topic').value,
             self._camera_cb, sensor_qos)
+        self.create_subscription(
+            String, self.get_parameter('obstacle_topic').value, self._obstacle_cb, 10)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -112,6 +117,8 @@ class DashboardNode(Node):
         self._imu = None
         self._odom = None
         self._system = None
+        self._obstacle = None
+        self._obstacle_stamp = 0.0
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -169,6 +176,28 @@ class DashboardNode(Node):
                 'angular_z': round(msg.twist.twist.angular.z, 3),
             }
 
+    def _obstacle_cb(self, msg: String):
+        try:
+            obstacle = json.loads(msg.data)
+        except json.JSONDecodeError:
+            self.get_logger().warn('obstacle_status の JSON を解析できません')
+            return
+        with self._lock:
+            self._obstacle = obstacle
+            self._obstacle_stamp = self.get_clock().now().nanoseconds * 1e-9
+
+    def _forward_scale(self) -> float:
+        """障害物判定に応じた前進方向の速度制限係数を返す。"""
+        if not self.obstacle_guard:
+            return 1.0
+        now = self.get_clock().now().nanoseconds * 1e-9
+        with self._lock:
+            obstacle = self._obstacle
+            age = now - self._obstacle_stamp if self._obstacle_stamp else None
+        if not obstacle or age is None or age > 2.0:
+            return 1.0
+        return float(obstacle.get('speed_scale', 1.0))
+
     def _system_cb(self, msg: String):
         try:
             system = json.loads(msg.data)
@@ -223,7 +252,10 @@ class DashboardNode(Node):
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
         """正規化済み (-1.0〜1.0) の指令値を最大速度にスケールして publish する。"""
         twist = Twist()
-        twist.linear.x = self._clamp(linear_x) * self.max_linear
+        forward = self._clamp(linear_x)
+        if forward > 0.0:
+            forward *= self._forward_scale()
+        twist.linear.x = forward * self.max_linear
         twist.linear.y = self._clamp(linear_y) * self.max_linear
         twist.angular.z = self._clamp(angular_z) * self.max_angular
         self.cmd_vel_pub.publish(twist)
@@ -275,6 +307,7 @@ class DashboardNode(Node):
                 'imu': self._imu,
                 'odom': self._odom,
                 'system': self._system,
+                'obstacle': self._obstacle,
                 'camera': self._camera_state(),
                 'limits': {
                     'max_linear_speed': self.max_linear,

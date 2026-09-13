@@ -33,6 +33,7 @@ def generate_launch_description():
     use_system_monitor = LaunchConfiguration('use_system_monitor')
     use_camera = LaunchConfiguration('use_camera')
     use_lidar = LaunchConfiguration('use_lidar')
+    use_perception = LaunchConfiguration('use_perception')
 
     try:
         get_package_share_directory('camera_ros')
@@ -78,6 +79,8 @@ def generate_launch_description():
                               description='camera_ros のカメラノードを起動する'),
         DeclareLaunchArgument('use_lidar', default_value='true',
                               description='rplidar_ros の LiDAR ノードを起動する'),
+        DeclareLaunchArgument('use_perception', default_value='true',
+                              description='障害物判定ノード（LiDAR 主 + AI HAT+）を起動する'),
         Node(
             package='ai_car_web',
             executable='dashboard_node',
@@ -92,6 +95,14 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file],
             condition=IfCondition(use_system_monitor),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='perception_node',
+            name='perception_node',
+            output='screen',
+            parameters=[params_file],
+            condition=IfCondition(use_perception),
         ),
         *camera_nodes,
         *lidar_nodes,
