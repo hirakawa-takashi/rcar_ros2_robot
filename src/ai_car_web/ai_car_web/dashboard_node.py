@@ -14,14 +14,14 @@ import rclpy
 import uvicorn
 from ament_index_python.packages import get_package_share_directory
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from pydantic import BaseModel
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
-from sensor_msgs.msg import Imu, LaserScan
+from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
 
 
@@ -62,6 +62,8 @@ class DashboardNode(Node):
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('system_status_topic', '/system_status')
+        self.declare_parameter('camera_topic', '/camera/image_raw/compressed')
+        self.declare_parameter('camera_stream_rate', 10.0)
         self.declare_parameter('max_linear_speed', 0.3)
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
@@ -73,6 +75,7 @@ class DashboardNode(Node):
         self.max_angular = float(self.get_parameter('max_angular_speed').value)
         self.cmd_timeout = float(self.get_parameter('cmd_timeout').value)
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
+        self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
 
         sensor_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -94,6 +97,9 @@ class DashboardNode(Node):
         self.create_subscription(
             String, self.get_parameter('system_status_topic').value,
             self._system_cb, 10)
+        self.create_subscription(
+            CompressedImage, self.get_parameter('camera_topic').value,
+            self._camera_cb, sensor_qos)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -103,6 +109,9 @@ class DashboardNode(Node):
         self._imu = None
         self._odom = None
         self._system = None
+        self._frame = None
+        self._frame_stamp = 0.0
+        self._frame_count = 0
 
         self.create_timer(0.1, self._watchdog_cb)
         self.get_logger().info(
@@ -155,6 +164,27 @@ class DashboardNode(Node):
             return
         with self._lock:
             self._system = system
+
+    def _camera_cb(self, msg: CompressedImage):
+        with self._lock:
+            self._frame = bytes(msg.data)
+            self._frame_stamp = self.get_clock().now().nanoseconds * 1e-9
+            self._frame_count += 1
+
+    def latest_frame(self):
+        """最新の JPEG フレームと逗番を返す。未受信なら (None, 0)。"""
+        with self._lock:
+            return self._frame, self._frame_count
+
+    def _camera_state(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        age = now - self._frame_stamp if self._frame is not None else None
+        return {
+            'available': self._frame is not None and age is not None and age < 3.0,
+            'topic': self.get_parameter('camera_topic').value,
+            'frames': self._frame_count,
+            'age_s': round(age, 2) if age is not None else None,
+        }
 
     @staticmethod
     def _stamp_to_sec(stamp):
@@ -232,6 +262,7 @@ class DashboardNode(Node):
                 'imu': self._imu,
                 'odom': self._odom,
                 'system': self._system,
+                'camera': self._camera_state(),
                 'limits': {
                     'max_linear_speed': self.max_linear,
                     'max_angular_speed': self.max_angular,
@@ -260,6 +291,32 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/stop')
     def stop():
         return node.stop()
+
+    @app.get('/api/camera/snapshot')
+    def snapshot():
+        frame, _ = node.latest_frame()
+        if frame is None:
+            return Response(status_code=503)
+        return Response(content=frame, media_type='image/jpeg')
+
+    @app.get('/api/camera/stream')
+    def stream():
+        interval = 1.0 / max(node.camera_stream_rate, 0.1)
+
+        async def frames():
+            last = -1
+            while True:
+                frame, count = node.latest_frame()
+                if frame is not None and count != last:
+                    last = count
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n'
+                           b'Content-Length: ' + str(len(frame)).encode()
+                           + b'\r\n\r\n' + frame + b'\r\n')
+                await asyncio.sleep(interval)
+
+        return StreamingResponse(
+            frames(),
+            media_type='multipart/x-mixed-replace; boundary=frame')
 
     @app.websocket('/ws')
     async def telemetry_ws(websocket: WebSocket):

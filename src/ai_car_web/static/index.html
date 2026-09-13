@@ -42,6 +42,8 @@
   .badge.ok { background: #1e4a2b; color: #8fe0a4; }
   .badge.warn { background: #5a4416; color: #f0c674; }
   .note { font-size: 12px; color: #9fb0c7; margin-top: 8px; line-height: 1.5; }
+  .cam { width: 100%; aspect-ratio: 4 / 3; background: #11161d; border-radius: 6px;
+         object-fit: contain; display: block; }
 </style>
 </head>
 <body>
@@ -73,6 +75,17 @@
     </table>
     <div class="cores" id="h_info"></div>
     <div class="note" id="h_note"></div>
+  </div>
+
+  <div class="card">
+    <h2>カメラ (/camera/image_raw/compressed)</h2>
+    <img class="cam" id="cam" alt="camera">
+    <table>
+      <tr><td class="k">状態</td><td class="v" id="cam_state">-</td></tr>
+      <tr><td class="k">受信フレーム</td><td class="v" id="cam_frames">-</td></tr>
+      <tr><td class="k">最終受信 [s]</td><td class="v" id="cam_age">-</td></tr>
+    </table>
+    <div class="note" id="cam_note"></div>
   </div>
 
   <div class="card">
@@ -258,6 +271,28 @@ function render(d) {
   document.getElementById('o_vel').textContent = o ? fmt(o.linear_x) : '-';
 
   renderSystem(d.system);
+  renderCamera(d.camera);
+}
+
+let camStreaming = false;
+
+function renderCamera(cam) {
+  if (!cam) return;
+  const img = document.getElementById('cam');
+  if (cam.available && !camStreaming) {
+    camStreaming = true;
+    img.src = `/api/camera/stream?t=${Date.now()}`;
+  } else if (!cam.available && camStreaming) {
+    camStreaming = false;
+    img.removeAttribute('src');
+  }
+  document.getElementById('cam_state').innerHTML = cam.available
+    ? '<span class="badge ok">配信中</span>'
+    : '<span class="badge warn">映像なし</span>';
+  document.getElementById('cam_frames').textContent = cam.frames ?? '-';
+  document.getElementById('cam_age').textContent = fmt(cam.age_s, 1);
+  document.getElementById('cam_note').textContent = cam.available
+    ? '' : `${cam.topic} を待機中です（camera_ros ノードを起動してください）`;
 }
 
 let pollTimer = null;

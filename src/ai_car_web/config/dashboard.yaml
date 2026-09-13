@@ -7,6 +7,8 @@ dashboard_node:
     imu_topic: "/imu/data"
     odom_topic: "/odom"
     system_status_topic: "/system_status"
+    camera_topic: "/camera/image_raw/compressed"
+    camera_stream_rate: 10.0
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
@@ -18,3 +20,10 @@ system_monitor_node:
     topic: "/system_status"
     enable_pmic: true
     enable_hailo: true
+
+camera:
+  ros__parameters:
+    format: "RGB888"
+    width: 640
+    height: 480
+    camera: 0
