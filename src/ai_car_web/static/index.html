@@ -295,7 +295,7 @@ function renderSystem(s) {
 }
 
 // LiDAR の 360度スキャンを上から見た点群として描画する（+X = 正面 = 上）。
-function drawScanMap(scan, danger) {
+function drawScanMap(scan, danger, frontHalfRad) {
   const canvas = document.getElementById('scan_map');
   const ctx = canvas.getContext('2d');
   const size = canvas.width;
@@ -321,7 +321,9 @@ function drawScanMap(scan, danger) {
   ctx.stroke();
 
   for (const [x, y] of points) {
-    const near = Math.hypot(x, y) <= danger;
+    // 前方セクター内かつ危険距離以内の点のみ赤で強調する。
+    const near = Math.hypot(x, y) <= danger &&
+      Math.abs(Math.atan2(y, x)) <= frontHalfRad;
     ctx.fillStyle = near ? '#e04b4b' : '#4a90d9';
     const s = near ? 4 : 2;
     ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
@@ -378,7 +380,8 @@ function render(d) {
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
   const danger = (d.obstacle && d.obstacle.danger_distance) || 0.3;
-  drawScanMap(s, danger);
+  const frontHalf = (((d.obstacle && d.obstacle.front_angle_deg) || 60) / 2) * Math.PI / 180;
+  drawScanMap(s, danger, frontHalf);
   renderObstacle(d.obstacle);
   drawDetections(d.obstacle);
 
