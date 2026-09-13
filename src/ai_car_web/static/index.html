@@ -49,6 +49,8 @@
   .note { font-size: 12px; color: #9fb0c7; margin-top: 8px; line-height: 1.5; }
   .cam { width: 100%; aspect-ratio: 4 / 3; background: #11161d; border-radius: 6px;
          object-fit: contain; display: block; }
+  .map { width: 100%; aspect-ratio: 1 / 1; background: #11161d; border-radius: 6px;
+         display: block; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -99,6 +101,17 @@
   </div>
 
   <div class="card">
+    <h2>LiDAR (/scan)</h2>
+    <canvas class="map" id="scan_map" width="480" height="480"></canvas>
+    <table>
+      <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
+      <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
+      <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
+      <tr><td class="k">表示範囲 [m]</td><td class="v" id="s_scale">-</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
     <h2>手動操作</h2>
     <div class="pad">
       <button data-x="1" data-y="1" data-z="0">⭦</button>
@@ -124,15 +137,6 @@
       <tr><td class="k">linear.x [m/s]</td><td class="v" id="cx">-</td></tr>
       <tr><td class="k">linear.y [m/s]</td><td class="v" id="cy">-</td></tr>
       <tr><td class="k">angular.z [rad/s]</td><td class="v" id="cz">-</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>LiDAR (/scan)</h2>
-    <table>
-      <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
-      <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
-      <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
     </table>
   </div>
 
@@ -264,6 +268,50 @@ function renderSystem(s) {
   document.getElementById('h_note').textContent = h.note || '';
 }
 
+// LiDAR の 360度スキャンを上から見た点群として描画する（+X = 正面 = 上）。
+function drawScanMap(scan) {
+  const canvas = document.getElementById('scan_map');
+  const ctx = canvas.getContext('2d');
+  const size = canvas.width;
+  const cx = size / 2, cy = size / 2;
+  ctx.clearRect(0, 0, size, size);
+
+  const points = (scan && scan.points) || [];
+  const maxRange = points.reduce((m, [x, y]) => Math.max(m, Math.hypot(x, y)), 0);
+  const range = Math.max(1, Math.ceil(maxRange));
+  const scale = (size / 2 - 10) / range;
+  document.getElementById('s_scale').textContent = points.length ? range : '-';
+
+  ctx.strokeStyle = '#2c3340';
+  ctx.lineWidth = 1;
+  for (let r = 1; r <= range; r++) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(cx, 0); ctx.lineTo(cx, size);
+  ctx.moveTo(0, cy); ctx.lineTo(size, cy);
+  ctx.stroke();
+
+  ctx.fillStyle = '#4a90d9';
+  for (const [x, y] of points) {
+    ctx.fillRect(cx - y * scale - 1, cy - x * scale - 1, 2, 2);
+  }
+
+  ctx.fillStyle = '#d9534f';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (!points.length) {
+    ctx.fillStyle = '#9fb0c7';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('/scan 未受信', cx, cy - 12);
+  }
+}
+
 function render(d) {
   document.getElementById('cx').textContent = fmt(d.cmd_vel.linear_x);
   document.getElementById('cy').textContent = fmt(d.cmd_vel.linear_y);
@@ -274,6 +322,7 @@ function render(d) {
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
+  drawScanMap(s);
 
   const i = d.imu;
   document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';

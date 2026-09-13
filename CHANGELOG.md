@@ -15,6 +15,10 @@
   - static/index.html: メカナム操作UIとテレメトリ表示
   - config/dashboard.yaml、launch/dashboard.launch.py
   - 無指令タイムアウトによる自動停止
+- LiDAR (`/scan`) の360度スキャンを点群マップ（Canvas）で表示し、LiDAR カードをカメラの次に配置
+  - `dashboard_node`: LaserScan を直交座標の点群（最大720点に間引き）へ変換して `/api/status` の `scan.points` で配信
+  - `dashboard.launch.py`: `rplidar_ros`（`rplidar_composition`）を `use_lidar` 引数で起動
+  - `config/dashboard.yaml`: RPLIDAR のシリアルポート（by-id）・ボーレート・`frame_id` を追加
 - AI HAT+ カードから PCIe リンク使用率・リンク速度の表示を削除し、温度をカード最上部に移動
 - ダッシュボードの CPU / AI HAT+ の温度を横バーグラフ表示に変更（0–100℃ スケール、70℃ で警告色、85℃ で危険色）
 - AI HAT+ (Hailo-8) のオンチップ温度を HailoRT C API `hailo_get_chip_temperature()`（ctypes 直接呼び出し）で取得し、ダッシュボードの温度欄に表示（ts0/ts1 の平均）

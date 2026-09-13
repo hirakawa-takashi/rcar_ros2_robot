@@ -25,6 +25,9 @@ from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
 
 
+MAX_SCAN_POINTS = 720
+
+
 class CmdVelRequest(BaseModel):
     """ブラウザから受け取る速度指令。"""
 
@@ -120,6 +123,15 @@ class DashboardNode(Node):
     # --- サブスクライバ ---
     def _scan_cb(self, msg: LaserScan):
         ranges = [r for r in msg.ranges if math.isfinite(r) and r > msg.range_min]
+        step = max(1, len(msg.ranges) // MAX_SCAN_POINTS)
+        points = []
+        for i in range(0, len(msg.ranges), step):
+            r = msg.ranges[i]
+            if not math.isfinite(r) or r <= msg.range_min or r > msg.range_max:
+                continue
+            angle = msg.angle_min + i * msg.angle_increment
+            points.append([round(r * math.cos(angle), 3),
+                           round(r * math.sin(angle), 3)])
         with self._lock:
             self._scan = {
                 'stamp': self._stamp_to_sec(msg.header.stamp),
@@ -127,6 +139,7 @@ class DashboardNode(Node):
                 'range_min': round(min(ranges), 3) if ranges else None,
                 'range_max': round(max(ranges), 3) if ranges else None,
                 'front': self._front_distance(msg),
+                'points': points,
             }
 
     def _imu_cb(self, msg: Imu):

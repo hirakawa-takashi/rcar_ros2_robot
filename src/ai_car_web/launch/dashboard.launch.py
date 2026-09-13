@@ -32,6 +32,7 @@ def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
     use_system_monitor = LaunchConfiguration('use_system_monitor')
     use_camera = LaunchConfiguration('use_camera')
+    use_lidar = LaunchConfiguration('use_lidar')
 
     try:
         get_package_share_directory('camera_ros')
@@ -51,6 +52,23 @@ def generate_launch_description():
         ),
     ] if camera_available else []
 
+    try:
+        get_package_share_directory('rplidar_ros')
+        lidar_available = True
+    except PackageNotFoundError:
+        lidar_available = False
+
+    lidar_nodes = [
+        Node(
+            package='rplidar_ros',
+            executable='rplidar_composition',
+            name='rplidar',
+            output='screen',
+            parameters=[params_file],
+            condition=IfCondition(use_lidar),
+        ),
+    ] if lidar_available else []
+
     return LaunchDescription([
         DeclareLaunchArgument('params_file', default_value=default_params,
                               description='ダッシュボードのパラメータファイル'),
@@ -58,6 +76,8 @@ def generate_launch_description():
                               description='システム監視ノードを起動する'),
         DeclareLaunchArgument('use_camera', default_value='true',
                               description='camera_ros のカメラノードを起動する'),
+        DeclareLaunchArgument('use_lidar', default_value='true',
+                              description='rplidar_ros の LiDAR ノードを起動する'),
         Node(
             package='ai_car_web',
             executable='dashboard_node',
@@ -74,4 +94,5 @@ def generate_launch_description():
             condition=IfCondition(use_system_monitor),
         ),
         *camera_nodes,
+        *lidar_nodes,
     ])
