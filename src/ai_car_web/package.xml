@@ -3,7 +3,7 @@
 <package format="3">
   <name>ai_car_web</name>
   <version>0.1.0</version>
-  <description>AT-CAR 用 FastAPI Webダッシュボード（テレメトリ表示と手動操作）</description>
+  <description>AI-CAR 用 FastAPI Webダッシュボード（テレメトリ表示と手動操作）</description>
   <maintainer email="hirakawa3.tennis.gogo@gmail.com">super</maintainer>
   <license>MIT</license>
 

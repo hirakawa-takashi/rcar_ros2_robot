@@ -1,7 +1,7 @@
-# HARDWARE_BOM.md — AT-CAR 部品構成表
+# HARDWARE_BOM.md — AI-CAR 部品構成表
 
 ## 概要
-AT-CAR（自律走行ロボットカー）のハードウェア構成を記録する。
+AI-CAR（自律走行ロボットカー）のハードウェア構成を記録する。
 
 ---
 

@@ -1,6 +1,6 @@
-# rcar_ros2_robot (AT-CAR)
+# rcar_ros2_robot (AI-CAR)
 
-Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AT-CAR のワークスペース。
+Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
 ## パッケージ
 

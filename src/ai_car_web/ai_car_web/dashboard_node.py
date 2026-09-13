@@ -1,4 +1,4 @@
-"""AT-CAR Webダッシュボードノード。
+"""AI-CAR Webダッシュボードノード。
 
 FastAPI サーバーを別スレッドで起動し、ブラウザからの手動操作コマンドを
 /cmd_vel へ publish し、センサートピックのテレメトリを WebSocket で配信する。
@@ -243,7 +243,7 @@ def create_app(node: DashboardNode) -> FastAPI:
     """ダッシュボードの FastAPI アプリを生成する。"""
     static_dir = os.path.join(
         get_package_share_directory('ai_car_web'), 'static')
-    app = FastAPI(title='AT-CAR Dashboard')
+    app = FastAPI(title='AI-CAR Dashboard')
 
     @app.get('/')
     def index():

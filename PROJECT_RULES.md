@@ -3,7 +3,7 @@
 ## プロジェクト概要
 - Raspberry Pi 5上でROS2 Jazzyを使用する。
 - LiDAR、カメラ、Nav2、FastAPIを使用する。
-- AI-CAR (AT-CAR) ロボット開発プロジェクト。
+- AI-CAR ロボット開発プロジェクト。
 
 ## 基本方針
 - 既存の動作確認済みコードを削除しない。

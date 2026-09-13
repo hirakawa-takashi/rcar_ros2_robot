@@ -21,7 +21,7 @@ setup(
     zip_safe=True,
     maintainer='super',
     maintainer_email='hirakawa3.tennis.gogo@gmail.com',
-    description='AT-CAR 用 FastAPI Webダッシュボード',
+    description='AI-CAR 用 FastAPI Webダッシュボード',
     license='MIT',
     tests_require=['pytest'],
     entry_points={

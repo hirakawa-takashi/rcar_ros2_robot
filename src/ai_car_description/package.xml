@@ -3,7 +3,7 @@
 <package format="3">
   <name>ai_car_description</name>
   <version>0.1.0</version>
-  <description>AT-CAR (AI-CAR) メカナム4輪ロボットのURDF/Xacroモデルと表示用Launch</description>
+  <description>AI-CAR メカナム4輪ロボットのURDF/Xacroモデルと表示用Launch</description>
   <maintainer email="hirakawa3.tennis.gogo@gmail.com">super</maintainer>
   <license>MIT</license>
 
