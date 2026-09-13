@@ -92,6 +92,7 @@ class PerceptionNode(Node):
         self.declare_parameter('inference_rate', 4.0)
         self.declare_parameter('score_threshold', 0.4)
         self.declare_parameter('camera_hfov_deg', 66.0)
+        self.declare_parameter('scan_angle_offset_deg', 180.0)
         self.declare_parameter('danger_distance', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
@@ -159,6 +160,9 @@ class PerceptionNode(Node):
         self.inference_rate = float(self.get_parameter('inference_rate').value)
         self.score_threshold = float(self.get_parameter('score_threshold').value)
         self.camera_hfov = math.radians(float(self.get_parameter('camera_hfov_deg').value))
+        # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
+        self.scan_angle_offset = math.radians(
+            float(self.get_parameter('scan_angle_offset_deg').value))
         self.danger_distance = float(self.get_parameter('danger_distance').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
@@ -174,6 +178,8 @@ class PerceptionNode(Node):
             'inference_rate': lambda v: setattr(self, 'inference_rate', float(v)),
             'score_threshold': lambda v: setattr(self, 'score_threshold', float(v)),
             'camera_hfov_deg': lambda v: setattr(self, 'camera_hfov', math.radians(float(v))),
+            'scan_angle_offset_deg': lambda v: setattr(
+                self, 'scan_angle_offset', math.radians(float(v))),
             'danger_distance': lambda v: setattr(self, 'danger_distance', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
@@ -195,7 +201,8 @@ class PerceptionNode(Node):
         for i, r in enumerate(msg.ranges):
             if not math.isfinite(r) or r <= msg.range_min or r > msg.range_max:
                 continue
-            angle = self._normalize(msg.angle_min + i * msg.angle_increment)
+            angle = self._normalize(
+                msg.angle_min + i * msg.angle_increment + self.scan_angle_offset)
             if abs(angle) <= math.pi / 2.0:
                 bearings.append((angle, r))
             if abs(angle) <= half:

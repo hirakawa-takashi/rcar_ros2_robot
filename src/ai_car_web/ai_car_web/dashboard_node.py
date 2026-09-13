@@ -73,6 +73,7 @@ class DashboardNode(Node):
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
         self.declare_parameter('telemetry_rate', 5.0)
+        self.declare_parameter('scan_angle_offset_deg', 180.0)
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
@@ -82,6 +83,9 @@ class DashboardNode(Node):
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
+        # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
+        self.scan_angle_offset = math.radians(
+            float(self.get_parameter('scan_angle_offset_deg').value))
 
         sensor_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -136,7 +140,7 @@ class DashboardNode(Node):
             r = msg.ranges[i]
             if not math.isfinite(r) or r <= msg.range_min or r > msg.range_max:
                 continue
-            angle = msg.angle_min + i * msg.angle_increment
+            angle = msg.angle_min + i * msg.angle_increment + self.scan_angle_offset
             points.append([round(r * math.cos(angle), 3),
                            round(r * math.sin(angle), 3)])
         with self._lock:
@@ -145,7 +149,7 @@ class DashboardNode(Node):
                 'count': len(msg.ranges),
                 'range_min': round(min(ranges), 3) if ranges else None,
                 'range_max': round(max(ranges), 3) if ranges else None,
-                'front': self._front_distance(msg),
+                'front': self._front_distance(msg, self.scan_angle_offset),
                 'points': points,
             }
 
@@ -233,7 +237,7 @@ class DashboardNode(Node):
         return round(stamp.sec + stamp.nanosec * 1e-9, 3)
 
     @staticmethod
-    def _front_distance(msg: LaserScan):
+    def _front_distance(msg: LaserScan, offset: float = 0.0):
         """正面 (±5deg) の最短距離 [m] を返す。"""
         if not msg.ranges or msg.angle_increment == 0.0:
             return None
@@ -242,7 +246,7 @@ class DashboardNode(Node):
         for i, r in enumerate(msg.ranges):
             if not math.isfinite(r) or r <= msg.range_min:
                 continue
-            angle = msg.angle_min + i * msg.angle_increment
+            angle = msg.angle_min + i * msg.angle_increment + offset
             angle = math.atan2(math.sin(angle), math.cos(angle))
             if abs(angle) <= half_width and (best is None or r < best):
                 best = r
