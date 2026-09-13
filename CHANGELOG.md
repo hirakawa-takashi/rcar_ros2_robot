@@ -29,6 +29,12 @@
   - PROJECT_STATUS.md: 実装状況・課題管理
   - CHANGELOG.md: 本ファイル
 - README に Ubuntu 24.04 向け AI HAT+ セットアップ手順（hailort-drivers v4.24.0 と HailoRT 4.24.0 のソース導入）を追記
+- カメラ映像をダッシュボードに追加
+  - `dashboard_node` が `/camera/image_raw/compressed`（`sensor_msgs/CompressedImage`）を購読
+  - `GET /api/camera/snapshot`（JPEG）と `GET /api/camera/stream`（MJPEG）を追加
+  - index.html にカメラカード（映像・状態・受信フレーム数・最終受信時刻）を追加
+  - `dashboard.launch.py` に `use_camera` 引数を追加し、`camera_ros` があればカメラノードを起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
+  - README に Ubuntu 24.04 向けカメラ（IMX708）セットアップ手順（Raspberry Pi 版 libcamera / libpisp のビルド）を追記
 
 ### Changed
 - AI HAT+ カードを Raspberry Pi 5 — CPU カードと同じ構成（使用率バー＋4行テーブル＋詳細グリッド）に統一。PCIe リンク使用率（現在幅/最大幅）とリンク速度（現在/最大）を追加し、デバイス・FW・ドライバ・PCIe アドレスを下部グリッドに表示

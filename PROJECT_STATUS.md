@@ -22,8 +22,10 @@
 - ai_car_web
   - `dashboard_node`: FastAPI サーバー（別スレッド）+ rclpy ノード
   - Publish: `/cmd_vel`（geometry_msgs/Twist）、`~/status`
-  - Subscribe: `/scan`、`/imu/data`、`/odom`
-  - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、WebSocket `/ws`（テレメトリ配信）
+  - Subscribe: `/scan`、`/imu/data`、`/odom`、`/camera/image_raw/compressed`
+  - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
+  - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
+  - カメラノード: `camera_ros`（libcamera）を `dashboard.launch.py` の `use_camera` で起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
   - 画面（`static/index.html`）: メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止
   - パラメータ: `config/dashboard.yaml`（host/port/各トピック名/最大速度/タイムアウト/配信レート）
@@ -38,7 +40,6 @@
 
 ## 未実装機能
 - LiDARノード（RPLIDAR ドライバ）
-- カメラノード
 - IMUノード（BNO055）
 - モーター制御ノード（Adafruit Motor HAT / メカナム逆運動学）
 - オドメトリ発行
@@ -49,6 +50,7 @@
 - Pi には rviz2 が未インストール（ros-base のみ）。RViz2 は開発PC側での表示を想定
 - `/scan`・`/imu/data`・`/odom` の各ノードが未実装のため、ダッシュボードのテレメトリは現状 null
 - AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。`hailortcli measure-power` は `UNSUPPORTED_OPCODE`、CLI 4.24 に温度取得サブコマンドがないため、NPU 温度・電力・使用率は未取得
+- カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
 - Pi に websockets/wsproto が未導入のため WebSocket が使えず、画面は `/api/status` の1秒ポーリングで動作中（`sudo apt install -y python3-websockets` で WebSocket 配信に戻る）
 
@@ -64,11 +66,13 @@
 - `GET /api/status` に `system` フィールドが含まれることを確認
 - ブラウザ表示確認: CPU / メモリ / 電源 / AI HAT+ の各カードが実値で更新されることを確認（ポーリングフォールバック経由）
   - `/cmd_vel` トピック publish と指令タイムアウト停止のログを確認
+- カメラ（IMX708）: Raspberry Pi 版 libcamera v0.7.2+rpt20260817 / libpisp v1.7.0 を `~/opt/rpicam` にビルドし、`cam -l` でカメラ認識を確認
+- `ros2 launch ai_car_web dashboard.launch.py`（カメラ含む）: `/camera/image_raw/compressed` 30Hz、`/api/status` の `camera.available: true`、`GET /api/camera/snapshot` → 200（約74KB JPEG）を確認
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 
 ## 次回作業
 - モーター制御ノード（`/cmd_vel` 購読 → Motor HAT 駆動）を実装する
-- LiDAR / カメラ / IMU ノードを実装しダッシュボードのテレメトリを実データで確認する
+- LiDAR / IMU ノードを実装しダッシュボードのテレメトリを実データで確認する
 
 ## 変更ファイル
 - `/home/super/AI-CAR_ws/src/ai_car_description/` - 新規作成（package.xml, CMakeLists.txt, urdf/, launch/, rviz/, config/, meshes/）

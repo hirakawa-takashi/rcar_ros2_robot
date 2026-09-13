@@ -1,4 +1,5 @@
 import os
+import platform
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
@@ -6,6 +7,22 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def _rpicam_env():
+    """Raspberry Pi 版 libcamera を優先させる環境変数を返す。
+
+    Ubuntu 24.04 の libcamera は raspi カーネルのメディアエンティティ名と
+    互換性がなくカメラを列挙できないため、~/opt/rpicam に導入した
+    Raspberry Pi 版 libcamera があればそちらを先に読み込む。
+    """
+    libdir = os.path.join(
+        os.path.expanduser('~'), 'opt', 'rpicam', 'lib',
+        f'{platform.machine()}-linux-gnu')
+    if not os.path.isdir(libdir):
+        return {}
+    return {'LD_LIBRARY_PATH': os.pathsep.join(
+        [libdir, os.environ.get('LD_LIBRARY_PATH', '')]).rstrip(os.pathsep)}
 
 
 def generate_launch_description():
@@ -29,6 +46,7 @@ def generate_launch_description():
             name='camera',
             output='screen',
             parameters=[params_file],
+            additional_env=_rpicam_env(),
             condition=IfCondition(use_camera),
         ),
     ] if camera_available else []

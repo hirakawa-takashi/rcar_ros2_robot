@@ -40,8 +40,8 @@ ros2 launch ai_car_web dashboard.launch.py
 `dashboard_node`
 
 - Publish: `/cmd_vel` (`geometry_msgs/Twist`)、`~/status` (`std_msgs/String`)
-- Subscribe: `/scan` (`sensor_msgs/LaserScan`)、`/imu/data` (`sensor_msgs/Imu`)、`/odom` (`nav_msgs/Odometry`)、`/system_status` (`std_msgs/String`)
-- HTTP: `GET /`、`GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、WebSocket `/ws`
+- Subscribe: `/scan` (`sensor_msgs/LaserScan`)、`/imu/data` (`sensor_msgs/Imu`)、`/odom` (`nav_msgs/Odometry`)、`/system_status` (`std_msgs/String`)、`/camera/image_raw/compressed` (`sensor_msgs/CompressedImage`)
+- HTTP: `GET /`、`GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
 - パラメータ: `src/ai_car_web/config/dashboard.yaml`
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。
@@ -56,6 +56,38 @@ ros2 launch ai_car_web dashboard.launch.py
 - AI HAT+ の情報は `/dev/hailo0`（`hailo_pci` ドライバ）と `hailortcli` の有無に応じて段階的に表示する。ドライバ未導入時は PCIe 検出状態のみ。
 - AI HAT+ は HailoRT の温度・電力測定オペコードに非対応のため、FW 版数・アーキテクチャ・ドライバ版数・PCIe リンク状態を表示する。
 - ダッシュボードの AI HAT+ カードは CPU カードと同じ構成で、PCIe リンク使用率（現在幅/最大幅）をバー表示し、温度は「非対応」と明示する。
+
+## カメラ (IMX708 / Camera Module v3) のセットアップ（Ubuntu 24.04）
+
+ダッシュボードは `/camera/image_raw/compressed` を購読し、`/api/camera/stream` で MJPEG 配信する。カメラノードは `camera_ros`（libcamera）を使用し、`dashboard.launch.py` の `use_camera`（既定 true）で起動する。
+
+Ubuntu 24.04 の libcamera 0.7.2 は raspi カーネル 6.8 のメディアエンティティ名（`rp1-cfe-fe_image0` などアンダースコア形式）と一致せず `no cameras available` となるため、Raspberry Pi 版 libcamera / libpisp を `~/opt/rpicam` に導入する。
+
+```bash
+sudo apt install -y ros-jazzy-camera-ros
+sudo apt install -y meson ninja-build pkg-config python3-jinja2 python3-yaml python3-ply \
+  libyaml-dev libudev-dev libevent-dev libdrm-dev libjpeg-dev libtiff-dev libpng-dev \
+  libssl-dev libgnutls28-dev libboost-dev libglib2.0-dev libgstreamer-plugins-base1.0-dev
+# 開発用パッケージが解決できない場合は /etc/apt/sources.list.d/ubuntu.sources に noble-updates を追加する
+
+git clone https://github.com/raspberrypi/libpisp.git ~/libpisp
+cd ~/libpisp && meson setup build --prefix=$HOME/opt/rpicam && ninja -C build install
+
+git clone https://github.com/raspberrypi/libcamera.git ~/libcamera
+cd ~/libcamera
+PKG_CONFIG_PATH=$HOME/opt/rpicam/lib/$(uname -m)-linux-gnu/pkgconfig \
+  meson setup build --prefix=$HOME/opt/rpicam \
+  -Dpipelines=rpi/pisp,rpi/vc4 -Dipas=rpi/pisp,rpi/vc4 \
+  -Dv4l2=false -Dgstreamer=disabled -Dtest=false -Dlc-compliance=disabled \
+  -Dcam=enabled -Dqcam=disabled -Ddocumentation=disabled -Dpycamera=disabled \
+  -Dcpp_args=-I$HOME/opt/rpicam/include
+ninja -C build install
+
+# 確認
+LD_LIBRARY_PATH=$HOME/opt/rpicam/lib/$(uname -m)-linux-gnu $HOME/opt/rpicam/bin/cam -l
+```
+
+`dashboard.launch.py` は `~/opt/rpicam` があればカメラノードの `LD_LIBRARY_PATH` に自動で追加する（apt 版 `camera_ros` をそのまま利用できる）。
 
 ## AI HAT+ (Hailo-8) のセットアップ（Ubuntu 24.04）
 
