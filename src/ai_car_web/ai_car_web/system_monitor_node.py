@@ -11,7 +11,9 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
+import time
 
 import psutil
 import rclpy
@@ -74,6 +76,87 @@ def _hailo_temperature():
         return round((info.ts0 + info.ts1) / 2.0, 1)
     finally:
         lib.hailo_release_device(device)
+
+
+# HailoRT のモニタ情報（HAILO_MONITOR=1 のプロセスが書く ProtoMon 形式）
+_HAILO_MON_DIR = '/tmp/hmon_files'
+_HAILO_MON_MAX_AGE_S = 10.0
+
+
+def _pb_fields(data):
+    """protobuf バイト列を (field_number, wire_type, value) に分解する。"""
+    pos = 0
+    end = len(data)
+    while pos < end:
+        key, pos = _pb_varint(data, pos)
+        field, wire = key >> 3, key & 0x07
+        if wire == 0:
+            value, pos = _pb_varint(data, pos)
+        elif wire == 1:
+            value = struct.unpack_from('<d', data, pos)[0]
+            pos += 8
+        elif wire == 2:
+            length, pos = _pb_varint(data, pos)
+            value = data[pos:pos + length]
+            pos += length
+        elif wire == 5:
+            value = struct.unpack_from('<f', data, pos)[0]
+            pos += 4
+        else:
+            raise ValueError(f'unsupported wire type {wire}')
+        yield field, wire, value
+
+
+def _pb_varint(data, pos):
+    result = 0
+    shift = 0
+    while True:
+        byte = data[pos]
+        pos += 1
+        result |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return result, pos
+        shift += 7
+
+
+def _hailo_monitor():
+    """HAILO_MONITOR の共有ファイルから NPU 使用率とモデル FPS を読む。
+
+    `HAILO_MONITOR=1` を付けて起動した推論アプリが `/tmp/hmon_files` に
+    ProtoMon (scheduler_mon.proto) を書き出すので、それを直接解析する
+    （`hailortcli monitor` と同じ情報源）。稼働中の推論が無ければ None。
+    """
+    utilization = None
+    models = []
+    now = time.time()
+    for path in sorted(glob.glob(f'{_HAILO_MON_DIR}/*')):
+        try:
+            if now - os.path.getmtime(path) > _HAILO_MON_MAX_AGE_S:
+                continue
+            with open(path, 'rb') as f:
+                raw = f.read()
+            for field, _wire, value in _pb_fields(raw):
+                if field == 2:  # ProtoMonInfo networks_infos
+                    name, fps = None, None
+                    for sub, _w, sub_value in _pb_fields(value):
+                        if sub == 1:
+                            name = sub_value.decode('utf-8', 'replace')
+                        elif sub == 2:
+                            fps = round(sub_value, 1)
+                    if name:
+                        models.append({'name': name, 'fps': fps})
+                elif field == 4:  # ProtoMonDeviceInfo device_infos
+                    for sub, _w, sub_value in _pb_fields(value):
+                        if sub == 2:
+                            utilization = max(utilization or 0.0, sub_value)
+        except (OSError, IndexError, ValueError, struct.error):
+            continue
+    if utilization is None and not models:
+        return None
+    return {
+        'utilization_percent': round(utilization, 1) if utilization is not None else None,
+        'models': models,
+    }
 
 
 def _read_text(path):
@@ -260,8 +343,9 @@ class SystemMonitorNode(Node):
             info['note'] = 'ドライバ動作中。hailortcli 未導入のためファームウェア情報は取得不可'
         else:
             info.update(self._hailo_identify())
-            # 電力測定は DVM 非搭載、使用率は HAILO8 が perf stats 非対応
-            info['note'] = 'Hailo-8 は電力測定・NPU使用率の取得に非対応（温度のみ取得可）'
+            # 電力測定はボードに DVM 非搭載のため不可
+            info['note'] = ('Hailo-8 は電力測定に非対応。'
+                            'NPU使用率は HAILO_MONITOR=1 で起動した推論アプリがある間だけ表示')
         return info
 
     def _hailo_identify(self):
@@ -283,6 +367,9 @@ class SystemMonitorNode(Node):
         info = dict(self._hailo_static)
         if info.get('driver_ready'):
             info['temperature_c'] = _hailo_temperature()
+            monitor = _hailo_monitor()
+            if monitor:
+                info.update(monitor)
         return info
 
     def _publish_cb(self):
