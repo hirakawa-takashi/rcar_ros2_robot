@@ -1,0 +1,20 @@
+[Unit]
+Description=AI-CAR Web dashboard (ROS 2 Jazzy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=super
+Group=super
+WorkingDirectory=/home/super/AI-CAR_ws
+Environment=HOME=/home/super
+Environment=ROS_DOMAIN_ID=0
+# USB LiDAR / カメラ / Hailo デバイスが揃うまで待つ
+ExecStartPre=/bin/sleep 10
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source /home/super/AI-CAR_ws/install/setup.bash && exec ros2 launch ai_car_web dashboard.launch.py'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
