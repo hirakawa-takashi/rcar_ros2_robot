@@ -71,8 +71,6 @@
       <tr><td class="k">PCIeリンク使用率</td><td class="v" id="h_link_pct">-</td></tr>
       <tr><td class="k">リンク速度 [GT/s]</td><td class="v" id="h_speed">-</td></tr>
       <tr><td class="k">温度 [℃]</td><td class="v" id="h_temp">-</td></tr>
-      <tr><td class="k">NPU使用率 [%]</td><td class="v" id="h_usage">-</td></tr>
-      <tr><td class="k">消費電力 [W]</td><td class="v" id="h_power">-</td></tr>
       <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
     </table>
     <div class="cores" id="h_info"></div>
@@ -238,14 +236,6 @@ function renderSystem(s) {
       (h.max_link_speed || '').replace(' GT/s PCIe', '') || '?'}` : '-';
   document.getElementById('h_temp').textContent =
     h.temperature_c != null ? fmt(h.temperature_c, 1) : '非対応';
-  const models = (h.models || []).filter(m => m.fps != null);
-  document.getElementById('h_usage').textContent =
-    h.utilization_percent != null
-      ? `${fmt(h.utilization_percent, 1)}${models.length ?
-        ` (${models.map(m => `${m.name} ${fmt(m.fps, 0)}fps`).join(', ')})` : ''}`
-      : '推論未実行';
-  document.getElementById('h_power').textContent =
-    h.power_w != null ? fmt(h.power_w, 2) : '非対応';
 
   const info = [
     ['デバイス', h.device_architecture || (h.pci ? 'Hailo-8' : '-')],
