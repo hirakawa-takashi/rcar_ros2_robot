@@ -34,6 +34,11 @@
                 background: #4a90d9; transition: width .3s; }
   .bar > span.warn { background: #d98e2b; }
   .bar > span.crit { background: #d9534f; }
+  .barrow { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+           gap: 8px; font-size: 14px; margin: 3px 0; }
+  .barrow .k { color: #9fb0c7; }
+  .barrow .bar { margin: 0; }
+  .barrow .v { text-align: right; font-variant-numeric: tabular-nums; min-width: 64px; }
   .cores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
   .core { font-size: 11px; color: #9fb0c7; text-align: center; }
   .core .val { color: #e8eaed; word-break: break-all; }
@@ -57,10 +62,14 @@
     <table>
       <tr><td class="k">CPU使用率</td><td class="v" id="cpu_pct">-</td></tr>
       <tr><td class="k">クロック [MHz]</td><td class="v" id="cpu_freq">-</td></tr>
-      <tr><td class="k">温度 [℃]</td><td class="v" id="cpu_temp">-</td></tr>
       <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
       <tr><td class="k">ロードアベレージ</td><td class="v" id="cpu_load">-</td></tr>
     </table>
+    <div class="barrow">
+      <span class="k">温度</span>
+      <span class="bar"><span id="cpu_temp_bar"></span></span>
+      <span class="v" id="cpu_temp">-</span>
+    </div>
     <div class="cores" id="cores"></div>
   </div>
 
@@ -70,9 +79,13 @@
     <table>
       <tr><td class="k">PCIeリンク使用率</td><td class="v" id="h_link_pct">-</td></tr>
       <tr><td class="k">リンク速度 [GT/s]</td><td class="v" id="h_speed">-</td></tr>
-      <tr><td class="k">温度 [℃]</td><td class="v" id="h_temp">-</td></tr>
       <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
     </table>
+    <div class="barrow">
+      <span class="k">温度</span>
+      <span class="bar"><span id="h_temp_bar"></span></span>
+      <span class="v" id="h_temp">-</span>
+    </div>
     <div class="cores" id="h_info"></div>
     <div class="note" id="h_note"></div>
   </div>
@@ -201,13 +214,27 @@ function setBar(el, percent) {
   el.className = percent >= 90 ? 'crit' : percent >= 70 ? 'warn' : '';
 }
 
+// 温度バーは 0–100℃ スケール。70℃以上で警告、85℃以上で危険色。
+function setTempBar(bar, label, celsius, fallback = '-') {
+  if (celsius == null) {
+    bar.style.width = '0%';
+    bar.className = '';
+    label.textContent = fallback;
+    return;
+  }
+  bar.style.width = `${Math.max(0, Math.min(100, celsius))}%`;
+  bar.className = celsius >= 85 ? 'crit' : celsius >= 70 ? 'warn' : '';
+  label.textContent = `${fmt(celsius, 1)} ℃`;
+}
+
 function renderSystem(s) {
   if (!s) return;
   const c = s.cpu || {};
   document.getElementById('cpu_pct').textContent = fmt(c.percent, 1) + ' %';
   setBar(document.getElementById('cpu_bar'), c.percent);
   document.getElementById('cpu_freq').textContent = fmt(c.freq_mhz, 0);
-  document.getElementById('cpu_temp').textContent = fmt(c.temperature_c, 1);
+  setTempBar(document.getElementById('cpu_temp_bar'),
+             document.getElementById('cpu_temp'), c.temperature_c);
   document.getElementById('cpu_load').textContent =
     (c.load_average || []).map(v => fmt(v, 2)).join(' / ');
   const cores = document.getElementById('cores');
@@ -234,8 +261,8 @@ function renderSystem(s) {
   document.getElementById('h_speed').textContent =
     h.link_speed ? `${h.link_speed.replace(' GT/s PCIe', '')} / ${
       (h.max_link_speed || '').replace(' GT/s PCIe', '') || '?'}` : '-';
-  document.getElementById('h_temp').textContent =
-    h.temperature_c != null ? fmt(h.temperature_c, 1) : '非対応';
+  setTempBar(document.getElementById('h_temp_bar'),
+             document.getElementById('h_temp'), h.temperature_c, '非対応');
 
   const info = [
     ['デバイス', h.device_architecture || (h.pci ? 'Hailo-8' : '-')],
