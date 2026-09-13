@@ -36,6 +36,7 @@
   .bar > span.crit { background: #d9534f; }
   .cores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
   .core { font-size: 11px; color: #9fb0c7; text-align: center; }
+  .core .val { color: #e8eaed; word-break: break-all; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
            background: #2a3340; color: #9fb0c7; }
   .badge.ok { background: #1e4a2b; color: #8fe0a4; }
@@ -129,14 +130,15 @@
   </div>
 
   <div class="card">
-    <h2>AI HAT+ (Hailo-8)</h2>
+    <h2>AI HAT+ — Hailo-8 NPU</h2>
+    <div class="bar"><span id="h_bar"></span></div>
     <table>
+      <tr><td class="k">PCIeリンク使用率</td><td class="v" id="h_link_pct">-</td></tr>
+      <tr><td class="k">リンク速度 [GT/s]</td><td class="v" id="h_speed">-</td></tr>
+      <tr><td class="k">温度 [℃]</td><td class="v" id="h_temp">-</td></tr>
       <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
-      <tr><td class="k">デバイス</td><td class="v" id="h_dev">-</td></tr>
-      <tr><td class="k">ファームウェア</td><td class="v" id="h_fw">-</td></tr>
-      <tr><td class="k">ドライバ</td><td class="v" id="h_drv">-</td></tr>
-      <tr><td class="k">PCIeリンク</td><td class="v" id="h_link">-</td></tr>
     </table>
+    <div class="cores" id="h_info"></div>
     <div class="note" id="h_note"></div>
   </div>
 
@@ -261,13 +263,27 @@ function renderSystem(s) {
     : h.detected ? '<span class="badge warn">ドライバ未導入</span>'
     : '<span class="badge warn">未検出</span>';
   document.getElementById('h_state').innerHTML = state;
-  document.getElementById('h_dev').textContent =
-    h.device_architecture || (h.pci ? 'Hailo-8 (PCIe)' : '-');
-  document.getElementById('h_fw').textContent = h.firmware_version || '-';
-  document.getElementById('h_drv').textContent =
-    h.driver_version ? `hailo_pci ${h.driver_version}` : '-';
-  document.getElementById('h_link').textContent =
-    h.link_speed ? `${h.link_speed} x${h.link_width || '?'}` : '-';
+
+  const width = Number(h.link_width) || 0;
+  const maxWidth = Number(h.max_link_width) || 0;
+  const linkPct = maxWidth ? (width / maxWidth) * 100 : 0;
+  setBar(document.getElementById('h_bar'), linkPct);
+  document.getElementById('h_link_pct').textContent =
+    maxWidth ? `${fmt(linkPct, 0)} % (x${width} / x${maxWidth})` : '-';
+  document.getElementById('h_speed').textContent =
+    h.link_speed ? `${h.link_speed.replace(' GT/s PCIe', '')} / ${
+      (h.max_link_speed || '').replace(' GT/s PCIe', '') || '?'}` : '-';
+  document.getElementById('h_temp').textContent = '非対応';
+
+  const info = [
+    ['デバイス', h.device_architecture || (h.pci ? 'Hailo-8' : '-')],
+    ['FW', h.firmware_version ? h.firmware_version.split(' ')[0] : '-'],
+    ['ドライバ', h.driver_version || '-'],
+    ['PCIe', h.pci_address ? h.pci_address.replace(/^0000:/, '') : '-'],
+  ];
+  document.getElementById('h_info').innerHTML = info
+    .map(([k, v]) => `<div class="core">${k}<div class="val">${v}</div></div>`)
+    .join('');
   document.getElementById('h_note').textContent = h.note || '';
 }
 

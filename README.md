@@ -55,6 +55,7 @@ ros2 launch ai_car_web dashboard.launch.py
 - 依存: `python3-psutil`、`vcgencmd`（Raspberry Pi）、`lspci`
 - AI HAT+ の情報は `/dev/hailo0`（`hailo_pci` ドライバ）と `hailortcli` の有無に応じて段階的に表示する。ドライバ未導入時は PCIe 検出状態のみ。
 - AI HAT+ は HailoRT の温度・電力測定オペコードに非対応のため、FW 版数・アーキテクチャ・ドライバ版数・PCIe リンク状態を表示する。
+- ダッシュボードの AI HAT+ カードは CPU カードと同じ構成で、PCIe リンク使用率（現在幅/最大幅）をバー表示し、温度は「非対応」と明示する。
 
 ## AI HAT+ (Hailo-8) のセットアップ（Ubuntu 24.04）
 

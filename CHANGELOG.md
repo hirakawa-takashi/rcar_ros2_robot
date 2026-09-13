@@ -30,6 +30,10 @@
   - CHANGELOG.md: 本ファイル
 - README に Ubuntu 24.04 向け AI HAT+ セットアップ手順（hailort-drivers v4.24.0 と HailoRT 4.24.0 のソース導入）を追記
 
+### Changed
+- AI HAT+ カードを Raspberry Pi 5 — CPU カードと同じ構成（使用率バー＋4行テーブル＋詳細グリッド）に統一。PCIe リンク使用率（現在幅/最大幅）とリンク速度（現在/最大）を追加し、デバイス・FW・ドライバ・PCIe アドレスを下部グリッドに表示
+- 表記を AI-CAR に統一（旧 AT-CAR）
+
 ### Fixed
 - Hailo の状態判定を `hailortcli` の有無ではなく `/dev/hailo0` の存在で行うように変更。AI HAT+ 非対応の温度取得呼び出しを削除
 - WebSocket が利用できない環境（uvicorn に websockets/wsproto 未導入）では `/api/status` の1秒ポーリングへ自動フォールバックするようにした

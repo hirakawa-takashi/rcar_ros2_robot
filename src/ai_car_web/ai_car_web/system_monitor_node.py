@@ -212,8 +212,12 @@ class SystemMonitorNode(Node):
             'driver_ready': driver_ready,
             'cli_available': self.hailortcli is not None,
             'driver_version': _read_text('/sys/module/hailo_pci/version'),
+            'pci_address': os.path.basename(sysfs) if sysfs else None,
+            'device_node': '/dev/hailo0' if driver_ready else None,
             'link_speed': _read_text(f'{sysfs}/current_link_speed' if sysfs else None),
             'link_width': _read_text(f'{sysfs}/current_link_width' if sysfs else None),
+            'max_link_speed': _read_text(f'{sysfs}/max_link_speed' if sysfs else None),
+            'max_link_width': _read_text(f'{sysfs}/max_link_width' if sysfs else None),
         }
         if not device_line:
             info['note'] = 'Hailo-8 が PCIe 上に見つかりません'
