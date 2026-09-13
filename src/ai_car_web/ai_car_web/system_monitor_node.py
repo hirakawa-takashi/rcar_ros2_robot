@@ -5,6 +5,7 @@ AI HAT+ の検出状況およびランタイム情報を JSON 文字列として
 `/system_status` (std_msgs/String) に配信する。
 """
 
+import ctypes
 import glob
 import json
 import os
@@ -41,6 +42,38 @@ def _hailo_pci_sysfs():
     for name in sorted(glob.glob(f'{_HAILO_DRIVER_SYSFS}/[0-9a-f]*:*')):
         return name
     return None
+
+
+class _HailoChipTemperature(ctypes.Structure):
+    """hailo_chip_temperature_info_t (HailoRT C API)。"""
+
+    _fields_ = [
+        ('ts0', ctypes.c_float),
+        ('ts1', ctypes.c_float),
+        ('sample_count', ctypes.c_uint16),
+    ]
+
+
+def _hailo_temperature():
+    """libhailort 経由で Hailo-8 のオンチップ温度 [℃] を読む。
+
+    hailortcli 4.24 には温度取得サブコマンドが無いため C API を直接呼ぶ。
+    取得できない場合は None。
+    """
+    try:
+        lib = ctypes.CDLL('libhailort.so')
+    except OSError:
+        return None
+    device = ctypes.c_void_p()
+    if lib.hailo_create_device_by_id(None, ctypes.byref(device)) != 0:
+        return None
+    try:
+        info = _HailoChipTemperature()
+        if lib.hailo_get_chip_temperature(device, ctypes.byref(info)) != 0:
+            return None
+        return round((info.ts0 + info.ts1) / 2.0, 1)
+    finally:
+        lib.hailo_release_device(device)
 
 
 def _read_text(path):
@@ -227,8 +260,8 @@ class SystemMonitorNode(Node):
             info['note'] = 'ドライバ動作中。hailortcli 未導入のためファームウェア情報は取得不可'
         else:
             info.update(self._hailo_identify())
-            # AI HAT+ は温度・電力取得の制御オペコードに非対応
-            info['note'] = 'AI HAT+ は HailoRT からの温度・電力測定に非対応'
+            # 電力測定は DVM 非搭載、使用率は HAILO8 が perf stats 非対応
+            info['note'] = 'Hailo-8 は電力測定・NPU使用率の取得に非対応（温度のみ取得可）'
         return info
 
     def _hailo_identify(self):
@@ -247,7 +280,10 @@ class SystemMonitorNode(Node):
         return fields
 
     def _hailo(self):
-        return self._hailo_static
+        info = dict(self._hailo_static)
+        if info.get('driver_ready'):
+            info['temperature_c'] = _hailo_temperature()
+        return info
 
     def _publish_cb(self):
         payload = {
