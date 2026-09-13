@@ -75,17 +75,14 @@
 
   <div class="card">
     <h2>AI HAT+ — Hailo-8 NPU</h2>
-    <div class="bar"><span id="h_bar"></span></div>
-    <table>
-      <tr><td class="k">PCIeリンク使用率</td><td class="v" id="h_link_pct">-</td></tr>
-      <tr><td class="k">リンク速度 [GT/s]</td><td class="v" id="h_speed">-</td></tr>
-      <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
-    </table>
     <div class="barrow">
       <span class="k">温度</span>
       <span class="bar"><span id="h_temp_bar"></span></span>
       <span class="v" id="h_temp">-</span>
     </div>
+    <table>
+      <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
+    </table>
     <div class="cores" id="h_info"></div>
     <div class="note" id="h_note"></div>
   </div>
@@ -252,15 +249,6 @@ function renderSystem(s) {
     : '<span class="badge warn">未検出</span>';
   document.getElementById('h_state').innerHTML = state;
 
-  const width = Number(h.link_width) || 0;
-  const maxWidth = Number(h.max_link_width) || 0;
-  const linkPct = maxWidth ? (width / maxWidth) * 100 : 0;
-  setBar(document.getElementById('h_bar'), linkPct);
-  document.getElementById('h_link_pct').textContent =
-    maxWidth ? `${fmt(linkPct, 0)} % (x${width} / x${maxWidth})` : '-';
-  document.getElementById('h_speed').textContent =
-    h.link_speed ? `${h.link_speed.replace(' GT/s PCIe', '')} / ${
-      (h.max_link_speed || '').replace(' GT/s PCIe', '') || '?'}` : '-';
   setTempBar(document.getElementById('h_temp_bar'),
              document.getElementById('h_temp'), h.temperature_c, '非対応');
 

@@ -15,6 +15,7 @@
   - static/index.html: メカナム操作UIとテレメトリ表示
   - config/dashboard.yaml、launch/dashboard.launch.py
   - 無指令タイムアウトによる自動停止
+- AI HAT+ カードから PCIe リンク使用率・リンク速度の表示を削除し、温度をカード最上部に移動
 - ダッシュボードの CPU / AI HAT+ の温度を横バーグラフ表示に変更（0–100℃ スケール、70℃ で警告色、85℃ で危険色）
 - AI HAT+ (Hailo-8) のオンチップ温度を HailoRT C API `hailo_get_chip_temperature()`（ctypes 直接呼び出し）で取得し、ダッシュボードの温度欄に表示（ts0/ts1 の平均）
 - system_monitor_node を新規作成（Raspberry Pi 5 / AI HAT+ 監視）

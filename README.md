@@ -57,7 +57,7 @@ ros2 launch ai_car_web dashboard.launch.py
 - AI HAT+ の温度は HailoRT の C API `hailo_get_chip_temperature()` を ctypes で直接呼び出して取得する（ts0/ts1 の平均。`hailortcli` 4.24 に温度サブコマンドは無い）。
 - NPU 使用率と消費電力は取得・表示しない（使用率は推論アプリを `HAILO_MONITOR=1` で起動している間だけ `hailortcli monitor` で参照できる）。
 - AI HAT+ の電力は取得できない。`hailortcli measure-power` は `HAILO_UNSUPPORTED_OPCODE`（ボードに電流監視 DVM 非搭載）、`query_health_stats()` / `query_performance_stats()` は HAILO8 アーキテクチャ非対応。`hatctl` は Raspberry Pi OS / 他ベンダ向けで Ubuntu には存在せず、Hailo 専用の hwmon デバイスも無い。PMIC にも HAT 専用レールはなく（AI HAT+ は PCIe コネクタの 5V から給電）、単体の消費電力を測るには INA219/INA3221 などの外付け I2C 電流センサを配線に挿入する必要がある。
-- ダッシュボードの AI HAT+ カードは CPU カードと同じ構成で、PCIe リンク使用率（現在幅/最大幅）・リンク速度・温度・状態を表示する（NPU 使用率と消費電力は表示しない）。
+- ダッシュボードの AI HAT+ カードは温度（横バーグラフ）・状態・デバイス情報（アーキテクチャ / FW / ドライバ / PCIe アドレス）を表示する（NPU 使用率と消費電力は表示しない）。
 
 ## カメラ (IMX708 / Camera Module v3) のセットアップ（Ubuntu 24.04）
 
