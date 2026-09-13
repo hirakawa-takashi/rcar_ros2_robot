@@ -320,6 +320,22 @@ function drawScanMap(scan, danger, frontHalfRad) {
   ctx.moveTo(0, cy); ctx.lineTo(size, cy);
   ctx.stroke();
 
+  // 方位ラベル（上＝前方、下＝後方、左＝左、右＝右）
+  ctx.fillStyle = '#9fb0c7';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('前方', cx, 4);
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('後方', cx, size - 4);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText('左', 4, cy);
+  ctx.textAlign = 'right';
+  ctx.fillText('右', size - 4, cy);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+
   for (const [x, y] of points) {
     // 前方セクター内かつ危険距離以内の点のみ赤で強調する。
     const near = Math.hypot(x, y) <= danger &&

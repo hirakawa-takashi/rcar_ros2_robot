@@ -92,7 +92,7 @@ class PerceptionNode(Node):
         self.declare_parameter('inference_rate', 4.0)
         self.declare_parameter('score_threshold', 0.4)
         self.declare_parameter('camera_hfov_deg', 66.0)
-        self.declare_parameter('scan_angle_offset_deg', 180.0)
+        self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('danger_distance', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)

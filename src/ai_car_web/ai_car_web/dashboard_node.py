@@ -73,7 +73,7 @@ class DashboardNode(Node):
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
         self.declare_parameter('telemetry_rate', 5.0)
-        self.declare_parameter('scan_angle_offset_deg', 180.0)
+        self.declare_parameter('scan_angle_offset_deg', 0.0)
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)

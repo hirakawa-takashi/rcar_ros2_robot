@@ -30,7 +30,7 @@
   - 検出物体の距離を LiDAR と連動して算出（画像の横位置を `camera_hfov_deg`（66°）で方位角へ変換し、その角度範囲の最近距離を採用）
   - カメラ映像に検出枠と距離をオーバーレイ表示。`danger_distance`（0.3m）以内は赤枠、それ以外は緑枠
   - LiDAR 点群マップで `danger_distance` 以内かつ前方セクター（`front_angle_deg` 60°）内の点のみ赤点で強調
-  - `scan_angle_offset_deg`（既定180°）で LiDAR 取り付け向きを補正し、マップ上方＝ロボット前方に統一
+  - `scan_angle_offset_deg`（既定0°）で LiDAR 取り付け向きを補正可能にし、点群マップに前方／後方／左／右のラベルを表示
 - AI HAT+ カードから PCIe リンク使用率・リンク速度の表示を削除し、温度をカード最上部に移動
 - ダッシュボードの CPU / AI HAT+ の温度を横バーグラフ表示に変更（0–100℃ スケール、70℃ で警告色、85℃ で危険色）
 - AI HAT+ (Hailo-8) のオンチップ温度を HailoRT C API `hailo_get_chip_temperature()`（ctypes 直接呼び出し）で取得し、ダッシュボードの温度欄に表示（ts0/ts1 の平均）
