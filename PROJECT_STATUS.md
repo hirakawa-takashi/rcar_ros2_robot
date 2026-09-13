@@ -31,7 +31,7 @@
     - Publish: `/system_status`（std_msgs/String, JSON、1Hz）
     - 取得内容: CPU使用率（全体・コア別）・クロック・温度・ロードアベレージ、メモリ/Swap/ディスク、PMIC レール別電圧・電流・電力、スロットリング状態、Hailo-8 検出状態
     - パラメータ: `publish_rate` / `topic` / `enable_pmic` / `enable_hailo`
-    - 依存: `psutil`、`vcgencmd`、`lspci`（HailoRT はあれば利用）
+    - 依存: `psutil`、`vcgencmd`、`lspci`、`hailortcli`（あれば利用）
 
 ## 現在作業中
 - なし
@@ -48,7 +48,7 @@
 ## 既知の問題
 - Pi には rviz2 が未インストール（ros-base のみ）。RViz2 は開発PC側での表示を想定
 - `/scan`・`/imu/data`・`/odom` の各ノードが未実装のため、ダッシュボードのテレメトリは現状 null
-- HailoRT ドライバ/CLI が未導入のため、AI HAT+ は PCIe 検出まで。NPU 使用率・温度は `hailo-all` 導入後に取得可能
+- AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。`hailortcli measure-power` は `UNSUPPORTED_OPCODE`、CLI 4.24 に温度取得サブコマンドがないため、NPU 温度・電力・使用率は未取得
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
 - Pi に websockets/wsproto が未導入のため WebSocket が使えず、画面は `/api/status` の1秒ポーリングで動作中（`sudo apt install -y python3-websockets` で WebSocket 配信に戻る）
 
@@ -60,6 +60,7 @@
   - `GET /api/status` → JSON 応答
   - `POST /api/cmd_vel {linear_x:1.0, angular_z:0.5}` → `{linear_x:0.3, angular_z:0.5}`（最大速度でスケール）
 - `system_monitor_node`: `/system_status` の JSON 取得成功（CPU 48.3℃ / 合計 2.17W / EXT5V 4.84V / Hailo-8 PCIe 検出）
+- HailoRT 導入後の `/api/status`: `driver_ready: true` / `hailo_pci 4.24.0` / FW 4.24.0 / HAILO8 / PCIe 8.0 GT/s x1 を取得
 - `GET /api/status` に `system` フィールドが含まれることを確認
 - ブラウザ表示確認: CPU / メモリ / 電源 / AI HAT+ の各カードが実値で更新されることを確認（ポーリングフォールバック経由）
   - `/cmd_vel` トピック publish と指令タイムアウト停止のログを確認

@@ -20,7 +20,7 @@
   - メモリ・Swap・ディスク使用量
   - `vcgencmd pmic_read_adc` による電源レール別の電圧・電流・電力と合計消費電力
   - `vcgencmd get_throttled` のスロットリング状態（現在・過去）
-  - AI HAT+ (Hailo-8) の PCIe 検出状態、HailoRT 導入済みならデバイス情報・温度
+  - AI HAT+ (Hailo-8) の PCIe 検出状態、`hailo_pci` ドライバ版数と PCIe リンク速度・幅、HailoRT 導入済みなら FW 版数・アーキテクチャ
   - `/system_status`（std_msgs/String, JSON）を 1Hz で publish
   - dashboard_node が `/system_status` を購読し、REST / WebSocket の `system` フィールドで配信
   - index.html に CPU / メモリ / 電源 / AI HAT+ のカードを追加
@@ -28,6 +28,8 @@
   - PROJECT_RULES.md: 開発方針・禁止事項
   - PROJECT_STATUS.md: 実装状況・課題管理
   - CHANGELOG.md: 本ファイル
+- README に Ubuntu 24.04 向け AI HAT+ セットアップ手順（hailort-drivers v4.24.0 と HailoRT 4.24.0 のソース導入）を追記
 
 ### Fixed
+- Hailo の状態判定を `hailortcli` の有無ではなく `/dev/hailo0` の存在で行うように変更。AI HAT+ 非対応の温度取得呼び出しを削除
 - WebSocket が利用できない環境（uvicorn に websockets/wsproto 未導入）では `/api/status` の1秒ポーリングへ自動フォールバックするようにした

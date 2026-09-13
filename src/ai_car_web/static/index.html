@@ -134,7 +134,8 @@
       <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
       <tr><td class="k">デバイス</td><td class="v" id="h_dev">-</td></tr>
       <tr><td class="k">ファームウェア</td><td class="v" id="h_fw">-</td></tr>
-      <tr><td class="k">温度 [℃]</td><td class="v" id="h_temp">-</td></tr>
+      <tr><td class="k">ドライバ</td><td class="v" id="h_drv">-</td></tr>
+      <tr><td class="k">PCIeリンク</td><td class="v" id="h_link">-</td></tr>
     </table>
     <div class="note" id="h_note"></div>
   </div>
@@ -263,7 +264,10 @@ function renderSystem(s) {
   document.getElementById('h_dev').textContent =
     h.device_architecture || (h.pci ? 'Hailo-8 (PCIe)' : '-');
   document.getElementById('h_fw').textContent = h.firmware_version || '-';
-  document.getElementById('h_temp').textContent = fmt(h.temperature_c, 1);
+  document.getElementById('h_drv').textContent =
+    h.driver_version ? `hailo_pci ${h.driver_version}` : '-';
+  document.getElementById('h_link').textContent =
+    h.link_speed ? `${h.link_speed} x${h.link_width || '?'}` : '-';
   document.getElementById('h_note').textContent = h.note || '';
 }
 

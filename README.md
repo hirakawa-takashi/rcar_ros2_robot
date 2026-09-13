@@ -53,7 +53,32 @@ ros2 launch ai_car_web dashboard.launch.py
 - 内容: CPU 使用率（全体・コア別）・クロック・温度・ロードアベレージ、メモリ/Swap/ディスク、PMIC レール別の電圧・電流・電力と合計消費電力、スロットリング状態、AI HAT+ (Hailo-8) 検出状態
 - パラメータ: `publish_rate` / `topic` / `enable_pmic` / `enable_hailo`
 - 依存: `python3-psutil`、`vcgencmd`（Raspberry Pi）、`lspci`
-- AI HAT+ の NPU 温度・デバイス情報は HailoRT（`hailortcli`）が導入されている場合のみ取得。未導入時は PCIe 検出状態のみ表示する。
+- AI HAT+ の情報は `/dev/hailo0`（`hailo_pci` ドライバ）と `hailortcli` の有無に応じて段階的に表示する。ドライバ未導入時は PCIe 検出状態のみ。
+- AI HAT+ は HailoRT の温度・電力測定オペコードに非対応のため、FW 版数・アーキテクチャ・ドライバ版数・PCIe リンク状態を表示する。
+
+## AI HAT+ (Hailo-8) のセットアップ（Ubuntu 24.04）
+
+`hailo-all` は Raspberry Pi OS 専用のため Ubuntu では使えない。ドライバと HailoRT をソースから導入する。
+
+```bash
+sudo apt-get install -y linux-headers-$(uname -r) build-essential cmake git
+git clone https://github.com/hailo-ai/hailort-drivers.git
+cd hailort-drivers && git checkout v4.24.0          # v5 系は Hailo-10 専用で Hailo-8 (1e60:2864) 非対応
+cd linux/pcie && make all && sudo make install
+cd ~/hailort-drivers && ./download_firmware.sh
+sudo mkdir -p /lib/firmware/hailo
+sudo cp hailo8_fw*.bin /lib/firmware/hailo/hailo8_fw.bin
+sudo cp linux/pcie/51-hailo-udev.rules /etc/udev/rules.d/
+sudo depmod -a && sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo reboot
+
+# 再起動後に HailoRT（ドライバと同じ 4.24.0）をビルド
+git clone --depth 1 --branch v4.24.0 https://github.com/hailo-ai/hailort.git
+cd hailort && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DHAILO_BUILD_PYBIND=OFF
+cmake --build build --config release -j2
+sudo cmake --install build && sudo ldconfig
+hailortcli fw-control identify
+```
 
 ## 依存
 

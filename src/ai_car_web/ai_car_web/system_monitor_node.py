@@ -5,7 +5,9 @@ AI HAT+ の検出状況およびランタイム情報を JSON 文字列として
 `/system_status` (std_msgs/String) に配信する。
 """
 
+import glob
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -29,6 +31,26 @@ _THROTTLE_BITS = {
     18: 'throttled_occurred',
     19: 'soft_temp_limit_occurred',
 }
+
+
+_HAILO_DRIVER_SYSFS = '/sys/bus/pci/drivers/hailo'
+
+
+def _hailo_pci_sysfs():
+    """hailo_pci ドライバにバインドされた PCIe デバイスの sysfs パスを返す。"""
+    for name in sorted(glob.glob(f'{_HAILO_DRIVER_SYSFS}/[0-9a-f]*:*')):
+        return name
+    return None
+
+
+def _read_text(path):
+    if path is None:
+        return None
+    try:
+        with open(path, 'r') as f:
+            return f.read().strip()
+    except OSError:
+        return None
 
 
 def _run(cmd, timeout=3.0):
@@ -180,42 +202,48 @@ class SystemMonitorNode(Node):
         lspci = _run(['lspci']) or ''
         device_line = next(
             (line for line in lspci.splitlines() if 'Hailo' in line), None)
-        driver_ready = shutil.which('hailortcli') is not None
+        driver_ready = os.path.exists('/dev/hailo0')
+        sysfs = _hailo_pci_sysfs()
 
         info = {
             'enabled': True,
             'detected': device_line is not None,
             'pci': device_line,
             'driver_ready': driver_ready,
+            'cli_available': self.hailortcli is not None,
+            'driver_version': _read_text('/sys/module/hailo_pci/version'),
+            'link_speed': _read_text(f'{sysfs}/current_link_speed' if sysfs else None),
+            'link_width': _read_text(f'{sysfs}/current_link_width' if sysfs else None),
         }
-        if device_line and not driver_ready:
-            info['note'] = 'PCIeでHailo-8を検出。HailoRTドライバ未導入のため詳細情報は取得不可'
-        elif not device_line:
+        if not device_line:
             info['note'] = 'Hailo-8 が PCIe 上に見つかりません'
+        elif not driver_ready:
+            info['note'] = 'PCIeでHailo-8を検出。hailo_pci ドライバ未導入のため詳細情報は取得不可'
+        elif not info['cli_available']:
+            info['note'] = 'ドライバ動作中。hailortcli 未導入のためファームウェア情報は取得不可'
+        else:
+            info.update(self._hailo_identify())
+            # AI HAT+ は温度・電力取得の制御オペコードに非対応
+            info['note'] = 'AI HAT+ は HailoRT からの温度・電力測定に非対応'
         return info
+
+    def _hailo_identify(self):
+        out = _run([self.hailortcli, 'fw-control', 'identify'], timeout=10.0)
+        if not out:
+            return {}
+        fields = {}
+        for line in out.splitlines():
+            if ':' not in line:
+                continue
+            key, _, value = line.partition(':')
+            key = key.strip().lower().replace(' ', '_')
+            if key in ('serial_number', 'part_number', 'product_name',
+                       'firmware_version', 'device_architecture'):
+                fields[key] = value.strip()
+        return fields
 
     def _hailo(self):
-        info = dict(self._hailo_static)
-        if not info.get('driver_ready'):
-            return info
-
-        out = _run([self.hailortcli, 'fw-control', 'identify'], timeout=5.0)
-        if out:
-            for line in out.splitlines():
-                if ':' not in line:
-                    continue
-                key, _, value = line.partition(':')
-                key = key.strip().lower().replace(' ', '_')
-                if key in ('serial_number', 'part_number', 'firmware_version',
-                           'device_architecture'):
-                    info[key] = value.strip()
-
-        temp_out = _run([self.hailortcli, 'fw-control', 'get-temperature'], timeout=5.0)
-        if temp_out:
-            values = re.findall(r'[-\d.]+', temp_out)
-            if values:
-                info['temperature_c'] = round(float(values[0]), 1)
-        return info
+        return self._hailo_static
 
     def _publish_cb(self):
         payload = {
