@@ -33,6 +33,8 @@
 ### Changed
 - AI HAT+ カードを Raspberry Pi 5 — CPU カードと同じ構成（使用率バー＋4行テーブル＋詳細グリッド）に統一。PCIe リンク使用率（現在幅/最大幅）とリンク速度（現在/最大）を追加し、デバイス・FW・ドライバ・PCIe アドレスを下部グリッドに表示
 - 表記を AI-CAR に統一（旧 AT-CAR）
+- ダッシュボードの表示順を Raspberry Pi 5 — CPU、AI HAT+ — Hailo-8 NPU の順に変更
+- 全体消費電力を CPU カードの温度の下に移動し、電源 (PMIC) とメモリ / ストレージのカードを削除（`/system_status` の `memory` / `power` 収集自体は継続）
 
 ### Fixed
 - Hailo の状態判定を `hailortcli` の有無ではなく `/dev/hailo0` の存在で行うように変更。AI HAT+ 非対応の温度取得呼び出しを削除
