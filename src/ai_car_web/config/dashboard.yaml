@@ -65,3 +65,6 @@ camera:
     height: 720
     jpeg_quality: 80
     camera: 0
+    # 室内だと AE が露光を 30ms 近くまで伸ばして動体がぶれるため、
+    # 露光を短く・ゲインを高く振る Short モード（1）を使う
+    AeExposureMode: 1
