@@ -61,7 +61,7 @@
 - 実機の電源が不足している。ダッシュボード（カメラ＋LiDAR＋Hailo 推論）起動と同時に `hwmon3: Undervoltage detected!` が連発し、2026/09/14 19:22 に shutdown シーケンスなしで電源断した（前回起動だけで 198 回発生、EXT5V は 4.75、5.11V、`get_throttled=0x50000`）。`usb_max_current_enable=0` で 5A PD として認識されておらず、Pi 5 が制限モード（USB 周辺機器 合計 600mA）で動作している。公式 27W USB-C PD 電源への交換と、RPLIDAR の別系統（セルフパワーハブ等）給電が必要
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
-- Pi に websockets/wsproto が未導入のため WebSocket が使えず、画面は `/api/status` の1秒ポーリングで動作中（`sudo apt install -y python3-websockets` で WebSocket 配信に戻る）
+- WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 
 ## テスト結果
 - `colcon build --symlink-install`: 2パッケージ成功
@@ -83,10 +83,10 @@
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 
 ## カメラ仕様（実測）
-- 解像度: 640x480（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`）
-- ROS 配信レート: 約 25〜30Hz（`/camera/image_raw/compressed`）
-- ダッシュボード MJPEG: 10fps（`camera_stream_rate`）
-- AI HAT+ 推論: 640x640 にリサイズして 4Hz（`inference_rate`、高温時は自動低下）
+- 解像度: 1280x720 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約100KB・約2.9MB/s、camera_ros の CPU は約 36〜45%
+- ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`）
+- ダッシュボード MJPEG: 30fps（`camera_stream_rate`）
+- AI HAT+ 推論: 640x640 にリサイズして 10Hz 設定（実測 約5Hz、JPEG デコード＋リサイズが律速。推論自体は 約9ms、高温時は自動低下）
 
 ## 次回作業
 - モーター制御ノード（`/cmd_vel` 購読 → Motor HAT 駆動）を実装する

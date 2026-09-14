@@ -164,7 +164,14 @@ curl -L -o ~/AI-CAR_ws/models/yolov8n.hef \
 sudo apt install -y ros-jazzy-robot-state-publisher ros-jazzy-joint-state-publisher ros-jazzy-xacro
 sudo apt install -y python3-psutil
 pip3 install fastapi uvicorn
+# WebSocket 配信（未導入なら /api/status の 250ms ポーリングへ自動フォールバック）。
+# apt の python3-websockets 10.4 は uvicorn が要求する API を持たないため使わない。
+pip3 install --user --break-system-packages "websockets>=13"
 ```
+
+映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 1280` /
+`height: 720` / `jpeg_quality: 80`（約 30fps・約 2.9MB/s）、`dashboard_node.camera_stream_rate: 30.0`、
+`perception_node.inference_rate: 10.0`。帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
 
 ## ドキュメント
 

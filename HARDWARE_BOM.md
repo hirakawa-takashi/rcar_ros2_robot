@@ -12,7 +12,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 | 1 | **Raspberry Pi 5** | 8GB RAM（メインボード） | — |
 | 2 | **Raspberry Pi AI HAT+** | 26TOPS NPU（推論アクセラレーション） | Pi 5 GPIO ヘッダー |
 | 3 | **Adafruit DC & Stepper Motor HAT** | モーター駆動制御（4ch） | Pi 5 GPIO ヘッダー（I²C） |
-| 4 | **Raspberry Pi カメラモジュール v3** | 640×480・10fps | CSI バス |
+| 4 | **Raspberry Pi カメラモジュール v3** | 1280×720・30fps | CSI バス |
 | 5 | **LiDAR（RPLIDAR A1M8）** | 2D レーザースキャナ（最大距離8m） | USB シリアル |
 | 6 | **9軸 IMU（GY-BNO055）** | 加速度・ジャイロ・地磁気融合 | I²C |
 | 7 | **7セグメント LED** | ステータス表示用 | GPIO / I²C |
@@ -61,6 +61,6 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 ---
 
 ## メモ
-- カメラ解像度は 640×480 / 10fps に設定（処理負荷低減のため）
+- カメラ解像度は 1280×720 / 30fps・JPEG 品質80 に設定（ダッシュボード表示の滑らかさ優先）
 - AI HAT+ は NPU 推論用（ROS2 ノードと連携）
 - GY-BNO055 は ROS2 の `imu` トピックを公開
