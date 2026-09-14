@@ -47,6 +47,7 @@
   - PROJECT_RULES.md: 開発方針・禁止事項
   - PROJECT_STATUS.md: 実装状況・課題管理
   - CHANGELOG.md: 本ファイル
+- `systemd/ai-car-dashboard.service` と `systemd/install_service.sh` を追加し、ダッシュボードを起動時に自動起動（`Restart=always`、USB デバイス待ちで10秒遅延）
 - README に Ubuntu 24.04 向け AI HAT+ セットアップ手順（hailort-drivers v4.24.0 と HailoRT 4.24.0 のソース導入）を追記
 - カメラ映像をダッシュボードに追加
   - `dashboard_node` が `/camera/image_raw/compressed`（`sensor_msgs/CompressedImage`）を購読
@@ -62,5 +63,6 @@
 - 全体消費電力を CPU カードの温度の下に移動し、電源 (PMIC) とメモリ / ストレージのカードを削除（`/system_status` の `memory` / `power` 収集自体は継続）
 
 ### Fixed
+- カメラ / LiDAR ノードを `respawn` 対応にし、デバイス切断などで落ちても自動復帰するようにした
 - Hailo の状態判定を `hailortcli` の有無ではなく `/dev/hailo0` の存在で行うように変更。AI HAT+ 非対応の温度取得呼び出しを削除
 - WebSocket が利用できない環境（uvicorn に websockets/wsproto 未導入）では `/api/status` の1秒ポーリングへ自動フォールバックするようにした

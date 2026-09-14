@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- 更新日: 2026/09/13
-- 更新概要: ai_car_web に system_monitor_node（Raspberry Pi 5 のCPU・メモリ・電源、AI HAT+ 情報）を追加し、ダッシュボードで表示。実機で動作確認済み。
+- 更新日: 2026/09/14
+- 更新概要: ダッシュボードの systemd 自動起動サービスと、カメラ/LiDAR ノードの respawn 対応を追記。
 - 更新担当: Devin
 
 ## システム構成
@@ -34,6 +34,7 @@
   - 画面（`static/index.html`）: メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止
   - パラメータ: `config/dashboard.yaml`（host/port/各トピック名/最大速度/タイムアウト/配信レート）
+  - 自動起動: `systemd/ai-car-dashboard.service`（`install_service.sh` で登録、`Restart=always`、USB デバイス待ちで起動を10秒遅延）。カメラ / LiDAR ノードは launch 側で `respawn`
   - `system_monitor_node`: Raspberry Pi 5 / AI HAT+ の状態監視（読み取りのみ）
     - Publish: `/system_status`（std_msgs/String, JSON、1Hz）
     - 取得内容: CPU使用率（全体・コア別）・クロック・温度・ロードアベレージ、メモリ/Swap/ディスク、PMIC レール別電圧・電流・電力、スロットリング状態、Hailo-8 検出状態
@@ -95,5 +96,6 @@
 - `/home/super/AI-CAR_ws/src/ai_car_web/` - 新規作成（package.xml, setup.py, setup.cfg, ai_car_web/dashboard_node.py, launch/, config/, static/）
 - `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/system_monitor_node.py` - 新規作成
 - `/home/super/AI-CAR_ws/src/ai_car_web/{setup.py, package.xml, config/dashboard.yaml, launch/dashboard.launch.py, static/index.html, ai_car_web/dashboard_node.py}` - システム監視対応で更新
+- `/home/super/AI-CAR_ws/systemd/{ai-car-dashboard.service, install_service.sh}` - 新規作成（自動起動）
 - `/home/super/AI-CAR_ws/PROJECT_STATUS.md` - 本ファイル
 - `/home/super/AI-CAR_ws/CHANGELOG.md` - 更新

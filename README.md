@@ -35,6 +35,16 @@ ros2 launch ai_car_web dashboard.launch.py
 # ブラウザで http://<ラズパイのIP>:8080
 ```
 
+起動時の自動起動（systemd）:
+
+```bash
+sudo ~/AI-CAR_ws/systemd/install_service.sh   # /etc/systemd/system/ai-car-dashboard.service を登録して起動
+systemctl status ai-car-dashboard.service
+sudo systemctl disable --now ai-car-dashboard.service   # 手動起動に戻す場合
+```
+
+サービスは `Restart=always`（5秒間隔）で、USB デバイスの認識を待つため起動を10秒遅延する。カメラと LiDAR のノードは launch 側で `respawn` する。
+
 ## インターフェース
 
 `dashboard_node`
