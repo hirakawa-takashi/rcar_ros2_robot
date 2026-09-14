@@ -494,13 +494,13 @@ function drawDetections(o) {
     ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
     const text = d.distance != null
       ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
-    ctx.font = 'bold 16px sans-serif';
-    const tw = ctx.measureText(text).width + 8;
-    const ty = Math.max(0, y1 * h - 20);
+    ctx.font = 'bold 32px sans-serif';
+    const tw = ctx.measureText(text).width + 16;
+    const ty = Math.max(0, y1 * h - 40);
     ctx.fillStyle = near ? '#e04b4b' : '#5cb85c';
-    ctx.fillRect(x1 * w, ty, tw, 20);
+    ctx.fillRect(x1 * w, ty, tw, 40);
     ctx.fillStyle = '#0e1116';
-    ctx.fillText(text, x1 * w + 4, ty + 15);
+    ctx.fillText(text, x1 * w + 8, ty + 30);
   }
 }
 
