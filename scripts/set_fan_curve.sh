@@ -12,5 +12,6 @@ for i in "${!TEMPS[@]}"; do
   [ -w "${trip}_temp" ] || continue
   [ "$(cat "${trip}_type")" = active ] || continue
   echo "${TEMPS[$i]}" > "${trip}_temp"
-  [ -w "${trip}_hyst" ] && echo "$HYST" > "${trip}_hyst"
+  # ヒステリシスはカーネルによっては書き込めないため失敗しても続行する
+  echo "$HYST" > "${trip}_hyst" 2>/dev/null || true
 done
