@@ -23,18 +23,19 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import CompressedImage, LaserScan
 from std_msgs.msg import String
 
+# COCO 80 クラス（YOLOv8 の class_id 順）。表示用に日本語名を持つ。
 COCO_CLASSES = [
-    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
-    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
-    'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-    'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
-    'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
-    'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
-    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
-    'toothbrush',
+    '人', '自転車', '車', 'バイク', '飛行機', 'バス', '電車', 'トラック', 'ボート',
+    '信号機', '消火栓', '停止標識', 'パーキングメーター', 'ベンチ', '鳥', '猫',
+    '犬', '馬', '羊', '牛', '象', '熊', 'シマウマ', 'キリン', 'リュック',
+    '傘', 'ハンドバッグ', 'ネクタイ', 'スーツケース', 'フリスビー', 'スキー', 'スノーボード',
+    'ボール', '凧', '野球バット', '野球グローブ', 'スケートボード', 'サーフボード',
+    'テニスラケット', 'ボトル', 'ワイングラス', 'カップ', 'フォーク', 'ナイフ', 'スプーン',
+    'ボウル', 'バナナ', 'リンゴ', 'サンドイッチ', 'オレンジ', 'ブロッコリー', 'ニンジン',
+    'ホットドッグ', 'ピザ', 'ドーナツ', 'ケーキ', '椅子', 'ソファ', '観葉植物', 'ベッド',
+    'テーブル', 'トイレ', 'テレビ', 'ノートPC', 'マウス', 'リモコン', 'キーボード',
+    'スマートフォン', '電子レンジ', 'オーブン', 'トースター', 'シンク', '冷蔵庫', '本',
+    '時計', '花瓶', 'ハサミ', 'ぬいぐるみ', 'ドライヤー', '歯ブラシ',
 ]
 
 
