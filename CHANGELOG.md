@@ -60,6 +60,7 @@
 - AI HAT+ カードを Raspberry Pi 5 — CPU カードと同じ構成（使用率バー＋4行テーブル＋詳細グリッド）に統一。PCIe リンク使用率（現在幅/最大幅）とリンク速度（現在/最大）を追加し、デバイス・FW・ドライバ・PCIe アドレスを下部グリッドに表示
 - 表記を AI-CAR に統一（旧 AT-CAR）
 - ダッシュボードの表示順を Raspberry Pi 5 — CPU、AI HAT+ — Hailo-8 NPU の順に変更
+- ダッシュボードのカード順を カメラ → LiDAR → CPU → AI HAT+ に変更し、カメラと LiDAR のカードを横幅 2 列分（`grid-column: span 2`、620px 以下では 1 列）に拡大
 - 全体消費電力を CPU カードの温度の下に移動し、電源 (PMIC) とメモリ / ストレージのカードを削除（`/system_status` の `memory` / `power` 収集自体は継続）
 
 ### Fixed
