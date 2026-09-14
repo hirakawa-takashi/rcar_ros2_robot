@@ -45,6 +45,16 @@ sudo systemctl disable --now ai-car-dashboard.service   # 手動起動に戻す�
 
 サービスは `Restart=always`（5秒間隔）で、USB デバイスの認識を待つため起動を10秒遅延する。カメラと LiDAR のノードは launch 側で `respawn` する。
 
+CPU ファンの作動温度（既定 50/60/67.5/75℃）を前倒しして高温になりにくくする:
+
+```bash
+sudo cp ~/AI-CAR_ws/systemd/ai-car-fan.service /etc/systemd/system/
+sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（起動ごとに再適用）
+# 温度を変えたい場合は Environment=FAN_TRIP_TEMPS="..." をサービスに追加
+```
+
+設定値は `scripts/set_fan_curve.sh` が `thermal_zone0` の active トリップへ書き込む。ファン回転数と段階はダッシュボードの CPU カードに表示される。
+
 ## インターフェース
 
 `dashboard_node`
