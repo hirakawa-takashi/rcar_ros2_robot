@@ -65,6 +65,10 @@ camera:
     height: 720
     jpeg_quality: 80
     camera: 0
-    # 室内だと AE が露光を 30ms 近くまで伸ばして動体がぶれるため、
-    # 露光を短く・ゲインを高く振る Short モード（1）を使う
-    AeExposureMode: 1
+    # 室内だと AE が露光を 33ms（1 フレーム分）まで伸ばして動体がぶれるため、
+    # 露光だけ手動 8ms に固定し、明るさはアナログゲイン自動で合わせる
+    ExposureTimeMode: 1
+    ExposureTime: 8000
+    AnalogueGainMode: 0
+    # 高ゲイン時のノイズを抑える（Fast。JPEG サイズも約 2 割減る）
+    NoiseReductionMode: 1
