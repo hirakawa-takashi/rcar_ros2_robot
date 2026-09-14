@@ -33,6 +33,7 @@
   - `scan_angle_offset_deg`（既定0°）で LiDAR 取り付け向きを補正可能にし、点群マップに前方／後方／左／右のラベルを表示
 - CPU カードに入力電圧（`EXT5V`）・入力電流・電源状態を追加。入力電流は PMIC が EXT5V の電流を出さないため各レールの合計電力から換算する。`vcgencmd get_throttled` の低電圧 / スロットリング / クロック制限 / 温度制限をバッジで表示し、現在発生中は赤・起動後に発生した場合は黄色で警告する（電源不足による突然の電源断を事前に気付けるため）
 - `ai-car-dashboard.service` の停止シグナルを SIGINT にし、起動前に `/dev/ttyUSB0` の解放を待つようにした（`systemctl restart` 時に前回の `rplidar_composition` がポートを掴んだままで LiDAR 初期化がタイムアウトし、スキャンが流れなくなるため）
+- 速度指令 (/cmd_vel) とオドメトリ (/odom) のカードを削除し、AI HAT+ カードと IMU カードを同じ列に縦積み（AI HAT+ は内容分の高さのみ）に変更
 - CPU カードのロードアベレージ表示を削除し、代わりに PD 対応（5A）の 〇 / × 表示を追加。`vcgencmd get_config usb_max_current_enable` を `power.pd_5a` として配信する
 - AI HAT+ カードから PCIe リンク使用率・リンク速度の表示を削除し、温度をカード最上部に移動
 - ダッシュボードの CPU / AI HAT+ の温度を横バーグラフ表示に変更（0–100℃ スケール、70℃ で警告色、85℃ で危険色）

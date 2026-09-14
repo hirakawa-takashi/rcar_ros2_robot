@@ -18,6 +18,7 @@
   .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
   .card.wide { grid-column: span 2; }
   @media (max-width: 620px) { .card.wide { grid-column: auto; } }
+  .stack { display: grid; gap: 16px; align-content: start; }
   .card h2 { font-size: 14px; margin: 0 0 10px; color: #9fb0c7; font-weight: 600; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   td { padding: 3px 0; }
@@ -114,17 +115,28 @@
     <div class="cores" id="cores"></div>
   </div>
 
-  <div class="card">
-    <h2>AI HAT+ — Hailo-8 NPU</h2>
-    <div class="barrow">
-      <span class="k">温度</span>
-      <span class="bar"><span id="h_temp_bar"></span></span>
-      <span class="v" id="h_temp">-</span>
+  <div class="stack">
+    <div class="card">
+      <h2>AI HAT+ — Hailo-8 NPU</h2>
+      <div class="barrow">
+        <span class="k">温度</span>
+        <span class="bar"><span id="h_temp_bar"></span></span>
+        <span class="v" id="h_temp">-</span>
+      </div>
+      <table>
+        <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
+      </table>
+      <div class="cores" id="h_info"></div>
     </div>
-    <table>
-      <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
-    </table>
-    <div class="cores" id="h_info"></div>
+
+    <div class="card">
+      <h2>IMU (/imu/data)</h2>
+      <table>
+        <tr><td class="k">roll [deg]</td><td class="v" id="i_roll">-</td></tr>
+        <tr><td class="k">pitch [deg]</td><td class="v" id="i_pitch">-</td></tr>
+        <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
+      </table>
+    </div>
   </div>
 
   <div class="card">
@@ -161,32 +173,6 @@
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
   </div>
 
-  <div class="card">
-    <h2>速度指令 (/cmd_vel)</h2>
-    <table>
-      <tr><td class="k">linear.x [m/s]</td><td class="v" id="cx">-</td></tr>
-      <tr><td class="k">linear.y [m/s]</td><td class="v" id="cy">-</td></tr>
-      <tr><td class="k">angular.z [rad/s]</td><td class="v" id="cz">-</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>IMU (/imu/data)</h2>
-    <table>
-      <tr><td class="k">roll [deg]</td><td class="v" id="i_roll">-</td></tr>
-      <tr><td class="k">pitch [deg]</td><td class="v" id="i_pitch">-</td></tr>
-      <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>オドメトリ (/odom)</h2>
-    <table>
-      <tr><td class="k">x / y [m]</td><td class="v" id="o_pos">-</td></tr>
-      <tr><td class="k">yaw [deg]</td><td class="v" id="o_yaw">-</td></tr>
-      <tr><td class="k">速度 [m/s]</td><td class="v" id="o_vel">-</td></tr>
-    </table>
-  </div>
 </div>
 
 <script>
@@ -414,10 +400,6 @@ function renderObstacle(o) {
 }
 
 function render(d) {
-  document.getElementById('cx').textContent = fmt(d.cmd_vel.linear_x);
-  document.getElementById('cy').textContent = fmt(d.cmd_vel.linear_y);
-  document.getElementById('cz').textContent = fmt(d.cmd_vel.angular_z);
-
   const s = d.scan;
   document.getElementById('s_count').textContent = s ? s.count : '-';
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
@@ -433,12 +415,6 @@ function render(d) {
   document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';
   document.getElementById('i_pitch').textContent = i ? fmt(i.pitch_deg, 1) : '-';
   document.getElementById('i_yaw').textContent = i ? fmt(i.yaw_deg, 1) : '-';
-
-  const o = d.odom;
-  document.getElementById('o_pos').textContent =
-    o ? `${fmt(o.x)} / ${fmt(o.y)}` : '-';
-  document.getElementById('o_yaw').textContent = o ? fmt(o.yaw_deg, 1) : '-';
-  document.getElementById('o_vel').textContent = o ? fmt(o.linear_x) : '-';
 
   renderSystem(d.system);
   renderCamera(d.camera);
