@@ -9,6 +9,7 @@ import json
 import math
 import os
 import threading
+import time
 
 import rclpy
 import uvicorn
@@ -353,16 +354,23 @@ def create_app(node: DashboardNode) -> FastAPI:
     def stream():
         interval = 1.0 / max(node.camera_stream_rate, 0.1)
 
+        # 配信周期と同じ間隔で寝ると位相ずれで新フレームを取り逃がし実効レートが
+        # 半減するため、短い周期で監視して配信間隔だけを守る。
+        poll = min(interval / 4.0, 0.005)
+
         async def frames():
             last = -1
+            next_at = 0.0
             while True:
                 frame, count = node.latest_frame()
-                if frame is not None and count != last:
+                now = time.monotonic()
+                if frame is not None and count != last and now >= next_at:
                     last = count
+                    next_at = now + interval
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n'
                            b'Content-Length: ' + str(len(frame)).encode()
                            + b'\r\n\r\n' + frame + b'\r\n')
-                await asyncio.sleep(interval)
+                await asyncio.sleep(poll)
 
         return StreamingResponse(
             frames(),

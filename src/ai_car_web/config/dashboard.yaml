@@ -8,7 +8,7 @@ dashboard_node:
     odom_topic: "/odom"
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"
-    camera_stream_rate: 10.0
+    camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
     obstacle_guard: true
     # LiDAR は前方が機体後方を向く取り付けのため 180 度補正する
@@ -60,6 +60,8 @@ rplidar:
 camera:
   ros__parameters:
     format: "RGB888"
-    width: 640
-    height: 480
+    # 1280x720@30fps。JPEG 品質は 95 だと 1 枚 90KB 超で帯域を食うため 80 に下げる
+    width: 1280
+    height: 720
+    jpeg_quality: 80
     camera: 0
