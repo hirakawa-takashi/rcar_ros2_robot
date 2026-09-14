@@ -18,7 +18,7 @@
   .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
   .card.wide { grid-column: span 2; }
   @media (max-width: 620px) { .card.wide { grid-column: auto; } }
-  .stack { display: grid; gap: 16px; align-content: start; }
+  .stack { display: grid; gap: 16px; grid-template-rows: auto 1fr; }
   .card h2 { font-size: 14px; margin: 0 0 10px; color: #9fb0c7; font-weight: 600; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   td { padding: 3px 0; }
