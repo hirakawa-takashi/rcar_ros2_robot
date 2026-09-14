@@ -12,7 +12,12 @@ Environment=HOME=/home/super
 Environment=ROS_DOMAIN_ID=0
 # USB LiDAR / カメラ / Hailo デバイスが揃うまで待つ
 ExecStartPre=/bin/sleep 10
+# 前回の LiDAR プロセスがシリアルポートを手放すまで待つ（掴んだままだと初期化がタイムアウトする）
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do fuser -s /dev/ttyUSB0 || exit 0; sleep 1; done'
 ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source /home/super/AI-CAR_ws/install/setup.bash && exec ros2 launch ai_car_web dashboard.launch.py'
+# ros2 launch は SIGINT で子プロセスを正常終了させる
+KillSignal=SIGINT
+TimeoutStopSec=30
 Restart=always
 RestartSec=5
 
