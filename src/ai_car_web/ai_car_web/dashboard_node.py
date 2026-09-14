@@ -26,6 +26,8 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
 
+from ai_car_web.gpio_pinout import build_pinout
+
 
 MAX_SCAN_POINTS = 720
 
@@ -96,6 +98,7 @@ class DashboardNode(Node):
         self.declare_parameter('cmd_timeout', 0.7)
         self.declare_parameter('telemetry_rate', 5.0)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
+        self.declare_parameter('gpio_config', '')
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
@@ -105,6 +108,8 @@ class DashboardNode(Node):
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
+        self.gpio_config = self.get_parameter('gpio_config').value or os.path.join(
+            get_package_share_directory('ai_car_web'), 'config', 'gpio_pins.yaml')
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
@@ -378,6 +383,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.get('/api/status')
     def status():
         return node.telemetry()
+
+    @app.get('/api/gpio')
+    def gpio():
+        return build_pinout(node.gpio_config)
 
     @app.post('/api/cmd_vel')
     def cmd_vel(req: CmdVelRequest):

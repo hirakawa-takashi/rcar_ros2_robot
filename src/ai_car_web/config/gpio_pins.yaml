@@ -1,0 +1,65 @@
+# Raspberry Pi 5 40 ピンヘッダーの配線表。
+# ダッシュボードの「GPIO 40ピンヘッダー」カードに反映される（dashboard_node 再起動で再読込）。
+#
+# 各項目:
+#   pins   : 物理ピン番号のリスト（pin: 3 のように単数でも可）
+#   device : 接続先（機器名）
+#   signal : 信号名・用途
+#   color  : 配線色（未確定なら空欄のまま）
+#   note   : 備考
+connections:
+  # --- Adafruit DC & Stepper Motor HAT（I2C 0x60、ヘッダーにスタック） ---
+  - pins: [2, 4]
+    device: Adafruit Motor HAT
+    signal: 5V
+    color: 赤
+  - pins: [6]
+    device: Adafruit Motor HAT
+    signal: GND
+    color: 黒
+  - pins: [3]
+    device: Adafruit Motor HAT
+    signal: I2C SDA
+    color: 青
+    note: PCA9685 0x60
+  - pins: [5]
+    device: Adafruit Motor HAT
+    signal: I2C SCL
+    color: 黄
+    note: PCA9685 0x60
+
+  # --- GY-BNO055 9軸 IMU（I2C 0x28） ---
+  - pins: [1]
+    device: GY-BNO055 IMU
+    signal: 3V3
+    color: 赤
+  - pins: [9]
+    device: GY-BNO055 IMU
+    signal: GND
+    color: 黒
+  - pins: [3]
+    device: GY-BNO055 IMU
+    signal: I2C SDA
+    color: 青
+    note: アドレス 0x28（Motor HAT と I2C バス共有）
+  - pins: [5]
+    device: GY-BNO055 IMU
+    signal: I2C SCL
+    color: 黄
+    note: アドレス 0x28（Motor HAT と I2C バス共有）
+
+  # --- Raspberry Pi AI HAT+（PCIe 接続。ヘッダーは電源と ID EEPROM のみ使用） ---
+  - pins: [27]
+    device: AI HAT+
+    signal: ID_SD (HAT EEPROM)
+    color: ""
+  - pins: [28]
+    device: AI HAT+
+    signal: ID_SC (HAT EEPROM)
+    color: ""
+
+  # --- 7セグメント LED（接続方式・ピン未確定。決まったら pins を編集） ---
+  # - pins: []
+  #   device: 7セグメント LED
+  #   signal: ""
+  #   color: ""

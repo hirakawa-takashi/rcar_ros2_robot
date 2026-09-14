@@ -17,6 +17,8 @@ dashboard_node:
     max_angular_speed: 1.0
     cmd_timeout: 0.7
     telemetry_rate: 10.0
+    # 40 ピンヘッダーの配線表。空なら share/ai_car_web/config/gpio_pins.yaml
+    gpio_config: ""
 
 system_monitor_node:
   ros__parameters:

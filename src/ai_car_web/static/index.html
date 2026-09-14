@@ -58,6 +58,23 @@
          pointer-events: none; }
   .map { width: 100%; aspect-ratio: 1 / 1; background: #11161d; border-radius: 6px;
          display: block; margin-bottom: 8px; }
+  .card.full { grid-column: 1 / -1; }
+  .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
+              border-radius: 8px; margin-bottom: 10px; }
+  .gpio_legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px;
+                 color: #9fb0c7; margin-bottom: 10px; }
+  .gpio_legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+                   margin-right: 4px; vertical-align: -1px; border: 1px solid #556; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+            border: 1px solid #556; margin-right: 5px; vertical-align: -2px; }
+  table.pins { table-layout: auto; font-size: 13px; }
+  table.pins th { text-align: left; color: #9fb0c7; font-weight: 600; padding: 4px 6px;
+                  border-bottom: 1px solid #2c3340; white-space: nowrap; }
+  table.pins td { padding: 3px 6px; white-space: normal; border-bottom: 1px solid #222831; }
+  table.pins tr.used td { background: #1a2a3a; }
+  table.pins td.num { text-align: right; font-variant-numeric: tabular-nums; color: #9fb0c7;
+                      width: 34px; }
+  .pinwrap { overflow-x: auto; }
 </style>
 </head>
 <body>
@@ -147,6 +164,33 @@
         <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
       </table>
     </div>
+  </div>
+
+  <div class="card full">
+    <h2>Raspberry Pi 5 — GPIO 40ピンヘッダー <span class="badge" id="gpio_used">-</span></h2>
+    <svg class="gpio_svg" id="gpio_svg" viewBox="0 0 1040 330" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="gpio_legend">
+      <span><i style="background:#e53935"></i>5V</span>
+      <span><i style="background:#fdd835"></i>3V3</span>
+      <span><i style="background:#111"></i>GND</span>
+      <span><i style="background:#64b5f6"></i>I2C</span>
+      <span><i style="background:#f48fb1"></i>UART</span>
+      <span><i style="background:#ffb74d"></i>SPI</span>
+      <span><i style="background:#b3c6ff"></i>PCM</span>
+      <span><i style="background:#fff"></i>PWM</span>
+      <span><i style="background:#90caf9"></i>ID EEPROM</span>
+      <span><i style="background:#dfe7ff"></i>GPIO</span>
+      <span><i style="background:transparent;border:2px solid #2e7d32"></i>使用中（外枠）</span>
+    </div>
+    <div class="pinwrap">
+    <table class="pins">
+      <thead><tr>
+        <th>ピン</th><th>名称</th><th>BCM</th><th>使用</th><th>配線色</th><th>接続先</th><th>信号 / 備考</th>
+      </tr></thead>
+      <tbody id="gpio_rows"></tbody>
+    </table>
+    </div>
+    <div class="note" id="gpio_note"></div>
   </div>
 
   <div class="card">
@@ -494,6 +538,92 @@ function renderCamera(cam) {
   document.getElementById('cam_note').textContent = cam.available
     ? '' : `${cam.topic} を待機中です（camera_ros ノードを起動してください）`;
 }
+
+// ---- GPIO 40 ピンヘッダー ----
+const PIN_COLORS = {
+  power5v: '#e53935', power3v3: '#fdd835', ground: '#111', i2c: '#64b5f6',
+  uart: '#f48fb1', spi: '#ffb74d', pcm: '#b3c6ff', pwm: '#fff', id: '#90caf9',
+  gpio: '#dfe7ff',
+};
+// 配線色（日本語/英語）→ 表示色
+const WIRE_COLORS = {
+  '赤': '#e53935', 'red': '#e53935', '黒': '#111', 'black': '#111',
+  '白': '#f5f5f5', 'white': '#f5f5f5', '青': '#1e88e5', 'blue': '#1e88e5',
+  '黄': '#fdd835', '黄色': '#fdd835', 'yellow': '#fdd835', '緑': '#43a047', 'green': '#43a047',
+  '橙': '#fb8c00', 'オレンジ': '#fb8c00', 'orange': '#fb8c00', '紫': '#8e24aa', 'purple': '#8e24aa',
+  '灰': '#9e9e9e', 'グレー': '#9e9e9e', 'gray': '#9e9e9e', 'grey': '#9e9e9e',
+  '茶': '#6d4c41', 'brown': '#6d4c41', '桃': '#f06292', 'ピンク': '#f06292', 'pink': '#f06292',
+};
+function wireSwatch(c) {
+  const hex = WIRE_COLORS[String(c).toLowerCase()] || WIRE_COLORS[c];
+  return hex ? `<span class="swatch" style="background:${hex}"></span>${c}` : c;
+}
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch]));
+}
+
+// 画像と同じ向き（横長・上段が偶数ピン 2〜40、下段が奇数ピン 1〜39、左から右）で描く。
+function drawGpioHeader(pins) {
+  const svg = document.getElementById('gpio_svg');
+  const byPin = {};
+  pins.forEach(p => { byPin[p.pin] = p; });
+  const x0 = 60, dx = 49, rTop = 40, rBot = 290, r = 11;
+  let out = `<rect x="0" y="0" width="1040" height="330" rx="8" fill="#c9d6d9"/>`;
+  out += `<text x="14" y="165" transform="rotate(-90 14 165)" text-anchor="middle" font-size="18" fill="#233">Raspberry Pi 5 GPIO Header</text>`;
+  for (let col = 0; col < 20; col++) {
+    const x = x0 + col * dx;
+    for (const [pinNo, cy, labelDir] of [[col * 2 + 2, rTop, 1], [col * 2 + 1, rBot, -1]]) {
+      const p = byPin[pinNo];
+      if (!p) continue;
+      const fill = PIN_COLORS[p.kind] || '#dfe7ff';
+      const stroke = p.in_use ? '#2e7d32' : '#556';
+      const title = `${pinNo}: ${p.name}` +
+        (p.in_use ? `\n${p.devices.join(', ')} ${p.signals.join(', ')} ${p.colors.join(', ')}` : '');
+      out += `<g><title>${esc(title)}</title>`;
+      out += `<circle cx="${x}" cy="${cy}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${p.in_use ? 3.5 : 1}"/>`;
+      if (p.in_use && p.colors.length) {
+        const wc = WIRE_COLORS[String(p.colors[0]).toLowerCase()] || WIRE_COLORS[p.colors[0]];
+        if (wc) out += `<rect x="${x - 6}" y="${cy + labelDir * 16 - 3}" width="12" height="6" fill="${wc}" stroke="#556" stroke-width="0.5"/>`;
+      }
+      const ty = cy + labelDir * 26;
+      const anchor = labelDir > 0 ? 'end' : 'start';
+      const label = `${pinNo} (${p.name})`;
+      out += `<text x="${x}" y="${ty}" transform="rotate(-90 ${x} ${ty})" text-anchor="${anchor}" dominant-baseline="middle" font-size="11" fill="${p.kind === 'ground' ? '#fff' : '#233'}" font-weight="${p.in_use ? 'bold' : 'normal'}">${esc(label)}</text>`;
+      out += '</g>';
+    }
+  }
+  svg.innerHTML = out;
+}
+
+function renderGpio(g) {
+  document.getElementById('gpio_used').textContent = `使用 ${g.used_count} / 40`;
+  drawGpioHeader(g.pins);
+  document.getElementById('gpio_rows').innerHTML = g.pins.map(p => {
+    const colors = p.colors.length ? p.colors.map(wireSwatch).join(' / ') : (p.in_use ? '<span class="badge warn">未設定</span>' : '');
+    const sig = p.signals.map(esc).join(' / ');
+    const notes = p.notes.map(esc).join('; ');
+    return `<tr class="${p.in_use ? 'used' : ''}">` +
+      `<td class="num">${p.pin}</td>` +
+      `<td><span class="swatch" style="background:${PIN_COLORS[p.kind] || '#dfe7ff'};border-radius:50%"></span>${esc(p.name)}</td>` +
+      `<td class="num">${p.bcm == null ? '-' : p.bcm}</td>` +
+      `<td>${p.in_use ? '<span class="badge ok">使用中</span>' : '<span class="badge">空き</span>'}</td>` +
+      `<td>${colors}</td>` +
+      `<td>${p.devices.map(esc).join(' / ')}</td>` +
+      `<td>${sig}${notes ? `<div class="note" style="margin:0">${notes}</div>` : ''}</td>` +
+      '</tr>';
+  }).join('');
+  document.getElementById('gpio_note').textContent = g.error
+    ? `配線設定の読み込みに失敗: ${g.error}`
+    : `配線表: ${g.config_path}（編集後は dashboard_node を再起動）`;
+}
+
+function loadGpio() {
+  fetch('/api/gpio').then(r => r.json()).then(renderGpio)
+    .catch(() => { document.getElementById('gpio_note').textContent = '/api/gpio の取得に失敗しました'; });
+}
+loadGpio();
+// 配線表は静的情報のため 30 秒ごとの再取得に留める
+setInterval(loadGpio, 30000);
 
 let pollTimer = null;
 
