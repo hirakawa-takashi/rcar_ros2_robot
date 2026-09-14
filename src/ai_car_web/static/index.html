@@ -109,7 +109,7 @@
       <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
       <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
       <tr><td class="k">電源状態</td><td class="v" id="pwr_state">-</td></tr>
-      <tr><td class="k">ロードアベレージ</td><td class="v" id="cpu_load">-</td></tr>
+      <tr><td class="k">PD対応（5A）</td><td class="v" id="pwr_pd">-</td></tr>
     </table>
     <div class="cores" id="cores"></div>
   </div>
@@ -287,8 +287,6 @@ function renderSystem(s) {
   document.getElementById('cpu_freq').textContent = fmt(c.freq_mhz, 0);
   setTempBar(document.getElementById('cpu_temp_bar'),
              document.getElementById('cpu_temp'), c.temperature_c);
-  document.getElementById('cpu_load').textContent =
-    (c.load_average || []).map(v => fmt(v, 2)).join(' / ');
   const cores = document.getElementById('cores');
   cores.innerHTML = (c.per_core || [])
     .map((v, i) => `<div class="core">C${i}<div class="bar"><span style="width:${v}%"></span></div>${fmt(v, 0)}%</div>`)
@@ -298,6 +296,9 @@ function renderSystem(s) {
   document.getElementById('pwr_total').textContent = p ? fmt(p.total_w, 2) : '-';
   document.getElementById('pwr_input').textContent = p ? fmt(p.input_volt, 2) : '-';
   document.getElementById('pwr_amp').textContent = p ? fmt(p.input_amp, 2) : '-';
+  const pd = p ? p.pd_5a : null;
+  document.getElementById('pwr_pd').textContent =
+    pd === true ? '〇' : pd === false ? '×' : '-';
   renderThrottled(p && p.throttled);
 
   const h = s.hailo || {};

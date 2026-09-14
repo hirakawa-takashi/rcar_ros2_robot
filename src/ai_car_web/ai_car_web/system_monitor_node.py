@@ -127,16 +127,11 @@ class SystemMonitorNode(Node):
     def _cpu(self):
         freq = psutil.cpu_freq()
         temp = self._cpu_temperature()
-        try:
-            load1, load5, load15 = psutil.getloadavg()
-        except OSError:
-            load1 = load5 = load15 = None
         return {
             'percent': round(psutil.cpu_percent(), 1),
             'per_core': [round(v, 1) for v in psutil.cpu_percent(percpu=True)],
             'freq_mhz': round(freq.current, 0) if freq else None,
             'temperature_c': temp,
-            'load_average': [load1, load5, load15],
         }
 
     def _cpu_temperature(self):
@@ -214,7 +209,20 @@ class SystemMonitorNode(Node):
             'core_volt': round(volts['VDD_CORE'], 3) if 'VDD_CORE' in volts else None,
             'rails': dict(sorted(rails.items(), key=lambda kv: -kv[1]['watt'])),
             'throttled': self._throttled(),
+            'pd_5a': self._pd_5a(),
         }
+
+    def _pd_5a(self):
+        """5A 対応 PD 電源として認識されているかを返す。"""
+        if not self.has_vcgencmd:
+            return None
+        out = _run(['vcgencmd', 'get_config', 'usb_max_current_enable'])
+        if not out or '=' not in out:
+            return None
+        try:
+            return bool(int(out.split('=')[1]))
+        except ValueError:
+            return None
 
     def _throttled(self):
         """get_throttled のビットを名前付きフラグに展開する。"""
