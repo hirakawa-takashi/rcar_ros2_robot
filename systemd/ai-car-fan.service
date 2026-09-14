@@ -1,0 +1,11 @@
+[Unit]
+Description=AI-CAR CPU fan curve (lower thermal trip points)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/super/AI-CAR_ws/scripts/set_fan_curve.sh
+
+[Install]
+WantedBy=multi-user.target

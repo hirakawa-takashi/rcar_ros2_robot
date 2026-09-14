@@ -132,7 +132,34 @@ class SystemMonitorNode(Node):
             'per_core': [round(v, 1) for v in psutil.cpu_percent(percpu=True)],
             'freq_mhz': round(freq.current, 0) if freq else None,
             'temperature_c': temp,
+            'fan': self._fan(),
         }
+
+    @staticmethod
+    def _fan():
+        """pwm-fan の回転数と段階（0=停止〜max）を返す。"""
+        rpm = None
+        for path in glob.glob('/sys/class/hwmon/hwmon*'):
+            if _read_text(f'{path}/name') != 'pwmfan':
+                continue
+            raw = _read_text(f'{path}/fan1_input')
+            if raw is not None:
+                try:
+                    rpm = int(raw)
+                except ValueError:
+                    rpm = None
+            break
+        level = max_level = None
+        for path in glob.glob('/sys/class/thermal/cooling_device*'):
+            if _read_text(f'{path}/type') != 'pwm-fan':
+                continue
+            try:
+                level = int(_read_text(f'{path}/cur_state'))
+                max_level = int(_read_text(f'{path}/max_state'))
+            except (TypeError, ValueError):
+                level = max_level = None
+            break
+        return {'rpm': rpm, 'level': level, 'max_level': max_level}
 
     def _cpu_temperature(self):
         if self.has_vcgencmd:
