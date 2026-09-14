@@ -78,6 +78,12 @@
     </div>
     <table>
       <tr><td class="k">状態</td><td class="v" id="cam_state">-</td></tr>
+      <tr><td class="k">解像度</td><td class="v" id="cam_size">-</td></tr>
+      <tr>
+        <td class="k">fps 受信/配信</td>
+        <td class="v" id="cam_fps" title="受信 = ROS トピックの実測レート、配信 = ブラウザへの MJPEG 上限">-</td>
+      </tr>
+      <tr><td class="k">1枚 [KB]</td><td class="v" id="cam_kb">-</td></tr>
       <tr><td class="k">受信フレーム</td><td class="v" id="cam_frames">-</td></tr>
       <tr><td class="k">最終受信 [s]</td><td class="v" id="cam_age">-</td></tr>
     </table>
@@ -479,6 +485,23 @@ function renderCamera(cam) {
   document.getElementById('cam_state').innerHTML = cam.available
     ? '<span class="badge ok">配信中</span>'
     : '<span class="badge warn">映像なし</span>';
+  if (cam.width && cam.height) {
+    // 画像のアスペクトを実解像度に合わせないと、object-fit の余白分だけ
+    // 検出枠がズレる。
+    const ratio = `${cam.width} / ${cam.height}`;
+    img.style.aspectRatio = ratio;
+    const canvas = document.getElementById('cam_overlay');
+    canvas.style.aspectRatio = ratio;
+    if (canvas.width !== cam.width) {
+      canvas.width = cam.width;
+      canvas.height = cam.height;
+    }
+  }
+  document.getElementById('cam_size').textContent = cam.width
+    ? `${cam.width} x ${cam.height}` : '-';
+  document.getElementById('cam_fps').textContent = cam.fps == null
+    ? '-' : `${fmt(cam.fps, 1)} / ${fmt(cam.stream_fps, 0)}`;
+  document.getElementById('cam_kb').textContent = fmt(cam.kb, 1);
   document.getElementById('cam_frames').textContent = cam.frames ?? '-';
   document.getElementById('cam_age').textContent = fmt(cam.age_s, 1);
   document.getElementById('cam_note').textContent = cam.available

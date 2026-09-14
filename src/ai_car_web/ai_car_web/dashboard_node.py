@@ -10,6 +10,7 @@ import math
 import os
 import threading
 import time
+from collections import deque
 
 import rclpy
 import uvicorn
@@ -35,6 +36,26 @@ class CmdVelRequest(BaseModel):
     linear_x: float = 0.0
     linear_y: float = 0.0
     angular_z: float = 0.0
+
+
+def _jpeg_dimensions(data: bytes):
+    """JPEG のフレームヘッダ（SOFn）から (幅, 高さ) を読む。取れなければ None。"""
+    i = 2
+    end = len(data)
+    while i + 9 < end:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            height = int.from_bytes(data[i + 5:i + 7], 'big')
+            width = int.from_bytes(data[i + 7:i + 9], 'big')
+            return width, height
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        i += 2 + int.from_bytes(data[i + 2:i + 4], 'big')
+    return None
 
 
 def quaternion_to_euler(x, y, z, w):
@@ -127,6 +148,9 @@ class DashboardNode(Node):
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
+        self._frame_bytes = 0
+        self._frame_size = None
+        self._frame_times = deque(maxlen=60)
 
         self.create_timer(0.1, self._watchdog_cb)
         self.get_logger().info(
@@ -213,10 +237,16 @@ class DashboardNode(Node):
             self._system = system
 
     def _camera_cb(self, msg: CompressedImage):
+        data = bytes(msg.data)
         with self._lock:
-            self._frame = bytes(msg.data)
+            self._frame = data
             self._frame_stamp = self.get_clock().now().nanoseconds * 1e-9
             self._frame_count += 1
+            self._frame_bytes = len(data)
+            self._frame_times.append(time.monotonic())
+            # 解像度は起動直後と 5 秒ごとだけ読む（毎フレーム解析する必要はない）
+            if self._frame_size is None or self._frame_count % 150 == 0:
+                self._frame_size = _jpeg_dimensions(data)
 
     def latest_frame(self):
         """最新の JPEG フレームと逗番を返す。未受信なら (None, 0)。"""
@@ -231,7 +261,21 @@ class DashboardNode(Node):
             'topic': self.get_parameter('camera_topic').value,
             'frames': self._frame_count,
             'age_s': round(age, 2) if age is not None else None,
+            'width': self._frame_size[0] if self._frame_size else None,
+            'height': self._frame_size[1] if self._frame_size else None,
+            'kb': round(self._frame_bytes / 1024.0, 1) if self._frame_bytes else None,
+            'fps': self._frame_fps(),
+            'stream_fps': self.camera_stream_rate,
         }
+
+    def _frame_fps(self):
+        """直近の受信間隔から実測フレームレートを返す。"""
+        now = time.monotonic()
+        recent = [t for t in self._frame_times if now - t <= 3.0]
+        if len(recent) < 2:
+            return None
+        span = recent[-1] - recent[0]
+        return round((len(recent) - 1) / span, 1) if span > 0 else None
 
     @staticmethod
     def _stamp_to_sec(stamp):
