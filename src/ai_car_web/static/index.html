@@ -107,11 +107,11 @@
       <tr><td class="k">クロック [MHz]</td><td class="v" id="cpu_freq">-</td></tr>
       <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
       <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
+      <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
       <tr><td class="k">電源状態</td><td class="v" id="pwr_state">-</td></tr>
       <tr><td class="k">ロードアベレージ</td><td class="v" id="cpu_load">-</td></tr>
     </table>
     <div class="cores" id="cores"></div>
-    <div class="note" id="pwr_note"></div>
   </div>
 
   <div class="card">
@@ -125,7 +125,6 @@
       <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
     </table>
     <div class="cores" id="h_info"></div>
-    <div class="note" id="h_note"></div>
   </div>
 
   <div class="card">
@@ -262,29 +261,22 @@ function setTempBar(bar, label, celsius, fallback = '-') {
 // 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
 function renderThrottled(t) {
   const state = document.getElementById('pwr_state');
-  const note = document.getElementById('pwr_note');
   if (!t) {
     state.innerHTML = '<span class="badge">不明</span>';
-    note.textContent = '';
     return;
   }
-  const now = t.under_voltage_now || t.throttled_now ||
-    t.arm_freq_capped_now || t.soft_temp_limit_now;
-  const past = t.under_voltage_occurred || t.throttled_occurred ||
-    t.arm_freq_capped_occurred || t.soft_temp_limit_occurred;
-  state.innerHTML = now ? '<span class="badge crit">低電圧 / 制限中</span>'
-    : past ? '<span class="badge warn">起動後に低電圧発生</span>'
-    : '<span class="badge ok">正常</span>';
-
   const labels = [];
   if (t.under_voltage_now) labels.push('低電圧');
   if (t.throttled_now) labels.push('スロットリング');
   if (t.arm_freq_capped_now) labels.push('クロック制限');
   if (t.soft_temp_limit_now) labels.push('温度制限');
-  note.textContent = labels.length
-    ? `現在: ${labels.join(' / ')}（電源容量・ケーブルを確認してください）`
-    : past ? '起動後に低電圧またはスロットリングが発生しました（電源容量・ケーブルを確認してください）'
-    : '';
+  const past = t.under_voltage_occurred || t.throttled_occurred ||
+    t.arm_freq_capped_occurred || t.soft_temp_limit_occurred;
+
+  state.innerHTML = labels.length
+    ? `<span class="badge crit">${labels.join(' / ')}</span>`
+    : past ? '<span class="badge warn">起動後に低電圧発生</span>'
+    : '<span class="badge ok">正常</span>';
 }
 
 function renderSystem(s) {
@@ -305,6 +297,7 @@ function renderSystem(s) {
   const p = s.power;
   document.getElementById('pwr_total').textContent = p ? fmt(p.total_w, 2) : '-';
   document.getElementById('pwr_input').textContent = p ? fmt(p.input_volt, 2) : '-';
+  document.getElementById('pwr_amp').textContent = p ? fmt(p.input_amp, 2) : '-';
   renderThrottled(p && p.throttled);
 
   const h = s.hailo || {};
@@ -326,7 +319,6 @@ function renderSystem(s) {
   document.getElementById('h_info').innerHTML = info
     .map(([k, v]) => `<div class="core">${k}<div class="val">${v}</div></div>`)
     .join('');
-  document.getElementById('h_note').textContent = h.note || '';
 }
 
 // LiDAR の 360度スキャンを上から見た点群として描画する（+X = 正面 = 上）。

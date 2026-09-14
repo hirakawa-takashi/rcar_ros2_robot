@@ -203,9 +203,14 @@ class SystemMonitorNode(Node):
                 'watt': round(watt, 3),
             }
 
+        input_volt = volts.get('EXT5V')
+        # PMIC は EXT5V の電流を出さないため、各レールの合計電力から換算する
+        input_amp = total_w / input_volt if input_volt else None
+
         return {
             'total_w': round(total_w, 2),
-            'input_volt': round(volts['EXT5V'], 3) if 'EXT5V' in volts else None,
+            'input_volt': round(input_volt, 3) if input_volt else None,
+            'input_amp': round(input_amp, 3) if input_amp else None,
             'core_volt': round(volts['VDD_CORE'], 3) if 'VDD_CORE' in volts else None,
             'rails': dict(sorted(rails.items(), key=lambda kv: -kv[1]['watt'])),
             'throttled': self._throttled(),
