@@ -34,6 +34,7 @@
 - CPU カードに入力電圧（`EXT5V`）・入力電流・電源状態を追加。入力電流は PMIC が EXT5V の電流を出さないため各レールの合計電力から換算する。`vcgencmd get_throttled` の低電圧 / スロットリング / クロック制限 / 温度制限をバッジで表示し、現在発生中は赤・起動後に発生した場合は黄色で警告する（電源不足による突然の電源断を事前に気付けるため）
 - `ai-car-dashboard.service` の停止シグナルを SIGINT にし、起動前に `/dev/ttyUSB0` の解放を待つようにした（`systemctl restart` 時に前回の `rplidar_composition` がポートを掴んだままで LiDAR 初期化がタイムアウトし、スキャンが流れなくなるため）
 - 速度指令 (/cmd_vel) とオドメトリ (/odom) のカードを削除し、AI HAT+ カードと IMU カードを同じ列に縦積み（AI HAT+ は内容分の高さのみ）に変更
+- AI HAT+ カードに推論レート（現在 / 連続実行時）と実効 TOPS の推定値を表示。`perception_node` が `obstacle.throughput` として配信し、`model_gops`（既定 8.7 = YOLOv8n 640x640）× 推論レートで換算する。Hailo は実効 TOPS を報告しないため推定値
 - CPU ファンの作動温度を 45/50/55/62℃ へ前倒しする `scripts/set_fan_curve.sh` と `systemd/ai-car-fan.service` を追加
 - CPU カードにファン回転数と段階（`cpu.fan`）を表示
 - カード内の表を1行固定にし（`table-layout: fixed` ＋ 省略記号）、障害物判定カードの項目名・値を短縮。検出物体は先頭1件＋「他N」表示とし全件は title に保持
