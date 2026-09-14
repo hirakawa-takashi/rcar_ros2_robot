@@ -126,6 +126,8 @@
       </div>
       <table>
         <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
+        <tr><td class="k">fps 現在/連続</td><td class="v" id="h_fps">-</td></tr>
+        <tr><td class="k">TOPS 現在/連続</td><td class="v" id="h_tops" title="モデル演算量×推論レートによる推定値">-</td></tr>
       </table>
       <div class="cores" id="h_info"></div>
     </div>
@@ -406,6 +408,14 @@ function renderObstacle(o) {
   document.getElementById('o_thermal').textContent =
     `${THERMAL_TEXT[th.state] || '-'} ${Math.round((th.inference_scale ?? 1) * 100)}%`;
   document.getElementById('o_note').textContent = o.note || o.reason || '';
+
+  const tp = o.throughput || {};
+  document.getElementById('h_fps').textContent = tp.fps == null
+    ? '-' : `${fmt(tp.fps, 1)} / ${fmt(tp.max_fps, 0)}`;
+  document.getElementById('h_tops').textContent = tp.max_tops == null
+    ? '-' : `${fmt(tp.now_tops, 2)} / ${fmt(tp.max_tops, 2)}`;
+  document.getElementById('h_tops').title = tp.peak_tops == null ? ''
+    : `モデル ${tp.model_gops} GOP × 推論レートの推定値。公称 ${tp.peak_tops} TOPS に対し連続実行時で ${fmt((tp.utilization || 0) * 100, 1)} %`;
 }
 
 function render(d) {

@@ -12,6 +12,7 @@ import json
 import math
 import threading
 import time
+from collections import deque
 from contextlib import ExitStack
 
 import numpy as np
@@ -100,6 +101,10 @@ class PerceptionNode(Node):
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
         self.declare_parameter('hailo_temp_crit', 85.0)
+        # 実効スループット算出用。model_gops は 1 推論あたりの演算量 [GOP]
+        # （YOLOv8n 640x640 = 8.7 GOP）、peak_tops は Hailo-8 の公称性能。
+        self.declare_parameter('model_gops', 8.7)
+        self.declare_parameter('hailo_peak_tops', 26.0)
 
         self._load_tunables()
         self.add_on_set_parameters_callback(self._on_set_parameters)
@@ -123,6 +128,7 @@ class PerceptionNode(Node):
         self._detections = []
         self._detection_stamp = 0.0
         self._inference_ms = None
+        self._inference_times = deque(maxlen=30)
         self._thermal_state = 'normal'
         self._thermal_scale = 1.0
         self._detector_note = ''
@@ -172,6 +178,8 @@ class PerceptionNode(Node):
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
         self.hailo_temp_warn = float(self.get_parameter('hailo_temp_warn').value)
         self.hailo_temp_crit = float(self.get_parameter('hailo_temp_crit').value)
+        self.model_gops = float(self.get_parameter('model_gops').value)
+        self.hailo_peak_tops = float(self.get_parameter('hailo_peak_tops').value)
 
     def _on_set_parameters(self, params):
         """距離・推論レート・温度閾値を実行中に変更できるようにする。"""
@@ -189,6 +197,8 @@ class PerceptionNode(Node):
             'danger_distance': lambda v: setattr(self, 'danger_distance', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
+            'model_gops': lambda v: setattr(self, 'model_gops', float(v)),
+            'hailo_peak_tops': lambda v: setattr(self, 'hailo_peak_tops', float(v)),
             'hailo_temp_warn': lambda v: setattr(self, 'hailo_temp_warn', float(v)),
             'hailo_temp_crit': lambda v: setattr(self, 'hailo_temp_crit', float(v)),
         }
@@ -328,6 +338,7 @@ class PerceptionNode(Node):
                 self._detections = detections
                 self._detection_stamp = time.time()
                 self._inference_ms = round(elapsed_ms, 1)
+                self._inference_times.append(self._detection_stamp)
         except Exception as exc:  # noqa: BLE001 - 推論失敗でノードを落とさない
             self._detector_note = f'推論エラー: {exc}'
             self.get_logger().warning(self._detector_note)
@@ -376,6 +387,7 @@ class PerceptionNode(Node):
             cpu_temp = self._cpu_temp
             hailo_temp = self._hailo_temp
             inference_ms = self._inference_ms
+            stamps = list(self._inference_times)
 
         scan_valid = front is not None and scan_age is not None and scan_age < 1.5
         if not scan_valid:
@@ -412,6 +424,7 @@ class PerceptionNode(Node):
             'front_labels': labels,
             'inference_ms': inference_ms,
             'inference_age': round(det_age, 2) if det_age is not None else None,
+            'throughput': self._throughput(stamps, inference_ms, now),
             'thermal': {
                 'state': thermal_state,
                 'inference_scale': thermal_scale,
@@ -423,6 +436,34 @@ class PerceptionNode(Node):
         msg = String()
         msg.data = json.dumps(payload)
         self.status_pub.publish(msg)
+
+    def _throughput(self, stamps, inference_ms, now):
+        """実測推論レートから実効スループットを換算する。
+
+        `now_tops` は実際に回しているレートでの演算量、`max_tops` は同じ推論を
+        隙間なく連続実行した場合の演算量（= 現状の実力）。Hailo は実効 TOPS を
+        直接報告しないため、モデルの演算量×レートによる推定値。
+        """
+        recent = [t for t in stamps if now - t <= 10.0]
+        fps = None
+        if len(recent) >= 2:
+            span = recent[-1] - recent[0]
+            if span > 0:
+                fps = (len(recent) - 1) / span
+        max_fps = 1000.0 / inference_ms if inference_ms else None
+        gops = self.model_gops
+        now_tops = fps * gops / 1000.0 if fps else None
+        max_tops = max_fps * gops / 1000.0 if max_fps else None
+        return {
+            'fps': round(fps, 2) if fps else None,
+            'max_fps': round(max_fps, 1) if max_fps else None,
+            'now_tops': round(now_tops, 3) if now_tops else None,
+            'max_tops': round(max_tops, 2) if max_tops else None,
+            'peak_tops': self.hailo_peak_tops,
+            'utilization': round(max_tops / self.hailo_peak_tops, 3)
+            if max_tops and self.hailo_peak_tops else None,
+            'model_gops': gops,
+        }
 
     @staticmethod
     def _normalize(angle: float) -> float:

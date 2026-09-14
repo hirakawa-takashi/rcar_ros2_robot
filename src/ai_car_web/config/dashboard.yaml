@@ -46,6 +46,9 @@ perception_node:
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
     hailo_temp_crit: 85.0
+    # 実効スループット表示用（YOLOv8n 640x640 = 8.7 GOP / Hailo-8 公称 26 TOPS）
+    model_gops: 8.7
+    hailo_peak_tops: 26.0
 
 rplidar:
   ros__parameters:
