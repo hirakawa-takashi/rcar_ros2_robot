@@ -168,7 +168,7 @@
 
   <div class="card full">
     <h2>Raspberry Pi 5 — GPIO 40ピンヘッダー <span class="badge" id="gpio_used">-</span></h2>
-    <svg class="gpio_svg" id="gpio_svg" viewBox="0 0 1040 330" xmlns="http://www.w3.org/2000/svg"></svg>
+    <svg class="gpio_svg" id="gpio_svg" viewBox="0 0 1040 420" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="gpio_legend">
       <span><i style="background:#e53935"></i>5V</span>
       <span><i style="background:#fdd835"></i>3V3</span>
@@ -567,9 +567,9 @@ function drawGpioHeader(pins) {
   const svg = document.getElementById('gpio_svg');
   const byPin = {};
   pins.forEach(p => { byPin[p.pin] = p; });
-  const x0 = 60, dx = 49, rTop = 40, rBot = 290, r = 11;
-  let out = `<rect x="0" y="0" width="1040" height="330" rx="8" fill="#c9d6d9"/>`;
-  out += `<text x="14" y="165" transform="rotate(-90 14 165)" text-anchor="middle" font-size="18" fill="#233">Raspberry Pi 5 GPIO Header</text>`;
+  const x0 = 60, dx = 49, rTop = 40, rBot = 380, r = 11;
+  let out = `<rect x="0" y="0" width="1040" height="420" rx="8" fill="#c9d6d9"/>`;
+  out += `<text x="14" y="210" transform="rotate(-90 14 210)" text-anchor="middle" font-size="18" fill="#233">Raspberry Pi 5 GPIO Header</text>`;
   for (let col = 0; col < 20; col++) {
     const x = x0 + col * dx;
     for (const [pinNo, cy, labelDir] of [[col * 2 + 2, rTop, 1], [col * 2 + 1, rBot, -1]]) {
@@ -599,7 +599,7 @@ function renderGpio(g) {
   document.getElementById('gpio_used').textContent = `使用 ${g.used_count} / 40`;
   drawGpioHeader(g.pins);
   document.getElementById('gpio_rows').innerHTML = g.pins.map(p => {
-    const colors = p.colors.length ? p.colors.map(wireSwatch).join(' / ') : (p.in_use ? '<span class="badge warn">未設定</span>' : '');
+    const colors = p.colors.length ? [...new Set(p.colors)].map(wireSwatch).join(' / ') : (p.in_use ? '<span class="badge warn">未設定</span>' : '');
     const sig = p.signals.map(esc).join(' / ');
     const notes = p.notes.map(esc).join('; ');
     return `<tr class="${p.in_use ? 'used' : ''}">` +
