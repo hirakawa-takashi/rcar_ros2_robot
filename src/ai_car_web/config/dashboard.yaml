@@ -11,7 +11,8 @@ dashboard_node:
     camera_stream_rate: 10.0
     obstacle_topic: "/obstacle_status"
     obstacle_guard: true
-    scan_angle_offset_deg: 0.0
+    # LiDAR は前方が機体後方を向く取り付けのため 180 度補正する
+    scan_angle_offset_deg: 180.0
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
@@ -37,7 +38,9 @@ perception_node:
     inference_rate: 4.0
     score_threshold: 0.4
     camera_hfov_deg: 66.0
-    scan_angle_offset_deg: 0.0
+    scan_angle_offset_deg: 180.0
+    scan_max_age: 1.0
+    cluster_gap: 0.25
     danger_distance: 0.3
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0

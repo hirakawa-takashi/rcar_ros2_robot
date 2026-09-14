@@ -93,6 +93,8 @@ class PerceptionNode(Node):
         self.declare_parameter('score_threshold', 0.4)
         self.declare_parameter('camera_hfov_deg', 66.0)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
+        self.declare_parameter('scan_max_age', 1.0)
+        self.declare_parameter('cluster_gap', 0.25)
         self.declare_parameter('danger_distance', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
@@ -163,6 +165,8 @@ class PerceptionNode(Node):
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
+        self.scan_max_age = float(self.get_parameter('scan_max_age').value)
+        self.cluster_gap = float(self.get_parameter('cluster_gap').value)
         self.danger_distance = float(self.get_parameter('danger_distance').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
@@ -180,6 +184,8 @@ class PerceptionNode(Node):
             'camera_hfov_deg': lambda v: setattr(self, 'camera_hfov', math.radians(float(v))),
             'scan_angle_offset_deg': lambda v: setattr(
                 self, 'scan_angle_offset', math.radians(float(v))),
+            'scan_max_age': lambda v: setattr(self, 'scan_max_age', float(v)),
+            'cluster_gap': lambda v: setattr(self, 'cluster_gap', float(v)),
             'danger_distance': lambda v: setattr(self, 'danger_distance', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
@@ -240,6 +246,8 @@ class PerceptionNode(Node):
         """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
 
         画像左端が +HFOV/2、右端が -HFOV/2（ROS の左旋回正）に対応する。
+        方位窓内の点は距離でクラスタリングし、最も手前のまとまった面の
+        代表距離（中央値）を返す。単発の外れ点で極端に近い値にならない。
         """
         half = self.camera_hfov / 2.0
         angle_max = (0.5 - x_min) * self.camera_hfov
@@ -248,8 +256,25 @@ class PerceptionNode(Node):
         angle_max = min(half, angle_max)
         with self._lock:
             bearings = self._scan_bearings
-        hits = [r for angle, r in bearings if angle_min <= angle <= angle_max]
-        return round(min(hits), 3) if hits else None
+            scan_stamp = self._scan_stamp
+        if time.time() - scan_stamp > self.scan_max_age:
+            return None
+        hits = sorted(r for angle, r in bearings if angle_min <= angle <= angle_max)
+        if not hits:
+            return None
+        cluster = [hits[0]]
+        clusters = [cluster]
+        for r in hits[1:]:
+            if r - cluster[-1] > self.cluster_gap:
+                cluster = [r]
+                clusters.append(cluster)
+            else:
+                cluster.append(r)
+        min_size = 2 if len(hits) >= 4 else 1
+        for cluster in clusters:
+            if len(cluster) >= min_size:
+                return round(cluster[len(cluster) // 2], 3)
+        return round(hits[0], 3)
 
     # --- サーマルガバナ ---
     def _update_thermal(self):
