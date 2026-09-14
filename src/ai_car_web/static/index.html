@@ -50,11 +50,6 @@
   .badge.ok { background: #1e4a2b; color: #8fe0a4; }
   .badge.warn { background: #5a4416; color: #f0c674; }
   .badge.crit { background: #5a1f1f; color: #f09a9a; }
-  .level { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-  .level.clear { color: #8fe0a4; }
-  .level.slow { color: #f0c674; }
-  .level.stop { color: #f09a9a; }
-  .level.unknown { color: #9fb0c7; }
   .note { font-size: 12px; color: #9fb0c7; margin-top: 8px; line-height: 1.5; }
   .cam { width: 100%; aspect-ratio: 4 / 3; background: #11161d; border-radius: 6px;
          object-fit: contain; display: block; }
@@ -83,9 +78,15 @@
         <td class="k">fps 受信/配信</td>
         <td class="v" id="cam_fps" title="受信 = ROS トピックの実測レート、配信 = ブラウザへの MJPEG 上限">-</td>
       </tr>
-      <tr><td class="k">1枚 [KB]</td><td class="v" id="cam_kb">-</td></tr>
-      <tr><td class="k">受信フレーム</td><td class="v" id="cam_frames">-</td></tr>
       <tr><td class="k">最終受信 [s]</td><td class="v" id="cam_age">-</td></tr>
+      <tr><td class="k">障害物</td><td class="v" id="o_level">-</td></tr>
+      <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
+      <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
+      <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
+      <tr>
+        <td class="k">推論 [ms]</td>
+        <td class="v" id="o_infer" title="括弧内は AI HAT+ のサーマル状態と推論レート係数">-</td>
+      </tr>
     </table>
     <div class="note" id="cam_note"></div>
   </div>
@@ -146,20 +147,6 @@
         <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
       </table>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>障害物判定</h2>
-    <div class="level unknown" id="o_level">-</div>
-    <table>
-      <tr><td class="k">前方距離 [m]</td><td class="v" id="o_front">-</td></tr>
-      <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
-      <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
-      <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
-      <tr><td class="k">推論 [ms]</td><td class="v" id="o_infer">-</td></tr>
-      <tr><td class="k">サーマル</td><td class="v" id="o_thermal">-</td></tr>
-    </table>
-    <div class="note" id="o_note"></div>
   </div>
 
   <div class="card">
@@ -391,13 +378,15 @@ const THERMAL_TEXT = { normal: '通常', warn: '高温・レート低下', criti
 function renderObstacle(o) {
   const level = document.getElementById('o_level');
   if (!o) {
-    level.textContent = '/obstacle_status 未受信';
-    level.className = 'level unknown';
+    level.innerHTML = '<span class="badge">未受信</span>';
+    level.title = '/obstacle_status 未受信';
     return;
   }
-  level.textContent = LEVEL_TEXT[o.level] || o.level;
-  level.className = `level ${o.level}`;
-  document.getElementById('o_front').textContent = fmt(o.front_distance);
+  const LEVEL_BADGE = { clear: 'ok', slow: 'warn', stop: 'crit' };
+  const text = LEVEL_TEXT[o.level] || o.level;
+  level.innerHTML =
+    `<span class="badge ${LEVEL_BADGE[o.level] || ''}">${text} ${fmt(o.front_distance)} m</span>`;
+  level.title = o.note || o.reason || '';
   const sec = o.sectors || {};
   document.getElementById('o_sectors').textContent =
     `${fmt(sec.left)}/${fmt(sec.front)}/${fmt(sec.right)}`;
@@ -409,11 +398,9 @@ function renderObstacle(o) {
     ? labels[0] + (labels.length > 1 ? ` 他${labels.length - 1}` : '')
     : '-';
   labelCell.title = labels.join(', ') || '-';
-  document.getElementById('o_infer').textContent = fmt(o.inference_ms, 1);
   const th = o.thermal || {};
-  document.getElementById('o_thermal').textContent =
-    `${THERMAL_TEXT[th.state] || '-'} ${Math.round((th.inference_scale ?? 1) * 100)}%`;
-  document.getElementById('o_note').textContent = o.note || o.reason || '';
+  document.getElementById('o_infer').textContent =
+    `${fmt(o.inference_ms, 1)}（${THERMAL_TEXT[th.state] || '-'} ${Math.round((th.inference_scale ?? 1) * 100)}%）`;
 
   const tp = o.throughput || {};
   document.getElementById('h_fps').textContent = tp.fps == null
@@ -499,10 +486,10 @@ function renderCamera(cam) {
   }
   document.getElementById('cam_size').textContent = cam.width
     ? `${cam.width} x ${cam.height}` : '-';
-  document.getElementById('cam_fps').textContent = cam.fps == null
+  const fpsCell = document.getElementById('cam_fps');
+  fpsCell.textContent = cam.fps == null
     ? '-' : `${fmt(cam.fps, 1)} / ${fmt(cam.stream_fps, 0)}`;
-  document.getElementById('cam_kb').textContent = fmt(cam.kb, 1);
-  document.getElementById('cam_frames').textContent = cam.frames ?? '-';
+  fpsCell.title = `受信 = ROS トピックの実測レート、配信 = MJPEG 上限。受信 ${cam.frames ?? '-'} フレーム / 1枚 ${fmt(cam.kb, 1)} KB`;
   document.getElementById('cam_age').textContent = fmt(cam.age_s, 1);
   document.getElementById('cam_note').textContent = cam.available
     ? '' : `${cam.topic} を待機中です（camera_ros ノードを起動してください）`;
