@@ -17,6 +17,8 @@
           gap: 16px; }
   .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
   .card.wide { grid-column: span 2; }
+  /* 4 列固定: カメラ / LiDAR を上段、CPU / AI HAT+ / 手動操作を下段に揃える */
+  @media (min-width: 900px) { .grid { grid-template-columns: repeat(4, 1fr); } }
   @media (max-width: 620px) { .card.wide { grid-column: auto; } }
   .stack { display: grid; gap: 16px; grid-template-rows: auto 1fr; }
   .card h2 { font-size: 14px; margin: 0 0 10px; color: #9fb0c7; font-weight: 600; }
@@ -166,6 +168,26 @@
     </div>
   </div>
 
+  <div class="card wide">
+    <h2>手動操作</h2>
+    <div class="pad">
+      <button data-x="1" data-y="1" data-z="0">⭦</button>
+      <button data-x="1" data-y="0" data-z="0">前進</button>
+      <button data-x="1" data-y="-1" data-z="0">⭧</button>
+      <button data-x="0" data-y="1" data-z="0">左平行</button>
+      <button data-x="0" data-y="0" data-z="0" class="stop">停止</button>
+      <button data-x="0" data-y="-1" data-z="0">右平行</button>
+      <button data-x="-1" data-y="0" data-z="0">後退</button>
+      <button data-x="0" data-y="0" data-z="1">左旋回</button>
+      <button data-x="0" data-y="0" data-z="-1">右旋回</button>
+    </div>
+    <div class="speed">
+      出力: <span id="gainval">50</span>%
+      <input id="gain" type="range" min="10" max="100" value="50">
+    </div>
+    <div class="speed">押している間だけ動作します（離すと停止）。</div>
+  </div>
+
   <div class="card full">
     <h2>Raspberry Pi 5 — GPIO 40ピンヘッダー <span class="badge" id="gpio_used">-</span></h2>
     <svg class="gpio_svg" id="gpio_svg" viewBox="0 0 1040 420" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -193,25 +215,6 @@
     <div class="note" id="gpio_note"></div>
   </div>
 
-  <div class="card">
-    <h2>手動操作</h2>
-    <div class="pad">
-      <button data-x="1" data-y="1" data-z="0">⭦</button>
-      <button data-x="1" data-y="0" data-z="0">前進</button>
-      <button data-x="1" data-y="-1" data-z="0">⭧</button>
-      <button data-x="0" data-y="1" data-z="0">左平行</button>
-      <button data-x="0" data-y="0" data-z="0" class="stop">停止</button>
-      <button data-x="0" data-y="-1" data-z="0">右平行</button>
-      <button data-x="-1" data-y="0" data-z="0">後退</button>
-      <button data-x="0" data-y="0" data-z="1">左旋回</button>
-      <button data-x="0" data-y="0" data-z="-1">右旋回</button>
-    </div>
-    <div class="speed">
-      出力: <span id="gainval">50</span>%
-      <input id="gain" type="range" min="10" max="100" value="50">
-    </div>
-    <div class="speed">押している間だけ動作します（離すと停止）。</div>
-  </div>
 
 </div>
 
