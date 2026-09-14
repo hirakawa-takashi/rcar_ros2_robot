@@ -20,9 +20,9 @@
   @media (max-width: 620px) { .card.wide { grid-column: auto; } }
   .stack { display: grid; gap: 16px; grid-template-rows: auto 1fr; }
   .card h2 { font-size: 14px; margin: 0 0 10px; color: #9fb0c7; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  td { padding: 3px 0; }
-  td.k { color: #9fb0c7; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+  td { padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  td.k { color: #9fb0c7; width: 42%; }
   td.v { text-align: right; font-variant-numeric: tabular-nums; }
   .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   button { background: #2a3340; color: #e8eaed; border: 1px solid #3a4657;
@@ -140,15 +140,15 @@
   </div>
 
   <div class="card">
-    <h2>障害物判定（LiDAR 主 / AI HAT+ 補助）</h2>
+    <h2>障害物判定</h2>
     <div class="level unknown" id="o_level">-</div>
     <table>
       <tr><td class="k">前方距離 [m]</td><td class="v" id="o_front">-</td></tr>
-      <tr><td class="k">左 / 中央 / 右 [m]</td><td class="v" id="o_sectors">-</td></tr>
-      <tr><td class="k">前進速度制限</td><td class="v" id="o_scale">-</td></tr>
-      <tr><td class="k">検出物体（カメラ）</td><td class="v" id="o_labels">-</td></tr>
-      <tr><td class="k">推論時間 [ms]</td><td class="v" id="o_infer">-</td></tr>
-      <tr><td class="k">サーマル制御</td><td class="v" id="o_thermal">-</td></tr>
+      <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
+      <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
+      <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
+      <tr><td class="k">推論 [ms]</td><td class="v" id="o_infer">-</td></tr>
+      <tr><td class="k">サーマル</td><td class="v" id="o_thermal">-</td></tr>
     </table>
     <div class="note" id="o_note"></div>
   </div>
@@ -373,7 +373,7 @@ function drawScanMap(scan, danger, frontHalfRad) {
 }
 
 const LEVEL_TEXT = { clear: '安全', slow: '減速', stop: '停止', unknown: '不明' };
-const THERMAL_TEXT = { normal: '通常', warn: '高温のため推論レート低下', critical: '危険温度のため推論停止' };
+const THERMAL_TEXT = { normal: '通常', warn: '高温・レート低下', critical: '危険温度・停止' };
 
 function renderObstacle(o) {
   const level = document.getElementById('o_level');
@@ -387,15 +387,19 @@ function renderObstacle(o) {
   document.getElementById('o_front').textContent = fmt(o.front_distance);
   const sec = o.sectors || {};
   document.getElementById('o_sectors').textContent =
-    `${fmt(sec.left)} / ${fmt(sec.front)} / ${fmt(sec.right)}`;
+    `${fmt(sec.left)}/${fmt(sec.front)}/${fmt(sec.right)}`;
   document.getElementById('o_scale').textContent =
     `${Math.round((o.speed_scale ?? 1) * 100)} %`;
   const labels = o.front_labels || [];
-  document.getElementById('o_labels').textContent = labels.length ? labels.join(', ') : '-';
+  const labelCell = document.getElementById('o_labels');
+  labelCell.textContent = labels.length
+    ? labels[0] + (labels.length > 1 ? ` 他${labels.length - 1}` : '')
+    : '-';
+  labelCell.title = labels.join(', ') || '-';
   document.getElementById('o_infer').textContent = fmt(o.inference_ms, 1);
   const th = o.thermal || {};
   document.getElementById('o_thermal').textContent =
-    `${THERMAL_TEXT[th.state] || '-'}（推論 ${Math.round((th.inference_scale ?? 1) * 100)} %）`;
+    `${THERMAL_TEXT[th.state] || '-'} ${Math.round((th.inference_scale ?? 1) * 100)}%`;
   document.getElementById('o_note').textContent = o.note || o.reason || '';
 }
 
