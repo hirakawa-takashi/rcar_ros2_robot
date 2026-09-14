@@ -500,7 +500,7 @@ function startPolling() {
       .then(r => r.json())
       .then(render)
       .catch(() => setConn(false, '切断（再接続します）'));
-  }, 1000);
+  }, 250);
 }
 
 function connect() {

@@ -16,7 +16,7 @@ dashboard_node:
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
-    telemetry_rate: 5.0
+    telemetry_rate: 10.0
 
 system_monitor_node:
   ros__parameters:
@@ -35,7 +35,7 @@ perception_node:
     stop_distance: 0.35
     slow_distance: 0.8
     hef_path: "/home/super/AI-CAR_ws/models/yolov8n.hef"
-    inference_rate: 4.0
+    inference_rate: 10.0
     score_threshold: 0.4
     camera_hfov_deg: 66.0
     scan_angle_offset_deg: 180.0
