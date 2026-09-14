@@ -21,12 +21,14 @@ setup(
     zip_safe=True,
     maintainer='super',
     maintainer_email='hirakawa3.tennis.gogo@gmail.com',
-    description='AT-CAR 用 FastAPI Webダッシュボード',
+    description='AI-CAR 用 FastAPI Webダッシュボード',
     license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'dashboard_node = ai_car_web.dashboard_node:main',
+            'system_monitor_node = ai_car_web.system_monitor_node:main',
+            'perception_node = ai_car_web.perception_node:main',
         ],
     },
 )

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AT-CAR ダッシュボード</title>
+<title>AI-CAR ダッシュボード</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; padding: 16px; font-family: system-ui, sans-serif;
@@ -16,10 +16,13 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
           gap: 16px; }
   .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
+  .card.wide { grid-column: span 2; }
+  @media (max-width: 620px) { .card.wide { grid-column: auto; } }
+  .stack { display: grid; gap: 16px; grid-template-rows: auto 1fr; }
   .card h2 { font-size: 14px; margin: 0 0 10px; color: #9fb0c7; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  td { padding: 3px 0; }
-  td.k { color: #9fb0c7; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+  td { padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  td.k { color: #9fb0c7; width: 42%; }
   td.v { text-align: right; font-variant-numeric: tabular-nums; }
   .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   button { background: #2a3340; color: #e8eaed; border: 1px solid #3a4657;
@@ -28,13 +31,124 @@
   button.stop { grid-column: 2; background: #7a2530; border-color: #a33; }
   .speed { margin-top: 12px; font-size: 13px; color: #9fb0c7; }
   input[type=range] { width: 100%; }
+  .bar { position: relative; height: 8px; background: #2a3340; border-radius: 4px;
+         overflow: hidden; margin: 4px 0 8px; }
+  .bar > span { position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+                background: #4a90d9; transition: width .3s; }
+  .bar > span.warn { background: #d98e2b; }
+  .bar > span.crit { background: #d9534f; }
+  .barrow { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+           gap: 8px; font-size: 14px; margin: 3px 0; }
+  .barrow .k { color: #9fb0c7; }
+  .barrow .bar { margin: 0; }
+  .barrow .v { text-align: right; font-variant-numeric: tabular-nums; min-width: 64px; }
+  .cores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+  .core { font-size: 11px; color: #9fb0c7; text-align: center; }
+  .core .val { color: #e8eaed; word-break: break-all; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+           background: #2a3340; color: #9fb0c7; }
+  .badge.ok { background: #1e4a2b; color: #8fe0a4; }
+  .badge.warn { background: #5a4416; color: #f0c674; }
+  .badge.crit { background: #5a1f1f; color: #f09a9a; }
+  .note { font-size: 12px; color: #9fb0c7; margin-top: 8px; line-height: 1.5; }
+  .cam { width: 100%; aspect-ratio: 4 / 3; background: #11161d; border-radius: 6px;
+         object-fit: contain; display: block; }
+  .camwrap { position: relative; }
+  .camwrap .cam_overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+         pointer-events: none; }
+  .map { width: 100%; aspect-ratio: 1 / 1; background: #11161d; border-radius: 6px;
+         display: block; margin-bottom: 8px; }
 </style>
 </head>
 <body>
-<h1>AT-CAR ダッシュボード</h1>
+<h1>AI-CAR ダッシュボード</h1>
 <div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
 
 <div class="grid">
+  <div class="card wide">
+    <h2>カメラ (/camera/image_raw/compressed)</h2>
+    <div class="camwrap">
+      <img class="cam" id="cam" alt="camera">
+      <canvas class="cam_overlay" id="cam_overlay" width="640" height="480"></canvas>
+    </div>
+    <table>
+      <tr><td class="k">状態</td><td class="v" id="cam_state">-</td></tr>
+      <tr><td class="k">解像度</td><td class="v" id="cam_size">-</td></tr>
+      <tr>
+        <td class="k">fps 受信/配信</td>
+        <td class="v" id="cam_fps" title="受信 = ROS トピックの実測レート、配信 = ブラウザへの MJPEG 上限">-</td>
+      </tr>
+      <tr><td class="k">最終受信 [s]</td><td class="v" id="cam_age">-</td></tr>
+      <tr><td class="k">障害物</td><td class="v" id="o_level">-</td></tr>
+      <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
+      <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
+      <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
+      <tr>
+        <td class="k">推論 [ms]</td>
+        <td class="v" id="o_infer" title="括弧内は AI HAT+ のサーマル状態と推論レート係数">-</td>
+      </tr>
+    </table>
+    <div class="note" id="cam_note"></div>
+  </div>
+
+  <div class="card wide">
+    <h2>LiDAR (/scan)</h2>
+    <canvas class="map" id="scan_map" width="480" height="480"></canvas>
+    <table>
+      <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
+      <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
+      <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
+      <tr><td class="k">表示範囲 [m]</td><td class="v" id="s_scale">-</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Raspberry Pi 5 — CPU</h2>
+    <div class="barrow">
+      <span class="k">温度</span>
+      <span class="bar"><span id="cpu_temp_bar"></span></span>
+      <span class="v" id="cpu_temp">-</span>
+    </div>
+    <div class="bar"><span id="cpu_bar"></span></div>
+    <table>
+      <tr><td class="k">CPU使用率</td><td class="v" id="cpu_pct">-</td></tr>
+      <tr><td class="k">クロック [MHz]</td><td class="v" id="cpu_freq">-</td></tr>
+      <tr><td class="k">ファン [rpm]</td><td class="v" id="cpu_fan">-</td></tr>
+      <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
+      <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
+      <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
+      <tr><td class="k">電源状態</td><td class="v" id="pwr_state">-</td></tr>
+      <tr><td class="k">PD対応（5A）</td><td class="v" id="pwr_pd">-</td></tr>
+    </table>
+    <div class="cores" id="cores"></div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <h2>AI HAT+ — Hailo-8 NPU</h2>
+      <div class="barrow">
+        <span class="k">温度</span>
+        <span class="bar"><span id="h_temp_bar"></span></span>
+        <span class="v" id="h_temp">-</span>
+      </div>
+      <table>
+        <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
+        <tr><td class="k">fps 現在/連続</td><td class="v" id="h_fps">-</td></tr>
+        <tr><td class="k">TOPS 現在/連続</td><td class="v" id="h_tops" title="モデル演算量×推論レートによる推定値">-</td></tr>
+      </table>
+      <div class="cores" id="h_info"></div>
+    </div>
+
+    <div class="card">
+      <h2>IMU (/imu/data)</h2>
+      <table>
+        <tr><td class="k">roll [deg]</td><td class="v" id="i_roll">-</td></tr>
+        <tr><td class="k">pitch [deg]</td><td class="v" id="i_pitch">-</td></tr>
+        <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
+      </table>
+    </div>
+  </div>
+
   <div class="card">
     <h2>手動操作</h2>
     <div class="pad">
@@ -55,41 +169,6 @@
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
   </div>
 
-  <div class="card">
-    <h2>速度指令 (/cmd_vel)</h2>
-    <table>
-      <tr><td class="k">linear.x [m/s]</td><td class="v" id="cx">-</td></tr>
-      <tr><td class="k">linear.y [m/s]</td><td class="v" id="cy">-</td></tr>
-      <tr><td class="k">angular.z [rad/s]</td><td class="v" id="cz">-</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>LiDAR (/scan)</h2>
-    <table>
-      <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
-      <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
-      <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>IMU (/imu/data)</h2>
-    <table>
-      <tr><td class="k">roll [deg]</td><td class="v" id="i_roll">-</td></tr>
-      <tr><td class="k">pitch [deg]</td><td class="v" id="i_pitch">-</td></tr>
-      <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>オドメトリ (/odom)</h2>
-    <table>
-      <tr><td class="k">x / y [m]</td><td class="v" id="o_pos">-</td></tr>
-      <tr><td class="k">yaw [deg]</td><td class="v" id="o_yaw">-</td></tr>
-      <tr><td class="k">速度 [m/s]</td><td class="v" id="o_vel">-</td></tr>
-    </table>
-  </div>
 </div>
 
 <script>
@@ -143,40 +222,315 @@ function fmt(v, digits = 2) {
   return (v === null || v === undefined) ? '-' : Number(v).toFixed(digits);
 }
 
-function render(d) {
-  document.getElementById('cx').textContent = fmt(d.cmd_vel.linear_x);
-  document.getElementById('cy').textContent = fmt(d.cmd_vel.linear_y);
-  document.getElementById('cz').textContent = fmt(d.cmd_vel.angular_z);
+function setBar(el, percent) {
+  el.style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
+  el.className = percent >= 90 ? 'crit' : percent >= 70 ? 'warn' : '';
+}
 
+// 温度バーは 0–100℃ スケール。70℃以上で警告、85℃以上で危険色。
+function setTempBar(bar, label, celsius, fallback = '-') {
+  if (celsius == null) {
+    bar.style.width = '0%';
+    bar.className = '';
+    label.textContent = fallback;
+    return;
+  }
+  bar.style.width = `${Math.max(0, Math.min(100, celsius))}%`;
+  bar.className = celsius >= 85 ? 'crit' : celsius >= 70 ? 'warn' : '';
+  label.textContent = `${fmt(celsius, 1)} ℃`;
+}
+
+// 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
+function renderThrottled(t) {
+  const state = document.getElementById('pwr_state');
+  if (!t) {
+    state.innerHTML = '<span class="badge">不明</span>';
+    return;
+  }
+  const labels = [];
+  if (t.under_voltage_now) labels.push('低電圧');
+  if (t.throttled_now) labels.push('スロットリング');
+  if (t.arm_freq_capped_now) labels.push('クロック制限');
+  if (t.soft_temp_limit_now) labels.push('温度制限');
+  const past = t.under_voltage_occurred || t.throttled_occurred ||
+    t.arm_freq_capped_occurred || t.soft_temp_limit_occurred;
+
+  state.innerHTML = labels.length
+    ? `<span class="badge crit">${labels.join(' / ')}</span>`
+    : past ? '<span class="badge warn">起動後に低電圧発生</span>'
+    : '<span class="badge ok">正常</span>';
+}
+
+function renderSystem(s) {
+  if (!s) return;
+  const c = s.cpu || {};
+  document.getElementById('cpu_pct').textContent = fmt(c.percent, 1) + ' %';
+  setBar(document.getElementById('cpu_bar'), c.percent);
+  document.getElementById('cpu_freq').textContent = fmt(c.freq_mhz, 0);
+  const fan = c.fan || {};
+  document.getElementById('cpu_fan').textContent = fan.rpm == null
+    ? '-'
+    : `${fan.rpm}${fan.level == null ? '' : ` (${fan.level}/${fan.max_level})`}`;
+  setTempBar(document.getElementById('cpu_temp_bar'),
+             document.getElementById('cpu_temp'), c.temperature_c);
+  const cores = document.getElementById('cores');
+  cores.innerHTML = (c.per_core || [])
+    .map((v, i) => `<div class="core">C${i}<div class="bar"><span style="width:${v}%"></span></div>${fmt(v, 0)}%</div>`)
+    .join('');
+
+  const p = s.power;
+  document.getElementById('pwr_total').textContent = p ? fmt(p.total_w, 2) : '-';
+  document.getElementById('pwr_input').textContent = p ? fmt(p.input_volt, 2) : '-';
+  document.getElementById('pwr_amp').textContent = p ? fmt(p.input_amp, 2) : '-';
+  const pd = p ? p.pd_5a : null;
+  document.getElementById('pwr_pd').textContent =
+    pd === true ? '〇' : pd === false ? '×' : '-';
+  renderThrottled(p && p.throttled);
+
+  const h = s.hailo || {};
+  const state = !h.enabled ? '<span class="badge">無効</span>'
+    : h.driver_ready ? '<span class="badge ok">稼働中</span>'
+    : h.detected ? '<span class="badge warn">ドライバ未導入</span>'
+    : '<span class="badge warn">未検出</span>';
+  document.getElementById('h_state').innerHTML = state;
+
+  setTempBar(document.getElementById('h_temp_bar'),
+             document.getElementById('h_temp'), h.temperature_c, '非対応');
+
+  const info = [
+    ['デバイス', h.device_architecture || (h.pci ? 'Hailo-8' : '-')],
+    ['FW', h.firmware_version ? h.firmware_version.split(' ')[0] : '-'],
+    ['ドライバ', h.driver_version || '-'],
+    ['PCIe', h.pci_address ? h.pci_address.replace(/^0000:/, '') : '-'],
+  ];
+  document.getElementById('h_info').innerHTML = info
+    .map(([k, v]) => `<div class="core">${k}<div class="val">${v}</div></div>`)
+    .join('');
+}
+
+// LiDAR の 360度スキャンを上から見た点群として描画する（+X = 正面 = 上）。
+function drawScanMap(scan, danger, frontHalfRad) {
+  const canvas = document.getElementById('scan_map');
+  const ctx = canvas.getContext('2d');
+  const size = canvas.width;
+  const cx = size / 2, cy = size / 2;
+  ctx.clearRect(0, 0, size, size);
+
+  const points = (scan && scan.points) || [];
+  const maxRange = points.reduce((m, [x, y]) => Math.max(m, Math.hypot(x, y)), 0);
+  const range = Math.max(1, Math.ceil(maxRange));
+  const scale = (size / 2 - 10) / range;
+  document.getElementById('s_scale').textContent = points.length ? range : '-';
+
+  ctx.strokeStyle = '#2c3340';
+  ctx.lineWidth = 1;
+  for (let r = 1; r <= range; r++) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(cx, 0); ctx.lineTo(cx, size);
+  ctx.moveTo(0, cy); ctx.lineTo(size, cy);
+  ctx.stroke();
+
+  // 方位ラベル（上＝前方、下＝後方、左＝左、右＝右）
+  ctx.fillStyle = '#9fb0c7';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('前方', cx, 4);
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('後方', cx, size - 4);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText('左', 4, cy);
+  ctx.textAlign = 'right';
+  ctx.fillText('右', size - 4, cy);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+
+  for (const [x, y] of points) {
+    // 前方セクター内かつ危険距離以内の点のみ赤で強調する。
+    const near = Math.hypot(x, y) <= danger &&
+      Math.abs(Math.atan2(y, x)) <= frontHalfRad;
+    ctx.fillStyle = near ? '#e04b4b' : '#4a90d9';
+    const s = near ? 4 : 2;
+    ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
+  }
+
+  ctx.fillStyle = '#d9534f';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (!points.length) {
+    ctx.fillStyle = '#9fb0c7';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('/scan 未受信', cx, cy - 12);
+  }
+}
+
+const LEVEL_TEXT = { clear: '安全', slow: '減速', stop: '停止', unknown: '不明' };
+const THERMAL_TEXT = { normal: '通常', warn: '高温・レート低下', critical: '危険温度・停止' };
+
+function renderObstacle(o) {
+  const level = document.getElementById('o_level');
+  if (!o) {
+    level.innerHTML = '<span class="badge">未受信</span>';
+    level.title = '/obstacle_status 未受信';
+    return;
+  }
+  const LEVEL_BADGE = { clear: 'ok', slow: 'warn', stop: 'crit' };
+  const text = LEVEL_TEXT[o.level] || o.level;
+  level.innerHTML =
+    `<span class="badge ${LEVEL_BADGE[o.level] || ''}">${text} ${fmt(o.front_distance)} m</span>`;
+  level.title = o.note || o.reason || '';
+  const sec = o.sectors || {};
+  document.getElementById('o_sectors').textContent =
+    `${fmt(sec.left)}/${fmt(sec.front)}/${fmt(sec.right)}`;
+  document.getElementById('o_scale').textContent =
+    `${Math.round((o.speed_scale ?? 1) * 100)} %`;
+  const labels = o.front_labels || [];
+  const labelCell = document.getElementById('o_labels');
+  labelCell.textContent = labels.length
+    ? labels[0] + (labels.length > 1 ? ` 他${labels.length - 1}` : '')
+    : '-';
+  labelCell.title = labels.join(', ') || '-';
+  const th = o.thermal || {};
+  document.getElementById('o_infer').textContent =
+    `${fmt(o.inference_ms, 1)}（${THERMAL_TEXT[th.state] || '-'} ${Math.round((th.inference_scale ?? 1) * 100)}%）`;
+
+  const tp = o.throughput || {};
+  document.getElementById('h_fps').textContent = tp.fps == null
+    ? '-' : `${fmt(tp.fps, 1)} / ${fmt(tp.max_fps, 0)}`;
+  document.getElementById('h_tops').textContent = tp.max_tops == null
+    ? '-' : `${fmt(tp.now_tops, 2)} / ${fmt(tp.max_tops, 2)}`;
+  document.getElementById('h_tops').title = tp.peak_tops == null ? ''
+    : `モデル ${tp.model_gops} GOP × 推論レートの推定値。公称 ${tp.peak_tops} TOPS に対し連続実行時で ${fmt((tp.utilization || 0) * 100, 1)} %`;
+}
+
+function render(d) {
   const s = d.scan;
   document.getElementById('s_count').textContent = s ? s.count : '-';
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
+  const danger = (d.obstacle && d.obstacle.danger_distance) || 0.3;
+  const frontHalf = (((d.obstacle && d.obstacle.front_angle_deg) || 60) / 2) * Math.PI / 180;
+  drawScanMap(s, danger, frontHalf);
+  renderObstacle(d.obstacle);
+  drawDetections(d.obstacle);
 
   const i = d.imu;
   document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';
   document.getElementById('i_pitch').textContent = i ? fmt(i.pitch_deg, 1) : '-';
   document.getElementById('i_yaw').textContent = i ? fmt(i.yaw_deg, 1) : '-';
 
-  const o = d.odom;
-  document.getElementById('o_pos').textContent =
-    o ? `${fmt(o.x)} / ${fmt(o.y)}` : '-';
-  document.getElementById('o_yaw').textContent = o ? fmt(o.yaw_deg, 1) : '-';
-  document.getElementById('o_vel').textContent = o ? fmt(o.linear_x) : '-';
+  renderSystem(d.system);
+  renderCamera(d.camera);
+}
+
+// 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑）。
+function drawDetections(o) {
+  const canvas = document.getElementById('cam_overlay');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const danger = (o && o.danger_distance) || 0.3;
+  for (const d of (o && o.detections) || []) {
+    const [x1, y1, x2, y2] = d.box;
+    const near = d.distance != null && d.distance <= danger;
+    ctx.strokeStyle = near ? '#e04b4b' : '#5cb85c';
+    ctx.lineWidth = near ? 3 : 2;
+    ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
+    const text = d.distance != null
+      ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
+    ctx.font = 'bold 16px sans-serif';
+    const tw = ctx.measureText(text).width + 8;
+    const ty = Math.max(0, y1 * h - 20);
+    ctx.fillStyle = near ? '#e04b4b' : '#5cb85c';
+    ctx.fillRect(x1 * w, ty, tw, 20);
+    ctx.fillStyle = '#0e1116';
+    ctx.fillText(text, x1 * w + 4, ty + 15);
+  }
+}
+
+let camStreaming = false;
+
+function renderCamera(cam) {
+  if (!cam) return;
+  const img = document.getElementById('cam');
+  if (cam.available && !camStreaming) {
+    camStreaming = true;
+    img.src = `/api/camera/stream?t=${Date.now()}`;
+  } else if (!cam.available && camStreaming) {
+    camStreaming = false;
+    img.removeAttribute('src');
+  }
+  document.getElementById('cam_state').innerHTML = cam.available
+    ? '<span class="badge ok">配信中</span>'
+    : '<span class="badge warn">映像なし</span>';
+  if (cam.width && cam.height) {
+    // 画像のアスペクトを実解像度に合わせないと、object-fit の余白分だけ
+    // 検出枠がズレる。
+    const ratio = `${cam.width} / ${cam.height}`;
+    img.style.aspectRatio = ratio;
+    const canvas = document.getElementById('cam_overlay');
+    canvas.style.aspectRatio = ratio;
+    if (canvas.width !== cam.width) {
+      canvas.width = cam.width;
+      canvas.height = cam.height;
+    }
+  }
+  document.getElementById('cam_size').textContent = cam.width
+    ? `${cam.width} x ${cam.height}` : '-';
+  const fpsCell = document.getElementById('cam_fps');
+  fpsCell.textContent = cam.fps == null
+    ? '-' : `${fmt(cam.fps, 1)} / ${fmt(cam.stream_fps, 0)}`;
+  fpsCell.title = `受信 = ROS トピックの実測レート、配信 = MJPEG 上限。受信 ${cam.frames ?? '-'} フレーム / 1枚 ${fmt(cam.kb, 1)} KB`;
+  document.getElementById('cam_age').textContent = fmt(cam.age_s, 1);
+  document.getElementById('cam_note').textContent = cam.available
+    ? '' : `${cam.topic} を待機中です（camera_ros ノードを起動してください）`;
+}
+
+let pollTimer = null;
+
+function setConn(on, text) {
+  document.getElementById('dot').classList.toggle('on', on);
+  document.getElementById('conn').textContent = text;
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  setConn(true, 'ポーリング接続（WebSocket未使用）');
+  pollTimer = setInterval(() => {
+    fetch('/api/status')
+      .then(r => r.json())
+      .then(render)
+      .catch(() => setConn(false, '切断（再接続します）'));
+  }, 250);
 }
 
 function connect() {
+  let opened = false;
   const ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onopen = () => {
-    document.getElementById('dot').classList.add('on');
-    document.getElementById('conn').textContent = '接続中';
+    opened = true;
+    clearInterval(pollTimer);
+    pollTimer = null;
+    setConn(true, '接続中');
   };
   ws.onmessage = ev => render(JSON.parse(ev.data));
   ws.onclose = () => {
-    document.getElementById('dot').classList.remove('on');
-    document.getElementById('conn').textContent = '切断（再接続します）';
-    setTimeout(connect, 2000);
+    if (opened) {
+      setConn(false, '切断（再接続します）');
+      setTimeout(connect, 2000);
+    } else {
+      // uvicorn に WebSocket ライブラリが無い環境では REST ポーリングへ切り替える
+      startPolling();
+    }
   };
 }
 connect();

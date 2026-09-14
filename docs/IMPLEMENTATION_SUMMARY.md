@@ -1,7 +1,7 @@
 # AI-CAR ロボット開発プロジェクト - 実装概要
 
 ## プロジェクト概要
-- **プロジェクト名**: AI-CAR (AT-CAR) ロボット開発プロジェクト
+- **プロジェクト名**: AI-CAR ロボット開発プロジェクト
 - **実行環境**: Raspberry Pi 5
 - **ROSバージョン**: ROS2 Jazzy（ros-base）
 - **主な技術スタック**: LiDAR、カメラ、IMU、Nav2（未導入）、FastAPI
