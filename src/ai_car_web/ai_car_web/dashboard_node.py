@@ -159,6 +159,7 @@ class DashboardNode(Node):
         self._obstacle_stamp = 0.0
         self._joy_stamp = 0.0
         self._joy_moving = False
+        self._joy_cmd = (0.0, 0.0, 0.0)
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -319,6 +320,7 @@ class DashboardNode(Node):
             self._joy_stamp = self.get_clock().now().nanoseconds * 1e-9
             was_moving = self._joy_moving
             self._joy_moving = moving
+            self._joy_cmd = (msg.linear.x, msg.linear.y, msg.angular.z)
         # 停止中はニュートラルへ戻った瞬間だけ停止を送り、Web 操作の指令を上書きしない
         if moving or was_moving:
             self.publish_cmd_vel(msg.linear.x, msg.linear.y, msg.angular.z)
@@ -388,6 +390,9 @@ class DashboardNode(Node):
                     'connected': (self.get_clock().now().nanoseconds * 1e-9
                                   - self._joy_stamp) < self.joy_timeout,
                     'active': self._joy_moving,
+                    'x': round(self._joy_cmd[0], 2),
+                    'y': round(self._joy_cmd[1], 2),
+                    'z': round(self._joy_cmd[2], 2),
                 },
                 'limits': {
                     'max_linear_speed': self.max_linear,

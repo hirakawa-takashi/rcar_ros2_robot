@@ -30,6 +30,7 @@
   button { background: #2a3340; color: #e8eaed; border: 1px solid #3a4657;
            border-radius: 6px; padding: 14px 0; font-size: 15px; cursor: pointer; }
   button:active { background: #3c4a5e; }
+  button.joy-on { background: #2e7d4f; border-color: #43c47a; }
   button.stop { grid-column: 2; background: #7a2530; border-color: #a33; }
   .speed { margin-top: 12px; font-size: 13px; color: #9fb0c7; }
   input[type=range] { width: 100%; }
@@ -484,6 +485,19 @@ function render(d) {
 
 function renderJoy(j) {
   const el = document.getElementById('joy_state');
+  let key = '0,0,0';
+  if (j && j.connected && j.active) {
+    const sign = (v) => Math.abs(v) > 0.2 ? (v > 0 ? 1 : -1) : 0;
+    const sx = sign(j.x);
+    const sy = sign(j.y);
+    const sz = sign(j.z);
+    key = sz !== 0 ? `0,0,${sz}` : `${sx},${sy},0`;
+  }
+  for (const b of document.querySelectorAll('.pad button')) {
+    b.classList.toggle(
+      'joy-on',
+      key !== '0,0,0' && `${b.dataset.x},${b.dataset.y},${b.dataset.z}` === key);
+  }
   if (!j || !j.connected) { el.className = 'badge warn'; el.textContent = '未接続'; return; }
   el.className = 'badge ok';
   el.textContent = j.active ? '操作中' : '接続中';
