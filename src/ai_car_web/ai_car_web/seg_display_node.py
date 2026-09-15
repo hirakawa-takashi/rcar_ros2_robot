@@ -12,6 +12,7 @@ except ImportError:
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import String
 
 SEGMENTS = {
@@ -157,7 +158,8 @@ class SegDisplayNode(Node):
         self._state = None
 
         self._state_pub = self.create_publisher(
-            String, self.get_parameter('state_topic').value, 10)
+            String, self.get_parameter('state_topic').value,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_subscription(
             String, self.get_parameter('system_status_topic').value,
             self._system_cb, 10)

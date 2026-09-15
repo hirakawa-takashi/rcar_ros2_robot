@@ -68,6 +68,7 @@
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 
 ## テスト結果
+- `seg_display_node`（実機、2026/09/15、**TM1637 モジュール未接続の状態**）: `python3-libgpiod` を apt 導入後、`gpiochip4 (pinctrl-rp1)` の GPIO23/24 を `seg_display_node` が output で確保（`gpioinfo` で確認）。起動 1 秒で `boot` → `/system_status` 受信後 `rdy` に遷移、`/display_state` を publish。実際の LED 点灯は配線後に確認が必要
 - `colcon build --symlink-install`: 2パッケージ成功
 - `xacro ai_car.xacro`: URDF 生成成功（10リンク）
 - `ros2 launch ai_car_web dashboard.launch.py`: 起動成功
