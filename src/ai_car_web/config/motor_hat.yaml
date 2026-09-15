@@ -7,7 +7,13 @@
 #   wheel    : 車輪位置（front_left / front_right / rear_left / rear_right）。URDF の *_wheel_link と同名
 #   reversed : true なら正転指令で車輪が後退する取り付け（ソフト側で符号反転する）
 #   colors   : モーター配線色 [端子 +側, 端子 −側]（未確定なら空欄）
+#   encoder  : OSOYOO 520 モーター内蔵エンコーダー（ホール式 A/B 相）を Pi の GPIO へ直結する割り付け
+#     a_pin / b_pin : A 相 / B 相を接続する Pi 40 ピンヘッダーの物理ピン番号
+#     colors        : エンコーダー配線色 [A, B]（未確定なら空欄）
 #   note     : 備考
+#
+# エンコーダー 6 ピンのうち M+ / M− は HAT の M1〜M4 端子へ、VCC / GND / A / B は Pi のヘッダーへ
+# 「エンコーダー用ジャンパー線（6 ピン、型番 2024006000）」で接続する。VCC は必ず 3V3（A/B 出力が GPIO 直結のため）。
 hat:
   name: Adafruit DC & Stepper Motor HAT
   driver: PCA9685 (PWM) + TB6612 x2
@@ -18,25 +24,35 @@ hat:
   power:
     source: バッテリー 12V 系統
     colors: [赤, 黒]
+  # エンコーダー共通電源（Pi ヘッダーの物理ピン番号）
+  encoder:
+    vcc_pin: 17
+    vcc: 3V3
+    gnd_pins: [30, 34, 39, 25]
+    colors: [青, 黒]
 
 motors:
   - channel: M1
     wheel: front_left
     reversed: false
     colors: [赤, 黒]
+    encoder: {a_pin: 29, b_pin: 31, colors: [黄, 緑]}
     note: 左前
   - channel: M2
     wheel: front_right
     reversed: true
     colors: [赤, 黒]
+    encoder: {a_pin: 33, b_pin: 35, colors: [黄, 緑]}
     note: 右前。左右対称に取り付くため正転指令で逆回転 → reversed
   - channel: M3
     wheel: rear_left
     reversed: false
     colors: [赤, 黒]
+    encoder: {a_pin: 37, b_pin: 32, colors: [黄, 緑]}
     note: 左後
   - channel: M4
     wheel: rear_right
     reversed: true
     colors: [赤, 黒]
+    encoder: {a_pin: 36, b_pin: 38, colors: [黄, 緑]}
     note: 右後。左右対称に取り付くため正転指令で逆回転 → reversed

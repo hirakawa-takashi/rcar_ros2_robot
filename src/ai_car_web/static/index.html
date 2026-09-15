@@ -224,11 +224,11 @@
 
   <div class="card full">
     <h2>Motor HAT 接続図 — M1〜M4 と車輪の割り付け <span class="badge" id="motor_badge">-</span></h2>
-    <svg class="motor_svg" id="motor_svg" viewBox="0 0 760 460" xmlns="http://www.w3.org/2000/svg"></svg>
+    <svg class="motor_svg" id="motor_svg" viewBox="0 0 760 500" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="pinwrap">
     <table class="pins">
       <thead><tr>
-        <th>端子</th><th>車輪</th><th>回転</th><th>配線色 (+ / −)</th><th>PCA9685 ch (PWM / IN1 / IN2)</th><th>ブリッジ</th><th>備考</th>
+        <th>端子</th><th>車輪</th><th>回転</th><th>配線色 (+ / −)</th><th>PCA9685 ch (PWM / IN1 / IN2)</th><th>ブリッジ</th><th>エンコーダー A / B → Pi ピン (GPIO)</th><th>備考</th>
       </tr></thead>
       <tbody id="motor_rows"></tbody>
     </table>
@@ -682,7 +682,7 @@ function wireHex(c, fallback) {
 // 上面図（上が前方）。中央に Motor HAT、四隅に車輪。端子 M1〜M4 から車輪へ配線を引く。
 function drawMotorHat(m) {
   const svg = document.getElementById('motor_svg');
-  const W = 760, H = 460, cx = W / 2, cy = H / 2;
+  const W = 760, H = 500, cx = W / 2, cy = 230;
   const hat = { w: 300, h: 150 };
   // 端子ごとの配線経路（横走り高さ・縦走り位置）をずらして重なりを避ける
   const route = { M1: { dy: 28, dx: 44 }, M2: { dy: 44, dx: 44 }, M3: { dy: 60, dx: 24 }, M4: { dy: 76, dx: 24 } };
@@ -740,8 +740,28 @@ function drawMotorHat(m) {
     out += `<text x="${lx}" y="${wy - 8}" text-anchor="${anchor}" font-size="13" fill="#e8eaed" font-weight="bold">${esc(label)}</text>`;
     out += `<text x="${lx}" y="${wy + 10}" text-anchor="${anchor}" font-size="14" fill="${mo ? '#7fd88a' : '#f08080'}" font-weight="bold">${mo ? esc(mo.channel) : '未割付'}</text>`;
     if (mo && mo.reversed) out += `<text x="${lx}" y="${wy + 26}" text-anchor="${anchor}" font-size="11" fill="#ffb74d">反転</text>`;
+    if (mo && mo.encoder) {
+      const e = mo.encoder;
+      const pinTxt = p => p ? `${p.pin}${p.bcm == null ? '' : `(G${p.bcm})`}` : '-';
+      // エンコーダー線（A/B）は車輪下に短く描き、Pi ヘッダーのピン番号を添える
+      const [ca, cb] = [wireHex((e.colors || [])[0], '#fdd835'), wireHex((e.colors || [])[1], '#43a047')];
+      const ey = wy + wheel.h / 2;
+      for (const [i, col] of [[-1, ca], [1, cb]]) {
+        const x = wx + i * 6;
+        out += `<line x1="${x}" y1="${ey}" x2="${x}" y2="${ey + 14}" stroke="#8a97a8" stroke-width="4"/>`;
+        out += `<line x1="${x}" y1="${ey}" x2="${x}" y2="${ey + 14}" stroke="${col}" stroke-width="2"/>`;
+      }
+      out += `<text x="${wx}" y="${ey + 26}" text-anchor="middle" font-size="10" fill="#cfd8e3">ENC A ${esc(pinTxt(e.a))}</text>`;
+      out += `<text x="${wx}" y="${ey + 38}" text-anchor="middle" font-size="10" fill="#cfd8e3">ENC B ${esc(pinTxt(e.b))}</text>`;
+    }
     out += '</g>';
   });
+  // エンコーダー共通電源の注記
+  const ec = m.hat.encoder;
+  if (ec) {
+    const gnd = (ec.gnd_pins || []).join(',');
+    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">ENC 電源 → Pi: VCC ${esc(ec.vcc || '')} pin ${esc(String(ec.vcc_pin ?? '-'))} / GND pin ${esc(gnd || '-')}</text>`;
+  }
   // Motor HAT 本体
   out += `<rect x="${cx - hat.w / 2}" y="${cy - hat.h / 2}" width="${hat.w}" height="${hat.h}" rx="10" fill="#1d3a5f" stroke="#64b5f6" stroke-width="2"/>`;
   out += `<text x="${cx}" y="${cy - hat.h / 2 + 24}" text-anchor="middle" font-size="14" fill="#e8eaed" font-weight="bold">${esc(m.hat.name || 'Motor HAT')}</text>`;
@@ -768,6 +788,16 @@ function drawMotorHat(m) {
   svg.innerHTML = out;
 }
 
+function encoderCell(e) {
+  if (!e) return '<span class="badge">なし</span>';
+  const one = (p, c, label) => {
+    if (!p) return `${label}: -`;
+    const bcm = p.bcm == null ? '<span class="badge warn">GPIOではない</span>' : `GPIO${p.bcm}`;
+    return `${label}: ${c ? wireSwatch(c) + ' ' : ''}pin ${p.pin} (${bcm})`;
+  };
+  return `${one(e.a, (e.colors || [])[0], 'A')}<br>${one(e.b, (e.colors || [])[1], 'B')}`;
+}
+
 function renderMotorHat(m) {
   const badge = document.getElementById('motor_badge');
   badge.textContent = `割付 ${m.motors.length} / 4`;
@@ -782,6 +812,7 @@ function renderMotorHat(m) {
       `<td>${colors}</td>` +
       `<td class="num" style="text-align:left;width:auto">${mo.pwm_channel} / ${mo.in1_channel} / ${mo.in2_channel}</td>` +
       `<td>${esc(mo.bridge)}</td>` +
+      `<td>${encoderCell(mo.encoder)}</td>` +
       `<td>${esc(mo.note)}</td>` +
       '</tr>';
   }).join('');

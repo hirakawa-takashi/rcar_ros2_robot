@@ -28,6 +28,49 @@ connections:
     color: 黄
     note: PCA9685 0x60
 
+  # --- OSOYOO 520 モーター内蔵エンコーダー（6ピンジャンパー線で Pi へ直結。割り付けは motor_hat.yaml と一致させる） ---
+  - pins: [17]
+    device: 520 モーターエンコーダー x4
+    signal: VCC 3V3（4 台共通）
+    color: 青
+    note: A/B 出力が GPIO 直結のため 5V は使わない
+  - pins: [30, 34, 39, 25]
+    device: 520 モーターエンコーダー x4
+    signal: GND
+    color: 黒
+  - pins: [29]
+    device: 520 エンコーダー M1 左前
+    signal: ENC A (GPIO5)
+    color: 黄
+  - pins: [31]
+    device: 520 エンコーダー M1 左前
+    signal: ENC B (GPIO6)
+    color: 緑
+  - pins: [33]
+    device: 520 エンコーダー M2 右前
+    signal: ENC A (GPIO13)
+    color: 黄
+  - pins: [35]
+    device: 520 エンコーダー M2 右前
+    signal: ENC B (GPIO19)
+    color: 緑
+  - pins: [37]
+    device: 520 エンコーダー M3 左後
+    signal: ENC A (GPIO26)
+    color: 黄
+  - pins: [32]
+    device: 520 エンコーダー M3 左後
+    signal: ENC B (GPIO12)
+    color: 緑
+  - pins: [36]
+    device: 520 エンコーダー M4 右後
+    signal: ENC A (GPIO16)
+    color: 黄
+  - pins: [38]
+    device: 520 エンコーダー M4 右後
+    signal: ENC B (GPIO20)
+    color: 緑
+
   # --- GY-BNO055 9軸 IMU（I2C 0x29） ---
   - pins: [1]
     device: GY-BNO055 IMU
