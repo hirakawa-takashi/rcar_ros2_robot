@@ -62,18 +62,18 @@ connections:
   - pins: [17]
     device: TM1637 4桁7セグLED
     signal: 3V3
-    color: ""
+    color: オレンジ
   - pins: [20]
     device: TM1637 4桁7セグLED
     signal: GND
-    color: ""
+    color: 黒
   - pins: [16]
     device: TM1637 4桁7セグLED
     signal: CLK (GPIO23)
-    color: ""
+    color: 黄
     note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
   - pins: [18]
     device: TM1637 4桁7セグLED
     signal: DIO (GPIO24)
-    color: ""
+    color: 緑
     note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）

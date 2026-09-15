@@ -64,7 +64,7 @@
 - 実機の電源が不足している。ダッシュボード（カメラ＋LiDAR＋Hailo 推論）起動と同時に `hwmon3: Undervoltage detected!` が連発し、2026/09/14 19:22 に shutdown シーケンスなしで電源断した（前回起動だけで 198 回発生、EXT5V は 4.75、5.11V、`get_throttled=0x50000`）。`usb_max_current_enable=0` で 5A PD として認識されておらず、Pi 5 が制限モード（USB 周辺機器 合計 600mA）で動作している。公式 27W USB-C PD 電源への交換と、RPLIDAR の別系統（セルフパワーハブ等）給電が必要
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
-- `gpio_pins.yaml` の配線内容（Motor HAT / BNO055 の I2C・電源・GND、AI HAT+ の ID EEPROM ピン、配線色）は HARDWARE_BOM からの暫定値。実配線と照合して修正が必要。TM1637 の配線色は未確定のため空欄
+- `gpio_pins.yaml` の配線内容（Motor HAT / BNO055 の I2C・電源・GND、AI HAT+ の ID EEPROM ピン、配線色）は HARDWARE_BOM からの暫定値。実配線と照合して修正が必要。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 
 ## テスト結果
