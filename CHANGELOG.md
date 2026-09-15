@@ -4,6 +4,8 @@
 
 ### Added
 - TM1637 4桁7セグメントLED用 `seg_display_node` を追加し、ロボット状態コードを表示
+- GY-BNO055 用 `imu_node` を追加し、I2C（0x29）から `/imu/data` を publish
+- `gpio_pins.yaml` の BNO055 配線色を SDA 白 / SCL 灰へ更新
 - ai_car_description パッケージを新規作成
   - CMakeLists.txt (ament_cmakeベース)、package.xml
   - urdf/ai_car.xacro: メカナム4輪・LiDAR・カメラ・IMU を含むロボット記述

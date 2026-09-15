@@ -43,7 +43,7 @@ systemctl status ai-car-dashboard.service
 sudo systemctl disable --now ai-car-dashboard.service   # 手動起動に戻す場合
 ```
 
-サービスは `Restart=always`（5秒間隔）で、USB デバイスの認識を待つため起動を10秒遅延する。カメラと LiDAR のノードは launch 側で `respawn` する。
+サービスは `Restart=always`（5秒間隔）で、USB デバイスの認識を待つため起動を10秒遅延する。カメラ、LiDAR、IMU のノードは launch 側で `respawn` する。
 
 CPU ファンの作動温度（既定 50/60/67.5/75℃）を前倒しして高温になりにくくする:
 
@@ -112,6 +112,20 @@ GPIO チップは `pinctrl-rp1` のラベルから自動検出する（通常は
 | `SLo ` | 減速 |
 | `LoU ` | 低電圧 |
 | `Err ` | システム状態未受信・タイムアウト |
+
+## IMU (GY-BNO055) のセットアップ
+
+`imu_node` は GY-BNO055（I2C バス1、ADRピンHigh、アドレス `0x29`）を読み取り、
+`/imu/data`（`sensor_msgs/Imu`）へ publish する。I2C のアクセス権を追加して再ログインする。
+
+```bash
+sudo usermod -aG i2c super
+# 再ログイン、またはサービスを再起動
+i2cdetect -y 1    # 0x29 が表示されることを確認
+```
+
+`dashboard.launch.py` の `use_imu`（既定 `true`）で起動し、無効化する場合は
+`use_imu:=false` を指定する。
 
 ## カメラ (IMX708 / Camera Module v3) のセットアップ（Ubuntu 24.04）
 

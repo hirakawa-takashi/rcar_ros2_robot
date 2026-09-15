@@ -31,6 +31,7 @@ setup(
             'perception_node = ai_car_web.perception_node:main',
             'joy_teleop_node = ai_car_web.joy_teleop_node:main',
             'seg_display_node = ai_car_web.seg_display_node:main',
+            'imu_node = ai_car_web.imu_node:main',
         ],
     },
 )

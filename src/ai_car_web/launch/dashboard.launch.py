@@ -36,6 +36,7 @@ def generate_launch_description():
     use_perception = LaunchConfiguration('use_perception')
     use_joy = LaunchConfiguration('use_joy')
     use_seg_display = LaunchConfiguration('use_seg_display')
+    use_imu = LaunchConfiguration('use_imu')
 
     try:
         get_package_share_directory('camera_ros')
@@ -91,6 +92,8 @@ def generate_launch_description():
                               description='ゲームパッド（F710）手動操作ノードを起動する'),
         DeclareLaunchArgument('use_seg_display', default_value='true',
                               description='TM1637 7セグ表示ノードを起動する'),
+        DeclareLaunchArgument('use_imu', default_value='true',
+                              description='BNO055 IMU ノードを起動する'),
         Node(
             package='ai_car_web',
             executable='dashboard_node',
@@ -131,6 +134,16 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_seg_display),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='imu_node',
+            name='imu_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_imu),
         ),
         *camera_nodes,
         *lidar_nodes,
