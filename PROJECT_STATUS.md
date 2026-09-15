@@ -2,7 +2,7 @@
 
 ## 最終更新
 - 更新日: 2026/09/15
-- 更新概要: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）と GY-BNO055 用 `imu_node`（I2C 0x29、`/imu/data`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
+- 更新概要: Motor HAT 接続図・一覧表を「1 モーター 6 本（Motor+ / Motor− / VCC / GND / Encoder A / Encoder B）」をすべて明示する形に変更（`GET /api/motor_hat` の各モーターに `wires` 6 件、`encoder` に `vcc` / `gnd` を追加、GND はモーターごとに pin 30/34/39/25 を割り当て、VCC は pin 17 共通。VCC / GND は Motor HAT 上の 3V3 / GND ピンに接続する表記に変更し、Pi GPIO ヘッダー表では該当ピンを空きとして表示）。表示から「520 モーター」の文言を削除し、ラベルは「M1 前左 Encoder A」形式。以前: モーターの配線色をメーカー資料に合わせて確定（赤 Motor+ / 白 Motor− / 青 VCC / 黒 GND / 緑 Encoder A / 黄 Encoder B）し、車輪表記を進行方向基準の「M1 前左」形式（前左 / 前右 / 後左 / 後右）に統一。接続図・一覧表・BOM・GPIO 表の表記を Motor+ / Motor− / Encoder A / B に揃えた。以前: OSOYOO 520 モーター内蔵エンコーダー（A/B 相）の Pi GPIO 直結割り付けを追加（`motor_hat.yaml` の `encoder`、`gpio_pins.yaml`。M1: 29/31、M2: 33/35、M3: 37/32、M4: 36/38、VCC 3V3 pin17、GND 30/34/39/25）。Motor HAT 接続図・一覧表・GPIO ヘッダー図にエンコーダーピンを表示。以前: ダッシュボードに「Motor HAT 接続図」カード（Adafruit Motor HAT の M1〜M4 と車輪位置の割り付け・配線図・一覧表）を追加。割り付けは `config/motor_hat.yaml`（M1=前左 / M2=前右 / M3=後左 / M4=後右、右側は `reversed: true`）で編集し `GET /api/motor_hat` で取得。以前: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）と GY-BNO055 用 `imu_node`（I2C 0x29、`/imu/data`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
 - 更新担当: Devin
 
 ## システム構成
@@ -45,6 +45,7 @@
     - パラメータ: `publish_rate` / `topic` / `enable_pmic` / `enable_hailo`
     - 依存: `psutil`、`vcgencmd`、`lspci`、`hailortcli`（あれば利用）
   - GPIO 40 ピンヘッダーカード（全幅）: `ai_car_web/gpio_pinout.py` の固定ピン定義（物理番号・名称・BCM・種別）と `config/gpio_pins.yaml` の配線定義（`pins` / `device` / `signal` / `color` / `note`）を結合し `GET /api/gpio` で返す。画面は SVG のヘッダー図（種別ごとの色、使用中ピンは緑の外枠、配線色バー、ホバーで接続先表示）と一覧表（ピン / 名称 / BCM / 使用 / 配線色 / 接続先 / 信号・備考）。同一ピンへの複数接続（I2C バス共有）は「/」区切りで併記。パラメータ `gpio_config`（空なら share 内の `gpio_pins.yaml`）。YAML 編集後は `dashboard_node` 再起動で反映
+  - Motor HAT 接続図カード（全幅）: `ai_car_web/motor_hat.py` が `config/motor_hat.yaml` の割り付け（`channel` / `wheel` / `reversed` / `colors` / `note`）に端子ごとの固定情報（PCA9685 の PWM / IN1 / IN2 チャンネル、TB6612 ブリッジ）を重ねて `GET /api/motor_hat` で返す。割り付け: M1=前左（front_left）/ M2=前右（front_right）/ M3=後左（rear_left）/ M4=後右（rear_right）。右側 2 輪は左右対称取り付けのため `reversed: true`（モーター制御ノードで符号反転する前提）。画面は上面図の SVG（前方が上、中央に HAT の端子台 M1 M2 | +− | M3 M4、四隅に車輪、端子→車輪の配線を +/− の配線色で描画、電源端子→12V 系統）と一覧表（端子 / 車輪 / 回転 / 配線色 / PCA9685 ch / ブリッジ / 備考）。端子・車輪の重複や未割り付けは警告表示。各モーターの `encoder`（`a_pin` / `b_pin` / `colors`）と `hat.encoder`（`vcc_pin` / `gnd_pins`）で 520 モーターエンコーダーの Pi 直結ピンを定義し、BCM 番号へ解決・非 GPIO ピン・I2C/ID ピン・ピン重複・VCC が 3V3 以外を警告。接続図は車輪ごとに「M1 前左」＋ 6 本の線（名称・配線色・接続先）を列挙し、一覧表は 1 線 1 行（モーター / 線番号 / ピン名称 / 配線色 / 接続先 / 回転・ドライバ・備考）。パラメータ `motor_hat_config`（空なら share 内の `motor_hat.yaml`）
 
 ## 現在作業中
 - なし
@@ -65,6 +66,8 @@
 - 実機の電源が不足している。ダッシュボード（カメラ＋LiDAR＋Hailo 推論）起動と同時に `hwmon3: Undervoltage detected!` が連発し、2026/09/14 19:22 に shutdown シーケンスなしで電源断した（前回起動だけで 198 回発生、EXT5V は 4.75、5.11V、`get_throttled=0x50000`）。`usb_max_current_enable=0` で 5A PD として認識されておらず、Pi 5 が制限モード（USB 周辺機器 合計 600mA）で動作している。公式 27W USB-C PD 電源への交換と、RPLIDAR の別系統（セルフパワーハブ等）給電が必要
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
+- `motor_hat.yaml` の割り付け（M1〜M4 と車輪位置、`reversed`、配線色）は暫定値。実機のモーター配線と照合し、モーター制御ノード実装時に回転方向を確認して修正が必要
+- 520 モーターエンコーダーの GPIO 割り付け（`motor_hat.yaml` `encoder` / `gpio_pins.yaml`）と配線色（VCC 青 / GND 黒 / A 黄 / B 緑）は未使用ピンから選んだ暫定値。実配線と照合して修正が必要。エンコーダー読み取りノードは未実装
 - `gpio_pins.yaml` の配線内容（Motor HAT / BNO055 の I2C・電源・GND、配線色）は HARDWARE_BOM からの暫定値。実配線と照合して修正が必要。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）。AI HAT+ の ID EEPROM ピン（27/28）はヘッダー直挿しのため配線色は `PIN` 表記
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 
@@ -89,6 +92,7 @@
 - LiDAR（RPLIDAR, CP2102 USB）: `rplidar_composition` 起動で `/scan` を 約8Hz で受信。ダッシュボードの点群マップに720点（正面 0.17m / 最大 3.05m）が描画されることをブラウザで確認
 - 障害物判定: `/obstacle_status` で `level: stop`（前方 0.177m）を確認。Hailo-8 推論は約 8ms、YOLOv8n で物体検出（例: bed 0.61 / sink 0.50）を確認。温度閾値を一時的に下げて warn（推論 40%）→ critical（推論停止、LiDAR 判定は継続）→ 復帰を確認
 - F710 手動操作: 実機で `joy_teleop_node` が `Logitech Gamepad F710 (/dev/input/js0)` を検出し `/joy_cmd` 20Hz を確認。`/joy_cmd {x:0.5, y:-0.5, z:0.5}` を publish → `/cmd_vel {x:0.075, y:-0.15, z:0.5}`（最大速度 0.3/1.0 と前方障害物による減速 0.5 が適用）を確認。入力停止 → 0.7 秒後に「指令タイムアウトのため停止しました」を確認。`/api/status` の `joy.connected / active` を確認。スティックの実操作による前後・左右の向きは未確認（ユーザーによる実機確認が必要）
+- Motor HAT 接続図: `load_motor_hat('config/motor_hat.yaml')` で 4 端子の割り付けと警告なし、YAML 不在時は `error` を返すことを確認。開発 PC 上で `/api/motor_hat` を模擬した静的サーバーにより、ブラウザで接続図（4 輪・配線・端子台）と一覧表の表示を確認。実機（AI-CAR）で `GET /api/motor_hat` が 200 で割り付けを返すことと、I2C 0x60 に Motor HAT を検出することを確認。エンコーダー割り付けは `load_motor_hat` で警告なし・BCM 解決を確認し、`build_pinout` で信号ピンの競合なし（使用 25/40）を確認。開発 PC のブラウザでエンコーダーピン付きの接続図・一覧表を確認（実機は未反映）。`flake8 --max-line-length 100` エラー無し
 - GPIO ヘッダー: `build_pinout('config/gpio_pins.yaml')` で使用中 9 ピン（1,2,3,4,5,6,9,27,28）、YAML 不在時は `error` を返すことを確認。実機で `GET /api/gpio` → `used_count: 9`、ブラウザでヘッダー図（上下段ラベルの重なり無し）と 40 行の一覧表の表示を確認。`flake8 --max-line-length 100` エラー無し
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 
@@ -99,7 +103,9 @@
 - AI HAT+ 推論: 640x640 にリサイズして 10Hz 設定（実測 約5Hz、JPEG デコード＋リサイズが律速。推論自体は 約9ms、高温時は自動低下）
 
 ## 次回作業
-- モーター制御ノード（`/cmd_vel` 購読 → Motor HAT 駆動）を実装する
+- モーター制御ノード（`/cmd_vel` 購読 → Motor HAT 駆動）を実装する。`motor_hat.yaml` の割り付け（`channel` / `wheel` / `reversed`）を参照してメカナム逆運動学の出力を各端子へ振り分ける
+- 実配線（M1〜M4とエンコーダージャンパー線）に合わせて `motor_hat.yaml` / `gpio_pins.yaml` を修正する
+- エンコーダー読み取りノード（libgpiod で A/B 相をカウントし `/wheel_ticks` 等を publish）を実装し、カウント方向を確認する
 
 ## 変更ファイル
 - `/home/super/AI-CAR_ws/src/ai_car_description/` - 新規作成（package.xml, CMakeLists.txt, urdf/, launch/, rviz/, config/, meshes/）
@@ -115,5 +121,8 @@
 - `/home/super/AI-CAR_ws/src/ai_car_web/{setup.py, package.xml, config/dashboard.yaml, launch/dashboard.launch.py, config/gpio_pins.yaml}` - TM1637 7セグ表示対応で更新
 - `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/imu_node.py` - 新規作成（GY-BNO055 I2C IMU）
 - `/home/super/AI-CAR_ws/src/ai_car_web/{setup.py, config/dashboard.yaml, launch/dashboard.launch.py, config/gpio_pins.yaml, static/index.html}` - IMUノード対応で更新
+- `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/motor_hat.py`、`config/motor_hat.yaml` - 新規作成（Motor HAT M1〜M4 割り付け）
+- `/home/super/AI-CAR_ws/src/ai_car_web/{ai_car_web/dashboard_node.py, config/dashboard.yaml, static/index.html}` - Motor HAT 接続図カード対応で更新
+- `/home/super/AI-CAR_ws/src/ai_car_web/{ai_car_web/motor_hat.py, config/motor_hat.yaml, config/gpio_pins.yaml, static/index.html}`、`HARDWARE_BOM.md` - 520 モーターエンコーダーの Pi GPIO 割り付けを追加
 - `/home/super/AI-CAR_ws/PROJECT_STATUS.md` - 本ファイル
 - `/home/super/AI-CAR_ws/CHANGELOG.md` - 更新
