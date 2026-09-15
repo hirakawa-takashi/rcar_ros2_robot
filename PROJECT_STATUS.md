@@ -2,7 +2,7 @@
 
 ## 最終更新
 - 更新日: 2026/09/15
-- 更新概要: Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
+- 更新概要: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
 - 更新担当: Devin
 
 ## システム構成
@@ -34,8 +34,9 @@
   - 画面（`static/index.html`）: 手動操作カードは LiDAR カードの直下（4 列固定グリッド、幅 2 列分）に配置。メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止
   - ゲームパッド手動操作（`joy_teleop_node`）: Logitech F710（XInput モード、`/dev/input/js0`）を Linux joystick API で直接読み（追加の Python 依存なし）、正規化済み Twist を `/joy_cmd` に 20Hz で publish。`dashboard_node` が `/joy_cmd` を購読して Web 操作と同じ `publish_cmd_vel()` 経路で `/cmd_vel` に変換するため、最大速度・障害物ガード（減速／停止）・`cmd_timeout` 停止が同様に適用される。割り当て: 左スティック上下=前後、左スティック左右=平行移動、右スティック左右=旋回、十字キー=前後・平行移動（デジタル）、RB=全速（通常は `speed_scale` 0.5）、B=停止（押している間）、`button_enable` でデッドマンボタンも設定可（既定は無効）。F710 未接続でも起動し、抜き差しを検出して再接続（切断時は指令を出さない）。画面の手動操作カードに接続状態（未接続／接続中／操作中）を表示。launch 引数 `use_joy` で無効化可
+  - `seg_display_node`: TM1637 4桁7セグメントLEDを libgpiod で駆動し、`/system_status`・`/obstacle_status`・`/joy_cmd`・`/cmd_vel` から状態を判定して `/display_state`（std_msgs/String）へ publish。`use_seg_display` で無効化可
   - パラメータ: `config/dashboard.yaml`（host/port/各トピック名/最大速度/タイムアウト/配信レート）
-  - 自動起動: `systemd/ai-car-dashboard.service`（`install_service.sh` で登録、`Restart=always`、USB デバイス待ちで起動を10秒遅延）。カメラ / LiDAR ノードは launch 側で `respawn`
+  - 自動起動: `systemd/ai-car-dashboard.service`（`install_service.sh` で登録、`Restart=always`、USB デバイス待ちで起動を10秒遅延）。カメラ / LiDAR / 7セグ表示ノードは launch 側で `respawn`
   - `system_monitor_node`: Raspberry Pi 5 / AI HAT+ の状態監視（読み取りのみ）
     - Publish: `/system_status`（std_msgs/String, JSON、1Hz）
     - 取得内容: CPU使用率（全体・コア別）・クロック・温度・ロードアベレージ、メモリ/Swap/ディスク、PMIC レール別電圧・電流・電力、スロットリング状態、Hailo-8 検出状態
@@ -63,7 +64,7 @@
 - 実機の電源が不足している。ダッシュボード（カメラ＋LiDAR＋Hailo 推論）起動と同時に `hwmon3: Undervoltage detected!` が連発し、2026/09/14 19:22 に shutdown シーケンスなしで電源断した（前回起動だけで 198 回発生、EXT5V は 4.75、5.11V、`get_throttled=0x50000`）。`usb_max_current_enable=0` で 5A PD として認識されておらず、Pi 5 が制限モード（USB 周辺機器 合計 600mA）で動作している。公式 27W USB-C PD 電源への交換と、RPLIDAR の別系統（セルフパワーハブ等）給電が必要
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
-- `gpio_pins.yaml` の配線内容（Motor HAT / BNO055 の I2C・電源・GND、AI HAT+ の ID EEPROM ピン、配線色）は HARDWARE_BOM からの暫定値。実配線と照合して修正が必要。7 セグメント LED はピン未確定のためコメントアウト
+- `gpio_pins.yaml` の配線内容（Motor HAT / BNO055 の I2C・電源・GND、AI HAT+ の ID EEPROM ピン、配線色）は HARDWARE_BOM からの暫定値。実配線と照合して修正が必要。TM1637 の配線色は未確定のため空欄
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 
 ## テスト結果
@@ -107,5 +108,7 @@
 - `/home/super/AI-CAR_ws/src/ai_car_web/{ai_car_web/dashboard_node.py, config/dashboard.yaml, package.xml, static/index.html}` - GPIO カード対応で更新
 - `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/joy_teleop_node.py` - 新規作成（F710 手動操作）
 - `/home/super/AI-CAR_ws/src/ai_car_web/{ai_car_web/dashboard_node.py, setup.py, launch/dashboard.launch.py, config/dashboard.yaml, static/index.html}` - F710 対応で更新
+- `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/seg_display_node.py` - 新規作成（TM1637 7セグ表示）
+- `/home/super/AI-CAR_ws/src/ai_car_web/{setup.py, package.xml, config/dashboard.yaml, launch/dashboard.launch.py, config/gpio_pins.yaml}` - TM1637 7セグ表示対応で更新
 - `/home/super/AI-CAR_ws/PROJECT_STATUS.md` - 本ファイル
 - `/home/super/AI-CAR_ws/CHANGELOG.md` - 更新

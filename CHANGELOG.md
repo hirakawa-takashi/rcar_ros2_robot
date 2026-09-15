@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- TM1637 4桁7セグメントLED用 `seg_display_node` を追加し、ロボット状態コードを表示
 - ai_car_description パッケージを新規作成
   - CMakeLists.txt (ament_cmakeベース)、package.xml
   - urdf/ai_car.xacro: メカナム4輪・LiDAR・カメラ・IMU を含むロボット記述

@@ -58,8 +58,22 @@ connections:
     signal: ID_SC (HAT EEPROM)
     color: ""
 
-  # --- 7セグメント LED（接続方式・ピン未確定。決まったら pins を編集） ---
-  # - pins: []
-  #   device: 7セグメント LED
-  #   signal: ""
-  #   color: ""
+  # --- TM1637 4桁7セグLED ---
+  - pins: [17]
+    device: TM1637 4桁7セグLED
+    signal: 3V3
+    color: ""
+  - pins: [20]
+    device: TM1637 4桁7セグLED
+    signal: GND
+    color: ""
+  - pins: [16]
+    device: TM1637 4桁7セグLED
+    signal: CLK (GPIO23)
+    color: ""
+    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
+  - pins: [18]
+    device: TM1637 4桁7セグLED
+    signal: DIO (GPIO24)
+    color: ""
+    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）

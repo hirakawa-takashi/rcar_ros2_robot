@@ -79,6 +79,40 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 - AI HAT+ の電力は取得できない。`hailortcli measure-power` は `HAILO_UNSUPPORTED_OPCODE`（ボードに電流監視 DVM 非搭載）、`query_health_stats()` / `query_performance_stats()` は HAILO8 アーキテクチャ非対応。`hatctl` は Raspberry Pi OS / 他ベンダ向けで Ubuntu には存在せず、Hailo 専用の hwmon デバイスも無い。PMIC にも HAT 専用レールはなく（AI HAT+ は PCIe コネクタの 5V から給電）、単体の消費電力を測るには INA219/INA3221 などの外付け I2C 電流センサを配線に挿入する必要がある。
 - ダッシュボードの AI HAT+ カードは温度（横バーグラフ）・状態・デバイス情報（アーキテクチャ / FW / ドライバ / PCIe アドレス）を表示する（NPU 使用率と消費電力は表示しない）。
 
+## TM1637 4桁7セグメントLED のセットアップ
+
+`seg_display_node` は TM1637 モジュールを bit-bang 駆動し、`/display_state`
+（`std_msgs/String`）へ現在の状態コードを publish する。
+
+| TM1637 | Raspberry Pi 5 |
+|--------|----------------|
+| VCC | 17（3V3） |
+| GND | 20（GND） |
+| CLK | 16（GPIO23） |
+| DIO | 18（GPIO24） |
+
+```bash
+sudo apt install python3-libgpiod
+sudo usermod -aG dialout super
+# 再ログイン、またはサービスを再起動
+```
+
+GPIO チップは `pinctrl-rp1` のラベルから自動検出する（通常は `gpiochip4`）。
+`dashboard.launch.py` の `use_seg_display`（既定 `true`）で起動し、
+無効化する場合は `use_seg_display:=false` を指定する。
+
+表示コード:
+
+| コード | 意味 |
+|--------|------|
+| `boot` | 起動後30秒以内でシステム状態未受信 |
+| `rdy ` | 待機中 |
+| `HAnd` | 手動操作中 |
+| `ObSt` | 障害物停止 |
+| `SLo ` | 減速 |
+| `LoU ` | 低電圧 |
+| `Err ` | システム状態未受信・タイムアウト |
+
 ## カメラ (IMX708 / Camera Module v3) のセットアップ（Ubuntu 24.04）
 
 ダッシュボードは `/camera/image_raw/compressed` を購読し、`/api/camera/stream` で MJPEG 配信する。カメラノードは `camera_ros`（libcamera）を使用し、`dashboard.launch.py` の `use_camera`（既定 true）で起動する。

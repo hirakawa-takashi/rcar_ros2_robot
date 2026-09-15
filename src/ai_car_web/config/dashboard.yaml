@@ -41,6 +41,23 @@ joy_teleop_node:
     button_stop: 1      # B: 押している間は停止
     button_enable: -1   # デッドマンボタン（-1 で無効。例: 4 = LB）
 
+seg_display_node:
+  ros__parameters:
+    # TM1637: VCC=17、GND=20、CLK=16(GPIO23)、DIO=18(GPIO24)
+    gpio_chip: ""
+    clk_gpio: 23
+    dio_gpio: 24
+    brightness: 2
+    update_rate: 5.0
+    system_status_topic: "/system_status"
+    obstacle_topic: "/obstacle_status"
+    joy_cmd_topic: "/joy_cmd"
+    cmd_vel_topic: "/cmd_vel"
+    state_topic: "/display_state"
+    status_timeout: 3.0
+    # 表示コード: boot 起動待ち / rdy 待機 / HAnd 手動 / ObSt 障害物停止
+    #             SLo 減速 / LoU 低電圧 / Err システム状態未受信
+
 system_monitor_node:
   ros__parameters:
     publish_rate: 1.0
