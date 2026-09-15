@@ -61,11 +61,11 @@ def _power_pin(pin, label, kind, warnings):
     return {'pin': pin, 'bcm': info[1], 'name': info[0]}
 
 
-def _pin_text(p):
+def _pin_text(p, board='Pi'):
     if not p:
         return '-'
     detail = f'GPIO{p["bcm"]}' if p['bcm'] is not None else p['name']
-    return f'Pi pin {p["pin"]} ({detail})'
+    return f'{board} pin {p["pin"]} ({detail})'
 
 
 def load_motor_hat(path):
@@ -89,6 +89,9 @@ def load_motor_hat(path):
     enc_common = dict(hat.get('encoder') or {})
     enc_common['colors'] = [str(c) for c in enc_common.get('colors') or [] if c]
     hat['encoder'] = enc_common
+    # VCC / GND の接続先ボード。Motor HAT は Pi の 40 ピンを引き出しているので
+    # HAT 上の 3V3 / GND ピンを使う場合は power_board を 'Motor HAT' にする（ピン番号は共通）。
+    power_board = str(enc_common.get('power_board') or 'Pi')
     for entry in data.get('motors') or []:
         channel = str(entry.get('channel') or '').upper()
         wheel = str(entry.get('wheel') or '')
@@ -129,8 +132,10 @@ def load_motor_hat(path):
         ]
         if encoder:
             wires += [
-                {'name': 'VCC', 'color': ecol[0], 'dest': _pin_text(encoder['vcc'])},
-                {'name': 'GND', 'color': ecol[1], 'dest': _pin_text(encoder['gnd'])},
+                {'name': 'VCC', 'color': ecol[0],
+                 'dest': _pin_text(encoder['vcc'], power_board)},
+                {'name': 'GND', 'color': ecol[1],
+                 'dest': _pin_text(encoder['gnd'], power_board)},
                 {'name': 'Encoder A', 'color': ecol[2], 'dest': _pin_text(encoder['a'])},
                 {'name': 'Encoder B', 'color': ecol[3], 'dest': _pin_text(encoder['b'])},
             ]

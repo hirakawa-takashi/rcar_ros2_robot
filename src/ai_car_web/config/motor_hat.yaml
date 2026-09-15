@@ -7,8 +7,8 @@
 # 1 モーターにつき 6 本の線がある（メーカー資料の配線色）:
 #   Motor+    赤  → HAT の M 端子 +
 #   Motor−    白  → HAT の M 端子 −
-#   VCC       青  → Pi 3V3（A/B 出力が GPIO 直結のため 5V は使わない）
-#   GND       黒  → Pi GND
+#   VCC       青  → Motor HAT 上の 3V3 ピン（Pi 40 ピンの引き出し。A/B 出力が GPIO 直結のため 5V は使わない）
+#   GND       黒  → Motor HAT 上の GND ピン（同上）
 #   Encoder A 緑  → Pi GPIO
 #   Encoder B 黄  → Pi GPIO
 # Motor+/− は HAT へ、VCC / GND / Encoder A / B の 4 本は
@@ -20,7 +20,8 @@
 #   reversed : true なら正転指令で車輪が後退する取り付け（ソフト側で符号反転する）
 #   colors   : [Motor+, Motor−] の配線色
 #   encoder  : Pi 40 ピンヘッダーの物理ピン番号
-#     vcc_pin / gnd_pin : VCC / GND（vcc_pin を省略すると hat.encoder.vcc_pin を使う）
+#     vcc_pin / gnd_pin : VCC / GND の 40 ピン番号（vcc_pin を省略すると hat.encoder.vcc_pin を使う）。
+#                         hat.encoder.power_board が 'Motor HAT' なら HAT 上の同番ピンに挿す
 #     a_pin / b_pin     : Encoder A / Encoder B
 #     colors            : [VCC, GND, Encoder A, Encoder B] の配線色（省略時は hat.encoder.colors）
 #   note     : 備考
@@ -36,6 +37,7 @@ hat:
     colors: [赤, 黒]
   # エンコーダー線の既定値（VCC は 4 台共通で pin 17 の 3V3）
   encoder:
+    power_board: Motor HAT
     vcc_pin: 17
     vcc: 3V3
     colors: [青, 黒, 緑, 黄]
