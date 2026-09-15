@@ -1,0 +1,42 @@
+# Adafruit DC & Stepper Motor HAT のモーター端子（M1〜M4）と車輪位置の割り付け。
+# ダッシュボードの「Motor HAT 接続図」カードに反映される（dashboard_node 再起動で再読込）。
+# 将来のモーター制御ノードもこの割り付けを参照する。
+#
+# 各項目:
+#   channel  : HAT 上の端子名（M1 / M2 / M3 / M4）
+#   wheel    : 車輪位置（front_left / front_right / rear_left / rear_right）。URDF の *_wheel_link と同名
+#   reversed : true なら正転指令で車輪が後退する取り付け（ソフト側で符号反転する）
+#   colors   : モーター配線色 [端子 +側, 端子 −側]（未確定なら空欄）
+#   note     : 備考
+hat:
+  name: Adafruit DC & Stepper Motor HAT
+  driver: PCA9685 (PWM) + TB6612 x2
+  i2c_bus: 1
+  i2c_address: 0x60
+  pwm_frequency: 1600
+  # モーター電源端子（+/−）。Pi の 5V とは絶縁されており 12V 系統を接続する
+  power:
+    source: バッテリー 12V 系統
+    colors: [赤, 黒]
+
+motors:
+  - channel: M1
+    wheel: front_left
+    reversed: false
+    colors: [赤, 黒]
+    note: 左前
+  - channel: M2
+    wheel: front_right
+    reversed: true
+    colors: [赤, 黒]
+    note: 右前。左右対称に取り付くため正転指令で逆回転 → reversed
+  - channel: M3
+    wheel: rear_left
+    reversed: false
+    colors: [赤, 黒]
+    note: 左後
+  - channel: M4
+    wheel: rear_right
+    reversed: true
+    colors: [赤, 黒]
+    note: 右後。左右対称に取り付くため正転指令で逆回転 → reversed

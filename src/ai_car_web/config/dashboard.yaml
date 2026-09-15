@@ -19,6 +19,8 @@ dashboard_node:
     telemetry_rate: 10.0
     # 40 ピンヘッダーの配線表。空なら share/ai_car_web/config/gpio_pins.yaml
     gpio_config: ""
+    # Motor HAT の M1〜M4 と車輪の割り付け。空なら share/ai_car_web/config/motor_hat.yaml
+    motor_hat_config: ""
     # ゲームパッドの正規化指令（joy_teleop_node）。この秒数以上途絶えると未接続表示
     joy_cmd_topic: "/joy_cmd"
     joy_timeout: 1.0

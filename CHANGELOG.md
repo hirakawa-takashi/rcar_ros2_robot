@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- ダッシュボードに Motor HAT 接続図カードを追加（`config/motor_hat.yaml` で M1〜M4 と車輪位置を割り付け、`GET /api/motor_hat` で取得）
 - TM1637 4桁7セグメントLED用 `seg_display_node` を追加し、ロボット状態コードを表示
 - GY-BNO055 用 `imu_node` を追加し、I2C（0x29）から `/imu/data` を publish
 - `gpio_pins.yaml` の BNO055 配線色を SDA 白 / SCL 灰へ更新

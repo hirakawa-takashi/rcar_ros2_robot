@@ -27,6 +27,7 @@ from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
 
 from ai_car_web.gpio_pinout import build_pinout
+from ai_car_web.motor_hat import load_motor_hat
 
 
 MAX_SCAN_POINTS = 720
@@ -99,6 +100,7 @@ class DashboardNode(Node):
         self.declare_parameter('telemetry_rate', 5.0)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('gpio_config', '')
+        self.declare_parameter('motor_hat_config', '')
         # ゲームパッド（joy_teleop_node）からの正規化指令。空で無効
         self.declare_parameter('joy_cmd_topic', '/joy_cmd')
         self.declare_parameter('joy_timeout', 1.0)
@@ -113,6 +115,8 @@ class DashboardNode(Node):
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
         self.gpio_config = self.get_parameter('gpio_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'gpio_pins.yaml')
+        self.motor_hat_config = self.get_parameter('motor_hat_config').value or os.path.join(
+            get_package_share_directory('ai_car_web'), 'config', 'motor_hat.yaml')
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
@@ -418,6 +422,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.get('/api/gpio')
     def gpio():
         return build_pinout(node.gpio_config)
+
+    @app.get('/api/motor_hat')
+    def motor_hat():
+        return load_motor_hat(node.motor_hat_config)
 
     @app.post('/api/cmd_vel')
     def cmd_vel(req: CmdVelRequest):
