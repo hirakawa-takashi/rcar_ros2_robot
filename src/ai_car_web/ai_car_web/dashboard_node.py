@@ -99,6 +99,9 @@ class DashboardNode(Node):
         self.declare_parameter('telemetry_rate', 5.0)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('gpio_config', '')
+        # ゲームパッド（joy_teleop_node）からの正規化指令。空で無効
+        self.declare_parameter('joy_cmd_topic', '/joy_cmd')
+        self.declare_parameter('joy_timeout', 1.0)
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
@@ -139,6 +142,10 @@ class DashboardNode(Node):
             self._camera_cb, sensor_qos)
         self.create_subscription(
             String, self.get_parameter('obstacle_topic').value, self._obstacle_cb, 10)
+        self.joy_timeout = float(self.get_parameter('joy_timeout').value)
+        joy_topic = self.get_parameter('joy_cmd_topic').value
+        if joy_topic:
+            self.create_subscription(Twist, joy_topic, self._joy_cb, 10)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -150,6 +157,8 @@ class DashboardNode(Node):
         self._system = None
         self._obstacle = None
         self._obstacle_stamp = 0.0
+        self._joy_stamp = 0.0
+        self._joy_moving = False
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -302,6 +311,18 @@ class DashboardNode(Node):
                 best = r
         return round(best, 3) if best is not None else None
 
+    def _joy_cb(self, msg: Twist):
+        """ゲームパッドの正規化指令を Web 操作と同じ経路で /cmd_vel に変換する。"""
+        moving = (abs(msg.linear.x) > 0.0 or abs(msg.linear.y) > 0.0
+                  or abs(msg.angular.z) > 0.0)
+        with self._lock:
+            self._joy_stamp = self.get_clock().now().nanoseconds * 1e-9
+            was_moving = self._joy_moving
+            self._joy_moving = moving
+        # 停止中はニュートラルへ戻った瞬間だけ停止を送り、Web 操作の指令を上書きしない
+        if moving or was_moving:
+            self.publish_cmd_vel(msg.linear.x, msg.linear.y, msg.angular.z)
+
     # --- 速度指令 ---
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
         """正規化済み (-1.0〜1.0) の指令値を最大速度にスケールして publish する。"""
@@ -363,6 +384,11 @@ class DashboardNode(Node):
                 'system': self._system,
                 'obstacle': self._obstacle,
                 'camera': self._camera_state(),
+                'joy': {
+                    'connected': (self.get_clock().now().nanoseconds * 1e-9
+                                  - self._joy_stamp) < self.joy_timeout,
+                    'active': self._joy_moving,
+                },
                 'limits': {
                     'max_linear_speed': self.max_linear,
                     'max_angular_speed': self.max_angular,

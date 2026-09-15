@@ -34,6 +34,7 @@ def generate_launch_description():
     use_camera = LaunchConfiguration('use_camera')
     use_lidar = LaunchConfiguration('use_lidar')
     use_perception = LaunchConfiguration('use_perception')
+    use_joy = LaunchConfiguration('use_joy')
 
     try:
         get_package_share_directory('camera_ros')
@@ -85,6 +86,8 @@ def generate_launch_description():
                               description='rplidar_ros の LiDAR ノードを起動する'),
         DeclareLaunchArgument('use_perception', default_value='true',
                               description='障害物判定ノード（LiDAR 主 + AI HAT+）を起動する'),
+        DeclareLaunchArgument('use_joy', default_value='true',
+                              description='ゲームパッド（F710）手動操作ノードを起動する'),
         Node(
             package='ai_car_web',
             executable='dashboard_node',
@@ -107,6 +110,14 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file],
             condition=IfCondition(use_perception),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='joy_teleop_node',
+            name='joy_teleop_node',
+            output='screen',
+            parameters=[params_file],
+            condition=IfCondition(use_joy),
         ),
         *camera_nodes,
         *lidar_nodes,

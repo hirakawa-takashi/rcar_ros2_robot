@@ -29,6 +29,7 @@ setup(
             'dashboard_node = ai_car_web.dashboard_node:main',
             'system_monitor_node = ai_car_web.system_monitor_node:main',
             'perception_node = ai_car_web.perception_node:main',
+            'joy_teleop_node = ai_car_web.joy_teleop_node:main',
         ],
     },
 )

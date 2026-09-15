@@ -186,6 +186,8 @@
       <input id="gain" type="range" min="10" max="100" value="50">
     </div>
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
+    <div class="speed">ゲームパッド F710: <span id="joy_state" class="badge">-</span>
+      　左スティック: 前後 / 平行移動　右スティック: 旋回　RB: 全速　B: 停止</div>
   </div>
 
   <div class="card full">
@@ -468,6 +470,7 @@ function render(d) {
   const frontHalf = (((d.obstacle && d.obstacle.front_angle_deg) || 60) / 2) * Math.PI / 180;
   drawScanMap(s, danger, frontHalf);
   renderObstacle(d.obstacle);
+  renderJoy(d.joy);
   drawDetections(d.obstacle);
 
   const i = d.imu;
@@ -477,6 +480,13 @@ function render(d) {
 
   renderSystem(d.system);
   renderCamera(d.camera);
+}
+
+function renderJoy(j) {
+  const el = document.getElementById('joy_state');
+  if (!j || !j.connected) { el.className = 'badge warn'; el.textContent = '未接続'; return; }
+  el.className = 'badge ok';
+  el.textContent = j.active ? '操作中' : '接続中';
 }
 
 // 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑）。
