@@ -28,47 +28,59 @@ connections:
     color: 黄
     note: PCA9685 0x60
 
-  # --- OSOYOO 520 モーター内蔵エンコーダー（6ピンジャンパー線で Pi へ直結。割り付け・配線色は motor_hat.yaml と一致させる）
-  #     配線色: 赤 Motor+ / 白 Motor− は HAT 側、青 VCC / 黒 GND / 緑 Encoder A / 黄 Encoder B は Pi 側 ---
+  # --- モーターエンコーダー線（1 モーター 6 本のうち VCC / GND / Encoder A / B の 4 本を Pi へ直結。
+  #     ピン・配線色は motor_hat.yaml と一致させる。Motor+ 赤 / Motor− 白 は Motor HAT の M 端子へ） ---
   - pins: [17]
-    device: 520 モーターエンコーダー x4
-    signal: Encoder VCC 3V3（4 台共通）
+    device: M1〜M4 VCC（4 台共通）
+    signal: VCC 3V3
     color: 青
-    note: A/B 出力が GPIO 直結のため 5V は使わない
-  - pins: [30, 34, 39, 25]
-    device: 520 モーターエンコーダー x4
-    signal: Encoder GND
+    note: Encoder A/B 出力が GPIO 直結のため 5V は使わない
+  - pins: [30]
+    device: M1 前左
+    signal: GND
     color: 黒
   - pins: [29]
-    device: 520 モーター M1 前左
+    device: M1 前左
     signal: Encoder A (GPIO5)
     color: 緑
   - pins: [31]
-    device: 520 モーター M1 前左
+    device: M1 前左
     signal: Encoder B (GPIO6)
     color: 黄
+  - pins: [34]
+    device: M2 前右
+    signal: GND
+    color: 黒
   - pins: [33]
-    device: 520 モーター M2 前右
+    device: M2 前右
     signal: Encoder A (GPIO13)
     color: 緑
   - pins: [35]
-    device: 520 モーター M2 前右
+    device: M2 前右
     signal: Encoder B (GPIO19)
     color: 黄
+  - pins: [39]
+    device: M3 後左
+    signal: GND
+    color: 黒
   - pins: [37]
-    device: 520 モーター M3 後左
+    device: M3 後左
     signal: Encoder A (GPIO26)
     color: 緑
   - pins: [32]
-    device: 520 モーター M3 後左
+    device: M3 後左
     signal: Encoder B (GPIO12)
     color: 黄
+  - pins: [25]
+    device: M4 後右
+    signal: GND
+    color: 黒
   - pins: [36]
-    device: 520 モーター M4 後右
+    device: M4 後右
     signal: Encoder A (GPIO16)
     color: 緑
   - pins: [38]
-    device: 520 モーター M4 後右
+    device: M4 後右
     signal: Encoder B (GPIO20)
     color: 黄
 

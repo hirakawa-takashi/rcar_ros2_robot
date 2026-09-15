@@ -63,7 +63,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 ## Motor HAT モーター端子の割り付け（`src/ai_car_web/config/motor_hat.yaml`）
 
-車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は OSOYOO 520 の配線色で **赤 Motor+ / 白 Motor−**。
+車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は **赤 Motor+ / 白 Motor−**（6 本の内訳は次節）。
 
 | 端子 | 車輪 | Motor+ / Motor− | 回転 | TB6612 | PCA9685 ch (PWM / IN1 / IN2) |
 |------|------|-----------------|------|--------|-------------------------------|
@@ -74,12 +74,34 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 > 暫定値。実配線と照合し、モーター制御ノードで回転方向を確認して `reversed` を修正する。
 
-### 520 モーターエンコーダー → Raspberry Pi 直結（`motor_hat.yaml` の `encoder` / `gpio_pins.yaml`）
+### モーター 1 台 6 本の接続先（`motor_hat.yaml` の `encoder` / `gpio_pins.yaml`）
 
-OSOYOO 520 モーターの 6 ピン配線（メーカー資料）:
+各モーターの 6 ピン配線（メーカー資料の配線色）:
 
 | 配線色 | ピン名称 | 役割 | 接続先 |
 |--------|----------|------|--------|
+| 赤 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
+| 白 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
+| 青 | VCC | エンコーダー用電源（DC 3.3〜5V） | Pi 3V3 |
+| 黒 | GND | エンコーダー用グランド | Pi GND |
+| 緑 | Encoder A | A 相パルス出力 | Pi GPIO |
+| 黄 | Encoder B | B 相パルス出力 | Pi GPIO |
+
+Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、残り 4 本（VCC / GND / Encoder A / Encoder B）はエンコーダー用ジャンパー線で Pi の 40 ピンヘッダーへ接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
+
+| モーター | Motor+ 赤 | Motor− 白 | VCC 青 | GND 黒 | Encoder A 緑 | Encoder B 黄 |
+|----------|-----------|-----------|--------|--------|--------------|--------------|
+| M1 前左 | HAT M1 + | HAT M1 − | Pi pin 17 (3V3) | Pi pin 30 | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
+| M2 前右 | HAT M2 + | HAT M2 − | Pi pin 17 (3V3) | Pi pin 34 | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |
+| M3 後左 | HAT M3 + | HAT M3 − | Pi pin 17 (3V3) | Pi pin 39 | Pi pin 37 (GPIO26) | Pi pin 32 (GPIO12) |
+| M4 後右 | HAT M4 + | HAT M4 − | Pi pin 17 (3V3) | Pi pin 25 | Pi pin 36 (GPIO16) | Pi pin 38 (GPIO20) |
+
+- VCC は **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
+- 使用済みの GPIO23/24（pin 16/18、TM1637）と I2C（pin 3/5）は避けている
+
+> Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
+
+--------|----------|------|--------|
 | 赤 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
 | 白 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
 | 青 | VCC | エンコーダー用電源（DC 3.3〜5V） | Pi 3V3 |

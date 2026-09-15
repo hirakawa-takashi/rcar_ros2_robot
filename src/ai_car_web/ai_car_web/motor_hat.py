@@ -46,6 +46,28 @@ def _encoder_pin(pin, label, seen, warnings):
     return {'pin': pin, 'bcm': info[1], 'name': info[0]}
 
 
+def _power_pin(pin, label, kind, warnings):
+    """エンコーダー電源ピン（3V3 / GND）を検証し {pin, bcm, name} を返す。"""
+    if pin is None:
+        warnings.append(f'{label}: ピンが未設定です')
+        return None
+    info = _PINS.get(pin)
+    if info is None:
+        warnings.append(f'{label}: 物理ピン {pin} は存在しません')
+        return {'pin': pin, 'bcm': None, 'name': ''}
+    if info[2] != kind:
+        expect = '3V3' if kind == 'power3v3' else 'GND'
+        warnings.append(f'{label}: ピン {pin} ({info[0]}) は {expect} ではありません')
+    return {'pin': pin, 'bcm': info[1], 'name': info[0]}
+
+
+def _pin_text(p):
+    if not p:
+        return '-'
+    detail = f'GPIO{p["bcm"]}' if p['bcm'] is not None else p['name']
+    return f'Pi pin {p["pin"]} ({detail})'
+
+
 def load_motor_hat(path):
     """割り付け YAML を読み、ダッシュボード表示用の辞書を返す。"""
     if not path or not os.path.exists(path):
@@ -65,13 +87,8 @@ def load_motor_hat(path):
     seen_wheels = set()
     seen_pins = {}
     enc_common = dict(hat.get('encoder') or {})
-    if enc_common:
-        vcc = _PINS.get(enc_common.get('vcc_pin'))
-        if vcc and vcc[2] != 'power3v3':
-            warnings.append(f'エンコーダー VCC ピン {enc_common["vcc_pin"]} は 3V3 ではありません')
-        enc_common['gnd_pins'] = list(enc_common.get('gnd_pins') or [])
-        enc_common['colors'] = [str(c) for c in enc_common.get('colors') or [] if c]
-        hat['encoder'] = enc_common
+    enc_common['colors'] = [str(c) for c in enc_common.get('colors') or [] if c]
+    hat['encoder'] = enc_common
     for entry in data.get('motors') or []:
         channel = str(entry.get('channel') or '').upper()
         wheel = str(entry.get('wheel') or '')
@@ -89,27 +106,51 @@ def load_motor_hat(path):
         pwm, in1, in2, bridge = _CHANNELS[channel]
         label, x, y = WHEELS.get(wheel, ('', 0, 0))
         colors = entry.get('colors') or []
+        colors = [str(c) for c in colors if c]
         enc = entry.get('encoder') or {}
         encoder = None
+        tag = f'{channel} {label}'.strip()
         if enc:
+            ecol = [str(c) for c in enc.get('colors') or [] if c] or enc_common['colors']
+            ecol = (ecol + [''] * 4)[:4]
+            vcc_pin = enc.get('vcc_pin', enc_common.get('vcc_pin'))
             encoder = {
-                'a': _encoder_pin(enc.get('a_pin'), f'{channel} ENC A', seen_pins, warnings),
-                'b': _encoder_pin(enc.get('b_pin'), f'{channel} ENC B', seen_pins, warnings),
-                'colors': [str(c) for c in enc.get('colors') or [] if c],
+                'vcc': _power_pin(vcc_pin, f'{tag} VCC', 'power3v3', warnings),
+                'gnd': _power_pin(enc.get('gnd_pin'), f'{tag} GND', 'ground', warnings),
+                'a': _encoder_pin(enc.get('a_pin'), f'{tag} Encoder A', seen_pins, warnings),
+                'b': _encoder_pin(enc.get('b_pin'), f'{tag} Encoder B', seen_pins, warnings),
+                'colors': ecol,
             }
+        # 1 モーター 6 本の線をすべて列挙（表示・配線作業用）
+        mcol = (colors + [''] * 2)[:2]
+        wires = [
+            {'name': 'Motor+', 'color': mcol[0], 'dest': f'Motor HAT {channel} +'},
+            {'name': 'Motor−', 'color': mcol[1], 'dest': f'Motor HAT {channel} −'},
+        ]
+        if encoder:
+            wires += [
+                {'name': 'VCC', 'color': ecol[0], 'dest': _pin_text(encoder['vcc'])},
+                {'name': 'GND', 'color': ecol[1], 'dest': _pin_text(encoder['gnd'])},
+                {'name': 'Encoder A', 'color': ecol[2], 'dest': _pin_text(encoder['a'])},
+                {'name': 'Encoder B', 'color': ecol[3], 'dest': _pin_text(encoder['b'])},
+            ]
+        else:
+            warnings.append(f'{tag}: encoder が未設定（6 本中 4 本が未割り付け）')
         motors.append({
             'channel': channel,
             'wheel': wheel,
             'wheel_label': label,
             'position': {'x': x, 'y': y},
             'reversed': bool(entry.get('reversed', False)),
-            'colors': [str(c) for c in colors if c],
+            'colors': colors,
+            'label': tag,
             'note': entry.get('note') or '',
             'pwm_channel': pwm,
             'in1_channel': in1,
             'in2_channel': in2,
             'bridge': bridge,
             'encoder': encoder,
+            'wires': wires,
         })
     for wheel in WHEELS:
         if wheel not in seen_wheels:

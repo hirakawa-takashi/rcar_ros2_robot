@@ -224,11 +224,11 @@
 
   <div class="card full">
     <h2>Motor HAT 接続図 — M1〜M4 と車輪の割り付け <span class="badge" id="motor_badge">-</span></h2>
-    <svg class="motor_svg" id="motor_svg" viewBox="0 0 860 500" xmlns="http://www.w3.org/2000/svg"></svg>
+    <svg class="motor_svg" id="motor_svg" viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="pinwrap">
     <table class="pins">
       <thead><tr>
-        <th>端子</th><th>車輪（進行方向基準）</th><th>回転</th><th>Motor+ / Motor− 配線色</th><th>PCA9685 ch (PWM / IN1 / IN2)</th><th>ブリッジ</th><th>Encoder A / B → Pi ピン (GPIO)</th><th>備考</th>
+        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>回転 / ドライバ / 備考</th>
       </tr></thead>
       <tbody id="motor_rows"></tbody>
     </table>
@@ -682,11 +682,11 @@ function wireHex(c, fallback) {
 // 上面図（上が前方）。中央に Motor HAT、四隅に車輪。端子 M1〜M4 から車輪へ配線を引く。
 function drawMotorHat(m) {
   const svg = document.getElementById('motor_svg');
-  const W = 860, H = 500, cx = W / 2, cy = 230;
+  const W = 1000, H = 500, cx = W / 2, cy = 230;
   const hat = { w: 300, h: 150 };
   // 端子ごとの配線経路（横走り高さ・縦走り位置）をずらして重なりを避ける
   const route = { M1: { dy: 28, dx: 44 }, M2: { dy: 44, dx: 44 }, M3: { dy: 60, dx: 24 }, M4: { dy: 76, dx: 24 } };
-  const wheel = { w: 44, h: 96, dx: 290, dy: 150 };
+  const wheel = { w: 44, h: 96, dx: 250, dy: 150 };
   // 端子位置（HAT 下辺の端子台: M1 M2 | 電源 | M3 M4）
   const termY = cy + hat.h / 2;
   const termX = { M1: cx - 105, M2: cx - 65, M3: cx + 65, M4: cx + 105 };
@@ -737,35 +737,25 @@ function drawMotorHat(m) {
     }
     const lx = wx < cx ? wx - wheel.w / 2 - 8 : wx + wheel.w / 2 + 8;
     const anchor = wx < cx ? 'end' : 'start';
-    // 表記は「M1 前左」のように端子名＋進行方向基準の車輪位置で統一
-    out += `<text x="${lx}" y="${wy - 8}" text-anchor="${anchor}" font-size="14" fill="${mo ? '#7fd88a' : '#f08080'}" font-weight="bold">${mo ? `${esc(mo.channel)} ${esc(label)}` : `${esc(label)} 未割付`}</text>`;
-    if (mo) {
-      out += `<text x="${lx}" y="${wy + 8}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">Motor+ ${esc(mo.colors[0] || '-')}</text>`;
-      out += `<text x="${lx}" y="${wy + 20}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">Motor− ${esc(mo.colors[1] || '-')}</text>`;
-    }
-    if (mo && mo.reversed) out += `<text x="${lx}" y="${wy + 34}" text-anchor="${anchor}" font-size="11" fill="#ffb74d">反転</text>`;
-    if (mo && mo.encoder) {
-      const e = mo.encoder;
-      const pinTxt = p => p ? `${p.pin}${p.bcm == null ? '' : `(G${p.bcm})`}` : '-';
-      // エンコーダー線（A/B）は車輪下に短く描き、Pi ヘッダーのピン番号を添える
-      const [ca, cb] = [wireHex((e.colors || [])[0], '#43a047'), wireHex((e.colors || [])[1], '#fdd835')];
-      const ey = wy + wheel.h / 2;
-      for (const [i, col] of [[-1, ca], [1, cb]]) {
-        const x = wx + i * 6;
-        out += `<line x1="${x}" y1="${ey}" x2="${x}" y2="${ey + 14}" stroke="#8a97a8" stroke-width="4"/>`;
-        out += `<line x1="${x}" y1="${ey}" x2="${x}" y2="${ey + 14}" stroke="${col}" stroke-width="2"/>`;
-      }
-      out += `<text x="${wx}" y="${ey + 26}" text-anchor="middle" font-size="10" fill="#cfd8e3">Encoder A ${esc(pinTxt(e.a))}</text>`;
-      out += `<text x="${wx}" y="${ey + 38}" text-anchor="middle" font-size="10" fill="#cfd8e3">Encoder B ${esc(pinTxt(e.b))}</text>`;
-    }
+    // 表記は「M1 前左」のように端子名＋進行方向基準の車輪位置で統一し、6 本の線をすべて列挙する
+    const wires = (mo && mo.wires) || [];
+    const top = wy - 8 - (wires.length * 12) / 2;
+    out += `<text x="${lx}" y="${top}" text-anchor="${anchor}" font-size="14" fill="${mo ? '#7fd88a' : '#f08080'}" font-weight="bold">${mo ? `${esc(mo.channel)} ${esc(label)}` : `${esc(label)} 未割付`}${mo && mo.reversed ? '<tspan font-size="11" fill="#ffb74d" font-weight="normal"> 反転</tspan>' : ''}</text>`;
+    wires.forEach((w, i) => {
+      const y = top + 14 + i * 12;
+      const hex = wireHex(w.color, '#8a97a8');
+      const sx = anchor === 'end' ? lx - 4 : lx + 4;
+      out += `<rect x="${sx - 4}" y="${y - 7}" width="8" height="8" rx="1" fill="${hex}" stroke="#8a97a8" stroke-width="0.5"/>`;
+      const tx = anchor === 'end' ? lx - 12 : lx + 12;
+      out += `<text x="${tx}" y="${y}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">${esc(w.name)} ${esc(w.color || '-')} → ${esc(w.dest.replace(/^Motor HAT /, 'HAT ').replace(/ \((3V3 power|Ground)\)$/, ''))}</text>`;
+    });
     out += '</g>';
   });
   // エンコーダー共通電源の注記
   const ec = m.hat.encoder;
   if (ec) {
     const gnd = (ec.gnd_pins || []).join(',');
-    const [cv, cg] = ec.colors || [];
-    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">Encoder 電源 → Pi: VCC${cv ? `(${esc(cv)})` : ''} ${esc(ec.vcc || '')} pin ${esc(String(ec.vcc_pin ?? '-'))} / GND${cg ? `(${esc(cg)})` : ''} pin ${esc(gnd || '-')}</text>`;
+    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">1 モーター 6 本: Motor+ / Motor− → HAT　VCC ${esc(ec.vcc || '3V3')} / GND / Encoder A / Encoder B → Pi ヘッダー</text>`;
   }
   // Motor HAT 本体
   out += `<rect x="${cx - hat.w / 2}" y="${cy - hat.h / 2}" width="${hat.w}" height="${hat.h}" rx="10" fill="#1d3a5f" stroke="#64b5f6" stroke-width="2"/>`;
@@ -793,35 +783,29 @@ function drawMotorHat(m) {
   svg.innerHTML = out;
 }
 
-function encoderCell(e) {
-  if (!e) return '<span class="badge">なし</span>';
-  const one = (p, c, label) => {
-    if (!p) return `${label}: -`;
-    const bcm = p.bcm == null ? '<span class="badge warn">GPIOではない</span>' : `GPIO${p.bcm}`;
-    return `${label}: ${c ? wireSwatch(c) + ' ' : ''}pin ${p.pin} (${bcm})`;
-  };
-  return `${one(e.a, (e.colors || [])[0], 'Encoder A')}<br>${one(e.b, (e.colors || [])[1], 'Encoder B')}`;
-}
 
 function renderMotorHat(m) {
   const badge = document.getElementById('motor_badge');
   badge.textContent = `割付 ${m.motors.length} / 4`;
   badge.className = 'badge ' + (m.error || m.warnings.length ? 'warn' : 'ok');
   drawMotorHat(m);
+  // 1 モーター 6 本を 1 行ずつ列挙（先頭行にモーター名と回転・ドライバ情報を rowspan でまとめる）
   document.getElementById('motor_rows').innerHTML = m.motors.map(mo => {
-    const colors = mo.colors.length
-      ? `Motor+ ${wireSwatch(mo.colors[0])}<br>Motor− ${wireSwatch(mo.colors[1] ?? '-')}`
-      : '<span class="badge warn">未設定</span>';
-    return `<tr class="used">` +
-      `<td style="white-space:nowrap"><b>${esc(mo.channel)} ${esc(mo.wheel_label)}</b></td>` +
-      `<td>${esc(mo.wheel_label)} <span class="note" style="margin:0;display:inline">(${esc(mo.wheel)})</span></td>` +
-      `<td>${mo.reversed ? '<span class="badge warn">反転</span>' : '<span class="badge ok">正転</span>'}</td>` +
-      `<td>${colors}</td>` +
-      `<td class="num" style="text-align:left;width:auto">${mo.pwm_channel} / ${mo.in1_channel} / ${mo.in2_channel}</td>` +
-      `<td>${esc(mo.bridge)}</td>` +
-      `<td>${encoderCell(mo.encoder)}</td>` +
-      `<td>${esc(mo.note)}</td>` +
-      '</tr>';
+    const wires = mo.wires || [];
+    const n = Math.max(wires.length, 1);
+    const head = `<td rowspan="${n}" style="white-space:nowrap;vertical-align:top"><b>${esc(mo.channel)} ${esc(mo.wheel_label)}</b><br><span class="note" style="margin:0;display:inline">${esc(mo.wheel)}</span></td>`;
+    const info = `<td rowspan="${n}" style="vertical-align:top">` +
+      `${mo.reversed ? '<span class="badge warn">反転</span>' : '<span class="badge ok">正転</span>'}<br>` +
+      `${esc(mo.bridge)} / PCA9685 ch ${mo.pwm_channel} / ${mo.in1_channel} / ${mo.in2_channel}<br>` +
+      `<span class="note" style="margin:0;display:inline">${esc(mo.note)}</span></td>`;
+    if (!wires.length) return `<tr class="used">${head}<td colspan="4"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
+    return wires.map((w, i) =>
+      `<tr class="used">${i === 0 ? head : ''}` +
+      `<td class="num" style="text-align:left;width:auto">${i + 1}</td>` +
+      `<td><b>${esc(w.name)}</b></td>` +
+      `<td>${w.color ? wireSwatch(w.color) : '<span class="badge warn">未設定</span>'}</td>` +
+      `<td>${esc(w.dest)}</td>` +
+      `${i === 0 ? info : ''}</tr>`).join('');
   }).join('');
   const note = document.getElementById('motor_note');
   if (m.error) {
