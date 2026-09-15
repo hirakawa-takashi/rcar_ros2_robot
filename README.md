@@ -43,7 +43,7 @@ systemctl status ai-car-dashboard.service
 sudo systemctl disable --now ai-car-dashboard.service   # 手動起動に戻す場合
 ```
 
-サービスは `Restart=always`（5秒間隔）で、USB デバイスの認識を待つため起動を10秒遅延する。カメラと LiDAR のノードは launch 側で `respawn` する。
+サービスは `Restart=always`（5秒間隔）で、USB デバイスの認識を待つため起動を10秒遅延する。カメラ、LiDAR、IMU のノードは launch 側で `respawn` する。
 
 CPU ファンの作動温度（既定 50/60/67.5/75℃）を前倒しして高温になりにくくする:
 
@@ -78,6 +78,20 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 - NPU 使用率と消費電力は取得・表示しない（使用率は推論アプリを `HAILO_MONITOR=1` で起動している間だけ `hailortcli monitor` で参照できる）。
 - AI HAT+ の電力は取得できない。`hailortcli measure-power` は `HAILO_UNSUPPORTED_OPCODE`（ボードに電流監視 DVM 非搭載）、`query_health_stats()` / `query_performance_stats()` は HAILO8 アーキテクチャ非対応。`hatctl` は Raspberry Pi OS / 他ベンダ向けで Ubuntu には存在せず、Hailo 専用の hwmon デバイスも無い。PMIC にも HAT 専用レールはなく（AI HAT+ は PCIe コネクタの 5V から給電）、単体の消費電力を測るには INA219/INA3221 などの外付け I2C 電流センサを配線に挿入する必要がある。
 - ダッシュボードの AI HAT+ カードは温度（横バーグラフ）・状態・デバイス情報（アーキテクチャ / FW / ドライバ / PCIe アドレス）を表示する（NPU 使用率と消費電力は表示しない）。
+
+## IMU (GY-BNO055) のセットアップ
+
+`imu_node` は GY-BNO055（I2C バス1、ADRピンHigh、アドレス `0x29`）を読み取り、
+`/imu/data`（`sensor_msgs/Imu`）へ publish する。I2C のアクセス権を追加して再ログインする。
+
+```bash
+sudo usermod -aG i2c super
+# 再ログイン、またはサービスを再起動
+i2cdetect -y 1    # 0x29 が表示されることを確認
+```
+
+`dashboard.launch.py` の `use_imu`（既定 `true`）で起動し、無効化する場合は
+`use_imu:=false` を指定する。
 
 ## カメラ (IMX708 / Camera Module v3) のセットアップ（Ubuntu 24.04）
 

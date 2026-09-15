@@ -28,7 +28,7 @@ connections:
     color: 黄
     note: PCA9685 0x60
 
-  # --- GY-BNO055 9軸 IMU（I2C 0x28） ---
+  # --- GY-BNO055 9軸 IMU（I2C 0x29） ---
   - pins: [1]
     device: GY-BNO055 IMU
     signal: 3V3
@@ -40,13 +40,13 @@ connections:
   - pins: [3]
     device: GY-BNO055 IMU
     signal: I2C SDA
-    color: 青
-    note: アドレス 0x28（Motor HAT と I2C バス共有）
+    color: 白
+    note: アドレス 0x29（Motor HAT と I2C バス共有）
   - pins: [5]
     device: GY-BNO055 IMU
     signal: I2C SCL
-    color: 黄
-    note: アドレス 0x28（Motor HAT と I2C バス共有）
+    color: 灰
+    note: アドレス 0x29（Motor HAT と I2C バス共有）
 
   # --- Raspberry Pi AI HAT+（PCIe 接続。ヘッダーは電源と ID EEPROM のみ使用） ---
   - pins: [27]
