@@ -3,12 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- ZJY-IPS130-V2.0（ST7789 1.3 インチ 240×240 IPS 液晶、SPI0、7 ピン CS なし）用 `lcd_display_node` を追加（spidev + libgpiod + Pillow。運転モード・自律行動・前方距離・障害物・電圧・CPU 温度・パッド接続・IP を描画、`/display_state` は従来コード互換）
 - 運転モード管理ノード `drive_mode_node` を追加（手動 / 自動 / 停止。`/cmd_vel_manual` と `/cmd_vel_auto` のどちらか一方だけを `/cmd_vel` に中継。`/drive_mode` 状態、`/drive_mode_request` 切替要求、自動進入条件・指令途絶・ゲームパッド切断時の安全停止）
 - Level 1 自律走行ノード `autonomy_node` を追加（LiDAR 反応型: 前進 → 減速 → 空いている側へ旋回。`/cmd_vel_auto`、`/autonomy_status`）
 - ゲームパッド: START 長押し 2 秒で手動 ⇄ 自動、BACK（自動中は B も）で停止
 - ダッシュボード: 運転モードバッジ・3 ボタン（`GET/POST /api/drive_mode`）と自律走行カードを追加。7 セグに `AUto` / `StoP` を追加
 
 ### Changed
+- 状態表示器を TM1637 7 セグから ZJY-IPS130-V2.0 液晶へ置き換え（launch 既定 `use_lcd_display=true` / `use_seg_display=false`。`gpio_pins.yaml`・BOM・README の配線を pin 16/17/18/19/20/22/23 の液晶接続に更新）
 - `dashboard_node` の手動指令出力を `/cmd_vel` から `/cmd_vel_manual` に変更（`/cmd_vel` は `drive_mode_node` が発行）
 - Motor HAT 接続図・一覧表を 1 モーター 6 本（Motor+ / Motor− / VCC / GND / Encoder A / Encoder B）すべて明示する形に変更（`/api/motor_hat` に `wires`）。エンコーダー VCC / GND は Motor HAT 上の 3V3 / GND ピンへ（`motor_hat.yaml` `hat.encoder.power_board`）
 - OSOYOO 520 モーターの配線色をメーカー資料どおり（赤 Motor+ / 白 Motor− / 青 VCC / 黒 GND / 緑 Encoder A / 黄 Encoder B）に修正し、車輪表記を進行方向基準の「M1 前左」形式に統一
