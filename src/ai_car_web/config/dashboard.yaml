@@ -17,6 +17,29 @@ dashboard_node:
     max_angular_speed: 1.0
     cmd_timeout: 0.7
     telemetry_rate: 10.0
+    # 40 ピンヘッダーの配線表。空なら share/ai_car_web/config/gpio_pins.yaml
+    gpio_config: ""
+    # ゲームパッドの正規化指令（joy_teleop_node）。この秒数以上途絶えると未接続表示
+    joy_cmd_topic: "/joy_cmd"
+    joy_timeout: 1.0
+
+joy_teleop_node:
+  ros__parameters:
+    # Logitech F710（背面スイッチ X = XInput モード）
+    device: "/dev/input/js0"
+    joy_cmd_topic: "/joy_cmd"
+    publish_rate: 20.0
+    deadzone: 0.15
+    # 通常の出力割合。RB を押している間は全速
+    speed_scale: 0.5
+    axis_linear_x: 1    # 左スティック上下: 前進/後退
+    axis_linear_y: 0    # 左スティック左右: 平行移動
+    axis_angular_z: 3   # 右スティック左右: 旋回
+    axis_dpad_x: 6
+    axis_dpad_y: 7
+    button_turbo: 5     # RB
+    button_stop: 1      # B: 押している間は停止
+    button_enable: -1   # デッドマンボタン（-1 で無効。例: 4 = LB）
 
 system_monitor_node:
   ros__parameters:
