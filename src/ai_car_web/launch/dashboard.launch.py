@@ -36,6 +36,7 @@ def generate_launch_description():
     use_perception = LaunchConfiguration('use_perception')
     use_joy = LaunchConfiguration('use_joy')
     use_seg_display = LaunchConfiguration('use_seg_display')
+    use_lcd_display = LaunchConfiguration('use_lcd_display')
     use_imu = LaunchConfiguration('use_imu')
     use_drive_mode = LaunchConfiguration('use_drive_mode')
     use_autonomy = LaunchConfiguration('use_autonomy')
@@ -92,8 +93,10 @@ def generate_launch_description():
                               description='障害物判定ノード（LiDAR 主 + AI HAT+）を起動する'),
         DeclareLaunchArgument('use_joy', default_value='true',
                               description='ゲームパッド（F710）手動操作ノードを起動する'),
-        DeclareLaunchArgument('use_seg_display', default_value='true',
-                              description='TM1637 7セグ表示ノードを起動する'),
+        DeclareLaunchArgument('use_seg_display', default_value='false',
+                              description='TM1637 7セグ表示ノードを起動する（旧表示器。LCD と GPIO23/24 を共用するため同時起動不可）'),
+        DeclareLaunchArgument('use_lcd_display', default_value='true',
+                              description='ZJY-IPS130-V2.0（ST7789）液晶表示ノードを起動する'),
         DeclareLaunchArgument('use_imu', default_value='true',
                               description='BNO055 IMU ノードを起動する'),
         DeclareLaunchArgument('use_drive_mode', default_value='true',
@@ -140,6 +143,16 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_seg_display),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='lcd_display_node',
+            name='lcd_display_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_lcd_display),
         ),
         Node(
             package='ai_car_web',

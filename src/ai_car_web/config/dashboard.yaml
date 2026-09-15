@@ -112,6 +112,30 @@ seg_display_node:
     # 表示コード: boot 起動待ち / rdy 待機 / HAnd 手動 / AUto 自動 / StoP 停止モード
     #             ObSt 障害物停止 / SLo 減速 / LoU 低電圧 / Err システム状態未受信
 
+lcd_display_node:
+  ros__parameters:
+    # ZJY-IPS130-V2.0（ST7789 1.3 インチ 240x240 IPS 液晶、7 ピン CS なし、SPI0）
+    # VCC=17(3V3)、GND=20、SCL=23(GPIO11 SCLK)、SDA=19(GPIO10 MOSI)
+    # RES=18(GPIO24)、DC=22(GPIO25)、BLK=16(GPIO23)
+    gpio_chip: ""
+    spi_bus: 0
+    spi_device: 0
+    spi_speed_hz: 32000000
+    dc_gpio: 25
+    rst_gpio: 24
+    bl_gpio: 23          # -1 でバックライト制御なし（BLK を 3V3 直結）
+    rotation: 0          # 0 / 90 / 180 / 270
+    update_rate: 4.0
+    font_path: ""        # 空なら IPA ゴシック → Noto CJK → DejaVu の順で探す
+    system_status_topic: "/system_status"
+    obstacle_topic: "/obstacle_status"
+    joy_cmd_topic: "/joy_cmd"
+    cmd_vel_topic: "/cmd_vel"
+    drive_mode_topic: "/drive_mode"
+    autonomy_status_topic: "/autonomy_status"
+    state_topic: "/display_state"
+    status_timeout: 3.0
+
 imu_node:
   ros__parameters:
     # GY-BNO055（I2C バス1、ADRピンHighでアドレス0x29）

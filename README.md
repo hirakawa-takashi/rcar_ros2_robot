@@ -79,7 +79,34 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 - AI HAT+ の電力は取得できない。`hailortcli measure-power` は `HAILO_UNSUPPORTED_OPCODE`（ボードに電流監視 DVM 非搭載）、`query_health_stats()` / `query_performance_stats()` は HAILO8 アーキテクチャ非対応。`hatctl` は Raspberry Pi OS / 他ベンダ向けで Ubuntu には存在せず、Hailo 専用の hwmon デバイスも無い。PMIC にも HAT 専用レールはなく（AI HAT+ は PCIe コネクタの 5V から給電）、単体の消費電力を測るには INA219/INA3221 などの外付け I2C 電流センサを配線に挿入する必要がある。
 - ダッシュボードの AI HAT+ カードは温度（横バーグラフ）・状態・デバイス情報（アーキテクチャ / FW / ドライバ / PCIe アドレス）を表示する（NPU 使用率と消費電力は表示しない）。
 
-## TM1637 4桁7セグメントLED のセットアップ
+## ZJY-IPS130-V2.0 液晶（ST7789）のセットアップ
+
+`lcd_display_node` は 1.3 インチ 240×240 IPS 液晶（ST7789、SPI、7 ピン CS なし）に
+運転モード・障害物状態・前方距離・入力電圧・CPU 温度・ゲームパッド接続・IP アドレスを描画し、
+`/display_state`（`std_msgs/String`）へ 7 セグと同じ状態コードを publish する。
+
+| ZJY-IPS130 | Raspberry Pi 5 |
+|------------|----------------|
+| VCC | 17（3V3） |
+| GND | 20（GND） |
+| SCL | 23（GPIO11 SPI0 SCLK） |
+| SDA | 19（GPIO10 SPI0 MOSI） |
+| RES | 18（GPIO24） |
+| DC | 22（GPIO25） |
+| BLK | 16（GPIO23） |
+
+```bash
+# /boot/firmware/config.txt に dtparam=spi=on があること（/dev/spidev0.0）
+sudo apt install python3-libgpiod python3-spidev python3-pil fonts-ipafont-gothic
+sudo usermod -aG spi,gpio super   # グループが無ければ udev で /dev/spidev0.0 を 0666 に
+# 再ログイン、またはサービスを再起動
+```
+
+`dashboard.launch.py` の `use_lcd_display`（既定 `true`）で起動する。旧 TM1637 は
+`use_seg_display`（既定 `false`）で切り替えるが、GPIO23/24 を共用するため同時起動はしない。
+表示が上下反転・鏡像の場合は `dashboard.yaml` の `lcd_display_node.rotation` を 90 / 180 / 270 に変更する。
+
+## TM1637 4桁7セグメントLED のセットアップ（旧表示器）
 
 `seg_display_node` は TM1637 モジュールを bit-bang 駆動し、`/display_state`
 （`std_msgs/String`）へ現在の状態コードを publish する。

@@ -94,22 +94,36 @@ connections:
     signal: ID_SC (HAT EEPROM)
     color: PIN
 
-  # --- TM1637 4桁7セグLED ---
+  # --- ZJY-IPS130-V2.0 1.3インチ 240x240 IPS 液晶（ST7789、SPI0、7 ピン CS なし）
+  #     旧 TM1637 7セグ（pin 17/20/16/18）を置き換え。配線色は未確定 ---
   - pins: [17]
-    device: TM1637 4桁7セグLED
-    signal: 3V3
-    color: オレンジ
+    device: ZJY-IPS130 液晶
+    signal: VCC 3V3
+    color: ""
   - pins: [20]
-    device: TM1637 4桁7セグLED
+    device: ZJY-IPS130 液晶
     signal: GND
-    color: 黒
-  - pins: [16]
-    device: TM1637 4桁7セグLED
-    signal: CLK (GPIO23)
-    color: 黄
-    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
+    color: ""
+  - pins: [23]
+    device: ZJY-IPS130 液晶
+    signal: SCL (GPIO11 SPI0 SCLK)
+    color: ""
+  - pins: [19]
+    device: ZJY-IPS130 液晶
+    signal: SDA (GPIO10 SPI0 MOSI)
+    color: ""
   - pins: [18]
-    device: TM1637 4桁7セグLED
-    signal: DIO (GPIO24)
-    color: 緑
-    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
+    device: ZJY-IPS130 液晶
+    signal: RES (GPIO24)
+    color: ""
+    note: libgpiod 出力（gpiochip4 pinctrl-rp1）
+  - pins: [22]
+    device: ZJY-IPS130 液晶
+    signal: DC (GPIO25)
+    color: ""
+    note: libgpiod 出力（gpiochip4 pinctrl-rp1）
+  - pins: [16]
+    device: ZJY-IPS130 液晶
+    signal: BLK (GPIO23)
+    color: ""
+    note: バックライト。libgpiod 出力（gpiochip4 pinctrl-rp1）
