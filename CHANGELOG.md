@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- OSOYOO 520 モーターの配線色をメーカー資料どおり（赤 Motor+ / 白 Motor− / 青 VCC / 黒 GND / 緑 Encoder A / 黄 Encoder B）に修正し、車輪表記を進行方向基準の「M1 前左」形式に統一
 - OSOYOO 520 モーターエンコーダー（A/B 相）の Pi GPIO 直結割り付けを `motor_hat.yaml`（`encoder`）と `gpio_pins.yaml` に追加し、Motor HAT 接続図・一覧表・GPIO ヘッダー図に表示
 - ダッシュボードに Motor HAT 接続図カードを追加（`config/motor_hat.yaml` で M1〜M4 と車輪位置を割り付け、`GET /api/motor_hat` で取得）
 - TM1637 4桁7セグメントLED用 `seg_display_node` を追加し、ロボット状態コードを表示

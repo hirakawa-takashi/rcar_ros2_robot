@@ -23,10 +23,10 @@ _CHANNELS = {
 
 # 車輪位置 -> (表示名, 機体座標 x 前+, y 左+)
 WHEELS = {
-    'front_left': ('左前', 1, 1),
-    'front_right': ('右前', 1, -1),
-    'rear_left': ('左後', -1, 1),
-    'rear_right': ('右後', -1, -1),
+    'front_left': ('前左', 1, 1),
+    'front_right': ('前右', 1, -1),
+    'rear_left': ('後左', -1, 1),
+    'rear_right': ('後右', -1, -1),
 }
 
 
