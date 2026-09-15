@@ -67,6 +67,8 @@
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 
 ## テスト結果
+- `imu_node`（実機、2026/09/15）: `i2cdetect -y 1` で 0x29 を検出、`BNO055 接続` ログ後に `/imu/data` を 50.0Hz で受信。加速度の合成値 約9.8m/s²、キャリブレーション gyr=3 まで進行を確認。`/api/status` の `imu` に roll/pitch/yaw・角速度・加速度が入ることを確認（ブラウザ表示は未確認）。`super` を `i2c` グループへ追加が必要（未所属だと Permission denied）
+- 取り付け向き: 静止時に加速度 x≈6.9 / y≈4.0 / z≈-5.8 と重力が z 軸に乗っておらず、センサーの搭載向きが `imu_link`（機体と同一向き）と一致していない。向き確定後に軸の入れ替え（またはURDF の `imu_joint` の rpy）で補正が必要
 - `colcon build --symlink-install`: 2パッケージ成功
 - `xacro ai_car.xacro`: URDF 生成成功（10リンク）
 - `ros2 launch ai_car_web dashboard.launch.py`: 起動成功
