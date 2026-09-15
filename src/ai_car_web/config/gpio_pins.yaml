@@ -28,18 +28,9 @@ connections:
     color: 黄
     note: PCA9685 0x60
 
-  # --- モーターエンコーダー線（1 モーター 6 本のうち VCC / GND / Encoder A / B の 4 本を 40 ピンヘッダーへ。
-  #     VCC / GND は Motor HAT 上の 3V3 / GND ピン（Pi 40 ピンの引き出し・同番号）に挿す。
+  # --- モーターエンコーダー線（1 モーター 6 本のうち Encoder A / B の 2 本を Pi GPIO へ。
+  #     VCC / GND は Motor HAT 上の 3V3 / GND ピンに挿すため Pi ヘッダー側は「空き」として扱い、ここには載せない。
   #     ピン・配線色は motor_hat.yaml と一致させる。Motor+ 赤 / Motor− 白 は Motor HAT の M 端子へ） ---
-  - pins: [17]
-    device: M1〜M4 VCC（4 台共通）
-    signal: VCC 3V3（Motor HAT 上の 3V3 ピン）
-    color: 青
-    note: Encoder A/B 出力が GPIO 直結のため 5V は使わない
-  - pins: [30]
-    device: M1 前左
-    signal: GND（Motor HAT 上の GND ピン）
-    color: 黒
   - pins: [29]
     device: M1 前左
     signal: Encoder A (GPIO5)
@@ -48,10 +39,6 @@ connections:
     device: M1 前左
     signal: Encoder B (GPIO6)
     color: 黄
-  - pins: [34]
-    device: M2 前右
-    signal: GND（Motor HAT 上の GND ピン）
-    color: 黒
   - pins: [33]
     device: M2 前右
     signal: Encoder A (GPIO13)
@@ -60,10 +47,6 @@ connections:
     device: M2 前右
     signal: Encoder B (GPIO19)
     color: 黄
-  - pins: [39]
-    device: M3 後左
-    signal: GND（Motor HAT 上の GND ピン）
-    color: 黒
   - pins: [37]
     device: M3 後左
     signal: Encoder A (GPIO26)
@@ -72,10 +55,6 @@ connections:
     device: M3 後左
     signal: Encoder B (GPIO12)
     color: 黄
-  - pins: [25]
-    device: M4 後右
-    signal: GND（Motor HAT 上の GND ピン）
-    color: 黒
   - pins: [36]
     device: M4 後右
     signal: Encoder A (GPIO16)

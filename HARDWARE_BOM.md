@@ -98,6 +98,7 @@ Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− 
 
 - VCC / GND は Motor HAT 上の 3V3 / GND ピンを使う（`motor_hat.yaml` の `power_board: Motor HAT`）。VCC は **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
 - 使用済みの GPIO23/24（pin 16/18、TM1637）と I2C（pin 3/5）は避けている
+- GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
 > Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
 
@@ -121,6 +122,7 @@ Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− 
 - エンコーダー VCC（青）: **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが A/B 出力が GPIO 直結のため 5V は使わない
 - エンコーダー GND（黒）: pin 30 / 34 / 39 / 25
 - 使用済みの GPIO23/24（pin 16/18、TM1637）と I2C（pin 3/5）は避けている
+- GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
 > Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
 
