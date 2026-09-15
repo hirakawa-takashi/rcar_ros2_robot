@@ -5,7 +5,7 @@
 #   pins   : 物理ピン番号のリスト（pin: 3 のように単数でも可）
 #   device : 接続先（機器名）
 #   signal : 信号名・用途
-#   color  : 配線色（未確定なら空欄のまま）
+#   color  : 配線色（未確定なら空欄のまま。ヘッダー直挿しの HAT は PIN）
 #   note   : 備考
 connections:
   # --- Adafruit DC & Stepper Motor HAT（I2C 0x60、ヘッダーにスタック） ---
@@ -52,11 +52,11 @@ connections:
   - pins: [27]
     device: AI HAT+
     signal: ID_SD (HAT EEPROM)
-    color: ""
+    color: PIN
   - pins: [28]
     device: AI HAT+
     signal: ID_SC (HAT EEPROM)
-    color: ""
+    color: PIN
 
   # --- TM1637 4桁7セグLED ---
   - pins: [17]
