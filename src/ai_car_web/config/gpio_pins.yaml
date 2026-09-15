@@ -5,7 +5,7 @@
 #   pins   : 物理ピン番号のリスト（pin: 3 のように単数でも可）
 #   device : 接続先（機器名）
 #   signal : 信号名・用途
-#   color  : 配線色（未確定なら空欄のまま）
+#   color  : 配線色（未確定なら空欄のまま。ヘッダー直挿しの HAT は PIN）
 #   note   : 備考
 connections:
   # --- Adafruit DC & Stepper Motor HAT（I2C 0x60、ヘッダーにスタック） ---
@@ -28,7 +28,7 @@ connections:
     color: 黄
     note: PCA9685 0x60
 
-  # --- GY-BNO055 9軸 IMU（I2C 0x28） ---
+  # --- GY-BNO055 9軸 IMU（I2C 0x29） ---
   - pins: [1]
     device: GY-BNO055 IMU
     signal: 3V3
@@ -40,26 +40,40 @@ connections:
   - pins: [3]
     device: GY-BNO055 IMU
     signal: I2C SDA
-    color: 青
-    note: アドレス 0x28（Motor HAT と I2C バス共有）
+    color: 白
+    note: アドレス 0x29（Motor HAT と I2C バス共有）
   - pins: [5]
     device: GY-BNO055 IMU
     signal: I2C SCL
-    color: 黄
-    note: アドレス 0x28（Motor HAT と I2C バス共有）
+    color: 灰
+    note: アドレス 0x29（Motor HAT と I2C バス共有）
 
   # --- Raspberry Pi AI HAT+（PCIe 接続。ヘッダーは電源と ID EEPROM のみ使用） ---
   - pins: [27]
     device: AI HAT+
     signal: ID_SD (HAT EEPROM)
-    color: ""
+    color: PIN
   - pins: [28]
     device: AI HAT+
     signal: ID_SC (HAT EEPROM)
-    color: ""
+    color: PIN
 
-  # --- 7セグメント LED（接続方式・ピン未確定。決まったら pins を編集） ---
-  # - pins: []
-  #   device: 7セグメント LED
-  #   signal: ""
-  #   color: ""
+  # --- TM1637 4桁7セグLED ---
+  - pins: [17]
+    device: TM1637 4桁7セグLED
+    signal: 3V3
+    color: オレンジ
+  - pins: [20]
+    device: TM1637 4桁7セグLED
+    signal: GND
+    color: 黒
+  - pins: [16]
+    device: TM1637 4桁7セグLED
+    signal: CLK (GPIO23)
+    color: 黄
+    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
+  - pins: [18]
+    device: TM1637 4桁7セグLED
+    signal: DIO (GPIO24)
+    color: 緑
+    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
