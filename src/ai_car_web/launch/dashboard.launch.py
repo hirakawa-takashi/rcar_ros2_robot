@@ -37,6 +37,8 @@ def generate_launch_description():
     use_joy = LaunchConfiguration('use_joy')
     use_seg_display = LaunchConfiguration('use_seg_display')
     use_imu = LaunchConfiguration('use_imu')
+    use_drive_mode = LaunchConfiguration('use_drive_mode')
+    use_autonomy = LaunchConfiguration('use_autonomy')
 
     try:
         get_package_share_directory('camera_ros')
@@ -94,6 +96,10 @@ def generate_launch_description():
                               description='TM1637 7セグ表示ノードを起動する'),
         DeclareLaunchArgument('use_imu', default_value='true',
                               description='BNO055 IMU ノードを起動する'),
+        DeclareLaunchArgument('use_drive_mode', default_value='true',
+                              description='運転モード管理（手動/自動/停止 → /cmd_vel）を起動する'),
+        DeclareLaunchArgument('use_autonomy', default_value='true',
+                              description='自律走行ノード（LiDAR 反応型）を起動する'),
         Node(
             package='ai_car_web',
             executable='dashboard_node',
@@ -144,6 +150,26 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_imu),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='drive_mode_node',
+            name='drive_mode_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_drive_mode),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='autonomy_node',
+            name='autonomy_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_autonomy),
         ),
         *camera_nodes,
         *lidar_nodes,
