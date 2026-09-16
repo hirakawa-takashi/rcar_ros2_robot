@@ -4,6 +4,7 @@
 
 ### Added
 - ZJY-IPS130-V2.0（ST7789 1.3 インチ 240×240 IPS 液晶、SPI0、7 ピン CS なし）用 `lcd_display_node` を追加（spidev + libgpiod + Pillow。運転モード・自律行動・前方距離・障害物・電圧・CPU 温度・パッド接続・IP を描画、`/display_state` は従来コード互換）
+- `gpio_pins.yaml` に ZJY-IPS130 液晶の配線色（GND 黒 / VCC 赤 / SCL 橙 / SDA 黄 / RES 緑 / DC 青 / BLK 紫）を設定
 - 運転モード管理ノード `drive_mode_node` を追加（手動 / 自動 / 停止。`/cmd_vel_manual` と `/cmd_vel_auto` のどちらか一方だけを `/cmd_vel` に中継。`/drive_mode` 状態、`/drive_mode_request` 切替要求、自動進入条件・指令途絶・ゲームパッド切断時の安全停止）
 - Level 1 自律走行ノード `autonomy_node` を追加（LiDAR 反応型: 前進 → 減速 → 空いている側へ旋回。`/cmd_vel_auto`、`/autonomy_status`）
 - ゲームパッド: START 長押し 2 秒で手動 ⇄ 自動、BACK（自動中は B も）で停止

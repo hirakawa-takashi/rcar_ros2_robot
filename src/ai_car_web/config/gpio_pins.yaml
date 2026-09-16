@@ -95,35 +95,35 @@ connections:
     color: PIN
 
   # --- ZJY-IPS130-V2.0 1.3インチ 240x240 IPS 液晶（ST7789、SPI0、7 ピン CS なし）
-  #     旧 TM1637 7セグ（pin 17/20/16/18）を置き換え。配線色は未確定 ---
+  #     旧 TM1637 7セグ（pin 17/20/16/18）を置き換え ---
   - pins: [17]
     device: ZJY-IPS130 液晶
     signal: VCC 3V3
-    color: ""
+    color: 赤
   - pins: [20]
     device: ZJY-IPS130 液晶
     signal: GND
-    color: ""
+    color: 黒
   - pins: [23]
     device: ZJY-IPS130 液晶
     signal: SCL (GPIO11 SPI0 SCLK)
-    color: ""
+    color: 橙
   - pins: [19]
     device: ZJY-IPS130 液晶
     signal: SDA (GPIO10 SPI0 MOSI)
-    color: ""
+    color: 黄
   - pins: [18]
     device: ZJY-IPS130 液晶
     signal: RES (GPIO24)
-    color: ""
+    color: 緑
     note: libgpiod 出力（gpiochip4 pinctrl-rp1）
   - pins: [22]
     device: ZJY-IPS130 液晶
     signal: DC (GPIO25)
-    color: ""
+    color: 青
     note: libgpiod 出力（gpiochip4 pinctrl-rp1）
   - pins: [16]
     device: ZJY-IPS130 液晶
     signal: BLK (GPIO23)
-    color: ""
+    color: 紫
     note: バックライト。libgpiod 出力（gpiochip4 pinctrl-rp1）
