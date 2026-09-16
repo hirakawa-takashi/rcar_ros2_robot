@@ -66,6 +66,8 @@ class ST7789Display:
         self.rst = chip.get_line(rst_gpio)
         self.bl = chip.get_line(bl_gpio) if bl_gpio >= 0 else None
         self.spi = None
+        self.x_offset = 0
+        self.y_offset = 0
         try:
             self.dc.request(consumer='lcd_display_node',
                             type=gpiod.LINE_REQ_DIR_OUT)
@@ -103,7 +105,10 @@ class ST7789Display:
         self._cmd(0x11)            # SLPOUT
         time.sleep(0.12)
         self._cmd(0x3A, [0x55])    # COLMOD: 16bit RGB565
-        madctl = {0: 0x00, 90: 0x60, 180: 0xC0, 270: 0xA0}.get(rotation, 0x00)
+        # 表示 RAM は 240x320 のため、向きによって 80px のオフセットが必要
+        madctl, self.x_offset, self.y_offset = {
+            0: (0x00, 0, 0), 90: (0x60, 0, 0), 180: (0xC0, 0, 80), 270: (0xA0, 80, 0),
+        }.get(rotation, (0x00, 0, 0))
         self._cmd(0x36, [madctl])  # MADCTL
         self._cmd(0x21)            # INVON（IPS パネルは反転が正）
         self._cmd(0x13)            # NORON
@@ -113,8 +118,10 @@ class ST7789Display:
             self.bl.set_value(1)
 
     def _set_window(self):
-        self._cmd(0x2A, [0, 0, 0, WIDTH - 1])
-        self._cmd(0x2B, [0, 0, 0, HEIGHT - 1])
+        x0, x1 = self.x_offset, self.x_offset + WIDTH - 1
+        y0, y1 = self.y_offset, self.y_offset + HEIGHT - 1
+        self._cmd(0x2A, [x0 >> 8, x0 & 0xFF, x1 >> 8, x1 & 0xFF])
+        self._cmd(0x2B, [y0 >> 8, y0 & 0xFF, y1 >> 8, y1 & 0xFF])
         self._cmd(0x2C)
 
     def show(self, image):
