@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- `gpio_pins.yaml` に ZJY-IPS130 液晶（ST7789、240×240）の配線色（GND 黒 / VCC 赤 / SCL 橙 / SDA 黄 / RES 緑 / DC 青 / BLK 紫）を追加
 - TM1637 4桁7セグメントLED用 `seg_display_node` を追加し、ロボット状態コードを表示
 - GY-BNO055 用 `imu_node` を追加し、I2C（0x29）から `/imu/data` を publish
 - `gpio_pins.yaml` の BNO055 配線色を SDA 白 / SCL 灰へ更新
