@@ -2,7 +2,7 @@
 
 ## 最終更新
 - 更新日: 2026/09/16
-- 更新概要: ZJY-IPS130 液晶（ST7789、240×240、SPI、7 ピン）の配線色（GND 黒 / VCC 赤 / SCL 橙 / SDA 黄 / RES 緑 / DC 青 / BLK 紫）を `config/gpio_pins.yaml` に追加。SCL/SDA は SPI0（ピン 23 / 19）、RES/DC/BLK は空き GPIO（25 / 22 / 27）を仮割り当て。表示ノードは未実装。以前: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）と GY-BNO055 用 `imu_node`（I2C 0x29、`/imu/data`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
+- 更新概要: ZJY-IPS130 液晶（ST7789、240×240、SPI、7 ピン）の配線色（GND 黒 / VCC 赤 / SCL 橙 / SDA 黄 / RES 緑 / DC 青 / BLK 紫）を `config/gpio_pins.yaml` に追加。SCL/SDA は SPI0（ピン 23 / 19）、RES/DC/BLK は GPIO 25 / 22 / 27（ピン 22 / 15 / 13）。表示ノードは未実装。以前: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）と GY-BNO055 用 `imu_node`（I2C 0x29、`/imu/data`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
 - 更新担当: Devin
 
 ## システム構成
@@ -47,7 +47,7 @@
   - GPIO 40 ピンヘッダーカード（全幅）: `ai_car_web/gpio_pinout.py` の固定ピン定義（物理番号・名称・BCM・種別）と `config/gpio_pins.yaml` の配線定義（`pins` / `device` / `signal` / `color` / `note`）を結合し `GET /api/gpio` で返す。画面は SVG のヘッダー図（種別ごとの色、使用中ピンは緑の外枠、配線色バー、ホバーで接続先表示）と一覧表（ピン / 名称 / BCM / 使用 / 配線色 / 接続先 / 信号・備考）。同一ピンへの複数接続（I2C バス共有）は「/」区切りで併記。パラメータ `gpio_config`（空なら share 内の `gpio_pins.yaml`）。YAML 編集後は `dashboard_node` 再起動で反映
 
 ## 現在作業中
-- ZJY-IPS130 液晶（ST7789、240×240、SPI）の接続。配線色は確定済み、RES/DC/BLK のピン割り当ては仮（`config/gpio_pins.yaml` 参照）。表示ノードは未実装。ダッシュボードへの反映は本変更のマージ後に実機で `git pull` → `dashboard_node` 再起動が必要
+- ZJY-IPS130 液晶（ST7789、240×240、SPI）の接続。配線色・ピン割り当ては `config/gpio_pins.yaml` の通り（実機への挿し込みはこれから）。表示ノードは未実装。ダッシュボードへの反映は本変更のマージ後に実機で `git pull` → `dashboard_node` 再起動が必要
 
 ## 未実装機能
 - ZJY-IPS130 液晶表示ノード（ST7789 240×240、`dtparam=spi=on`、`spidev` 権限設定を含む）
@@ -100,7 +100,7 @@
 - AI HAT+ 推論: 640x640 にリサイズして 10Hz 設定（実測 約5Hz、JPEG デコード＋リサイズが律速。推論自体は 約9ms、高温時は自動低下）
 
 ## 次回作業
-- ZJY-IPS130 液晶: 実配線に合わせて `gpio_pins.yaml` の RES/DC/BLK のピンを確定し、ST7789（240×240）表示ノードを実装する
+- ZJY-IPS130 液晶: `gpio_pins.yaml` の通りに実機へ配線し、ST7789（240×240）表示ノードを実装する
 - モーター制御ノード（`/cmd_vel` 購読 → Motor HAT 駆動）を実装する
 
 ## 変更ファイル

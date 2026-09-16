@@ -79,7 +79,7 @@ connections:
     note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
 
   # --- ZJY-IPS130 1.3インチ IPS 液晶（ST7789、240x240、SPI、7 ピン: GND/VCC/SCL/SDA/RES/DC/BLK。表示ノードは未実装） ---
-  # SCL/SDA は SPI0 に固定。RES/DC/BLK は空き GPIO を仮割り当て（実配線に合わせて変更する）。
+  # SCL/SDA は SPI0。RES/DC/BLK は空き GPIO を使用。
   - pins: [25]
     device: ZJY-IPS130 液晶
     signal: GND
@@ -101,14 +101,12 @@ connections:
     device: ZJY-IPS130 液晶
     signal: RES (GPIO25)
     color: 緑
-    note: 仮割り当て
   - pins: [15]
     device: ZJY-IPS130 液晶
     signal: DC (GPIO22)
     color: 青
-    note: 仮割り当て
   - pins: [13]
     device: ZJY-IPS130 液晶
     signal: BLK (GPIO27)
     color: 紫
-    note: 仮割り当て（バックライト、常時 ON なら 3V3 直結でも可）
+    note: バックライト（常時 ON なら 3V3 直結でも可）
