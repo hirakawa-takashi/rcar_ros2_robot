@@ -124,7 +124,7 @@ lcd_display_node:
     dc_gpio: 25
     rst_gpio: 24
     bl_gpio: 23          # -1 でバックライト制御なし（BLK を 3V3 直結）
-    rotation: 270        # 0 / 90 / 180 / 270（270 = 反時計回りに 90°）
+    rotation: 180        # 0 / 90 / 180 / 270（反時計回りの角度。270 から更に反時計回り 90° で 180）
     update_rate: 4.0
     font_path: ""        # 空なら IPA ゴシック → Noto CJK → DejaVu の順で探す
     system_status_topic: "/system_status"
