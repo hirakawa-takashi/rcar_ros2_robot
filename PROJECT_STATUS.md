@@ -2,7 +2,7 @@
 
 ## 最終更新
 - 更新日: 2026/09/19
-- 更新概要: perception_node の YOLOv8s 化、レターボックス前処理、複数フレーム確認でカメラ物体検出の精度を改善。以前:
+- 更新概要: perception_node の YOLOv8m 化、推論 30Hz 化、レターボックス前処理、複数フレーム確認でカメラ物体検出の精度を改善。以前:
 - 更新概要: プロジェクト説明モーダル（7タブ）と `/api/architecture` を追加。GPIO 40 ピン / Motor HAT 接続図カードはメイン画面からハードウェア構成タブへ移動、LiDAR 表示の距離リングに数値ラベルを追加。以前: 状態表示器を TM1637 7 セグから ZJY-IPS130-V2.0（ST7789 1.3 インチ 240×240 IPS 液晶、SPI0、7 ピン CS なし）へ変更。新規 `lcd_display_node`（spidev + libgpiod + Pillow）が運転モード / 自律行動 / 前方距離 / 障害物 / 電圧 / CPU 温度 / パッド接続 / IP を描画し、従来と同じコードを `/display_state` に publish。配線: VCC pin17 赤、GND pin20 黒、SCL pin23(GPIO11) 橙、SDA pin19(GPIO10) 黄、RES pin18(GPIO24) 緑、DC pin22(GPIO25) 青、BLK pin16(GPIO23) 紫。launch 既定を `use_lcd_display=true` / `use_seg_display=false` に変更（GPIO23/24 共用のため同時起動不可）。`gpio_pins.yaml`・BOM・README を更新。以前: 運転モード管理 `drive_mode_node`（手動 / 自動 / 停止、`/cmd_vel` を発行する唯一のノード）と Level 1 自律走行 `autonomy_node`（LiDAR 反応型、`/cmd_vel_auto`）を追加。`dashboard_node` の手動指令出力を `/cmd_vel_manual` に変更し、`GET/POST /api/drive_mode` とテレメトリ `drive_mode` / `autonomy` を追加。ゲームパッドは START 長押し（2 秒）で手動 ⇄ 自動、BACK（自動中は B も）で停止。画面に運転モードバッジ・3 ボタン・自律走行カードを追加、7 セグに `AUto` / `StoP` を追加。以前: Motor HAT 接続図・一覧表を「1 モーター 6 本（Motor+ / Motor− / VCC / GND / Encoder A / Encoder B）」をすべて明示する形に変更（`GET /api/motor_hat` の各モーターに `wires` 6 件、`encoder` に `vcc` / `gnd` を追加、GND はモーターごとに pin 30/34/39/25 を割り当て、VCC は pin 17 共通。VCC / GND は Motor HAT 上の 3V3 / GND ピンに接続する表記に変更し、Pi GPIO ヘッダー表では該当ピンを空きとして表示）。表示から「520 モーター」の文言を削除し、ラベルは「M1 前左 Encoder A」形式。以前: モーターの配線色をメーカー資料に合わせて確定（赤 Motor+ / 白 Motor− / 青 VCC / GND 黒 / 緑 Encoder A / 黄 Encoder B）し、車輪表記を進行方向基準の「M1 前左」形式（前左 / 前右 / 後左 / 後右）に統一。接続図・一覧表・BOM・GPIO 表の表記を Motor+ / Motor− / Encoder A / B に揃えた。以前: OSOYOO 520 モーター内蔵エンコーダー（A/B 相）の Pi GPIO 直結割り付けを追加（`motor_hat.yaml` の `encoder`、`gpio_pins.yaml`。M1: 29/31、M2: 33/35、M3: 37/32、M4: 36/38、VCC 3V3 pin17、GND 30/34/39/25）。Motor HAT 接続図・一覧表・GPIO ヘッダー図にエンコーダーピンを表示。以前: ダッシュボードに「Motor HAT 接続図」カード（Adafruit Motor HAT の M1〜M4 と車輪位置の割り付け・配線図・一覧表）を追加。割り付けは `config/motor_hat.yaml`（M1=前左 / M2=前右 / M3=後左 / M4=後右、右側は `reversed: true`）で編集し `GET /api/motor_hat` で取得。以前: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）と GY-BNO055 用 `imu_node`（I2C 0x29、`/imu/data`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
 - 更新担当: Devin
 
@@ -34,7 +34,7 @@
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点に間引き、表示範囲は自動スケール）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`
   - カメラノード: `camera_ros`（libcamera）を `dashboard.launch.py` の `use_camera` で起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
-  - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像は AI HAT+（Hailo-8, `yolov8s.hef`）でレターボックス推論し、元画像座標へ復元した検出枠を複数フレーム（履歴3中2回）で確認して物体名を補助情報として付与。結果は `/obstacle_status`（JSON, 5Hz）
+  - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像は AI HAT+（Hailo-8, `yolov8m.hef`）でレターボックス推論し、元画像座標へ復元した検出枠を複数フレーム（履歴3中2回）で確認して物体名を補助情報として付与。結果は `/obstacle_status`（JSON, 5Hz）
   - 検出物体の距離: 画像の横位置を `camera_hfov_deg`（66°）で方位角に変換し、LiDAR の同方位の距離を採用。カメラ映像に検出枠（`danger_distance` 0.3m 以内は赤、それ以外は緑）と距離を重畳し、LiDAR 点群マップでは前方 ±30°（`front_angle_deg` 60°）内かつ 0.3m 以内の点を赤点で表示。点群マップには前方／後方／左／右のラベルを表示（上＝前方）。方位角範囲内の点は距離でクラスタリングし（`cluster_gap` 0.25m）、最も手前のまとまりの中央値を採用する。スキャンが `scan_max_age`（1秒）より古い場合は距離を出さない。LiDAR の取り付け向きは `scan_angle_offset_deg` で補正し、実機は前方が機体後方を向くため 180° を設定済み
   - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
   - 画面（`static/index.html`）: 手動操作カードは LiDAR カードの直下（4 列固定グリッド、幅 2 列分）に配置。メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
@@ -106,7 +106,7 @@
 - 解像度: 1280x720 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約100KB・約2.9MB/s、camera_ros の CPU は約 36〜45%
 - ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`）
 - ダッシュボード MJPEG: 30fps（`camera_stream_rate`）
-- AI HAT+ 推論: 640x640 にリサイズして 10Hz 設定（実測 約5Hz、JPEG デコード＋リサイズが律速。推論自体は 約9ms、高温時は自動低下）
+- AI HAT+ 推論: 640x640 にレターボックスして 30Hz 設定（推論タイマー 0.02秒、JPEG デコード＋リサイズを含む実測値は実機で確認）
 
 ## 次回作業
 - 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する（モーター配線後）

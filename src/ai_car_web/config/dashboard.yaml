@@ -167,8 +167,8 @@ perception_node:
     front_angle_deg: 60.0
     stop_distance: 0.35
     slow_distance: 0.8
-    hef_path: "/home/super/AI-CAR_ws/models/yolov8s.hef"
-    inference_rate: 10.0
+    hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
+    inference_rate: 30.0
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
@@ -181,8 +181,8 @@ perception_node:
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
     hailo_temp_crit: 85.0
-    # 実効スループット表示用（YOLOv8s 640x640 = 28.6 GOP / Hailo-8 公称 26 TOPS）
-    model_gops: 28.6
+    # 実効スループット表示用（YOLOv8m 640x640 = 78.9 GOP / Hailo-8 公称 26 TOPS）
+    model_gops: 78.9
     hailo_peak_tops: 26.0
 
 rplidar:

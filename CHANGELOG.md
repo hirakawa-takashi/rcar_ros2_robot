@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- カメラ物体検出を YOLOv8m に変更し推論レートを 30 Hz に引き上げ（推論タイマー 0.2 s → 0.02 s で `inference_rate` 上限が実際に効くよう修正。従来は実効 5 Hz 上限）
 - ダッシュボードにネイビー×シアンの計器パネル風テーマを適用（CSS のみ。カードのガラス風背景・数値の等幅フォント・状態バッジの発光・接続ドット / AUTO バッジのパルス・カメラ / LiDAR 枠のコーナーマーカー。レイアウトと表示内容は不変）
 - GPIO 40 ピンヘッダー / Motor HAT 接続図カードをメイン画面からプロジェクト説明「ハードウェア構成」タブへ移動
 - LiDAR (/scan) 表示の距離リングに数値ラベル（m）を追加
@@ -16,7 +17,7 @@
 - ダッシュボード: 運転モードバッジ・3 ボタン（`GET/POST /api/drive_mode`）と自律走行カードを追加。7 セグに `AUto` / `StoP` を追加
 
 ### Changed
-- `perception_node` のカメラ推論を YOLOv8s（640x640 / 28.6 GOP）へ更新。レターボックス前処理でアスペクト比を維持し、検出枠を元画像座標へ復元。信頼度 0.5 と複数フレーム確認（履歴3フレーム中2回）で誤検出を抑制
+- `perception_node` のカメラ推論を YOLOv8m（640x640 / 78.9 GOP）へ更新。レターボックス前処理でアスペクト比を維持し、検出枠を元画像座標へ復元。信頼度 0.5 と複数フレーム確認（履歴3フレーム中2回）で誤検出を抑制
 - 状態表示器を TM1637 7 セグから ZJY-IPS130-V2.0 液晶へ置き換え（launch 既定 `use_lcd_display=true` / `use_seg_display=false`。`gpio_pins.yaml`・BOM・README の配線を pin 16/17/18/19/20/22/23 の液晶接続に更新）
 - `dashboard_node` の手動指令出力を `/cmd_vel` から `/cmd_vel_manual` に変更（`/cmd_vel` は `drive_mode_node` が発行）
 - Motor HAT 接続図・一覧表を 1 モーター 6 本（Motor+ / Motor− / VCC / GND / Encoder A / Encoder B）すべて明示する形に変更（`/api/motor_hat` に `wires`）。エンコーダー VCC / GND は Motor HAT 上の 3V3 / GND ピンへ（`motor_hat.yaml` `hat.encoder.power_board`）
