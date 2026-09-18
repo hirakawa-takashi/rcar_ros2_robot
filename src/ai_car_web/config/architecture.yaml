@@ -1,0 +1,267 @@
+# プロジェクト説明（ダッシュボード「プロジェクト説明」ボタン）の構成定義。
+# dashboard_node が GET /api/architecture で返す。しきい値・タイムアウトは
+# dashboard.yaml の実値を `param:` 参照で埋め込む（{node}.{parameter}）。
+
+overview:
+  title: AI-CAR
+  subtitle: Raspberry Pi 5 + ROS 2 Jazzy のメカナム 4 輪自律走行ロボット
+  purpose:
+    - Raspberry Pi 5（8GB）上で ROS 2 Jazzy を動かし、LiDAR・カメラ・IMU を使って自律走行するロボットカーを作る
+    - Web ダッシュボード（FastAPI）でテレメトリ表示・手動操作・システム監視・配線図の確認を行う
+    - 1 ノード 1 責務、既存の動作確認済みコードは削除しない、Topic / Launch の変更はユーザー承認制
+  current_level:
+    label: Level 1（LiDAR 反応型・地図なし）
+    detail: 前進 → 接近で減速 → 停止距離内なら空いている側へ旋回。地図・自己位置推定・経路計画は使わない
+  milestones:
+    - {state: done, text: Web ダッシュボード（カメラ / LiDAR / CPU / AI HAT+ / IMU / GPIO / Motor HAT）}
+    - {state: done, text: 障害物判定（LiDAR + Hailo-8 物体検出）とサーマル制御}
+    - {state: done, text: F710 ゲームパッド手動操作}
+    - {state: done, text: 運転モード管理（手動 / 自動 / 停止）と Level 1 自律走行}
+    - {state: done, text: ST7789 液晶の状態表示器}
+    - {state: todo, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
+    - {state: todo, text: エンコーダー読み取り・オドメトリ（/odom）}
+    - {state: todo, text: SLAM（slam_toolbox）}
+    - {state: todo, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション）}
+  stack:
+    - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
+    - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
+    - {name: FastAPI + uvicorn, role: Web ダッシュボード / REST / WebSocket}
+    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8n）}
+    - {name: libcamera (rpicam), role: カメラ v3 取り込み}
+    - {name: spidev / libgpiod / Pillow, role: ST7789 液晶描画}
+    - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
+
+hardware:
+  center: {id: pi5, label: Raspberry Pi 5, sub: 8GB / Ubuntu 24.04 / ROS 2 Jazzy}
+  devices:
+    - {id: ai_hat, label: AI HAT+, sub: Hailo-8 NPU 26 TOPS, bus: PCIe（GPIO ヘッダー経由）, power: 5V, jump: hat, side: top}
+    - {id: motor_hat, label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2, bus: I2C 0x60, power: 12V（モーター）, jump: motor, side: right}
+    - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
+    - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
+    - {id: camera, label: カメラモジュール v3, sub: IMX708 1280×720 30fps, bus: CSI, power: 5V, side: left}
+    - {id: imu, label: GY-BNO055, sub: 9 軸 IMU 50 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
+    - {id: lcd, label: ZJY-IPS130-V2.0, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
+    - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
+    - {id: battery, label: バッテリー, sub: 5V / 12V 2 系統, bus: 5V → Pi 5・センサー / 12V → Motor HAT のみ, power: '', side: top}
+
+nodes:
+  - id: dashboard_node
+    label: dashboard_node
+    file: ai_car_web/dashboard_node.py
+    role: FastAPI サーバー（別スレッド）+ rclpy ノード。ブラウザと ROS 2 の橋渡し。Web 操作とゲームパッドの指令を同じ経路で /cmd_vel_manual に変換する
+    publishes: [/cmd_vel_manual, /drive_mode_request]
+    subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status]
+    params:
+      - {name: max_linear_speed, ref: dashboard_node.max_linear_speed, unit: m/s, desc: 正規化指令 1.0 のときの並進速度}
+      - {name: max_angular_speed, ref: dashboard_node.max_angular_speed, unit: rad/s, desc: 正規化指令 1.0 のときの旋回速度}
+      - {name: cmd_timeout, ref: dashboard_node.cmd_timeout, unit: s, desc: 無指令でゼロ速度を送るまでの時間}
+      - {name: api_token, ref: dashboard_node.api_token, unit: '', desc: POST API のトークン（空なら認証なし）, secret: true}
+    layer: ui
+  - id: joy_teleop_node
+    label: joy_teleop_node
+    file: ai_car_web/joy_teleop_node.py
+    role: Logitech F710 を Linux joystick API で読み、正規化 Twist を 20 Hz で publish。START 長押しで手動 ⇄ 自動、BACK で停止要求
+    publishes: [/joy_cmd, /drive_mode_request]
+    subscribes: [/drive_mode]
+    params:
+      - {name: speed_scale, ref: joy_teleop_node.speed_scale, unit: '', desc: 通常時の出力割合（RB で全速）}
+      - {name: mode_hold_sec, ref: joy_teleop_node.mode_hold_sec, unit: s, desc: START 長押し時間}
+    layer: ui
+  - id: drive_mode_node
+    label: drive_mode_node
+    file: ai_car_web/drive_mode_node.py
+    role: 手動 / 自動 / 停止のマルチプレクサ。/cmd_vel を publish する唯一のノード。各 watchdog と障害物最終ガードを持つ
+    publishes: [/cmd_vel, /drive_mode]
+    subscribes: [/cmd_vel_manual, /cmd_vel_auto, /drive_mode_request, /obstacle_status, /joy_cmd]
+    params:
+      - {name: manual_timeout, ref: drive_mode_node.manual_timeout, unit: s, desc: MANUAL 中に手動指令が途絶えたら STOP}
+      - {name: auto_timeout, ref: drive_mode_node.auto_timeout, unit: s, desc: AUTO 中に自動指令が途絶えたら STOP}
+      - {name: obstacle_timeout, ref: drive_mode_node.obstacle_timeout, unit: s, desc: 障害物判定が古ければ LiDAR 停止とみなす}
+      - {name: joy_timeout, ref: drive_mode_node.joy_timeout, unit: s, desc: ゲームパッド未接続判定}
+      - {name: auto_requires_joy, ref: drive_mode_node.auto_requires_joy, unit: '', desc: AUTO にゲームパッド接続を必須にする}
+      - {name: manual_override, ref: drive_mode_node.manual_override, unit: '', desc: AUTO 中の手動指令で MANUAL へ復帰}
+      - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: stop 判定中は前進を 0 にする}
+    layer: control
+  - id: autonomy_node
+    label: autonomy_node
+    file: ai_car_web/autonomy_node.py
+    role: Level 1 自律走行。/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退を決定して /cmd_vel_auto に 20 Hz で常時 publish（AUTO 以外はゼロ）
+    publishes: [/cmd_vel_auto, /autonomy_status]
+    subscribes: [/scan, /obstacle_status, /drive_mode]
+    params:
+      - {name: cruise_speed, ref: autonomy_node.cruise_speed, unit: m/s, desc: 前進速度}
+      - {name: slow_speed, ref: autonomy_node.slow_speed, unit: m/s, desc: 減速時の速度}
+      - {name: turn_speed, ref: autonomy_node.turn_speed, unit: rad/s, desc: その場旋回の角速度}
+      - {name: backoff_speed, ref: autonomy_node.backoff_speed, unit: m/s, desc: 後退速度}
+      - {name: slow_distance, ref: autonomy_node.slow_distance, unit: m, desc: この距離以内で減速}
+      - {name: stop_distance, ref: autonomy_node.stop_distance, unit: m, desc: この距離以内で旋回}
+      - {name: clear_distance, ref: autonomy_node.clear_distance, unit: m, desc: 前方がこの距離以上空くまで旋回を続ける}
+      - {name: backoff_distance, ref: autonomy_node.backoff_distance, unit: m, desc: 前後左右すべてこの距離以内なら後退}
+      - {name: min_turn_sec, ref: autonomy_node.min_turn_sec, unit: s, desc: 旋回の最短継続時間}
+      - {name: scan_max_age, ref: autonomy_node.scan_max_age, unit: s, desc: LiDAR がこれより古いと停止}
+    layer: control
+  - id: perception_node
+    label: perception_node
+    file: ai_car_web/perception_node.py
+    role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8n）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御
+    publishes: [/obstacle_status]
+    subscribes: [/scan, /camera/image_raw/compressed, /system_status]
+    params:
+      - {name: stop_distance, ref: perception_node.stop_distance, unit: m, desc: 停止判定}
+      - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
+      - {name: danger_distance, ref: perception_node.danger_distance, unit: m, desc: 検出枠を赤にする距離}
+      - {name: inference_rate, ref: perception_node.inference_rate, unit: Hz, desc: 推論レート上限}
+      - {name: cpu_temp_warn, ref: perception_node.cpu_temp_warn, unit: ℃, desc: 推論 40% へ}
+      - {name: cpu_temp_crit, ref: perception_node.cpu_temp_crit, unit: ℃, desc: 推論停止（LiDAR 判定は継続）}
+      - {name: hailo_temp_warn, ref: perception_node.hailo_temp_warn, unit: ℃, desc: 推論 40% へ}
+      - {name: hailo_temp_crit, ref: perception_node.hailo_temp_crit, unit: ℃, desc: 推論停止}
+    layer: perception
+  - id: rplidar
+    label: rplidar（rplidar_ros）
+    file: 外部パッケージ ros-jazzy-rplidar-ros
+    role: RPLIDAR A1M8 を読み /scan を約 8 Hz で publish（launch 側で respawn）
+    publishes: [/scan]
+    subscribes: []
+    params: []
+    layer: sensor
+  - id: camera
+    label: camera（camera_ros）
+    file: 外部パッケージ camera_ros + Raspberry Pi 版 libcamera
+    role: IMX708 を 1280×720 30fps で取り込み JPEG（品質 80）で publish（launch 側で respawn）
+    publishes: [/camera/image_raw/compressed]
+    subscribes: []
+    params: []
+    layer: sensor
+  - id: imu_node
+    label: imu_node
+    file: ai_car_web/imu_node.py
+    role: GY-BNO055（I2C 0x29）を読み /imu/data を 50 Hz で publish
+    publishes: [/imu/data]
+    subscribes: []
+    params: []
+    layer: sensor
+  - id: system_monitor_node
+    label: system_monitor_node
+    file: ai_car_web/system_monitor_node.py
+    role: CPU / メモリ / PMIC 電圧・電流 / スロットリング / Hailo-8 温度を 1 Hz で /system_status に publish（読み取りのみ）
+    publishes: [/system_status]
+    subscribes: []
+    params: []
+    layer: sensor
+  - id: lcd_display_node
+    label: lcd_display_node
+    file: ai_car_web/lcd_display_node.py
+    role: ST7789 液晶に状態（待機 / 手動 / 自動 / 停止 / 障害物停止 / 減速 / 低電圧）と運転モード・前方距離・電圧・CPU 温度・IP を描画。従来の 4 文字コードを /display_state に publish
+    publishes: [/display_state]
+    subscribes: [/system_status, /obstacle_status, /joy_cmd, /cmd_vel, /drive_mode, /autonomy_status]
+    params:
+      - {name: rotation, ref: lcd_display_node.rotation, unit: 度, desc: 画面の向き（反時計回り）}
+    layer: ui
+  - id: motor_control_node
+    label: motor_control_node（未実装）
+    file: ''
+    role: /cmd_vel を購読しメカナム逆運動学で M1〜M4 を駆動する予定（motor_hat.yaml の割り付けを参照）
+    publishes: []
+    subscribes: [/cmd_vel]
+    params: []
+    layer: actuator
+    planned: true
+
+topics:
+  - {name: /scan, type: sensor_msgs/LaserScan, desc: LiDAR 360° スキャン（約 8 Hz）}
+  - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（30 Hz）}
+  - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（50 Hz）}
+  - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
+  - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
+  - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（20 Hz）}
+  - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
+  - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（20 Hz、AUTO 以外はゼロ）}
+  - {name: /drive_mode_request, type: std_msgs/String (JSON), desc: 'モード切替要求 {mode: manual|auto|stop|toggle, source}'}
+  - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz・transient local）}
+  - {name: /cmd_vel, type: geometry_msgs/Twist, desc: 最終速度指令（drive_mode_node のみが publish）}
+  - {name: /autonomy_status, type: std_msgs/String (JSON), desc: 自律行動・セクター距離・自動指令}
+  - {name: /display_state, type: std_msgs/String, desc: 表示器の 4 文字状態コード}
+  - {name: /odom, type: nav_msgs/Odometry, desc: オドメトリ（未実装、現在は publisher なし）}
+
+drive_modes:
+  states:
+    - {id: manual, label: 手動, desc: /cmd_vel_manual（Web + ゲームパッド）を /cmd_vel へ中継。起動時の既定}
+    - {id: auto, label: 自動, desc: /cmd_vel_auto（autonomy_node）を 20 Hz で中継}
+    - {id: stop, label: 停止, desc: ゼロ速度を定期的に publish。手動指令は無視し、明示的に「手動」へ戻す必要がある}
+  transitions:
+    - {from: manual, to: auto, trigger: Web「自動」/ START 長押し, condition: 進入条件をすべて満たす（下記）}
+    - {from: auto, to: manual, trigger: 手動指令（スティック / Web）を検出, condition: manual_override}
+    - {from: auto, to: stop, trigger: 自動指令が auto_timeout 途絶 / ゲームパッド切断 / LiDAR 判定途絶, condition: watchdog / guard}
+    - {from: manual, to: stop, trigger: 手動指令が manual_timeout 途絶（移動中）, condition: watchdog}
+    - {from: any, to: stop, trigger: Web「停止」・赤い停止ボタン（/api/stop）/ BACK / 自動中の B, condition: 常に}
+    - {from: stop, to: manual, trigger: Web「手動」/ START 長押し, condition: 常に}
+    - {from: stop, to: auto, trigger: Web「自動」/ START 長押し, condition: 進入条件をすべて満たす}
+  auto_entry_conditions:
+    - /obstacle_status が新鮮（obstacle_timeout 以内）で level が stop / unknown でない
+    - ゲームパッドが接続中（auto_requires_joy）
+    - スティック・手動操作がニュートラル
+    - /cmd_vel_auto が生きている（autonomy_node 起動中）
+  safety:
+    - {name: Web 指令タイムアウト, where: dashboard_node, ref: dashboard_node.cmd_timeout, unit: s, desc: 無指令でゼロ速度}
+    - {name: 手動 watchdog, where: drive_mode_node, ref: drive_mode_node.manual_timeout, unit: s, desc: MANUAL 中の手動指令途絶で STOP}
+    - {name: 自動 watchdog, where: drive_mode_node, ref: drive_mode_node.auto_timeout, unit: s, desc: AUTO 中の自動指令途絶で STOP}
+    - {name: LiDAR 途絶, where: drive_mode_node, ref: drive_mode_node.obstacle_timeout, unit: s, desc: 障害物判定が古ければ AUTO を拒否 / STOP}
+    - {name: ゲームパッド切断, where: drive_mode_node, ref: drive_mode_node.joy_timeout, unit: s, desc: AUTO 中の切断で STOP}
+    - {name: 障害物最終ガード, where: drive_mode_node / dashboard_node, ref: '', unit: '', desc: stop 判定中はどのモードでも前進を 0 にする。slow 判定では speed_scale で減速}
+    - {name: モード遷移時のゼロ速度, where: drive_mode_node, ref: '', unit: '', desc: 遷移時と起動時に必ず一度ゼロ速度を publish}
+    - {name: サーマル制御, where: perception_node, ref: '', unit: '', desc: CPU 70℃ / Hailo 75℃ で推論 40%、78℃ / 85℃ で推論停止（LiDAR 判定は継続）}
+    - {name: API トークン認証, where: dashboard_node, ref: '', unit: '', desc: api_token 設定時は POST API に X-API-Token / Bearer が必須}
+
+autonomy:
+  sectors:
+    - {id: front, label: 前, angle: ±30°（front_angle_deg 60°）, use: 減速 / 旋回 / 後退判定}
+    - {id: front_left, label: 前左, angle: 前セクターの左半分 0°〜30°, use: 旋回方向の選択}
+    - {id: front_right, label: 前右, angle: 前セクターの右半分 0°〜-30°, use: 旋回方向の選択}
+    - {id: left, label: 左, angle: 30°〜150°, use: 旋回方向 / 後退判定}
+    - {id: right, label: 右, angle: -30°〜-150°, use: 旋回方向 / 後退判定}
+    - {id: back, label: 後, angle: 180°±30°, use: 後退の安全確認（測距なしなら後退しない）}
+  behaviors:
+    - {id: forward, label: 前進, condition: 前方 > slow_distance, output: linear.x = cruise_speed}
+    - {id: slow, label: 減速, condition: stop_distance < 前方 ≤ slow_distance, output: linear.x = slow_speed、近い側から離れる方向へ緩く旋回}
+    - {id: turn, label: 旋回, condition: 前方 ≤ stop_distance, output: 空いている側へ angular.z = ±turn_speed。前方が clear_distance 以上空くまで（最短 min_turn_sec）}
+    - {id: backoff, label: 後退, condition: 前・左・右 ≤ backoff_distance かつ 後方に測距があり > stop_distance, output: linear.x = −backoff_speed}
+    - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
+  perception_flow:
+    - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg 180°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
+    - カメラ JPEG → 640×640 にリサイズ → Hailo-8 YOLOv8n（約 9 ms）→ 検出枠の横位置を camera_hfov_deg で方位角へ → LiDAR の同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（減速 speed_scale）、液晶表示
+
+api:
+  rest:
+    - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
+    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / joy）, auth: false}
+    - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーの配線表, auth: false}
+    - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
+    - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
+    - {method: GET, path: /api/drive_mode, desc: 現在の運転モード, auth: false}
+    - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
+    - {method: POST, path: /api/stop, desc: 全モード停止（ゼロ速度 + stop モード要求）, auth: true}
+    - {method: POST, path: /api/drive_mode, desc: 'モード切替 {mode: manual|auto|stop}', auth: true}
+    - {method: GET, path: /api/camera/snapshot, desc: JPEG 1 枚, auth: false}
+    - {method: GET, path: /api/camera/stream, desc: MJPEG ストリーム, auth: false}
+    - {method: WS, path: /ws, desc: テレメトリ配信（telemetry_rate Hz）。未導入環境は /api/status ポーリングにフォールバック, auth: false}
+  auth_note: dashboard_node.api_token または環境変数 AI_CAR_API_TOKEN を設定すると auth=true の API に X-API-Token（または Authorization Bearer）ヘッダーが必要。UI は ?token= を一度開くと localStorage に保存する
+
+status:
+  known_issues:
+    - 実機の電源不足（Undervoltage 検出）。公式 27W PD 電源と LiDAR の別系統給電が必要
+    - /odom 未実装のためオドメトリは null
+    - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
+    - IMU の搭載向きが imu_link と一致しておらず軸補正が必要
+    - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
+  next:
+    - モーター制御ノード（/cmd_vel → Motor HAT）の実装
+    - 実配線に合わせた motor_hat.yaml / gpio_pins.yaml の修正
+    - エンコーダー読み取りノード → /odom
+    - 実機で自動モードの旋回方向・速度・しきい値を調整
+  docs:
+    - {name: README.md, desc: セットアップ・実行・各デバイスの導入手順}
+    - {name: PROJECT_STATUS.md, desc: 実装済み機能・既知の問題・テスト結果・次回作業}
+    - {name: PROJECT_RULES.md, desc: 開発ルール}
+    - {name: HARDWARE_BOM.md, desc: 部品構成表・電源系統}
+    - {name: CHANGELOG.md, desc: 変更履歴}

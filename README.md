@@ -61,11 +61,12 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 
 - Publish: `/cmd_vel` (`geometry_msgs/Twist`)、`~/status` (`std_msgs/String`)
 - Subscribe: `/scan` (`sensor_msgs/LaserScan`)、`/imu/data` (`sensor_msgs/Imu`)、`/odom` (`nav_msgs/Odometry`)、`/system_status` (`std_msgs/String`)、`/camera/image_raw/compressed` (`sensor_msgs/CompressedImage`)
-- HTTP: `GET /`、`GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
+- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
 - パラメータ: `src/ai_car_web/config/dashboard.yaml`
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。
 `cmd_timeout`（既定 0.7 秒）の間に新しい指令が来ない場合は自動的に停止する。
+画面上部の「プロジェクト説明」ボタンから、`architecture.yaml` に基づく構成・安全機構・API・開発状況の7タブを確認できる。
 `dashboard_node.api_token` または環境変数 `AI_CAR_API_TOKEN` を設定すると、POST `/api/*` に
 `X-API-Token`（または Bearer）ヘッダーが必要になる。UI は `http://<PI_IP>:8080/?token=...` を
 一度開くとトークンを localStorage に保存する。
