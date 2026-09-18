@@ -1054,7 +1054,7 @@ function aboutTable(headers, rows) {
     `<tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell ?? '-'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 function architectureNode(id) {
-  return (architectureData.nodes || []).find(n => n.id === id);
+  return ((architectureData || {}).nodes || []).find(n => n.id === id);
 }
 function renderOverview(a) {
   const o = a.overview || {};
@@ -1251,7 +1251,7 @@ function renderDrive(a) {
     `<h3>自動進入条件</h3>${aboutList(d.auto_entry_conditions)}<h3>安全機構</h3>` +
     aboutTable(['名称', '実装箇所', '値', '説明'], safety);
 }
-function renderAutonomy(a) {
+function renderAboutAutonomy(a) {
   const n = architectureNode(a.autonomy_node || 'autonomy_node') || {};
   const values = Object.fromEntries((n.params || []).map(p => [p.name, Number(p.value)]));
   const rings = [['clear_distance', '#4a90d9'], ['slow_distance', '#b4d455'], ['stop_distance', '#f08b36'], ['backoff_distance', '#e04b4b']];
@@ -1297,7 +1297,7 @@ function renderAboutTab(id) {
   const body = document.getElementById('about_body');
   if (!architectureData) { body.innerHTML = '<span class="badge">読み込み中...</span>'; return; }
   if (architectureData.error) { body.innerHTML = `<span class="badge crit">${esc(architectureData.error)}</span>`; return; }
-  const renders = {overview: renderOverview, hardware: renderHardware, software: renderNodes, modes: renderDrive, autonomy: renderAutonomy, api: renderApi, status: renderStatus};
+  const renders = {overview: renderOverview, hardware: renderHardware, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
   body.innerHTML = (renders[id] || renderOverview)(architectureData);
   body.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => {
     const jump = el.dataset.jump; if (!jump) return;
