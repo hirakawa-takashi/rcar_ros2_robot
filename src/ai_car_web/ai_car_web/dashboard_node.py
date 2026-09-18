@@ -526,6 +526,7 @@ class DashboardNode(Node):
             }
         except (OSError, yaml.YAMLError, AttributeError):
             pass
+        params.setdefault('dashboard_node', {})['api_token'] = bool(self.api_token)
         data = load_architecture(self.architecture_config, params)
         try:
             topics = []
