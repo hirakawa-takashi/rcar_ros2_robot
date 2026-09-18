@@ -177,7 +177,7 @@ topics:
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
   - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（20 Hz、AUTO 以外はゼロ）}
   - {name: /drive_mode_request, type: std_msgs/String (JSON), desc: 'モード切替要求 {mode: manual|auto|stop|toggle, source}'}
-  - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz, transient local）}
+  - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz・transient local）}
   - {name: /cmd_vel, type: geometry_msgs/Twist, desc: 最終速度指令（drive_mode_node のみが publish）}
   - {name: /autonomy_status, type: std_msgs/String (JSON), desc: 自律行動・セクター距離・自動指令}
   - {name: /display_state, type: std_msgs/String, desc: 表示器の 4 文字状態コード}

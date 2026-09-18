@@ -528,8 +528,12 @@ class DashboardNode(Node):
             pass
         data = load_architecture(self.architecture_config, params)
         try:
+            topics = []
+            for name, _ in self.get_topic_names_and_types():
+                if self.get_publishers_info_by_topic(name):
+                    topics.append(name)
             data['live'] = {
-                'topics': sorted(name for name, _ in self.get_topic_names_and_types()),
+                'topics': sorted(topics),
                 'nodes': sorted(self.get_node_names()),
             }
         except Exception:
