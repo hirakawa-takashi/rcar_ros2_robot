@@ -1,10 +1,12 @@
 """AI-CAR Webダッシュボードノード。
 
-FastAPI サーバーを別スレッドで起動し、ブラウザからの手動操作コマンドを
-/cmd_vel へ publish し、センサートピックのテレメトリを WebSocket で配信する。
+FastAPI サーバーを別スレッドで起動し、ブラウザ・ゲームパッドからの手動操作コマンドを
+手動指令トピック（既定 /cmd_vel_manual。drive_mode_node がモードに応じて /cmd_vel へ中継）
+へ publish し、センサートピックのテレメトリを WebSocket で配信する。
 """
 
 import asyncio
+import hmac
 import json
 import math
 import os
@@ -15,7 +17,7 @@ from collections import deque
 import rclpy
 import uvicorn
 from ament_index_python.packages import get_package_share_directory
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from geometry_msgs.msg import Twist
@@ -27,6 +29,7 @@ from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
 
 from ai_car_web.gpio_pinout import build_pinout
+from ai_car_web.motor_hat import load_motor_hat
 
 
 MAX_SCAN_POINTS = 720
@@ -38,6 +41,12 @@ class CmdVelRequest(BaseModel):
     linear_x: float = 0.0
     linear_y: float = 0.0
     angular_z: float = 0.0
+
+
+class DriveModeRequest(BaseModel):
+    """ブラウザから受け取る運転モード切替要求（manual / auto / stop）。"""
+
+    mode: str
 
 
 def _jpeg_dimensions(data: bytes):
@@ -84,7 +93,7 @@ class DashboardNode(Node):
 
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 8080)
-        self.declare_parameter('cmd_vel_topic', '/cmd_vel')
+        self.declare_parameter('cmd_vel_topic', '/cmd_vel_manual')
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('odom_topic', '/odom')
@@ -99,9 +108,16 @@ class DashboardNode(Node):
         self.declare_parameter('telemetry_rate', 5.0)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('gpio_config', '')
+        self.declare_parameter('motor_hat_config', '')
         # ゲームパッド（joy_teleop_node）からの正規化指令。空で無効
         self.declare_parameter('joy_cmd_topic', '/joy_cmd')
         self.declare_parameter('joy_timeout', 1.0)
+        # 運転モード（drive_mode_node）。空で無効
+        self.declare_parameter('drive_mode_topic', '/drive_mode')
+        self.declare_parameter('drive_mode_request_topic', '/drive_mode_request')
+        self.declare_parameter('api_token', '')
+        # 自律走行の状態（autonomy_node）。空で無効
+        self.declare_parameter('autonomy_status_topic', '/autonomy_status')
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
@@ -111,8 +127,12 @@ class DashboardNode(Node):
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
+        self.api_token = str(self.get_parameter('api_token').value) or os.environ.get(
+            'AI_CAR_API_TOKEN', '')
         self.gpio_config = self.get_parameter('gpio_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'gpio_pins.yaml')
+        self.motor_hat_config = self.get_parameter('motor_hat_config').value or os.path.join(
+            get_package_share_directory('ai_car_web'), 'config', 'motor_hat.yaml')
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
@@ -146,6 +166,17 @@ class DashboardNode(Node):
         joy_topic = self.get_parameter('joy_cmd_topic').value
         if joy_topic:
             self.create_subscription(Twist, joy_topic, self._joy_cb, 10)
+        mode_topic = self.get_parameter('drive_mode_topic').value
+        self.mode_request_pub = None
+        if mode_topic:
+            self.create_subscription(
+                String, mode_topic, self._drive_mode_cb,
+                QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL))
+            self.mode_request_pub = self.create_publisher(
+                String, self.get_parameter('drive_mode_request_topic').value, 10)
+        autonomy_topic = self.get_parameter('autonomy_status_topic').value
+        if autonomy_topic:
+            self.create_subscription(String, autonomy_topic, self._autonomy_cb, 10)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -160,6 +191,10 @@ class DashboardNode(Node):
         self._joy_stamp = 0.0
         self._joy_moving = False
         self._joy_cmd = (0.0, 0.0, 0.0)
+        self._drive_mode = None
+        self._drive_mode_stamp = 0.0
+        self._autonomy = None
+        self._autonomy_stamp = 0.0
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -168,6 +203,9 @@ class DashboardNode(Node):
         self._frame_times = deque(maxlen=60)
 
         self.create_timer(0.1, self._watchdog_cb)
+        if not self.api_token:
+            self.get_logger().warn(
+                'API 認証が無効です（api_token 未設定）: 同一ネットワークの誰でも操作できます')
         self.get_logger().info(
             f'Webダッシュボードを起動します: http://{self.host}:{self.port}')
 
@@ -241,6 +279,63 @@ class DashboardNode(Node):
         if not obstacle or age is None or age > 2.0:
             return 1.0
         return float(obstacle.get('speed_scale', 1.0))
+
+    def _drive_mode_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        with self._lock:
+            self._drive_mode = payload
+            self._drive_mode_stamp = self.get_clock().now().nanoseconds * 1e-9
+
+    def _autonomy_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        with self._lock:
+            self._autonomy = payload
+            self._autonomy_stamp = self.get_clock().now().nanoseconds * 1e-9
+
+    def request_drive_mode(self, mode: str):
+        """運転モードの切替を drive_mode_node へ要求する。"""
+        mode = mode.strip().lower()
+        if mode not in ('manual', 'auto', 'stop'):
+            return {'ok': False, 'error': f'不明なモード: {mode}'}
+        if self.mode_request_pub is None:
+            return {'ok': False, 'error': '運転モード管理が無効です'}
+        if mode != 'manual':
+            # 自動 / 停止へ切り替える前に Web 操作の指令を止める
+            self.neutralize()
+        self._publish_mode_request(mode)
+        self.get_logger().info(f'運転モード切替要求: {mode}')
+        return {'ok': True, 'mode': mode}
+
+    def _publish_mode_request(self, mode: str):
+        msg = String()
+        msg.data = json.dumps({'mode': mode, 'source': 'dashboard'})
+        self.mode_request_pub.publish(msg)
+
+    def _drive_mode_state(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._drive_mode is None:
+            return None
+        age = now - self._drive_mode_stamp
+        state = dict(self._drive_mode)
+        state['alive'] = age < 3.0
+        state['age_s'] = round(age, 1)
+        return state
+
+    def _autonomy_state(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._autonomy is None:
+            return None
+        age = now - self._autonomy_stamp
+        state = dict(self._autonomy)
+        state['alive'] = age < 3.0
+        state['age_s'] = round(age, 1)
+        return state
 
     def _system_cb(self, msg: String):
         try:
@@ -346,9 +441,17 @@ class DashboardNode(Node):
             'angular_z': twist.angular.z,
         }
 
-    def stop(self):
-        """停止指令を publish する。"""
+    def neutralize(self):
+        """手動指令をニュートラルにする。"""
         return self.publish_cmd_vel(0.0, 0.0, 0.0)
+
+    def stop(self):
+        """全モードで停止を要求する。"""
+        cmd = self.neutralize()
+        if self.mode_request_pub is not None:
+            self._publish_mode_request('stop')
+        cmd['mode'] = 'stop'
+        return cmd
 
     @staticmethod
     def _clamp(value: float) -> float:
@@ -375,6 +478,7 @@ class DashboardNode(Node):
         with self._lock:
             return {
                 'stamp': round(self.get_clock().now().nanoseconds * 1e-9, 3),
+                'auth_required': bool(self.api_token),
                 'cmd_vel': {
                     'linear_x': round(self._last_cmd.linear.x, 3),
                     'linear_y': round(self._last_cmd.linear.y, 3),
@@ -386,6 +490,8 @@ class DashboardNode(Node):
                 'system': self._system,
                 'obstacle': self._obstacle,
                 'camera': self._camera_state(),
+                'drive_mode': self._drive_mode_state(),
+                'autonomy': self._autonomy_state(),
                 'joy': {
                     'connected': (self.get_clock().now().nanoseconds * 1e-9
                                   - self._joy_stamp) < self.joy_timeout,
@@ -407,6 +513,15 @@ def create_app(node: DashboardNode) -> FastAPI:
         get_package_share_directory('ai_car_web'), 'static')
     app = FastAPI(title='AI-CAR Dashboard')
 
+    def require_token(request: Request):
+        if not node.api_token:
+            return
+        auth = request.headers.get('authorization', '')
+        token = (auth[7:] if auth.lower().startswith('bearer ')
+                 else request.headers.get('x-api-token', ''))
+        if not hmac.compare_digest(token, node.api_token):
+            raise HTTPException(status_code=401, detail='API トークンが必要です')
+
     @app.get('/')
     def index():
         return FileResponse(os.path.join(static_dir, 'index.html'))
@@ -419,13 +534,25 @@ def create_app(node: DashboardNode) -> FastAPI:
     def gpio():
         return build_pinout(node.gpio_config)
 
-    @app.post('/api/cmd_vel')
+    @app.get('/api/motor_hat')
+    def motor_hat():
+        return load_motor_hat(node.motor_hat_config)
+
+    @app.post('/api/cmd_vel', dependencies=[Depends(require_token)])
     def cmd_vel(req: CmdVelRequest):
         return node.publish_cmd_vel(req.linear_x, req.linear_y, req.angular_z)
 
-    @app.post('/api/stop')
+    @app.post('/api/stop', dependencies=[Depends(require_token)])
     def stop():
         return node.stop()
+
+    @app.get('/api/drive_mode')
+    def drive_mode():
+        return node.telemetry()['drive_mode'] or {'mode': None, 'alive': False}
+
+    @app.post('/api/drive_mode', dependencies=[Depends(require_token)])
+    def set_drive_mode(req: DriveModeRequest):
+        return node.request_drive_mode(req.mode)
 
     @app.get('/api/camera/snapshot')
     def snapshot():

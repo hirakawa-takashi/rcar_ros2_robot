@@ -28,6 +28,42 @@ connections:
     color: 黄
     note: PCA9685 0x60
 
+  # --- モーターエンコーダー線（1 モーター 6 本のうち Encoder A / B の 2 本を Pi GPIO へ。
+  #     VCC / GND は Motor HAT 上の 3V3 / GND ピンに挿すため Pi ヘッダー側は「空き」として扱い、ここには載せない。
+  #     ピン・配線色は motor_hat.yaml と一致させる。Motor+ 赤 / Motor− 白 は Motor HAT の M 端子へ） ---
+  - pins: [29]
+    device: M1 前左
+    signal: Encoder A (GPIO5)
+    color: 緑
+  - pins: [31]
+    device: M1 前左
+    signal: Encoder B (GPIO6)
+    color: 黄
+  - pins: [33]
+    device: M2 前右
+    signal: Encoder A (GPIO13)
+    color: 緑
+  - pins: [35]
+    device: M2 前右
+    signal: Encoder B (GPIO19)
+    color: 黄
+  - pins: [37]
+    device: M3 後左
+    signal: Encoder A (GPIO26)
+    color: 緑
+  - pins: [32]
+    device: M3 後左
+    signal: Encoder B (GPIO12)
+    color: 黄
+  - pins: [36]
+    device: M4 後右
+    signal: Encoder A (GPIO16)
+    color: 緑
+  - pins: [38]
+    device: M4 後右
+    signal: Encoder B (GPIO20)
+    color: 黄
+
   # --- GY-BNO055 9軸 IMU（I2C 0x29） ---
   - pins: [1]
     device: GY-BNO055 IMU
@@ -58,55 +94,36 @@ connections:
     signal: ID_SC (HAT EEPROM)
     color: PIN
 
-  # --- TM1637 4桁7セグLED ---
-  - pins: [17]
-    device: TM1637 4桁7セグLED
-    signal: 3V3
-    color: オレンジ
-  - pins: [20]
-    device: TM1637 4桁7セグLED
-    signal: GND
-    color: 黒
-  - pins: [16]
-    device: TM1637 4桁7セグLED
-    signal: CLK (GPIO23)
-    color: 黄
-    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
-  - pins: [18]
-    device: TM1637 4桁7セグLED
-    signal: DIO (GPIO24)
-    color: 緑
-    note: bit-bang（libgpiod, gpiochip4 pinctrl-rp1）
-
-  # --- ZJY-IPS130 1.3インチ IPS 液晶（ST7789、240x240、SPI、7 ピン: GND/VCC/SCL/SDA/RES/DC/BLK。表示ノードは未実装） ---
-  # SCL/SDA は SPI0。RES/DC/BLK は空き GPIO を使用。
-  - pins: [25]
-    device: ZJY-IPS130 液晶
-    signal: GND
-    color: 黒
+  # --- ZJY-IPS130-V2.0 1.3インチ 240x240 IPS 液晶（ST7789、SPI0、7 ピン CS なし）
+  #     旧 TM1637 7セグ（pin 17/20/16/18）を置き換え ---
   - pins: [17]
     device: ZJY-IPS130 液晶
-    signal: VCC (3V3)
+    signal: VCC 3V3
     color: 赤
-    note: TM1637 と 3V3 共有
+  - pins: [20]
+    device: ZJY-IPS130 液晶
+    signal: GND
+    color: 黒
   - pins: [23]
     device: ZJY-IPS130 液晶
-    signal: SCL (SPI0 SCLK / GPIO11)
+    signal: SCL (GPIO11 SPI0 SCLK)
     color: 橙
   - pins: [19]
     device: ZJY-IPS130 液晶
-    signal: SDA (SPI0 MOSI / GPIO10)
+    signal: SDA (GPIO10 SPI0 MOSI)
     color: 黄
+  - pins: [18]
+    device: ZJY-IPS130 液晶
+    signal: RES (GPIO24)
+    color: 緑
+    note: libgpiod 出力（gpiochip4 pinctrl-rp1）
   - pins: [22]
     device: ZJY-IPS130 液晶
-    signal: RES (GPIO25)
-    color: 緑
-  - pins: [15]
-    device: ZJY-IPS130 液晶
-    signal: DC (GPIO22)
+    signal: DC (GPIO25)
     color: 青
-  - pins: [13]
+    note: libgpiod 出力（gpiochip4 pinctrl-rp1）
+  - pins: [16]
     device: ZJY-IPS130 液晶
-    signal: BLK (GPIO27)
+    signal: BLK (GPIO23)
     color: 紫
-    note: バックライト（常時 ON なら 3V3 直結でも可）
+    note: バックライト。libgpiod 出力（gpiochip4 pinctrl-rp1）
