@@ -6,6 +6,11 @@ Twist を /joy_cmd へ publish する。実際の速度スケール・障害物�
 タイムアウト停止は dashboard_node が /cmd_vel へ変換する際に行うため、
 Web 画面からの操作と同じ安全機構が適用される。
 
+運転モードの切替要求（drive_mode_node へ）:
+  START 長押し（mode_hold_sec）: 手動 ⇄ 自動 トグル（誤操作防止のため長押し）
+  BACK: 即時停止（STOP モード。解除は START 長押しかダッシュボード）
+  B: 手動中は従来どおり押している間停止。自動中は STOP モードへ
+
 F710 は背面スイッチを X（XInput）側にすること。xpad ドライバでの割り当て:
   軸  0: 左スティック X   1: 左スティック Y   2: LT
       3: 右スティック X   4: 右スティック Y   5: RT
@@ -15,6 +20,7 @@ F710 は背面スイッチを X（XInput）側にすること。xpad ドライ�
 
 import array
 import fcntl
+import json
 import os
 import select
 import struct
@@ -24,6 +30,8 @@ import time
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import String
 
 JS_EVENT_FMT = 'IhBB'  # time(ms), value, type, number
 JS_EVENT_SIZE = struct.calcsize(JS_EVENT_FMT)
@@ -54,6 +62,12 @@ class JoyTeleopNode(Node):
         self.declare_parameter('button_stop', 1)
         # -1 で無効。指定時はそのボタンを押している間だけ動く（デッドマン）
         self.declare_parameter('button_enable', -1)
+        # 運転モード切替。request_topic が空なら無効
+        self.declare_parameter('mode_request_topic', '/drive_mode_request')
+        self.declare_parameter('mode_topic', '/drive_mode')
+        self.declare_parameter('button_mode_toggle', 7)   # START 長押しで手動 ⇄ 自動
+        self.declare_parameter('button_estop', 6)         # BACK で即時停止
+        self.declare_parameter('mode_hold_sec', 2.0)
 
         self.device = self.get_parameter('device').value
         self.deadzone = float(self.get_parameter('deadzone').value)
@@ -66,9 +80,24 @@ class JoyTeleopNode(Node):
         self.btn_turbo = int(self.get_parameter('button_turbo').value)
         self.btn_stop = int(self.get_parameter('button_stop').value)
         self.btn_enable = int(self.get_parameter('button_enable').value)
+        self.btn_mode = int(self.get_parameter('button_mode_toggle').value)
+        self.btn_estop = int(self.get_parameter('button_estop').value)
+        self.mode_hold = float(self.get_parameter('mode_hold_sec').value)
 
         self.pub = self.create_publisher(
             Twist, self.get_parameter('joy_cmd_topic').value, 10)
+        request_topic = self.get_parameter('mode_request_topic').value
+        self.mode_pub = (self.create_publisher(String, request_topic, 10)
+                         if request_topic else None)
+        self._mode_pressed_at = None
+        self._mode_sent = False
+        self._stop_sent = False
+        self._drive_mode = None
+        mode_topic = self.get_parameter('mode_topic').value
+        if request_topic and mode_topic:
+            self.create_subscription(
+                String, mode_topic, self._mode_cb,
+                QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
         self._lock = threading.Lock()
         self._axes = {}
@@ -138,10 +167,52 @@ class JoyTeleopNode(Node):
         sign = 1.0 if v > 0 else -1.0
         return sign * (abs(v) - self.deadzone) / (1.0 - self.deadzone)
 
+    def _mode_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if isinstance(payload, dict):
+            with self._lock:
+                self._drive_mode = payload.get('mode')
+
+    def _request_mode(self, mode: str):
+        if self.mode_pub is None:
+            return
+        msg = String()
+        msg.data = json.dumps({'mode': mode, 'source': 'gamepad'})
+        self.mode_pub.publish(msg)
+        self.get_logger().info(f'運転モード切替要求 (ゲームパッド): {mode}')
+
+    def _handle_mode_buttons(self):
+        """START 長押しでトグル、BACK / B の押し始めで停止を要求する（lock 保持中に呼ぶ）。"""
+        now = time.monotonic()
+        stop_pressed = (
+            (self.btn_estop >= 0 and self._buttons.get(self.btn_estop, False))
+            or (self._drive_mode == 'auto' and self.btn_stop >= 0
+                and self._buttons.get(self.btn_stop, False)))
+        if stop_pressed and not self._stop_sent:
+            self._request_mode('stop')
+        self._stop_sent = stop_pressed
+
+        if self.btn_mode < 0:
+            return
+        if self._buttons.get(self.btn_mode, False):
+            if self._mode_pressed_at is None:
+                self._mode_pressed_at = now
+                self._mode_sent = False
+            elif not self._mode_sent and now - self._mode_pressed_at >= self.mode_hold:
+                self._request_mode('toggle')
+                self._mode_sent = True
+        else:
+            self._mode_pressed_at = None
+            self._mode_sent = False
+
     def _publish_cb(self):
         with self._lock:
             if not self._connected:
                 return
+            self._handle_mode_buttons()
             if self.btn_stop >= 0 and self._buttons.get(self.btn_stop, False):
                 self.pub.publish(Twist())
                 return

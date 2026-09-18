@@ -80,6 +80,19 @@
   .pinwrap { overflow-x: auto; }
   .motor_svg { width: 100%; max-width: 760px; height: auto; display: block; margin: 0 auto 10px;
                background: #11161d; border-radius: 8px; }
+  .modebar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .modebar button { padding: 10px 0; font-size: 14px; }
+  .modebar button.active { outline: 2px solid #fff; }
+  .modebar button.m-manual.active { background: #2e7d4f; border-color: #43c47a; }
+  .modebar button.m-auto.active { background: #2b5d9e; border-color: #4a90d9; }
+  .modebar button.m-stop.active { background: #7a2530; border-color: #a33; }
+  .modebadge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 15px;
+               font-weight: 700; background: #2a3340; color: #9fb0c7; }
+  .modebadge.manual { background: #1e4a2b; color: #8fe0a4; }
+  .modebadge.auto { background: #1d3b63; color: #9cc4f0; }
+  .modebadge.stop { background: #5a1f1f; color: #f09a9a; }
+  .modebadge.dead { background: #3a3a3a; color: #aaa; }
+  .reject { font-size: 12px; color: #f0c674; margin-top: 6px; min-height: 1.2em; }
 </style>
 </head>
 <body>
@@ -174,7 +187,16 @@
   </div>
 
   <div class="card wide">
-    <h2>手動操作</h2>
+    <h2>運転モード <span class="modebadge dead" id="mode_badge">-</span>
+      <span class="badge" id="mode_src" style="margin-left:8px"></span></h2>
+    <div class="modebar">
+      <button class="m-manual" data-mode="manual">手動</button>
+      <button class="m-auto" data-mode="auto">自動</button>
+      <button class="m-stop" data-mode="stop">停止</button>
+    </div>
+    <div class="reject" id="mode_reject"></div>
+    <div class="speed" id="mode_note">ゲームパッド: START 長押し（2 秒）で手動 ⇄ 自動　BACK: 停止　自動中にスティックを倒すと手動へ復帰</div>
+    <h2 style="margin-top:14px">手動操作</h2>
     <div class="pad">
       <button data-x="1" data-y="1" data-z="0">⭦</button>
       <button data-x="1" data-y="0" data-z="0">前進</button>
@@ -190,9 +212,26 @@
       出力: <span id="gainval">50</span>%
       <input id="gain" type="range" min="10" max="100" value="50">
     </div>
+    <div class="speed">
+      <input id="api_token" type="password" placeholder="API トークン（api_token 設定時）">
+      <span id="auth_note" class="note"></span>
+    </div>
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
     <div class="speed">ゲームパッド F710: <span id="joy_state" class="badge">-</span>
       　左スティック: 前後 / 平行移動　右スティック: 旋回　RB: 全速　B: 停止</div>
+  </div>
+
+  <div class="card wide">
+    <h2>自律走行 <span class="badge" id="au_state">-</span></h2>
+    <table>
+      <tr><td class="k">方式</td><td class="v" id="au_method">-</td></tr>
+      <tr><td class="k">行動</td><td class="v" id="au_behavior">-</td></tr>
+      <tr><td class="k">前 / 左 / 右 / 後 [m]</td><td class="v" id="au_sectors">-</td></tr>
+      <tr><td class="k">指令 vx / vy / wz</td><td class="v" id="au_cmd">-</td></tr>
+      <tr><td class="k">/cmd_vel 出力</td><td class="v" id="au_out">-</td></tr>
+      <tr><td class="k">自動への切替</td><td class="v" id="au_ok">-</td></tr>
+    </table>
+    <div class="note" id="au_note">Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。</div>
   </div>
 
   <div class="card full">
@@ -240,6 +279,31 @@
 </div>
 
 <script>
+const TOKEN_KEY = 'ai_car_api_token';
+const urlToken = new URLSearchParams(location.search).get('token');
+if (urlToken) localStorage.setItem(TOKEN_KEY, urlToken);
+const tokenInput = document.getElementById('api_token');
+tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
+tokenInput.addEventListener('change', () => localStorage.setItem(TOKEN_KEY, tokenInput.value));
+
+function authHeaders() {
+  const t = localStorage.getItem(TOKEN_KEY);
+  return t ? {'X-API-Token': t} : {};
+}
+function showAuthWarning() {
+  document.getElementById('auth_note').textContent = '401: API トークンが無効です';
+}
+function apiPost(path, body) {
+  return fetch(path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', ...authHeaders()},
+    body: body === undefined ? undefined : JSON.stringify(body)
+  }).then(r => {
+    if (r.status === 401) showAuthWarning();
+    return r;
+  }).catch(() => {});
+}
+
 const gain = document.getElementById('gain');
 gain.addEventListener('input', () => {
   document.getElementById('gainval').textContent = gain.value;
@@ -247,11 +311,7 @@ gain.addEventListener('input', () => {
 
 function send(x, y, z) {
   const g = gain.value / 100;
-  fetch('/api/cmd_vel', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({linear_x: x * g, linear_y: y * g, angular_z: z * g})
-  }).catch(() => {});
+  apiPost('/api/cmd_vel', {linear_x: x * g, linear_y: y * g, angular_z: z * g});
 }
 
 let holdTimer = null;
@@ -266,13 +326,14 @@ document.querySelectorAll('.pad button').forEach(btn => {
   const end = () => {
     clearInterval(holdTimer);
     holdTimer = null;
-    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+    send(0, 0, 0);
   };
   btn.addEventListener('mousedown', start);
   btn.addEventListener('touchstart', start, {passive: false});
   ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(e =>
     btn.addEventListener(e, end));
 });
+document.querySelector('.pad button.stop').addEventListener('click', () => apiPost('/api/stop'));
 
 document.addEventListener('keydown', ev => {
   const map = {ArrowUp: [1,0,0], ArrowDown: [-1,0,0], ArrowLeft: [0,0,1],
@@ -282,9 +343,68 @@ document.addEventListener('keydown', ev => {
 });
 document.addEventListener('keyup', ev => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','a','d'].includes(ev.key)) {
-    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+    send(0, 0, 0);
   }
 });
+
+document.querySelectorAll('.modebar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    apiPost('/api/drive_mode', {mode: btn.dataset.mode});
+  });
+});
+
+function renderDriveMode(m) {
+  const badge = document.getElementById('mode_badge');
+  const src = document.getElementById('mode_src');
+  const rej = document.getElementById('mode_reject');
+  const alive = m && m.alive;
+  const mode = alive ? m.mode : null;
+  badge.className = 'modebadge ' + (mode || 'dead');
+  badge.textContent = alive ? m.label : 'モード管理未接続';
+  src.textContent = alive ? `${m.source}: ${m.reason}` : '';
+  for (const b of document.querySelectorAll('.modebar button')) {
+    b.classList.toggle('active', b.dataset.mode === mode);
+    b.disabled = !alive;
+  }
+  if (alive && m.last_reject) {
+    rej.textContent = `自動への切替を拒否: ${m.last_reject.reason}`;
+  } else if (alive && mode !== 'auto' && m.auto_block_reasons && m.auto_block_reasons.length) {
+    rej.textContent = `自動へ切替不可: ${m.auto_block_reasons.join(' / ')}`;
+  } else {
+    rej.textContent = '';
+  }
+  const out = document.getElementById('au_out');
+  out.textContent = alive && m.cmd_vel
+    ? `${fmt(m.cmd_vel.linear_x)} / ${fmt(m.cmd_vel.linear_y)} / ${fmt(m.cmd_vel.angular_z)}` : '-';
+  const ok = document.getElementById('au_ok');
+  if (!alive) { ok.innerHTML = '-'; }
+  else if (mode === 'auto') { ok.innerHTML = '<span class="badge ok">自動走行中</span>'; }
+  else if (m.auto_ok) { ok.innerHTML = '<span class="badge ok">可</span>'; }
+  else { ok.innerHTML = '<span class="badge warn">不可</span>'; }
+}
+
+function renderAutonomy(a) {
+  const st = document.getElementById('au_state');
+  if (!a || !a.alive) {
+    st.className = 'badge warn'; st.textContent = '未起動';
+    for (const id of ['au_method', 'au_behavior', 'au_sectors', 'au_cmd']) {
+      document.getElementById(id).textContent = '-';
+    }
+    return;
+  }
+  const running = a.mode === 'auto';
+  st.className = 'badge ' + (running ? 'ok' : '');
+  st.textContent = running ? '走行中' : '待機';
+  document.getElementById('au_method').textContent = `Level ${a.level} ${a.method}`;
+  document.getElementById('au_behavior').textContent =
+    `${a.behavior_label}${a.behavior === 'turn' ? (a.turn_dir === 'left' ? '（左）' : '（右）') : ''} ${fmt(a.behavior_s, 1)} s`;
+  const s = a.sectors || {};
+  document.getElementById('au_sectors').textContent =
+    `${fmt(s.front)} / ${fmt(s.left)} / ${fmt(s.right)} / ${fmt(s.back)}`;
+  const c = a.cmd || {};
+  document.getElementById('au_cmd').textContent =
+    `${fmt(c.linear_x)} / ${fmt(c.linear_y)} / ${fmt(c.angular_z)}`;
+}
 
 function fmt(v, digits = 2) {
   return (v === null || v === undefined) ? '-' : Number(v).toFixed(digits);
@@ -480,6 +600,9 @@ function renderObstacle(o) {
 }
 
 function render(d) {
+  if (!d.auth_required) {
+    document.getElementById('auth_note').textContent = '認証なし（api_token 未設定）';
+  }
   const s = d.scan;
   document.getElementById('s_count').textContent = s ? s.count : '-';
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
@@ -490,6 +613,8 @@ function render(d) {
   drawScanMap(s, danger, frontHalf);
   renderObstacle(d.obstacle);
   renderJoy(d.joy);
+  renderDriveMode(d.drive_mode);
+  renderAutonomy(d.autonomy);
   drawDetections(d.obstacle);
 
   const i = d.imu;

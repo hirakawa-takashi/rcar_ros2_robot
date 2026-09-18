@@ -15,7 +15,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 | 4 | **Raspberry Pi カメラモジュール v3** | 1280×720・30fps | CSI バス |
 | 5 | **LiDAR（RPLIDAR A1M8）** | 2D レーザースキャナ（最大距離8m） | USB シリアル |
 | 6 | **9軸 IMU（GY-BNO055）** | 加速度・ジャイロ・地磁気融合 | I²C |
-| 7 | **7セグメント LED** | ステータス表示用 | GPIO / I²C |
+| 7 | **状態表示液晶 ZJY-IPS130-V2.0** | 1.3 インチ 240×240 IPS、ST7789、7 ピン（CS なし）。旧 TM1637 7 セグ LED を置き換え | SPI0（pin 19/23）＋ GPIO24/25/23（RES/DC/BLK） |
 | 8 | **Logicool G ゲームパッド** | 手動操作ジョイスティック | USB Bluetooth |
 | 9 | **メカナムホイール駆動系** | オムニディレクショナル移動（4輪）。OSOYOO 520 エンコーダー付きモーター ×4 | モーター HAT 経由（エンコーダーは Pi GPIO 直結） |
 | 9a | **エンコーダー用ジャンパー線** ×2 | 25cm、2.54mm ピッチ、メス-メス 6ピン to 6ピン。OSOYOO 520 モーターエンコーダー↔Pi 接続専用。型番 2024006000 | モーター 6ピン → HAT M端子（M+/M−）と Pi ヘッダー（VCC/GND/A/B） |
@@ -97,7 +97,7 @@ Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− 
 | M4 後右 | HAT M4 + | HAT M4 − | HAT pin 17 (3V3) | HAT pin 25 | Pi pin 36 (GPIO16) | Pi pin 38 (GPIO20) |
 
 - VCC / GND は Motor HAT 上の 3V3 / GND ピンを使う（`motor_hat.yaml` の `power_board: Motor HAT`）。VCC は **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
-- 使用済みの GPIO23/24（pin 16/18、TM1637）と I2C（pin 3/5）は避けている
+- 使用済みの液晶ピン（pin 16/18/19/22/23、ZJY-IPS130）と I2C（pin 3/5）は避けている
 - GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
 > Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
@@ -121,7 +121,7 @@ Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− 
 
 - エンコーダー VCC（青）: **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが A/B 出力が GPIO 直結のため 5V は使わない
 - エンコーダー GND（黒）: pin 30 / 34 / 39 / 25
-- 使用済みの GPIO23/24（pin 16/18、TM1637）と I2C（pin 3/5）は避けている
+- 使用済みの液晶ピン（pin 16/18/19/22/23、ZJY-IPS130）と I2C（pin 3/5）は避けている
 - GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
 > Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
