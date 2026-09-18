@@ -231,11 +231,11 @@ python3 -c "from hailo_platform import VDevice; print('ok')"
 
 ```bash
 mkdir -p ~/AI-CAR_ws/models
-curl -L -o ~/AI-CAR_ws/models/yolov8n.hef \
-  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8n.hef
+curl -L -o ~/AI-CAR_ws/models/yolov8s.hef \
+  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8s.hef
 ```
 
-パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する（未設定なら LiDAR 判定のみで動作）。
+標準設定は YOLOv8s で、パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する。軽量な YOLOv8n を使う場合は `hef_path` を `~/AI-CAR_ws/models/yolov8n.hef` に戻す（未設定なら LiDAR 判定のみで動作）。
 
 ## 依存
 
