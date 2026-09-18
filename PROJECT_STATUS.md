@@ -106,7 +106,7 @@
 - 解像度: 1280x720 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約100KB・約2.9MB/s、camera_ros の CPU は約 36〜45%
 - ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`）
 - ダッシュボード MJPEG: 30fps（`camera_stream_rate`）
-- AI HAT+ 推論: 640x640 にレターボックスして 30Hz 設定（推論タイマー 0.02秒、JPEG デコード＋リサイズを含む実測値は実機で確認）
+- AI HAT+ 推論: YOLOv8m、640x640 にレターボックスして 30Hz 設定（推論タイマー 0.02秒）。実測 約12Hz（JPEG デコード＋レターボックス＋推論 30〜42ms が律速、推論は逐次実行）、CPU 40〜65%、CPU 56〜59℃、Hailo 50〜52℃、サーマル状態 normal
 
 ## 次回作業
 - 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する（モーター配線後）
