@@ -26,7 +26,7 @@ overview:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
     - {name: FastAPI + uvicorn, role: Web ダッシュボード / REST / WebSocket}
-    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8n）}
+    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8s）}
     - {name: libcamera (rpicam), role: カメラ v3 取り込み}
     - {name: spidev / libgpiod / Pillow, role: ST7789 液晶描画}
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
@@ -103,7 +103,7 @@ nodes:
   - id: perception_node
     label: perception_node
     file: ai_car_web/perception_node.py
-    role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8n）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御
+    role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8s）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
     subscribes: [/scan, /camera/image_raw/compressed, /system_status]
     params:
@@ -111,6 +111,10 @@ nodes:
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
       - {name: danger_distance, ref: perception_node.danger_distance, unit: m, desc: 検出枠を赤にする距離}
       - {name: inference_rate, ref: perception_node.inference_rate, unit: Hz, desc: 推論レート上限}
+      - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
+      - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
+      - {name: detect_history_frames, ref: perception_node.detect_history_frames, unit: frame, desc: 検出確認に使う履歴長}
+      - {name: model_gops, ref: perception_node.model_gops, unit: GOP, desc: YOLOv8s 640x640 の演算量}
       - {name: cpu_temp_warn, ref: perception_node.cpu_temp_warn, unit: ℃, desc: 推論 40% へ}
       - {name: cpu_temp_crit, ref: perception_node.cpu_temp_crit, unit: ℃, desc: 推論停止（LiDAR 判定は継続）}
       - {name: hailo_temp_warn, ref: perception_node.hailo_temp_warn, unit: ℃, desc: 推論 40% へ}
@@ -228,7 +232,7 @@ autonomy:
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg 180°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
-    - カメラ JPEG → 640×640 にリサイズ → Hailo-8 YOLOv8n（約 9 ms）→ 検出枠の横位置を camera_hfov_deg で方位角へ → LiDAR の同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8s（28.6 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の同方位クラスタ（cluster_gap）の中央値を距離として付与
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（減速 speed_scale）、液晶表示
 
 api:
