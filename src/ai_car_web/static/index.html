@@ -93,11 +93,72 @@
   .modebadge.stop { background: #5a1f1f; color: #f09a9a; }
   .modebadge.dead { background: #3a3a3a; color: #aaa; }
   .reject { font-size: 12px; color: #f0c674; margin-top: 6px; min-height: 1.2em; }
+  .headrow { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .headrow h1 { margin: 0; }
+  .headrow .status { margin: 0; }
+  .aboutbtn { margin-left: auto; padding: 8px 14px; font-size: 13px; }
+  .modal { position: fixed; inset: 0; z-index: 20; background: rgba(5, 8, 12, .86);
+           display: flex; align-items: center; justify-content: center; padding: 4vh 3vw; }
+  .modal.hidden { display: none; }
+  .aboutpanel { width: min(1200px, 100%); max-height: 92vh; overflow: auto;
+                background: #15181d; border: 1px solid #3a4657; border-radius: 10px;
+                box-shadow: 0 14px 50px #000; }
+  .abouthead { position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
+               background: #1e232b; padding: 14px 18px; border-bottom: 1px solid #2c3340; }
+  .abouthead h2 { margin: 0; font-size: 18px; }
+  .aboutclose { margin-left: auto; padding: 2px 10px; font-size: 24px; line-height: 1; }
+  .abouttabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px;
+               background: #1a2029; border-bottom: 1px solid #2c3340; }
+  .abouttabs button { padding: 7px 11px; font-size: 12px; }
+  .abouttabs button.active { background: #2e7d4f; border-color: #43c47a; color: #fff; }
+  .aboutbody { padding: 18px; line-height: 1.55; }
+  .aboutbody h3 { color: #9cc4f0; margin: 18px 0 8px; font-size: 16px; }
+  .aboutbody h3:first-child { margin-top: 0; }
+  .aboutbody p { margin: 5px 0; }
+  .aboutbody ul { margin: 6px 0 12px 22px; padding: 0; }
+  .abouttable { table-layout: auto; margin: 8px 0 16px; }
+  .abouttable th { text-align: left; color: #9fb0c7; border-bottom: 1px solid #3a4657;
+                   padding: 6px; white-space: nowrap; }
+  .abouttable td { white-space: normal; padding: 6px; border-bottom: 1px solid #252c36;
+                   vertical-align: top; }
+  .check { color: #777; margin-right: 6px; }
+  .check.done { color: #8fe0a4; }
+  .aboutsvg { width: 100%; height: auto; background: #11161d; border-radius: 8px;
+              border: 1px solid #2c3340; margin: 8px 0 14px; }
+  .aboutsvg text { font-family: system-ui, sans-serif; }
+  .aboutlink { cursor: pointer; }
+  .aboutlink:hover rect, .aboutlink:hover circle { filter: brightness(1.35); }
+  .archdetail { background: #1e232b; border: 1px solid #3a4657; border-radius: 6px;
+                padding: 12px; margin: 10px 0 16px; min-height: 30px; }
+  .topiclive { color: #8fe0a4; font-weight: 700; }
+  .topicdead { color: #777; }
+  .powerlegend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px;
+                 color: #9fb0c7; margin: 4px 0 12px; }
+  .powerlegend span i { display: inline-block; width: 22px; height: 3px; margin-right: 4px;
+                        vertical-align: middle; }
+  @media (max-width: 620px) {
+    .headrow { flex-wrap: wrap; }
+    .aboutbtn { margin-left: 0; }
+    .aboutbody { padding: 12px; }
+    .abouttabs { overflow-x: auto; flex-wrap: nowrap; }
+  }
 </style>
 </head>
 <body>
-<h1>AI-CAR ダッシュボード</h1>
-<div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
+<div class="headrow">
+  <h1>AI-CAR ダッシュボード</h1>
+  <div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
+  <button id="about_btn" class="aboutbtn">プロジェクト説明</button>
+</div>
+
+<div id="about" class="modal hidden">
+  <div class="aboutpanel" role="dialog" aria-modal="true" aria-labelledby="about_title">
+    <div class="abouthead"><h2 id="about_title">AI-CAR プロジェクト説明</h2>
+      <button id="about_close" class="aboutclose" aria-label="閉じる">×</button></div>
+    <div id="about_tabs" class="abouttabs"></div>
+    <div id="about_body" class="aboutbody"><span class="badge">読み込み中...</span></div>
+  </div>
+</div>
 
 <div class="grid">
   <div class="card wide">
@@ -599,7 +660,10 @@ function renderObstacle(o) {
     : `モデル ${tp.model_gops} GOP × 推論レートの推定値。公称 ${tp.peak_tops} TOPS に対し連続実行時で ${fmt((tp.utilization || 0) * 100, 1)} %`;
 }
 
+let latestTelemetry = {};
+
 function render(d) {
+  latestTelemetry = d || {};
   if (!d.auth_required) {
     document.getElementById('auth_note').textContent = '認証なし（api_token 未設定）';
   }
@@ -947,6 +1011,217 @@ function loadMotorHat() {
 }
 loadMotorHat();
 setInterval(loadMotorHat, 30000);
+
+const ABOUT_TABS = [
+  ['overview', '概要'], ['hardware', 'ハードウェア構成'], ['nodes', 'ソフトウェア構成'],
+  ['drive', '運転モードと安全機構'], ['autonomy', '知覚と自律走行'],
+  ['api', 'Web API'], ['status', '開発状況'],
+];
+let architectureData = null;
+let aboutTab = 'overview';
+
+function aboutHash() {
+  const match = location.hash.match(/^#about\/(.+)$/);
+  return ABOUT_TABS.some(([id]) => id === match?.[1]) ? match[1] : 'overview';
+}
+function aboutParam(node, name) {
+  return ((node && node.params) || []).find(p => p.name === name)?.value;
+}
+function aboutValue(value, unit = '') {
+  if (value === null || value === undefined || value === '') return '-';
+  return `${esc(value)}${unit ? ` ${esc(unit)}` : ''}`;
+}
+function aboutList(items) {
+  return `<ul>${(items || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+}
+function aboutTable(headers, rows) {
+  return `<table class="abouttable"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>` +
+    `<tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell ?? '-'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+function architectureNode(id) {
+  return (architectureData.nodes || []).find(n => n.id === id);
+}
+function renderOverview(a) {
+  const o = a.overview || {};
+  const milestones = (o.milestones || []).map(m =>
+    `<li><span class="check ${m.state === 'done' ? 'done' : ''}">${m.state === 'done' ? '☑' : '☐'}</span>${esc(m.text)}</li>`).join('');
+  return `<h3>${esc(o.title || 'AI-CAR')}</h3><p>${esc(o.subtitle || '')}</p>` +
+    `<h3>目的</h3>${aboutList(o.purpose)}<h3>現在の到達レベル</h3>` +
+    `<p><span class="badge ok">${esc(o.current_level?.label || '-')}</span> ${esc(o.current_level?.detail || '')}</p>` +
+    `<h3>マイルストーン</h3><ul>${milestones}</ul><h3>技術スタック</h3>` +
+    aboutTable(['名称', '役割'], (o.stack || []).map(x => [esc(x.name), esc(x.role)]));
+}
+function powerColor(power) {
+  return power?.startsWith('12V') ? '#e04b4b' : power?.startsWith('5V') ? '#f08b36' :
+    power?.startsWith('3V3') ? '#b4d455' : '#687383';
+}
+function renderHardware(a) {
+  const h = a.hardware || {}, devices = h.devices || [];
+  const coords = {top: [600, 92], left: [180, 250], right: [1020, 250], bottom: [600, 410]};
+  const groups = {top: [], left: [], right: [], bottom: []};
+  devices.forEach(d => (groups[d.side] || groups.bottom).push(d));
+  const points = {};
+  Object.entries(groups).forEach(([side, list]) => list.forEach((d, i) => {
+    const [baseX, baseY] = coords[side], gap = side === 'top' || side === 'bottom' ? 170 : 120;
+    points[d.id] = side === 'top' || side === 'bottom'
+      ? [baseX + (i - (list.length - 1) / 2) * gap, baseY]
+      : [baseX, baseY + (i - (list.length - 1) / 2) * gap];
+  }));
+  let svg = `<svg class="aboutsvg" viewBox="0 0 1200 520"><defs><filter id="hwshadow"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".5"/></filter></defs>`;
+  devices.forEach(d => {
+    const [x, y] = points[d.id], [cx, cy] = [600, 250];
+    svg += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${powerColor(d.power)}" stroke-width="3"/>`;
+    svg += `<text x="${(cx + x) / 2}" y="${(cy + y) / 2 - 5}" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(d.bus || '')}</text>`;
+  });
+  svg += `<rect x="470" y="205" width="260" height="90" rx="12" fill="#1d3b63" stroke="#64b5f6" stroke-width="2" filter="url(#hwshadow)"/>`;
+  svg += `<text x="600" y="244" fill="#e8eaed" text-anchor="middle" font-size="18" font-weight="bold">${esc(h.center?.label || 'Raspberry Pi 5')}</text>`;
+  svg += `<text x="600" y="268" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(h.center?.sub || '')}</text>`;
+  devices.forEach(d => {
+    const [x, y] = points[d.id], w = 176, hh = 58;
+    svg += `<g class="aboutlink" data-jump="${esc(d.jump || '')}"><rect x="${x - w / 2}" y="${y - hh / 2}" width="${w}" height="${hh}" rx="9" fill="#1e232b" stroke="${d.jump ? '#43c47a' : '#3a4657'}" stroke-width="2"/>`;
+    svg += `<text x="${x}" y="${y - 3}" fill="#e8eaed" text-anchor="middle" font-size="13" font-weight="bold">${esc(d.label)}</text><text x="${x}" y="${y + 16}" fill="#9fb0c7" text-anchor="middle" font-size="10">${esc(d.sub || '')}</text></g>`;
+  });
+  svg += '</svg>';
+  const rows = devices.map(d => [esc(d.label), esc(d.bus || '-'), `<span style="color:${powerColor(d.power)}">${esc(d.power || '-')}</span>`]);
+  return `<h3>構成ブロック</h3>${svg}<div class="powerlegend"><span><i style="background:#e04b4b"></i>12V</span><span><i style="background:#f08b36"></i>5V</span><span><i style="background:#b4d455"></i>3V3</span><span><i style="background:#687383"></i>電源記載なし</span></div><h3>デバイス一覧</h3>` +
+    aboutTable(['デバイス', 'バス', '電源'], rows);
+}
+function liveNode(n, live) {
+  const names = live?.nodes || [];
+  return names.includes(n.id) || ((n.id === 'rplidar' || n.id === 'camera') &&
+    names.some(name => name.includes(n.id)));
+}
+function liveTopic(t, live) {
+  return (live?.topics || []).includes(t.name);
+}
+function nodeDetail(n) {
+  if (!n) return '';
+  const params = (n.params || []).map(p => [esc(p.name), aboutValue(p.value, p.unit), esc(p.desc || '')]);
+  return `<h4>${esc(n.label || n.id)}</h4><p>${esc(n.role || '')}</p><p><b>ファイル:</b> ${esc(n.file || '-')}</p>` +
+    `<p><b>Publish:</b> ${((n.publishes || []).map(esc).join(', ') || '-')}</p><p><b>Subscribe:</b> ${((n.subscribes || []).map(esc).join(', ') || '-')}</p>` +
+    (params.length ? aboutTable(['パラメータ', '値', '説明'], params) : '');
+}
+function topicDetail(t, nodes) {
+  if (!t) return '';
+  const pubs = nodes.filter(n => (n.publishes || []).includes(t.name)).map(n => n.label || n.id);
+  const subs = nodes.filter(n => (n.subscribes || []).includes(t.name)).map(n => n.label || n.id);
+  return `<h4>${esc(t.name)}</h4><p><b>型:</b> ${esc(t.type || '-')}</p><p>${esc(t.desc || '')}</p>` +
+    `<p><b>Publisher:</b> ${pubs.map(esc).join(', ') || '-'}</p><p><b>Subscriber:</b> ${subs.map(esc).join(', ') || '-'}</p>`;
+}
+function renderNodes(a) {
+  const nodes = a.nodes || [], topics = a.topics || [], live = a.live || {};
+  const layers = ['sensor', 'perception', 'control', 'actuator', 'ui'], xBy = {sensor: 120, perception: 360, control: 600, actuator: 840, ui: 1080};
+  const positions = {}, byLayer = {};
+  nodes.forEach(n => (byLayer[n.layer] ||= []).push(n));
+  Object.entries(byLayer).forEach(([layer, list]) => list.forEach((n, i) => {
+    positions[n.id] = [xBy[layer] || 1080, 70 + i * 78 - (list.length - 1) * 39];
+  }));
+  let svg = `<svg class="aboutsvg" viewBox="0 0 1200 440"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#7f91a8"/></marker></defs>`;
+  layers.forEach((layer, i) => { svg += `<text x="${xBy[layer]}" y="22" text-anchor="middle" fill="#9fb0c7" font-size="12">${layer.toUpperCase()}</text>`; });
+  topics.forEach(t => {
+    const pubs = nodes.filter(n => (n.publishes || []).includes(t.name) && positions[n.id]);
+    const subs = nodes.filter(n => (n.subscribes || []).includes(t.name) && positions[n.id]);
+    if (!pubs.length || !subs.length) return;
+    const tx = Math.round((pubs[0] ? positions[pubs[0].id][0] : 500) + (subs[0] ? positions[subs[0].id][0] : 700)) / 2;
+    const ty = 32 + (topics.indexOf(t) % 9) * 42;
+    svg += `<g class="aboutlink" data-topic="${esc(t.name)}"><line x1="${positions[pubs[0].id][0] + 80}" y1="${positions[pubs[0].id][1]}" x2="${tx - 42}" y2="${ty}" stroke="#687383" marker-end="url(#arrow)"/>`;
+    svg += `<rect x="${tx - 42}" y="${ty - 12}" width="84" height="24" rx="12" fill="${liveTopic(t, live) ? '#1e4a2b' : '#2a3340'}" stroke="${liveTopic(t, live) ? '#43c47a' : '#556'}"/><text x="${tx}" y="${ty + 4}" text-anchor="middle" fill="#e8eaed" font-size="9">${esc(t.name.length > 17 ? t.name.slice(0, 16) + '…' : t.name)}</text>`;
+    subs.forEach(s => { svg += `<line x1="${tx + 42}" y1="${ty}" x2="${positions[s.id][0] - 80}" y2="${positions[s.id][1]}" stroke="#687383" marker-end="url(#arrow)"/>`; });
+    svg += '</g>';
+  });
+  nodes.forEach(n => {
+    const [x, y] = positions[n.id], active = liveNode(n, live);
+    svg += `<g class="aboutlink" data-node="${esc(n.id)}"><rect x="${x - 80}" y="${y - 26}" width="160" height="52" rx="9" fill="${active ? '#1e4a2b' : '#1e232b'}" stroke="${active ? '#43c47a' : '#556'}" stroke-width="2"${n.planned ? ' stroke-dasharray="6 4"' : ''}/><text x="${x}" y="${y + 4}" text-anchor="middle" fill="#e8eaed" font-size="11">${esc(n.label || n.id)}</text></g>`;
+  });
+  svg += '</svg>';
+  const rows = topics.map(t => [esc(t.name), esc(t.type || '-'), esc(t.desc || '-'),
+    liveTopic(t, live) ? '<span class="topiclive">● live</span>' : '<span class="topicdead">● planned</span>']);
+  return `<h3>ROS 2 ノード / Topic グラフ</h3>${svg}<div id="arch_detail" class="archdetail">ノードまたは Topic をクリックすると詳細を表示します。</div><h3>Topic 一覧</h3>` +
+    aboutTable(['名前', '型', '説明', '状態'], rows);
+}
+function renderDrive(a) {
+  const d = a.drive_modes || {}, states = d.states || [], transitions = d.transitions || [], current = latestTelemetry.drive_mode?.mode;
+  const statePos = {manual: [220, 120], auto: [600, 120], stop: [410, 300]};
+  let svg = `<svg class="aboutsvg" viewBox="0 0 820 410"><defs><marker id="modearrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#9fb0c7"/></marker></defs>`;
+  transitions.forEach((t, i) => {
+    const from = t.from === 'any' ? [410, 40] : statePos[t.from], to = statePos[t.to];
+    if (!from || !to) return;
+    const mx = (from[0] + to[0]) / 2 + (i % 2 ? 15 : -15), my = (from[1] + to[1]) / 2;
+    svg += `<path d="M${from[0]} ${from[1]} Q${mx} ${my} ${to[0]} ${to[1]}" fill="none" stroke="#687383" marker-end="url(#modearrow)"/><text x="${mx}" y="${my - 5}" text-anchor="middle" fill="#9fb0c7" font-size="10">${esc(t.trigger || '')}</text>`;
+  });
+  states.forEach(s => { const [x, y] = statePos[s.id] || [410, 200], on = current === s.id;
+    svg += `<circle cx="${x}" cy="${y}" r="48" fill="${on ? '#1e4a2b' : '#1e232b'}" stroke="${on ? '#43c47a' : '#687383'}" stroke-width="${on ? 4 : 2}"/><text x="${x}" y="${y + 5}" text-anchor="middle" fill="#e8eaed" font-size="16">${esc(s.label)}</text>`;
+  });
+  svg += '</svg>';
+  const safety = (d.safety || []).map(s => [esc(s.name), esc(s.where || '-'), aboutValue(s.value, s.unit), esc(s.desc || '')]);
+  return `<h3>運転モード遷移${current ? ` <span class="badge ok">現在: ${esc(current)}</span>` : ''}</h3>${svg}<h3>自動進入条件</h3>${aboutList(d.auto_entry_conditions)}<h3>安全機構</h3>` +
+    aboutTable(['名称', '実装箇所', '値', '説明'], safety);
+}
+function renderAutonomy(a) {
+  const n = architectureNode(a.autonomy_node || 'autonomy_node') || {};
+  const values = Object.fromEntries((n.params || []).map(p => [p.name, Number(p.value)]));
+  const rings = [['clear_distance', '#4a90d9'], ['slow_distance', '#b4d455'], ['stop_distance', '#f08b36'], ['backoff_distance', '#e04b4b']];
+  let svg = `<svg class="aboutsvg" viewBox="0 0 760 470"><g transform="translate(380 235)">`;
+  for (const [key, color] of rings) { const r = Math.max(22, Math.min(190, (values[key] || .3) * 150)); svg += `<circle r="${r}" fill="none" stroke="${color}" stroke-width="2"/><text x="${r + 5}" y="4" fill="${color}" font-size="11">${key.replace('_distance', '')} ${values[key] ?? '-'}m</text>`; }
+  const wedges = [[-30, 30, '#e04b4b'], [30, 150, '#b4d455'], [-150, -30, '#b4d455'], [150, 210, '#687383'], [0, 30, '#f08b36'], [-30, 0, '#f08b36']];
+  wedges.forEach(([a1, a2, color]) => { const rad = x => x * Math.PI / 180, R = 190; svg += `<path d="M0 0 L${Math.sin(rad(a1)) * R} ${-Math.cos(rad(a1)) * R} A${R} ${R} 0 0 1 ${Math.sin(rad(a2)) * R} ${-Math.cos(rad(a2)) * R} Z" fill="${color}" opacity=".18" stroke="${color}"/>`; });
+  svg += '<rect x="-32" y="-48" width="64" height="96" rx="14" fill="#2a3340" stroke="#9fb0c7"/><path d="M0 -48 l-12 15 h24 z" fill="#e8eaed"/><text x="0" y="5" fill="#e8eaed" text-anchor="middle" font-size="12">AI-CAR</text></g></svg>';
+  const behavior = (a.behaviors || []).map(b => [esc(b.label), esc(b.condition), esc(b.output)]);
+  return `<h3>LiDAR セクターと距離しきい値</h3>${svg}<h3>行動ルール</h3>${aboutTable(['行動', '条件', '出力'], behavior)}<h3>知覚フロー</h3>` +
+    `<ol>${(a.perception_flow || []).map(x => `<li>${esc(x)}</li>`).join('')}</ol>`;
+}
+function renderApi(a) {
+  const api = a.api || {};
+  const rows = (api.rest || []).map(x => [`<span class="badge ${x.method === 'POST' ? 'warn' : 'ok'}">${esc(x.method)}</span>`, `<code>${esc(x.path)}</code>`, esc(x.desc || '-'), x.auth ? '🔒' : '']);
+  return `<h3>HTTP / WebSocket インターフェース</h3>${aboutTable(['Method', 'Path', '説明', '認証'], rows)}<div class="note">${esc(api.auth_note || '')}</div>`;
+}
+function renderStatus(a) {
+  const s = a.status || {};
+  return `<h3>既知の問題</h3>${aboutList(s.known_issues)}<h3>次の作業</h3>${aboutList(s.next)}<h3>ドキュメント</h3>` +
+    aboutTable(['ファイル', '内容'], (s.docs || []).map(x => [esc(x.name), esc(x.desc)]));
+}
+function renderAboutTab(id) {
+  aboutTab = id;
+  location.hash = `about/${id}`;
+  document.querySelectorAll('#about_tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  const body = document.getElementById('about_body');
+  if (!architectureData) { body.innerHTML = '<span class="badge">読み込み中...</span>'; return; }
+  if (architectureData.error) { body.innerHTML = `<span class="badge crit">${esc(architectureData.error)}</span>`; return; }
+  const renders = {overview: renderOverview, hardware: renderHardware, nodes: renderNodes, drive: renderDrive, autonomy: renderAutonomy, api: renderApi, status: renderStatus};
+  body.innerHTML = renders[id](architectureData);
+  body.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => {
+    const jump = el.dataset.jump; if (!jump) return;
+    closeAbout();
+    const wanted = jump === 'gpio' ? 'GPIO' : jump === 'motor' ? 'Motor HAT' : 'AI HAT+';
+    [...document.querySelectorAll('.card h2')].find(h => h.textContent.includes(wanted))?.scrollIntoView({behavior: 'smooth'});
+  }));
+  body.querySelectorAll('[data-node]').forEach(el => el.addEventListener('click', () => {
+    document.getElementById('arch_detail').innerHTML = nodeDetail(architectureNode(el.dataset.node));
+  }));
+  body.querySelectorAll('[data-topic]').forEach(el => el.addEventListener('click', () => {
+    document.getElementById('arch_detail').innerHTML = topicDetail((architectureData.topics || []).find(t => t.name === el.dataset.topic), architectureData.nodes || []);
+  }));
+}
+function closeAbout() {
+  document.getElementById('about').classList.add('hidden');
+}
+function openAbout() {
+  const modal = document.getElementById('about');
+  modal.classList.remove('hidden');
+  aboutTab = aboutHash();
+  document.getElementById('about_body').innerHTML = '<span class="badge">読み込み中...</span>';
+  fetch('/api/architecture').then(r => r.json()).then(a => {
+    architectureData = a;
+    renderAboutTab(aboutTab);
+  }).catch(() => { document.getElementById('about_body').innerHTML = '<span class="badge crit">/api/architecture の取得に失敗しました</span>'; });
+}
+document.getElementById('about_tabs').innerHTML = ABOUT_TABS.map(([id, label]) =>
+  `<button data-tab="${id}">${label}</button>`).join('');
+document.querySelectorAll('#about_tabs button').forEach(b => b.addEventListener('click', () => renderAboutTab(b.dataset.tab)));
+document.getElementById('about_btn').addEventListener('click', openAbout);
+document.getElementById('about_close').addEventListener('click', closeAbout);
+document.getElementById('about').addEventListener('click', ev => { if (ev.target.id === 'about') closeAbout(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeAbout(); });
 
 let pollTimer = null;
 

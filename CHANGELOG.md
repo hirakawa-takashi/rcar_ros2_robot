@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- プロジェクト説明ボタンと7タブの全画面モーダルを追加（`architecture.yaml` / `/api/architecture` による構成・安全機構・API・開発状況表示、dashboard.yaml の実値と生存ノード / Topic を反映）
 - 運転モード切替・手動指令の安全停止を修正し、手動指令ウォッチドッグと起動時ゼロ出力、自律走行の後方距離未受信時の後退抑止、ダッシュボードの停止動作と任意トークン認証を追加
 - ZJY-IPS130-V2.0（ST7789 1.3 インチ 240×240 IPS 液晶、SPI0、7 ピン CS なし）用 `lcd_display_node` を追加（spidev + libgpiod + Pillow。運転モード・自律行動・前方距離・障害物・電圧・CPU 温度・パッド接続・IP を描画、`/display_state` は従来コード互換）
 - `gpio_pins.yaml` に ZJY-IPS130 液晶の配線色（GND 黒 / VCC 赤 / SCL 橙 / SDA 黄 / RES 緑 / DC 青 / BLK 紫）を設定
