@@ -66,6 +66,9 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。
 `cmd_timeout`（既定 0.7 秒）の間に新しい指令が来ない場合は自動的に停止する。
+`dashboard_node.api_token` または環境変数 `AI_CAR_API_TOKEN` を設定すると、POST `/api/*` に
+`X-API-Token`（または Bearer）ヘッダーが必要になる。UI は `http://<PI_IP>:8080/?token=...` を
+一度開くとトークンを localStorage に保存する。
 
 `system_monitor_node`
 

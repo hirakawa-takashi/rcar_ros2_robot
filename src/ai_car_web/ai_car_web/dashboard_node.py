@@ -6,6 +6,7 @@ FastAPI サーバーを別スレッドで起動し、ブラウザ・ゲームパ
 """
 
 import asyncio
+import hmac
 import json
 import math
 import os
@@ -16,7 +17,7 @@ from collections import deque
 import rclpy
 import uvicorn
 from ament_index_python.packages import get_package_share_directory
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from geometry_msgs.msg import Twist
@@ -114,6 +115,7 @@ class DashboardNode(Node):
         # 運転モード（drive_mode_node）。空で無効
         self.declare_parameter('drive_mode_topic', '/drive_mode')
         self.declare_parameter('drive_mode_request_topic', '/drive_mode_request')
+        self.declare_parameter('api_token', '')
         # 自律走行の状態（autonomy_node）。空で無効
         self.declare_parameter('autonomy_status_topic', '/autonomy_status')
 
@@ -125,6 +127,8 @@ class DashboardNode(Node):
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
+        self.api_token = str(self.get_parameter('api_token').value) or os.environ.get(
+            'AI_CAR_API_TOKEN', '')
         self.gpio_config = self.get_parameter('gpio_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'gpio_pins.yaml')
         self.motor_hat_config = self.get_parameter('motor_hat_config').value or os.path.join(
@@ -199,6 +203,9 @@ class DashboardNode(Node):
         self._frame_times = deque(maxlen=60)
 
         self.create_timer(0.1, self._watchdog_cb)
+        if not self.api_token:
+            self.get_logger().warn(
+                'API 認証が無効です（api_token 未設定）: 同一ネットワークの誰でも操作できます')
         self.get_logger().info(
             f'Webダッシュボードを起動します: http://{self.host}:{self.port}')
 
@@ -300,12 +307,15 @@ class DashboardNode(Node):
             return {'ok': False, 'error': '運転モード管理が無効です'}
         if mode != 'manual':
             # 自動 / 停止へ切り替える前に Web 操作の指令を止める
-            self.stop()
+            self.neutralize()
+        self._publish_mode_request(mode)
+        self.get_logger().info(f'運転モード切替要求: {mode}')
+        return {'ok': True, 'mode': mode}
+
+    def _publish_mode_request(self, mode: str):
         msg = String()
         msg.data = json.dumps({'mode': mode, 'source': 'dashboard'})
         self.mode_request_pub.publish(msg)
-        self.get_logger().info(f'運転モード切替要求: {mode}')
-        return {'ok': True, 'mode': mode}
 
     def _drive_mode_state(self):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -431,9 +441,17 @@ class DashboardNode(Node):
             'angular_z': twist.angular.z,
         }
 
-    def stop(self):
-        """停止指令を publish する。"""
+    def neutralize(self):
+        """手動指令をニュートラルにする。"""
         return self.publish_cmd_vel(0.0, 0.0, 0.0)
+
+    def stop(self):
+        """全モードで停止を要求する。"""
+        cmd = self.neutralize()
+        if self.mode_request_pub is not None:
+            self._publish_mode_request('stop')
+        cmd['mode'] = 'stop'
+        return cmd
 
     @staticmethod
     def _clamp(value: float) -> float:
@@ -460,6 +478,7 @@ class DashboardNode(Node):
         with self._lock:
             return {
                 'stamp': round(self.get_clock().now().nanoseconds * 1e-9, 3),
+                'auth_required': bool(self.api_token),
                 'cmd_vel': {
                     'linear_x': round(self._last_cmd.linear.x, 3),
                     'linear_y': round(self._last_cmd.linear.y, 3),
@@ -494,6 +513,15 @@ def create_app(node: DashboardNode) -> FastAPI:
         get_package_share_directory('ai_car_web'), 'static')
     app = FastAPI(title='AI-CAR Dashboard')
 
+    def require_token(request: Request):
+        if not node.api_token:
+            return
+        auth = request.headers.get('authorization', '')
+        token = (auth[7:] if auth.lower().startswith('bearer ')
+                 else request.headers.get('x-api-token', ''))
+        if not hmac.compare_digest(token, node.api_token):
+            raise HTTPException(status_code=401, detail='API トークンが必要です')
+
     @app.get('/')
     def index():
         return FileResponse(os.path.join(static_dir, 'index.html'))
@@ -510,11 +538,11 @@ def create_app(node: DashboardNode) -> FastAPI:
     def motor_hat():
         return load_motor_hat(node.motor_hat_config)
 
-    @app.post('/api/cmd_vel')
+    @app.post('/api/cmd_vel', dependencies=[Depends(require_token)])
     def cmd_vel(req: CmdVelRequest):
         return node.publish_cmd_vel(req.linear_x, req.linear_y, req.angular_z)
 
-    @app.post('/api/stop')
+    @app.post('/api/stop', dependencies=[Depends(require_token)])
     def stop():
         return node.stop()
 
@@ -522,7 +550,7 @@ def create_app(node: DashboardNode) -> FastAPI:
     def drive_mode():
         return node.telemetry()['drive_mode'] or {'mode': None, 'alive': False}
 
-    @app.post('/api/drive_mode')
+    @app.post('/api/drive_mode', dependencies=[Depends(require_token)])
     def set_drive_mode(req: DriveModeRequest):
         return node.request_drive_mode(req.mode)
 

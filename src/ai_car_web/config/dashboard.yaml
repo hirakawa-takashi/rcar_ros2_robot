@@ -27,6 +27,7 @@ dashboard_node:
     joy_timeout: 1.0
     drive_mode_topic: "/drive_mode"
     drive_mode_request_topic: "/drive_mode_request"
+    api_token: ""  # 空なら認証なし。設定すると POST /api/* に X-API-Token（または Bearer）ヘッダーが必要。環境変数 AI_CAR_API_TOKEN でも指定可
     autonomy_status_topic: "/autonomy_status"
 
 drive_mode_node:
@@ -42,6 +43,7 @@ drive_mode_node:
     initial_mode: "manual"
     publish_rate: 5.0
     auto_timeout: 0.5        # 自動指令が途絶えたら STOP
+    manual_timeout: 1.0      # 手動指令が途絶えたら STOP
     obstacle_timeout: 2.0    # 障害物判定が途絶えたら LiDAR 停止とみなす
     joy_timeout: 1.0
     auto_requires_joy: true  # ゲームパッド切断で AUTO → STOP

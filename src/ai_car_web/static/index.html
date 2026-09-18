@@ -212,6 +212,10 @@
       出力: <span id="gainval">50</span>%
       <input id="gain" type="range" min="10" max="100" value="50">
     </div>
+    <div class="speed">
+      <input id="api_token" type="password" placeholder="API トークン（api_token 設定時）">
+      <span id="auth_note" class="note"></span>
+    </div>
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
     <div class="speed">ゲームパッド F710: <span id="joy_state" class="badge">-</span>
       　左スティック: 前後 / 平行移動　右スティック: 旋回　RB: 全速　B: 停止</div>
@@ -275,6 +279,31 @@
 </div>
 
 <script>
+const TOKEN_KEY = 'ai_car_api_token';
+const urlToken = new URLSearchParams(location.search).get('token');
+if (urlToken) localStorage.setItem(TOKEN_KEY, urlToken);
+const tokenInput = document.getElementById('api_token');
+tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
+tokenInput.addEventListener('change', () => localStorage.setItem(TOKEN_KEY, tokenInput.value));
+
+function authHeaders() {
+  const t = localStorage.getItem(TOKEN_KEY);
+  return t ? {'X-API-Token': t} : {};
+}
+function showAuthWarning() {
+  document.getElementById('auth_note').textContent = '401: API トークンが無効です';
+}
+function apiPost(path, body) {
+  return fetch(path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', ...authHeaders()},
+    body: body === undefined ? undefined : JSON.stringify(body)
+  }).then(r => {
+    if (r.status === 401) showAuthWarning();
+    return r;
+  }).catch(() => {});
+}
+
 const gain = document.getElementById('gain');
 gain.addEventListener('input', () => {
   document.getElementById('gainval').textContent = gain.value;
@@ -282,11 +311,7 @@ gain.addEventListener('input', () => {
 
 function send(x, y, z) {
   const g = gain.value / 100;
-  fetch('/api/cmd_vel', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({linear_x: x * g, linear_y: y * g, angular_z: z * g})
-  }).catch(() => {});
+  apiPost('/api/cmd_vel', {linear_x: x * g, linear_y: y * g, angular_z: z * g});
 }
 
 let holdTimer = null;
@@ -301,13 +326,14 @@ document.querySelectorAll('.pad button').forEach(btn => {
   const end = () => {
     clearInterval(holdTimer);
     holdTimer = null;
-    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+    send(0, 0, 0);
   };
   btn.addEventListener('mousedown', start);
   btn.addEventListener('touchstart', start, {passive: false});
   ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(e =>
     btn.addEventListener(e, end));
 });
+document.querySelector('.pad button.stop').addEventListener('click', () => apiPost('/api/stop'));
 
 document.addEventListener('keydown', ev => {
   const map = {ArrowUp: [1,0,0], ArrowDown: [-1,0,0], ArrowLeft: [0,0,1],
@@ -317,17 +343,13 @@ document.addEventListener('keydown', ev => {
 });
 document.addEventListener('keyup', ev => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','a','d'].includes(ev.key)) {
-    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+    send(0, 0, 0);
   }
 });
 
 document.querySelectorAll('.modebar button').forEach(btn => {
   btn.addEventListener('click', () => {
-    fetch('/api/drive_mode', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mode: btn.dataset.mode})
-    }).catch(() => {});
+    apiPost('/api/drive_mode', {mode: btn.dataset.mode});
   });
 });
 
@@ -578,6 +600,9 @@ function renderObstacle(o) {
 }
 
 function render(d) {
+  if (!d.auth_required) {
+    document.getElementById('auth_note').textContent = '認証なし（api_token 未設定）';
+  }
   const s = d.scan;
   document.getElementById('s_count').textContent = s ? s.count : '-';
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';

@@ -186,7 +186,8 @@ class AutonomyNode(Node):
         turning_long_enough = now - self._behavior_since >= self.min_turn
 
         if (front_v <= self.backoff_d and left_v <= self.backoff_d
-                and right_v <= self.backoff_d and back_v > self.stop_d):
+                and right_v <= self.backoff_d and back is not None
+                and back_v > self.stop_d):
             self._set_behavior('backoff')
             cmd.linear.x = -self.backoff_speed
             return cmd

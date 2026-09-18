@@ -14,6 +14,7 @@
   - AUTO 進入条件（LiDAR 生存・障害物停止でない・手動ニュートラル・自動指令生存・
     ゲームパッド接続）を満たさないと拒否し、理由を /drive_mode に載せる
   - /cmd_vel_auto が途絶えたら STOP、ゲームパッド切断時も STOP（パラメータで選択）
+  - 手動指令が途絶えたら STOP
   - モード遷移時は必ず一度ゼロ速度を送る
   - 障害物 "stop" 判定中はどのモードでも前進を止める（最終段ガード）
 """
@@ -53,6 +54,8 @@ class DriveModeNode(Node):
         self.declare_parameter('publish_rate', 5.0)
         # 自動指令がこの秒数途絶えたら STOP
         self.declare_parameter('auto_timeout', 0.5)
+        # 手動指令がこの秒数途絶えたら STOP
+        self.declare_parameter('manual_timeout', 1.0)
         # 障害物判定がこの秒数より古ければ LiDAR 停止とみなす
         self.declare_parameter('obstacle_timeout', 2.0)
         # ゲームパッド指令（20Hz）がこの秒数途絶えたら未接続
@@ -65,6 +68,7 @@ class DriveModeNode(Node):
         self.declare_parameter('obstacle_guard', True)
 
         self.auto_timeout = float(self.get_parameter('auto_timeout').value)
+        self.manual_timeout = float(self.get_parameter('manual_timeout').value)
         self.obstacle_timeout = float(self.get_parameter('obstacle_timeout').value)
         self.joy_timeout = float(self.get_parameter('joy_timeout').value)
         self.auto_requires_joy = bool(self.get_parameter('auto_requires_joy').value)
@@ -109,6 +113,8 @@ class DriveModeNode(Node):
         rate = float(self.get_parameter('publish_rate').value)
         self.create_timer(1.0 / max(rate, 1.0), self._timer_cb)
         self.create_timer(0.05, self._auto_relay_cb)
+        self.create_timer(0.1, self._manual_watchdog_cb)
+        self._publish_cmd(Twist())
         self._publish_mode()
         self.get_logger().info(f'運転モード: {LABELS[self._mode]}')
 
@@ -125,6 +131,17 @@ class DriveModeNode(Node):
             self._set_mode('manual', 'override', '手動指令を検出したため手動へ復帰')
             self._publish_cmd(msg)
         # STOP 中の手動指令は無視（明示的に MANUAL へ戻す必要がある）
+
+    def _manual_watchdog_cb(self):
+        with self._lock:
+            if self._mode != 'manual' or not self._manual_moving or not self._manual_stamp:
+                return
+            age = time.monotonic() - self._manual_stamp
+        if age > self.manual_timeout:
+            with self._lock:
+                self._manual_moving = False
+            self._publish_cmd(Twist())
+            self._set_mode('stop', 'watchdog', '手動指令が途絶えたため停止')
 
     def _auto_cb(self, msg: Twist):
         with self._lock:
