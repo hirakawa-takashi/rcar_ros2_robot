@@ -671,7 +671,17 @@ function renderSystem(s) {
 }
 
 // LiDAR の 360度スキャンを上から見た点群として描画する（+X = 正面 = 上）。
-function drawScanMap(scan, danger, frontHalfRad) {
+// 点群の距離帯（近い順）。しきい値は /obstacle_status・/autonomy_status の実値を使う
+function scanBands(danger, stopD, slowD) {
+  return [
+    { max: danger, color: '#ff5c6c', size: 4, label: '危険 ≤' + danger.toFixed(2) + 'm' },
+    { max: stopD, color: '#ff8a4c', size: 3, label: '停止 ≤' + stopD.toFixed(2) + 'm' },
+    { max: slowD, color: '#f5b942', size: 3, label: '減速 ≤' + slowD.toFixed(2) + 'm' },
+    { max: Infinity, color: '#35d6ff', size: 2, label: '安全 >' + slowD.toFixed(2) + 'm' },
+  ];
+}
+
+function drawScanMap(scan, danger, frontHalfRad, stopD, slowD) {
   const canvas = document.getElementById('scan_map');
   const ctx = canvas.getContext('2d');
   const size = canvas.width;
@@ -723,14 +733,30 @@ function drawScanMap(scan, danger, frontHalfRad) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
 
+  const bands = scanBands(danger, stopD, slowD);
   for (const [x, y] of points) {
-    // 前方セクター内かつ危険距離以内の点のみ赤で強調する。
-    const near = Math.hypot(x, y) <= danger &&
-      Math.abs(Math.atan2(y, x)) <= frontHalfRad;
-    ctx.fillStyle = near ? '#ff5c6c' : '#35d6ff';
-    const s = near ? 4 : 2;
+    const dist = Math.hypot(x, y);
+    const band = bands.find(b => dist <= b.max);
+    // 前方セクター内の近距離点は一段大きく描いて強調する
+    const front = band.max !== Infinity && Math.abs(Math.atan2(y, x)) <= frontHalfRad;
+    const s = front ? band.size + 1 : band.size;
+    ctx.fillStyle = band.color;
     ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
   }
+
+  // 凡例（左下）
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  bands.forEach((b, i) => {
+    const ly = size - 8 - (bands.length - 1 - i) * 14;
+    ctx.fillStyle = b.color;
+    ctx.fillRect(6, ly - 3, 6, 6);
+    ctx.fillStyle = '#9fb0c7';
+    ctx.fillText(b.label, 16, ly);
+  });
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
 
   ctx.fillStyle = '#ff5c6c';
   ctx.beginPath();
@@ -798,7 +824,10 @@ function render(d) {
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
   const danger = (d.obstacle && d.obstacle.danger_distance) || 0.3;
   const frontHalf = (((d.obstacle && d.obstacle.front_angle_deg) || 60) / 2) * Math.PI / 180;
-  drawScanMap(s, danger, frontHalf);
+  const ap = (d.autonomy && d.autonomy.params) || {};
+  const stopD = Math.max(danger, ap.stop_distance || 0.35);
+  const slowD = Math.max(stopD, ap.slow_distance || 0.8);
+  drawScanMap(s, danger, frontHalf, stopD, slowD);
   renderObstacle(d.obstacle);
   renderJoy(d.joy);
   renderDriveMode(d.drive_mode);
