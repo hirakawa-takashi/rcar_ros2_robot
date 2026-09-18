@@ -148,6 +148,111 @@
     .aboutbody { padding: 12px; }
     .abouttabs { overflow-x: auto; flex-wrap: nowrap; }
   }
+
+  /* ===== テーマ: ネイビー×シアン 計器パネル風（レイアウト・内容は不変、装飾のみ） ===== */
+  :root {
+    --bg0: #070c16; --bg1: #0b1426; --panel: rgba(14, 24, 42, .82); --panel2: #101b30;
+    --line: rgba(84, 130, 190, .28); --line2: rgba(84, 130, 190, .5);
+    --text: #dbe7f7; --muted: #7f98ba; --cyan: #35d6ff; --cyan2: rgba(53, 214, 255, .35);
+    --ok: #35e39a; --warn: #f5b942; --crit: #ff5c6c; --auto: #4aa3ff;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  body {
+    color: var(--text);
+    background:
+      linear-gradient(rgba(53, 214, 255, .035) 1px, transparent 1px) 0 0 / 100% 28px,
+      linear-gradient(90deg, rgba(53, 214, 255, .035) 1px, transparent 1px) 0 0 / 28px 100%,
+      radial-gradient(1200px 600px at 15% -10%, #12284a 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 100%, #0d1f3c 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg1), var(--bg0));
+    background-attachment: fixed;
+  }
+  h1 { letter-spacing: .06em; font-weight: 700;
+       background: linear-gradient(90deg, #e8f4ff, var(--cyan));
+       -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .status { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .dot { background: var(--crit); box-shadow: 0 0 6px var(--crit); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  @keyframes glowpulse { 0%, 100% { box-shadow: 0 0 6px var(--auto); } 50% { box-shadow: 0 0 18px var(--auto); } }
+  .card {
+    position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; backdrop-filter: blur(6px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .05);
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 12px; right: 12px; top: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan2), transparent); pointer-events: none;
+  }
+  .card:hover { border-color: var(--line2); box-shadow: 0 12px 32px rgba(0, 0, 0, .55), 0 0 0 1px rgba(53, 214, 255, .08); }
+  .card h2 {
+    color: var(--muted); font-size: 11px; letter-spacing: .08em;
+    padding-left: 10px; border-left: 3px solid var(--cyan); line-height: 1.4;
+  }
+  td.k, .barrow .k, .core, .speed, .note { color: var(--muted); }
+  td.v, .barrow .v, .core .val { font-family: var(--mono); color: #bfe9ff; font-size: 13px; }
+  td { border-bottom: 1px dashed rgba(84, 130, 190, .12); }
+  tr:last-child td { border-bottom: 0; }
+  button {
+    background: linear-gradient(180deg, #1a2b48, #122038); color: var(--text);
+    border: 1px solid var(--line2); border-radius: 8px;
+    box-shadow: 0 3px 0 #0a1425, 0 6px 14px rgba(0, 0, 0, .4); transition: transform .08s, box-shadow .08s, filter .15s;
+  }
+  button:hover { filter: brightness(1.12); }
+  button:active { background: #16284a; transform: translateY(2px); box-shadow: 0 1px 0 #0a1425, 0 2px 6px rgba(0, 0, 0, .4); }
+  button.joy-on { background: linear-gradient(180deg, #1e7a56, #145a3f); border-color: var(--ok); box-shadow: 0 3px 0 #0a1425, 0 0 12px rgba(53, 227, 154, .35); }
+  button.stop { background: linear-gradient(180deg, #8a2534, #5c1622); border-color: var(--crit);
+                box-shadow: 0 3px 0 #0a1425, 0 0 14px rgba(255, 92, 108, .4); font-weight: 700; letter-spacing: .1em; }
+  .modebar button.active { outline: none; box-shadow: 0 3px 0 #0a1425, inset 0 -3px 0 currentColor; }
+  .modebar button.m-manual.active { background: linear-gradient(180deg, #1e7a56, #145a3f); border-color: var(--ok); color: #b9ffdc; }
+  .modebar button.m-auto.active { background: linear-gradient(180deg, #23538f, #183a66); border-color: var(--auto); color: #c9e2ff; }
+  .modebar button.m-stop.active { background: linear-gradient(180deg, #8a2534, #5c1622); border-color: var(--crit); color: #ffd0d6; }
+  input[type=range] { accent-color: var(--cyan); }
+  .bar { background: rgba(84, 130, 190, .15); border-radius: 5px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5); }
+  .bar > span { background: linear-gradient(90deg, #2a7fd6, var(--cyan)); border-radius: 5px;
+                box-shadow: 0 0 8px var(--cyan2); transition: width .3s, background .4s; }
+  .bar > span.warn { background: linear-gradient(90deg, #c98a1e, var(--warn)); box-shadow: 0 0 8px rgba(245, 185, 66, .4); }
+  .bar > span.crit { background: linear-gradient(90deg, #c23a48, var(--crit)); box-shadow: 0 0 10px rgba(255, 92, 108, .5); }
+  .badge, .modebadge { font-family: var(--mono); letter-spacing: .04em; border: 1px solid transparent; }
+  .badge { background: rgba(84, 130, 190, .15); color: var(--muted); border-color: var(--line); }
+  .badge.ok { background: rgba(53, 227, 154, .12); color: var(--ok); border-color: rgba(53, 227, 154, .4); box-shadow: 0 0 8px rgba(53, 227, 154, .2); }
+  .badge.warn { background: rgba(245, 185, 66, .12); color: var(--warn); border-color: rgba(245, 185, 66, .4); box-shadow: 0 0 8px rgba(245, 185, 66, .2); }
+  .badge.crit { background: rgba(255, 92, 108, .12); color: var(--crit); border-color: rgba(255, 92, 108, .45); box-shadow: 0 0 8px rgba(255, 92, 108, .25); }
+  .modebadge { background: rgba(84, 130, 190, .15); color: var(--muted); border-color: var(--line); }
+  .modebadge.manual { background: rgba(53, 227, 154, .14); color: var(--ok); border-color: rgba(53, 227, 154, .5); box-shadow: 0 0 10px rgba(53, 227, 154, .3); }
+  .modebadge.auto { background: rgba(74, 163, 255, .16); color: #c9e2ff; border-color: var(--auto); animation: glowpulse 1.6s ease-in-out infinite; }
+  .modebadge.stop { background: rgba(255, 92, 108, .14); color: var(--crit); border-color: rgba(255, 92, 108, .5); box-shadow: 0 0 10px rgba(255, 92, 108, .3); }
+  .modebadge.dead { background: rgba(120, 120, 120, .15); color: #8a94a6; border-color: #3a4657; }
+  .reject { color: var(--warn); }
+  .cam, .map { background: #060b14; border: 1px solid var(--line2); border-radius: 8px;
+               box-shadow: inset 0 0 40px rgba(53, 214, 255, .06), 0 0 12px rgba(53, 214, 255, .08); }
+  .camwrap::before, .camwrap::after, .mapwrap::before, .mapwrap::after {
+    content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
+    border-color: var(--cyan); border-style: solid; z-index: 1;
+  }
+  .camwrap::before, .mapwrap::before { left: 4px; top: 4px; border-width: 2px 0 0 2px; border-radius: 3px 0 0 0; }
+  .camwrap::after, .mapwrap::after { right: 4px; bottom: 4px; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
+  .mapwrap { position: relative; margin-bottom: 8px; }
+  .mapwrap .map { margin-bottom: 0; }
+  .aboutbtn { background: linear-gradient(180deg, #123a5a, #0c2a44); border-color: var(--cyan2); color: #bfe9ff; letter-spacing: .04em; }
+  .aboutpanel { background: linear-gradient(180deg, #0c1629, #080f1e); border-color: var(--line2);
+                box-shadow: 0 20px 70px #000, 0 0 0 1px rgba(53, 214, 255, .08); }
+  .abouthead { background: rgba(14, 24, 42, .95); border-bottom-color: var(--line); backdrop-filter: blur(6px); }
+  .abouthead h2 { letter-spacing: .05em; }
+  .abouttabs { background: rgba(10, 18, 34, .9); border-bottom-color: var(--line); }
+  .abouttabs button { border-radius: 6px 6px 0 0; box-shadow: none; background: transparent; border-color: transparent; color: var(--muted); }
+  .abouttabs button:active { transform: none; }
+  .abouttabs button.active { background: rgba(53, 214, 255, .1); border-color: var(--line2); border-bottom: 2px solid var(--cyan); color: #e8f7ff; }
+  .aboutbody h3 { color: var(--cyan); letter-spacing: .04em; }
+  .aboutsvg, .motor_svg { background: #060b14; border: 1px solid var(--line); }
+  .archdetail { background: var(--panel2); border-color: var(--line); }
+  .abouttable th { color: var(--muted); border-bottom-color: var(--line2); }
+  .abouttable td { border-bottom-color: rgba(84, 130, 190, .12); }
+  table.pins th { border-bottom-color: var(--line2); }
+  table.pins td { border-bottom-color: rgba(84, 130, 190, .12); }
+  table.pins tr.used td { background: rgba(53, 214, 255, .07); }
+  .topiclive { color: var(--ok); }
 </style>
 </head>
 <body>
@@ -195,7 +300,7 @@
 
   <div class="card wide">
     <h2>LiDAR (/scan)</h2>
-    <canvas class="map" id="scan_map" width="480" height="480"></canvas>
+    <div class="mapwrap"><canvas class="map" id="scan_map" width="480" height="480"></canvas></div>
     <table>
       <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
       <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
@@ -579,7 +684,7 @@ function drawScanMap(scan, danger, frontHalfRad) {
   const scale = (size / 2 - 10) / range;
   document.getElementById('s_scale').textContent = points.length ? range : '-';
 
-  ctx.strokeStyle = '#2c3340';
+  ctx.strokeStyle = 'rgba(53, 214, 255, 0.22)';
   ctx.lineWidth = 1;
   for (let r = 1; r <= range; r++) {
     ctx.beginPath();
@@ -622,12 +727,12 @@ function drawScanMap(scan, danger, frontHalfRad) {
     // 前方セクター内かつ危険距離以内の点のみ赤で強調する。
     const near = Math.hypot(x, y) <= danger &&
       Math.abs(Math.atan2(y, x)) <= frontHalfRad;
-    ctx.fillStyle = near ? '#e04b4b' : '#4a90d9';
+    ctx.fillStyle = near ? '#ff5c6c' : '#35d6ff';
     const s = near ? 4 : 2;
     ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
   }
 
-  ctx.fillStyle = '#d9534f';
+  ctx.fillStyle = '#ff5c6c';
   ctx.beginPath();
   ctx.arc(cx, cy, 3, 0, Math.PI * 2);
   ctx.fill();
