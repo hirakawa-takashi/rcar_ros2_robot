@@ -1068,7 +1068,7 @@ function renderHardware(a) {
     imu: [300, 460], lcd: [900, 460],
   };
   const box = (d, x, y) => {
-    const w = 176, hh = 58;
+    const w = 150, hh = 58;
     return `<g class="aboutlink" data-jump="${esc(d.jump || '')}"><rect x="${x - w / 2}" y="${y - hh / 2}" width="${w}" height="${hh}" rx="9" fill="#1e232b" stroke="${d.jump ? '#43c47a' : '#3a4657'}" stroke-width="2"/>` +
       `<text x="${x}" y="${y - 3}" fill="#e8eaed" text-anchor="middle" font-size="13" font-weight="bold">${esc(d.label)}</text>` +
       `<text x="${x}" y="${y + 16}" fill="#9fb0c7" text-anchor="middle" font-size="10">${esc(d.sub || '')}</text></g>`;
