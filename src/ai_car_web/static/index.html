@@ -100,6 +100,8 @@
   .modal { position: fixed; inset: 0; z-index: 20; background: rgba(5, 8, 12, .86);
            display: flex; align-items: center; justify-content: center; padding: 4vh 3vw; }
   .modal.hidden { display: none; }
+  #wiring_store { display: none; }
+  #about_wiring .card { margin-top: 14px; }
   .aboutpanel { width: min(1200px, 100%); max-height: 92vh; overflow: auto;
                 background: #15181d; border: 1px solid #3a4657; border-radius: 10px;
                 box-shadow: 0 14px 50px #000; }
@@ -299,6 +301,10 @@
     <div class="note" id="au_note">Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。</div>
   </div>
 
+</div>
+
+<!-- 配線カードはプロジェクト説明「ハードウェア構成」タブに移動して表示する -->
+<div id="wiring_store">
   <div class="card full">
     <h2>Raspberry Pi 5 — GPIO 40ピンヘッダー <span class="badge" id="gpio_used">-</span></h2>
     <svg class="gpio_svg" id="gpio_svg" viewBox="0 0 1040 420" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -339,8 +345,6 @@
     </div>
     <div class="note" id="motor_note"></div>
   </div>
-
-
 </div>
 
 <script>
@@ -1116,7 +1120,12 @@ function renderHardware(a) {
   svg += '</svg>';
   const rows = devices.map(d => [esc(d.label), esc(d.bus || '-'), `<span style="color:${powerColor(d.power)}">${esc(d.power || '-')}</span>`]);
   return `<h3>構成ブロック</h3>${svg}<div class="powerlegend"><span><i style="background:#e04b4b"></i>12V</span><span><i style="background:#f08b36"></i>5V</span><span><i style="background:#b4d455"></i>3V3</span><span><i style="background:#687383"></i>電源記載なし</span></div><h3>デバイス一覧</h3>` +
-    aboutTable(['デバイス', 'バス', '電源'], rows);
+    aboutTable(['デバイス', 'バス', '電源'], rows) + '<h3>配線詳細</h3><div id="about_wiring"></div>';
+}
+function parkWiringCards() {
+  const store = document.getElementById('wiring_store');
+  const slot = document.getElementById('about_wiring');
+  if (slot) while (slot.firstChild) store.appendChild(slot.firstChild);
 }
 function liveNode(n, live) {
   const names = live?.nodes || [];
@@ -1298,12 +1307,18 @@ function renderAboutTab(id) {
   if (!architectureData) { body.innerHTML = '<span class="badge">読み込み中...</span>'; return; }
   if (architectureData.error) { body.innerHTML = `<span class="badge crit">${esc(architectureData.error)}</span>`; return; }
   const renders = {overview: renderOverview, hardware: renderHardware, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
+  parkWiringCards();
   body.innerHTML = (renders[id] || renderOverview)(architectureData);
+  const slot = document.getElementById('about_wiring');
+  if (slot) { const store = document.getElementById('wiring_store'); while (store.firstChild) slot.appendChild(store.firstChild); }
   body.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => {
     const jump = el.dataset.jump; if (!jump) return;
+    if (jump === 'gpio' || jump === 'motor') {
+      document.getElementById(jump === 'gpio' ? 'gpio_svg' : 'motor_svg')?.closest('.card')?.scrollIntoView({behavior: 'smooth'});
+      return;
+    }
     closeAbout();
-    const wanted = jump === 'gpio' ? 'GPIO' : jump === 'motor' ? 'Motor HAT' : 'AI HAT+';
-    [...document.querySelectorAll('.card h2')].find(h => h.textContent.includes(wanted))?.scrollIntoView({behavior: 'smooth'});
+    [...document.querySelectorAll('.card h2')].find(h => h.textContent.includes('AI HAT+'))?.scrollIntoView({behavior: 'smooth'});
   }));
   const highlight = (kind, value) => {
     body.querySelectorAll('.arch-edge').forEach(edge => {
@@ -1331,6 +1346,7 @@ function renderAboutTab(id) {
   });
 }
 function closeAbout() {
+  parkWiringCards();
   document.getElementById('about').classList.add('hidden');
 }
 function openAbout() {
