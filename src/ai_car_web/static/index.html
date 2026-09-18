@@ -587,6 +587,17 @@ function drawScanMap(scan, danger, frontHalfRad) {
   ctx.moveTo(0, cy); ctx.lineTo(size, cy);
   ctx.stroke();
 
+  // 距離リングの数値（前右 45° 方向に配置し、十字線・方位ラベルと重ねない）
+  ctx.fillStyle = '#9fb0c7';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  const ringStep = range > 8 ? 2 : 1;
+  for (let r = ringStep; r <= range; r += ringStep) {
+    const d = r * scale * Math.SQRT1_2;
+    ctx.fillText(r + 'm', cx + d + 2, cy - d - 1);
+  }
+
   // 方位ラベル（上＝前方、下＝後方、左＝左、右＝右）
   ctx.fillStyle = '#9fb0c7';
   ctx.font = '12px sans-serif';
