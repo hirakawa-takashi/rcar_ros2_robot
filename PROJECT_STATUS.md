@@ -2,7 +2,7 @@
 
 ## 最終更新
 - 更新日: 2026/09/19
-- 更新概要: カメラ解像度を 960×540 に変更し、perception_node の YOLOv8m 化、推論 15Hz 化、MJPEG 配信 15fps 化、レターボックス前処理、複数フレーム確認でカメラ物体検出の精度と CPU 負荷を改善。以前:
+- 更新概要: CPU 使用率 20% 以下を目標に、カメラ取り込み 15fps、推論 5Hz、テレメトリ 5Hz、LiDAR 点群 360点、IMU 20Hz、autonomy / joy 10Hz、液晶 2Hzへ周期を見直し。以前:
 - 更新概要: プロジェクト説明モーダル（7タブ）と `/api/architecture` を追加。GPIO 40 ピン / Motor HAT 接続図カードはメイン画面からハードウェア構成タブへ移動、LiDAR 表示の距離リングに数値ラベルを追加。以前: 状態表示器を TM1637 7 セグから ZJY-IPS130-V2.0（ST7789 1.3 インチ 240×240 IPS 液晶、SPI0、7 ピン CS なし）へ変更。新規 `lcd_display_node`（spidev + libgpiod + Pillow）が運転モード / 自律行動 / 前方距離 / 障害物 / 電圧 / CPU 温度 / パッド接続 / IP を描画し、従来と同じコードを `/display_state` に publish。配線: VCC pin17 赤、GND pin20 黒、SCL pin23(GPIO11) 橙、SDA pin19(GPIO10) 黄、RES pin18(GPIO24) 緑、DC pin22(GPIO25) 青、BLK pin16(GPIO23) 紫。launch 既定を `use_lcd_display=true` / `use_seg_display=false` に変更（GPIO23/24 共用のため同時起動不可）。`gpio_pins.yaml`・BOM・README を更新。以前: 運転モード管理 `drive_mode_node`（手動 / 自動 / 停止、`/cmd_vel` を発行する唯一のノード）と Level 1 自律走行 `autonomy_node`（LiDAR 反応型、`/cmd_vel_auto`）を追加。`dashboard_node` の手動指令出力を `/cmd_vel_manual` に変更し、`GET/POST /api/drive_mode` とテレメトリ `drive_mode` / `autonomy` を追加。ゲームパッドは START 長押し（2 秒）で手動 ⇄ 自動、BACK（自動中は B も）で停止。画面に運転モードバッジ・3 ボタン・自律走行カードを追加、7 セグに `AUto` / `StoP` を追加。以前: Motor HAT 接続図・一覧表を「1 モーター 6 本（Motor+ / Motor− / VCC / GND / Encoder A / Encoder B）」をすべて明示する形に変更（`GET /api/motor_hat` の各モーターに `wires` 6 件、`encoder` に `vcc` / `gnd` を追加、GND はモーターごとに pin 30/34/39/25 を割り当て、VCC は pin 17 共通。VCC / GND は Motor HAT 上の 3V3 / GND ピンに接続する表記に変更し、Pi GPIO ヘッダー表では該当ピンを空きとして表示）。表示から「520 モーター」の文言を削除し、ラベルは「M1 前左 Encoder A」形式。以前: モーターの配線色をメーカー資料に合わせて確定（赤 Motor+ / 白 Motor− / 青 VCC / GND 黒 / 緑 Encoder A / 黄 Encoder B）し、車輪表記を進行方向基準の「M1 前左」形式（前左 / 前右 / 後左 / 後右）に統一。接続図・一覧表・BOM・GPIO 表の表記を Motor+ / Motor− / Encoder A / B に揃えた。以前: OSOYOO 520 モーター内蔵エンコーダー（A/B 相）の Pi GPIO 直結割り付けを追加（`motor_hat.yaml` の `encoder`、`gpio_pins.yaml`。M1: 29/31、M2: 33/35、M3: 37/32、M4: 36/38、VCC 3V3 pin17、GND 30/34/39/25）。Motor HAT 接続図・一覧表・GPIO ヘッダー図にエンコーダーピンを表示。以前: ダッシュボードに「Motor HAT 接続図」カード（Adafruit Motor HAT の M1〜M4 と車輪位置の割り付け・配線図・一覧表）を追加。割り付けは `config/motor_hat.yaml`（M1=前左 / M2=前右 / M3=後左 / M4=後右、右側は `reversed: true`）で編集し `GET /api/motor_hat` で取得。以前: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）と GY-BNO055 用 `imu_node`（I2C 0x29、`/imu/data`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
 - 更新担当: Devin
 
@@ -25,13 +25,13 @@
   - 「プロジェクト説明」ボタンと7タブの全画面モーダルを追加。`architecture.yaml` と `/api/architecture` から構成を表示し、`dashboard.yaml` の実値（秘密値はマスク）と実機の生存ノード / Topic を反映
   - Publish: `/cmd_vel_manual`（geometry_msgs/Twist、手動指令。`/cmd_vel` は `drive_mode_node` が発行）、`/drive_mode_request`、`~/status`
   - `drive_mode_node`（運転モード管理）: `/cmd_vel_manual`（Web + ゲームパッド）と `/cmd_vel_auto`（自律走行）のどちらか一方だけを `/cmd_vel` に中継する。モードは manual / auto / stop（起動時 manual）。状態は `/drive_mode`（JSON, transient local, 5Hz）、切替要求は `/drive_mode_request`（JSON `{mode: manual|auto|stop|toggle, source}`）。安全機構: 自動へ入る条件（`/obstacle_status` が新鮮で stop / unknown でない・ゲームパッド接続中・スティック中立・`/cmd_vel_auto` 生存）を満たさないと拒否（`last_reject` に理由）、自動指令が `auto_timeout` 0.5 秒途絶／ゲームパッド切断／障害物判定途絶で STOP、自動中に手動指令を検出すると手動へ復帰（`manual_override`）、モード遷移時はゼロ速度を publish、最終段で障害物 stop 判定中の前進を 0 にする（`obstacle_guard`）。launch 引数 `use_drive_mode`
-  - `autonomy_node`（Level 1 自律走行・LiDAR 反応型）: `/scan` を前 / 左 / 右 / 後セクターに分けて最短距離を求め、前進（0.15 m/s）→ 0.8 m 以内で減速（0.08 m/s、空いている側へ緩く曲がる）→ 0.35 m 以内で空いている側へその場旋回（0.6 rad/s、前方 0.9 m 以上空くまで）→ 前進を繰り返す。前後左右とも 0.25 m 以内なら後退。LiDAR が 1 秒以上途絶えると停止。`/cmd_vel_auto` に 20Hz で常時 publish（AUTO 以外はゼロ速度で待機）、状態は `/autonomy_status`（JSON: behavior / sectors / cmd）。地図・自己位置は使わない。launch 引数 `use_autonomy`
+  - `autonomy_node`（Level 1 自律走行・LiDAR 反応型）: `/scan` を前 / 左 / 右 / 後セクターに分けて最短距離を求め、前進（0.15 m/s）→ 0.8 m 以内で減速（0.08 m/s、空いている側へ緩く曲がる）→ 0.35 m 以内で空いている側へその場旋回（0.6 rad/s、前方 0.9 m 以上空くまで）→ 前進を繰り返す。前後左右とも 0.25 m 以内なら後退。LiDAR が 1 秒以上途絶えると停止。`/cmd_vel_auto` に 10Hz で常時 publish（AUTO 以外はゼロ速度で待機）、状態は `/autonomy_status`（JSON: behavior / sectors / cmd）。地図・自己位置は使わない。launch 引数 `use_autonomy`
   - 運転モード UI: 手動操作カード上部にモードバッジ（手動 / 自動 / 停止）と 3 ボタン（`POST /api/drive_mode`）、拒否理由表示。自律走行カードに行動・各方向距離・自動指令・`/cmd_vel` 出力を表示
   - Subscribe: `/scan`、`/imu/data`、`/odom`、`/camera/image_raw/compressed`
-  - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を50Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate`
+  - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate`
   - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
-  - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点に間引き、表示範囲は自動スケール）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
+  - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大360点に間引き、表示範囲は自動スケール）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`
   - カメラノード: `camera_ros`（libcamera）を `dashboard.launch.py` の `use_camera` で起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
   - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像は AI HAT+（Hailo-8, `yolov8m.hef`）でレターボックス推論し、元画像座標へ復元した検出枠を複数フレーム（履歴3中2回）で確認して物体名を補助情報として付与。結果は `/obstacle_status`（JSON, 5Hz）
@@ -39,7 +39,7 @@
   - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
   - 画面（`static/index.html`）: 手動操作カードは LiDAR カードの直下（4 列固定グリッド、幅 2 列分）に配置。メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止
-  - ゲームパッド手動操作（`joy_teleop_node`）: Logitech F710（XInput モード、`/dev/input/js0`）を Linux joystick API で直接読み（追加の Python 依存なし）、正規化済み Twist を `/joy_cmd` に 20Hz で publish。`dashboard_node` が `/joy_cmd` を購読して Web 操作と同じ `publish_cmd_vel()` 経路で `/cmd_vel` に変換するため、最大速度・障害物ガード（減速／停止）・`cmd_timeout` 停止が同様に適用される。割り当て: 左スティック上下=前後、左スティック左右=平行移動、右スティック左右=旋回、十字キー=前後・平行移動（デジタル）、RB=全速（通常は `speed_scale` 0.5）、B=停止（押している間。自動中は STOP モード要求）、START 長押し 2 秒=手動 ⇄ 自動、BACK=STOP モード、`button_enable` でデッドマンボタンも設定可（既定は無効）。F710 未接続でも起動し、抜き差しを検出して再接続（切断時は指令を出さない）。画面の手動操作カードに接続状態（未接続／接続中／操作中）を表示。launch 引数 `use_joy` で無効化可
+  - ゲームパッド手動操作（`joy_teleop_node`）: Logitech F710（XInput モード、`/dev/input/js0`）を Linux joystick API で直接読み（追加の Python 依存なし）、正規化済み Twist を `/joy_cmd` に 10Hz で publish。`dashboard_node` が `/joy_cmd` を購読して Web 操作と同じ `publish_cmd_vel()` 経路で `/cmd_vel` に変換するため、最大速度・障害物ガード（減速／停止）・`cmd_timeout` 停止が同様に適用される。割り当て: 左スティック上下=前後、左スティック左右=平行移動、右スティック左右=旋回、十字キー=前後・平行移動（デジタル）、RB=全速（通常は `speed_scale` 0.5）、B=停止（押している間。自動中は STOP モード要求）、START 長押し 2 秒=手動 ⇄ 自動、BACK=STOP モード、`button_enable` でデッドマンボタンも設定可（既定は無効）。F710 未接続でも起動し、抜き差しを検出して再接続（切断時は指令を出さない）。画面の手動操作カードに接続状態（未接続／接続中／操作中）を表示。launch 引数 `use_joy` で無効化可
   - `lcd_display_node`: ZJY-IPS130-V2.0（ST7789、SPI0 /dev/spidev0.0、CS なし、DC=GPIO25 / RES=GPIO24 / BLK=GPIO23）を spidev + libgpiod + Pillow で駆動。`/system_status`・`/obstacle_status`・`/joy_cmd`・`/cmd_vel`・`/drive_mode`・`/autonomy_status` から状態を判定し、上段に状態（起動中 / 待機 / 手動 / 自動 / 停止 / 障害物停止 / 減速 / 低電圧 / システム未受信）、下段に運転モード・自律行動・前方距離・障害物・電圧・CPU 温度・パッド接続・IP を描画。`/display_state` へ従来コードを publish。`use_lcd_display`（既定 true）で切替、`rotation` パラメータで向き調整。依存: python3-spidev, python3-libgpiod, python3-pil, fonts-ipafont-gothic
   - `seg_display_node`（旧表示器、既定では起動しない）: TM1637 4桁7セグメントLEDを libgpiod で駆動し、`/system_status`・`/obstacle_status`・`/joy_cmd`・`/cmd_vel` と `/drive_mode` から状態を判定して `/display_state`（std_msgs/String）へ publish。表示: boot / rdy / HAnd / AUto / StoP / ObSt / SLo / LoU / Err。`use_seg_display` で無効化可
   - パラメータ: `config/dashboard.yaml`（host/port/各トピック名/最大速度/タイムアウト/配信レート）
@@ -94,19 +94,19 @@
 - ブラウザ表示確認: CPU / メモリ / 電源 / AI HAT+ の各カードが実値で更新されることを確認（ポーリングフォールバック経由）
   - `/cmd_vel` トピック publish と指令タイムアウト停止のログを確認
 - カメラ（IMX708）: Raspberry Pi 版 libcamera v0.7.2+rpt20260817 / libpisp v1.7.0 を `~/opt/rpicam` にビルドし、`cam -l` でカメラ認識を確認
-- `ros2 launch ai_car_web dashboard.launch.py`（カメラ含む）: `/camera/image_raw/compressed` 30Hz、`/api/status` の `camera.available: true`、`GET /api/camera/snapshot` → 200（約74KB JPEG）を確認
-- LiDAR（RPLIDAR, CP2102 USB）: `rplidar_composition` 起動で `/scan` を 約8Hz で受信。ダッシュボードの点群マップに720点（正面 0.17m / 最大 3.05m）が描画されることをブラウザで確認
+- `ros2 launch ai_car_web dashboard.launch.py`（カメラ含む）: `/camera/image_raw/compressed` 15Hz、`/api/status` の `camera.available: true`、`GET /api/camera/snapshot` → 200（約74KB JPEG）を確認
+- LiDAR（RPLIDAR, CP2102 USB）: `rplidar_composition` 起動で `/scan` を 約8Hz で受信。ダッシュボードの点群マップに360点（正面 0.17m / 最大 3.05m）が描画されることをブラウザで確認
 - 障害物判定: `/obstacle_status` で `level: stop`（前方 0.177m）を確認。Hailo-8 推論は約 8ms、YOLOv8n で物体検出（例: bed 0.61 / sink 0.50）を確認。温度閾値を一時的に下げて warn（推論 40%）→ critical（推論停止、LiDAR 判定は継続）→ 復帰を確認
-- F710 手動操作: 実機で `joy_teleop_node` が `Logitech Gamepad F710 (/dev/input/js0)` を検出し `/joy_cmd` 20Hz を確認。`/joy_cmd {x:0.5, y:-0.5, z:0.5}` を publish → `/cmd_vel {x:0.075, y:-0.15, z:0.5}`（最大速度 0.3/1.0 と前方障害物による減速 0.5 が適用）を確認。入力停止 → 0.7 秒後に「指令タイムアウトのため停止しました」を確認。`/api/status` の `joy.connected / active` を確認。スティックの実操作による前後・左右の向きは未確認（ユーザーによる実機確認が必要）
+- F710 手動操作: 実機で `joy_teleop_node` が `Logitech Gamepad F710 (/dev/input/js0)` を検出し `/joy_cmd` 10Hz を確認。`/joy_cmd {x:0.5, y:-0.5, z:0.5}` を publish → `/cmd_vel {x:0.075, y:-0.15, z:0.5}`（最大速度 0.3/1.0 と前方障害物による減速 0.5 が適用）を確認。入力停止 → 0.7 秒後に「指令タイムアウトのため停止しました」を確認。`/api/status` の `joy.connected / active` を確認。スティックの実操作による前後・左右の向きは未確認（ユーザーによる実機確認が必要）
 - Motor HAT 接続図: `load_motor_hat('config/motor_hat.yaml')` で 4 端子の割り付けと警告なし、YAML 不在時は `error` を返すことを確認。開発 PC 上で `/api/motor_hat` を模擬した静的サーバーにより、ブラウザで接続図（4 輪・配線・端子台）と一覧表の表示を確認。実機（AI-CAR）で `GET /api/motor_hat` が 200 で割り付けを返すことと、I2C 0x60 に Motor HAT を検出することを確認。エンコーダー割り付けは `load_motor_hat` で警告なし・BCM 解決を確認し、`build_pinout` で信号ピンの競合なし（使用 25/40）を確認。開発 PC のブラウザでエンコーダーピン付きの接続図・一覧表を確認（実機は未反映）。`flake8 --max-line-length 100` エラー無し
 - GPIO ヘッダー: `build_pinout('config/gpio_pins.yaml')` で使用中 9 ピン（1,2,3,4,5,6,9,27,28）、YAML 不在時は `error` を返すことを確認。実機で `GET /api/gpio` → `used_count: 9`、ブラウザでヘッダー図（上下段ラベルの重なり無し）と 40 行の一覧表の表示を確認。`flake8 --max-line-length 100` エラー無し
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 
 ## カメラ仕様（実測）
 - 解像度: 960x540 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約45〜46KB・約1.35MB/s、camera_ros の CPU は約 36.3〜36.5%
-- ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`）
-- ダッシュボード MJPEG: 15fps（`camera_stream_rate`、実測 15.0fps。カメラ取り込みは約30Hz）
-- AI HAT+ 推論: YOLOv8m、640x640 にレターボックスして 15Hz 設定（推論タイマー 0.02秒）。実測 8.29〜8.35Hz、推論 29.6〜35.0ms、dashboard CPU 30.4〜34.6%、perception_node 約26.3〜26.4%、camera_node 約36.3〜36.5%、CPU 53.8〜56.5℃、Hailo 50.3〜50.6℃、サーマル状態 normal
+- ROS 配信レート: 約 15Hz（`/camera/image_raw/compressed`、`FrameDurationLimits`）
+- ダッシュボード MJPEG: 15fps（`camera_stream_rate`、カメラ取り込みも約15Hz）
+- AI HAT+ 推論: YOLOv8m、640x640 にレターボックスして 5Hz 設定（推論タイマー 0.02秒）。実測値は次回実機測定で更新する
 
 ## 次回作業
 - 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する（モーター配線後）
