@@ -231,11 +231,11 @@ python3 -c "from hailo_platform import VDevice; print('ok')"
 
 ```bash
 mkdir -p ~/AI-CAR_ws/models
-curl -L -o ~/AI-CAR_ws/models/yolov8s.hef \
-  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8s.hef
+curl -L -o ~/AI-CAR_ws/models/yolov8m.hef \
+  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8m.hef
 ```
 
-標準設定は YOLOv8s で、パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する。軽量な YOLOv8n を使う場合は `hef_path` を `~/AI-CAR_ws/models/yolov8n.hef` に戻す（未設定なら LiDAR 判定のみで動作）。
+標準設定は YOLOv8m で、パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する。YOLOv8s / YOLOv8n を使う場合は `hef_path` をそれぞれ `~/AI-CAR_ws/models/yolov8s.hef` / `~/AI-CAR_ws/models/yolov8n.hef` に変更する（未設定なら LiDAR 判定のみで動作）。
 
 ## 依存
 
@@ -248,9 +248,11 @@ pip3 install fastapi uvicorn
 pip3 install --user --break-system-packages "websockets>=13"
 ```
 
-映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 1280` /
-`height: 720` / `jpeg_quality: 80`（約 30fps・約 2.9MB/s）、`dashboard_node.camera_stream_rate: 30.0`、
-`perception_node.inference_rate: 10.0`。帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
+映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 960` /
+`height: 540` / `jpeg_quality: 80`（`FrameDurationLimits` により約 15fps。以前の 1280×720 は camera_node の CPU が約 50% になるため縮小）、`dashboard_node.camera_stream_rate: 15.0`、
+`perception_node.inference_rate: 5.0`、`dashboard_node.telemetry_rate: 5.0`、`dashboard_node.scan_max_points: 360`、
+`autonomy_node.publish_rate: 10.0`、`joy_teleop_node.publish_rate: 10.0`、`imu_node.publish_rate: 20.0`、`lcd_display_node.update_rate: 2.0` に設定している。
+帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
 
 ## ドキュメント
 
