@@ -248,8 +248,8 @@ pip3 install fastapi uvicorn
 pip3 install --user --break-system-packages "websockets>=13"
 ```
 
-映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 1280` /
-`height: 720` / `jpeg_quality: 80`（約 30fps・約 2.9MB/s）、`dashboard_node.camera_stream_rate: 15.0`、
+映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 960` /
+`height: 540` / `jpeg_quality: 80`（約 30fps。以前の 1280×720 は camera_node の CPU が約 50% になるため縮小）、`dashboard_node.camera_stream_rate: 15.0`、
 `perception_node.inference_rate: 15.0`（CPU 負荷軽減のためカメラの半分に間引き。いずれも 30.0 まで上げられる）。
 帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
 

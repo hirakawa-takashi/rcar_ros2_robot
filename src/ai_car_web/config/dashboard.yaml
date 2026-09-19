@@ -197,9 +197,10 @@ rplidar:
 camera:
   ros__parameters:
     format: "RGB888"
-    # 1280x720@30fps。JPEG 品質は 95 だと 1 枚 90KB 超で帯域を食うため 80 に下げる
-    width: 1280
-    height: 720
+    # 960x540@30fps（1280x720 は camera_node の CPU が約 50% になるため縮小）。
+    # JPEG 品質は 95 だと帯域を食うため 80
+    width: 960
+    height: 540
     jpeg_quality: 80
     camera: 0
     # 室内だと AE が露光を 33ms（1 フレーム分）まで伸ばして動体がぶれるため、
