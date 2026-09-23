@@ -63,33 +63,33 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 ## Motor HAT モーター端子の割り付け（`src/ai_car_web/config/motor_hat.yaml`）
 
-車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は **赤 Motor+ / 白 Motor−**（6 本の内訳は次節）。
+車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は **赤 Motor+ / 黒 Motor−**（6 本の内訳は次節）。
 
 | 端子 | 車輪 | Motor+ / Motor− | 回転 | TB6612 | PCA9685 ch (PWM / IN1 / IN2) |
 |------|------|-----------------|------|--------|-------------------------------|
-| M1 | 前左（front_left） | 赤 / 白 | 正転 | #1 A | 8 / 10 / 9 |
-| M2 | 前右（front_right） | 赤 / 白 | 反転 | #1 B | 13 / 11 / 12 |
-| M3 | 後左（rear_left） | 赤 / 白 | 正転 | #2 A | 2 / 4 / 3 |
-| M4 | 後右（rear_right） | 赤 / 白 | 反転 | #2 B | 7 / 5 / 6 |
+| M1 | 前左（front_left） | 赤 / 黒 | 正転 | #1 A | 8 / 10 / 9 |
+| M2 | 前右（front_right） | 赤 / 黒 | 反転 | #1 B | 13 / 11 / 12 |
+| M3 | 後左（rear_left） | 赤 / 黒 | 正転 | #2 A | 2 / 4 / 3 |
+| M4 | 後右（rear_right） | 赤 / 黒 | 反転 | #2 B | 7 / 5 / 6 |
 
 > 暫定値。実配線と照合し、モーター制御ノードで回転方向を確認して `reversed` を修正する。
 
 ### モーター 1 台 6 本の接続先（`motor_hat.yaml` の `encoder` / `gpio_pins.yaml`）
 
-各モーターの 6 ピン配線（メーカー資料の配線色）:
+各モーターの 6 ピン配線。モーター側 PH2.0 6 ピンの並びは公式データシートで **1 M1 / 2 GND / 3 C1 / 4 C2 / 5 VCC / 6 M2**。配線色はケーブルのロットで異なる（公式表は 白 GND / 黄 C1 / 緑 C2 / 青 VCC）ため、下表は本機の実物ケーブル（緑・橙・黄・白・赤・黒、青の代わりに橙）での割り付け。VCC / GND を逆に挿すとエンコーダーを壊す恐れがあるため、色が違うケーブルではコネクタのピン番号で確認する:
 
 | 配線色 | ピン名称 | 役割 | 接続先 |
 |--------|----------|------|--------|
 | 赤 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
-| 白 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
-| 青 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
-| 黒 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
-| 緑 | Encoder A | A 相パルス出力 | Pi GPIO |
-| 黄 | Encoder B | B 相パルス出力 | Pi GPIO |
+| 黒 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
+| 橙 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
+| 白 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
+| 黄 | Encoder A (C1) | A 相パルス出力 | Pi GPIO |
+| 緑 | Encoder B (C2) | B 相パルス出力 | Pi GPIO |
 
 Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT 上に多数ある 3V3 / GND ピン（Pi 40 ピンヘッダーの引き出しで番号は共通）へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
 
-| モーター | Motor+ 赤 | Motor− 白 | VCC 青 | GND 黒 | Encoder A 緑 | Encoder B 黄 |
+| モーター | Motor+ 赤 | Motor− 黒 | VCC 橙 | GND 白 | Encoder A 黄 | Encoder B 緑 |
 |----------|-----------|-----------|--------|--------|--------------|--------------|
 | M1 前左 | HAT M1 + | HAT M1 − | HAT pin 17 (3V3) | HAT pin 30 | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
 | M2 前右 | HAT M2 + | HAT M2 − | HAT pin 17 (3V3) | HAT pin 34 | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |
@@ -101,28 +101,6 @@ Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− 
 - GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
 > Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
-
---------|----------|------|--------|
-| 赤 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
-| 白 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
-| 青 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
-| 黒 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
-| 緑 | Encoder A | A 相パルス出力 | Pi GPIO |
-| 黄 | Encoder B | B 相パルス出力 | Pi GPIO |
-
-Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT 上に多数ある 3V3 / GND ピン（Pi 40 ピンヘッダーの引き出しで番号は共通）へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
-
-| 端子 | 車輪 | Encoder A（緑）→ Pi ピン (GPIO) | Encoder B（黄）→ Pi ピン (GPIO) |
-|------|------|--------------------------------|--------------------------------|
-| M1 | 前左 | 29 (GPIO5) | 31 (GPIO6) |
-| M2 | 前右 | 33 (GPIO13) | 35 (GPIO19) |
-| M3 | 後左 | 37 (GPIO26) | 32 (GPIO12) |
-| M4 | 後右 | 36 (GPIO16) | 38 (GPIO20) |
-
-- エンコーダー VCC（青）: **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが A/B 出力が GPIO 直結のため 5V は使わない
-- エンコーダー GND（黒）: pin 30 / 34 / 39 / 25
-- 使用済みの液晶ピン（pin 16/18/19/22/23、ZJY-IPS130）と I2C（pin 3/5）は避けている
-- GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
 > Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
 
