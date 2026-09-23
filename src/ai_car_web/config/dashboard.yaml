@@ -10,7 +10,7 @@ dashboard_node:
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"
     # ブラウザへの MJPEG 配信レート（カメラ取り込み 15fps と同じ）
-    camera_stream_rate: 15.0
+    camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
     obstacle_guard: true
     # LiDAR は前方が機体後方を向く取り付けのため 180 度補正する
@@ -19,8 +19,8 @@ dashboard_node:
     max_angular_speed: 1.0
     cmd_timeout: 0.7
     # CPU 負荷軽減のため画面更新 5Hz、LiDAR 点群は 360 点に間引き
-    telemetry_rate: 5.0
-    scan_max_points: 360
+    telemetry_rate: 10.0
+    scan_max_points: 720
     # 40 ピンヘッダーの配線表。空なら share/ai_car_web/config/gpio_pins.yaml
     gpio_config: ""
     # Motor HAT の M1〜M4 と車輪の割り付け。空なら share/ai_car_web/config/motor_hat.yaml
@@ -172,7 +172,7 @@ perception_node:
     slow_distance: 0.8
     hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
     # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）
-    inference_rate: 5.0
+    inference_rate: 15.0
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
@@ -206,7 +206,7 @@ camera:
     jpeg_quality: 80
     camera: 0
     # フレーム間隔の下限 / 上限（µs）。両方 66666 で 15fps 固定
-    FrameDurationLimits: [66666, 66666]
+    FrameDurationLimits: [33333, 33333]
     # 室内だと AE が露光を 33ms（1 フレーム分）まで伸ばして動体がぶれるため、
     # 露光だけ手動 8ms に固定し、明るさはアナログゲイン自動で合わせる
     ExposureTimeMode: 1

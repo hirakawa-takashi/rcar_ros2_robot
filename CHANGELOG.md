@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- 電源を 12V→5.2V/5A 降圧コンバータに変更して低電圧が解消したため、カメラ取り込み・MJPEG 30fps、推論 15Hz、テレメトリ 10Hz、LiDAR 点群 720 点に戻す（IMU 20Hz、autonomy / joy 10Hz、液晶 2Hz は維持）。`config.txt` に `usb_max_current_enable=1` を設定
 - CPU 使用率 20% 以下を目標に周期を見直し: カメラ取り込み 15fps（`FrameDurationLimits`）、推論 5Hz、テレメトリ 5Hz・LiDAR 点群 360 点（新パラメータ `scan_max_points`）、IMU 20Hz、autonomy / joy 10Hz、液晶 2Hz
 - CPU 負荷軽減のためカメラ解像度を 1280×720 → 960×540 に変更（camera_node の JPEG 圧縮負荷を削減。検出側はレターボックスで 640×640 に揃えるため入力サイズ非依存）
 - CPU 負荷軽減のため推論レート上限を 15 Hz（YOLOv8m の実効約 12 Hz は不変）、MJPEG 配信を 15 fps に変更（カメラ取り込みは 30 fps のまま）

@@ -249,8 +249,8 @@ pip3 install --user --break-system-packages "websockets>=13"
 ```
 
 映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 960` /
-`height: 540` / `jpeg_quality: 80`（`FrameDurationLimits` により約 15fps。以前の 1280×720 は camera_node の CPU が約 50% になるため縮小）、`dashboard_node.camera_stream_rate: 15.0`、
-`perception_node.inference_rate: 5.0`、`dashboard_node.telemetry_rate: 5.0`、`dashboard_node.scan_max_points: 360`、
+`height: 540` / `jpeg_quality: 80`（`FrameDurationLimits` により約 30fps。以前の 1280×720 は camera_node の CPU が約 50% になるため縮小）、`dashboard_node.camera_stream_rate: 30.0`、
+`perception_node.inference_rate: 15.0`、`dashboard_node.telemetry_rate: 10.0`、`dashboard_node.scan_max_points: 720`、
 `autonomy_node.publish_rate: 10.0`、`joy_teleop_node.publish_rate: 10.0`、`imu_node.publish_rate: 20.0`、`lcd_display_node.update_rate: 2.0` に設定している。
 帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
 

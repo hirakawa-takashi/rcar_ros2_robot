@@ -38,7 +38,7 @@ hardware:
     - {id: motor_hat, label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2, bus: I2C 0x60, power: 12V（モーター）, jump: motor, side: right}
     - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
     - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
-    - {id: camera, label: カメラモジュール v3, sub: IMX708 960×540 15fps, bus: CSI, power: 5V, side: left}
+    - {id: camera, label: カメラモジュール v3, sub: IMX708 960×540 30fps, bus: CSI, power: 5V, side: left}
     - {id: imu, label: GY-BNO055, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: lcd, label: ZJY-IPS130-V2.0, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
@@ -131,7 +131,7 @@ nodes:
   - id: camera
     label: camera（camera_ros）
     file: 外部パッケージ camera_ros + Raspberry Pi 版 libcamera
-    role: IMX708 を 960×540 15fps で取り込み JPEG（品質 80）で publish（launch 側で respawn）
+    role: IMX708 を 960×540 30fps で取り込み JPEG（品質 80）で publish（launch 側で respawn）
     publishes: [/camera/image_raw/compressed]
     subscribes: []
     params: []
@@ -173,7 +173,7 @@ nodes:
 
 topics:
   - {name: /scan, type: sensor_msgs/LaserScan, desc: LiDAR 360° スキャン（約 8 Hz）}
-  - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（15 Hz）}
+  - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（30 Hz）}
   - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}

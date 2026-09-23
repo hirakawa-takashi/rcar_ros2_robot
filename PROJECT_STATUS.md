@@ -31,7 +31,7 @@
   - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate`
   - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
-  - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大360点に間引き、表示範囲は自動スケール）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
+  - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は自動スケール）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`
   - カメラノード: `camera_ros`（libcamera）を `dashboard.launch.py` の `use_camera` で起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
   - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像は AI HAT+（Hailo-8, `yolov8m.hef`）でレターボックス推論し、元画像座標へ復元した検出枠を複数フレーム（履歴3中2回）で確認して物体名を補助情報として付与。結果は `/obstacle_status`（JSON, 5Hz）
@@ -94,8 +94,8 @@
 - ブラウザ表示確認: CPU / メモリ / 電源 / AI HAT+ の各カードが実値で更新されることを確認（ポーリングフォールバック経由）
   - `/cmd_vel` トピック publish と指令タイムアウト停止のログを確認
 - カメラ（IMX708）: Raspberry Pi 版 libcamera v0.7.2+rpt20260817 / libpisp v1.7.0 を `~/opt/rpicam` にビルドし、`cam -l` でカメラ認識を確認
-- `ros2 launch ai_car_web dashboard.launch.py`（カメラ含む）: `/camera/image_raw/compressed` 15Hz、`/api/status` の `camera.available: true`、`GET /api/camera/snapshot` → 200（約53KB JPEG）を確認
-- LiDAR（RPLIDAR, CP2102 USB）: `rplidar_composition` 起動で `/scan` を 約8Hz で受信。ダッシュボードの点群マップに最大360点（有効点は実測286〜294点）が描画されることをブラウザで確認
+- `ros2 launch ai_car_web dashboard.launch.py`（カメラ含む）: `/camera/image_raw/compressed` 30Hz、`/api/status` の `camera.available: true`、`GET /api/camera/snapshot` → 200（約53KB JPEG）を確認
+- LiDAR（RPLIDAR, CP2102 USB）: `rplidar_composition` 起動で `/scan` を 約8Hz で受信。ダッシュボードの点群マップに最大720点（有効点は実測約477点）が描画されることをブラウザで確認
 - 障害物判定: `/obstacle_status` で `level: stop`（前方 0.177m）を確認。Hailo-8 推論は約 8ms、YOLOv8n で物体検出（例: bed 0.61 / sink 0.50）を確認。温度閾値を一時的に下げて warn（推論 40%）→ critical（推論停止、LiDAR 判定は継続）→ 復帰を確認
 - F710 手動操作: 実機で `joy_teleop_node` が `Logitech Gamepad F710 (/dev/input/js0)` を検出し `/joy_cmd` 10Hz を確認。`/joy_cmd {x:0.5, y:-0.5, z:0.5}` を publish → `/cmd_vel {x:0.075, y:-0.15, z:0.5}`（最大速度 0.3/1.0 と前方障害物による減速 0.5 が適用）を確認。入力停止 → 0.7 秒後に「指令タイムアウトのため停止しました」を確認。`/api/status` の `joy.connected / active` を確認。スティックの実操作による前後・左右の向きは未確認（ユーザーによる実機確認が必要）
 - Motor HAT 接続図: `load_motor_hat('config/motor_hat.yaml')` で 4 端子の割り付けと警告なし、YAML 不在時は `error` を返すことを確認。開発 PC 上で `/api/motor_hat` を模擬した静的サーバーにより、ブラウザで接続図（4 輪・配線・端子台）と一覧表の表示を確認。実機（AI-CAR）で `GET /api/motor_hat` が 200 で割り付けを返すことと、I2C 0x60 に Motor HAT を検出することを確認。エンコーダー割り付けは `load_motor_hat` で警告なし・BCM 解決を確認し、`build_pinout` で信号ピンの競合なし（使用 25/40）を確認。開発 PC のブラウザでエンコーダーピン付きの接続図・一覧表を確認（実機は未反映）。`flake8 --max-line-length 100` エラー無し
@@ -103,10 +103,12 @@
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 
 ## カメラ仕様（実測）
-- 解像度: 960x540 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約45〜53KB・約0.79MB/s、camera_ros の CPU は約 18.1%
-- ROS 配信レート: 約 15Hz（`/camera/image_raw/compressed`、`FrameDurationLimits` を適用）
-- ダッシュボード MJPEG: 15fps（`camera_stream_rate`、カメラ取り込みも約15Hz）
-- AI HAT+ 推論: YOLOv8m、640x640 にレターボックスして 5Hz 設定（推論タイマー 0.02秒）。実測 4.14〜4.17Hz、推論 29.8〜33.9ms、dashboard CPU 18.4〜21.1%（一時的な 34.6% を除く）、camera_node 約18.1%、perception_node 約16.5〜16.6%、dashboard_node 約16.8〜16.9%、drive_mode_node 約5.9%、imu_node 約2.9〜3.0%、lcd_display_node 約4.5%、autonomy_node 約4.5〜4.6%、joy_teleop_node 約2.0〜2.1%、CPU 51.6〜54.3℃、Hailo 48.1〜48.4℃、サーマル状態 normal
+- 解像度: 960x540 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約42〜53KB
+- ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`、`FrameDurationLimits` [33333, 33333]、実測 30.04Hz）
+- ダッシュボード MJPEG: 30fps（`camera_stream_rate`）
+- AI HAT+ 推論: YOLOv8m、640x640 にレターボックスして 15Hz 設定（推論タイマー 0.02秒）。推論 約32.6ms、dashboard CPU 28〜33%、CPU 53.8〜54.3℃、Hailo 49.6〜50.7℃、サーマル状態 normal
+- 電源: 12V 系 → DROK 降圧コンバータ 5.2V/5A → USB-C。`/boot/firmware/config.txt` に `usb_max_current_enable=1`（再起動後 `pd_5a: true`）。実測 入力電圧 4.96〜5.02V、`get_throttled=0x0`（低電圧履歴なし）。以前のモバイルバッテリー（CIO SMARTCOBY Pro SLIM 35W、5V 時 3A 上限）では 4.77〜4.90V・低電圧フラグが発生していた
+- 低負荷設定（カメラ 15fps・推論 5Hz・テレメトリ 5Hz・LiDAR 360 点）時の参考値: dashboard CPU 18.4〜21.1%、camera_node 約18.1%、perception_node 約16.5%、dashboard_node 約16.8%
 
 ## 次回作業
 - 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する（モーター配線後）
