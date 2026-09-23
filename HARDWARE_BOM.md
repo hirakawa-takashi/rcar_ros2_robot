@@ -63,7 +63,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 ## Motor HAT モーター端子の割り付け（`src/ai_car_web/config/motor_hat.yaml`）
 
-車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は **赤 Motor+ / 黒 Motor−**（6 本の内訳は次節）。
+車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は **緑 Motor+ / 橙 Motor−**（6 本の内訳は次節）。
 
 | 端子 | 車輪 | Motor+ / Motor− | 回転 | TB6612 | PCA9685 ch (PWM / IN1 / IN2) |
 |------|------|-----------------|------|--------|-------------------------------|
@@ -76,20 +76,20 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 ### モーター 1 台 6 本の接続先（`motor_hat.yaml` の `encoder` / `gpio_pins.yaml`）
 
-各モーターの 6 ピン配線。モーター側 PH2.0 6 ピンの並びは公式データシートで **1 M1 / 2 GND / 3 C1 / 4 C2 / 5 VCC / 6 M2**。配線色はケーブルのロットで異なる（公式表は 白 GND / 黄 C1 / 緑 C2 / 青 VCC）ため、下表は本機の実物ケーブル（緑・橙・黄・白・赤・黒、青の代わりに橙）での割り付け。VCC / GND を逆に挿すとエンコーダーを壊す恐れがあるため、色が違うケーブルではコネクタのピン番号で確認する:
+各モーターの 6 ピン配線。配線はエンコーダー基板の印字 **M+ / M− / VCC / GND / S1 / S2** を緑側のコネクタから読み取って確認した。公式の色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用せず、VCC / GND を逆に挿すとエンコーダーを壊す恐れがあるため、基板印字とコネクタのピン番号で確認する:
 
 | 配線色 | ピン名称 | 役割 | 接続先 |
 |--------|----------|------|--------|
-| 赤 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
-| 黒 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
-| 橙 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
+| 緑 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
+| 橙 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
+| 黄 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
 | 白 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
-| 黄 | Encoder A (C1) | A 相パルス出力 | Pi GPIO |
-| 緑 | Encoder B (C2) | B 相パルス出力 | Pi GPIO |
+| 赤 | Encoder A (S1) | A 相パルス出力 | Pi GPIO |
+| 黒 | Encoder B (S2) | B 相パルス出力 | Pi GPIO |
 
 Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT 上に多数ある 3V3 / GND ピン（Pi 40 ピンヘッダーの引き出しで番号は共通）へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
 
-| モーター | Motor+ 赤 | Motor− 黒 | VCC 橙 | GND 白 | Encoder A 黄 | Encoder B 緑 |
+| モーター | Motor+ 緑 | Motor− 橙 | VCC 黄 | GND 白 | Encoder A 赤 | Encoder B 黒 |
 |----------|-----------|-----------|--------|--------|--------------|--------------|
 | M1 前左 | HAT M1 + | HAT M1 − | HAT pin 17 (3V3) | HAT pin 30 | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
 | M2 前右 | HAT M2 + | HAT M2 − | HAT pin 17 (3V3) | HAT pin 34 | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |

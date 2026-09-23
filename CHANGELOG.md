@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- モーター 6 本の配線色を実物ケーブルに合わせて修正: Motor+ 赤 / Motor− 黒 / VCC 橙 / GND 白 / Encoder A 黄 / Encoder B 緑（旧: Motor− 白 / VCC 青 / GND 黒 / A 緑 / B 黄）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新（接続図・一覧表・GPIO 表は YAML から描画されるため自動反映）
+- モーター 6 本の配線色をエンコーダー基板印字（M+ / M− / VCC / GND / S1 / S2）に基づき確定: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / Encoder A（S1）赤 / Encoder B（S2）黒（旧: Motor− 白 / VCC 青 / GND 黒 / A 緑 / B 黄）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新（接続図・一覧表・GPIO 表は YAML から描画されるため自動反映）
 - プロジェクト説明モーダルのタイトル横に「PDF（全タブ一括）」ボタンを追加。7 タブの内容（配線図カード含む）を目次リンク・章ごとの改ページ付きの 1 ページにまとめて新規タブで開き、ブラウザの印刷から PDF 保存できる（印刷時は白背景・図は元配色）
 - 電源を 12V→5.2V/5A 降圧コンバータに変更して低電圧が解消したため、カメラ取り込み・MJPEG 30fps、推論 15Hz、テレメトリ 10Hz、LiDAR 点群 720 点に戻す（IMU 20Hz、autonomy / joy 10Hz、液晶 2Hz は維持）。`config.txt` に `usb_max_current_enable=1` を設定
 - CPU 使用率 20% 以下を目標に周期を見直し: カメラ取り込み 15fps（`FrameDurationLimits`）、推論 5Hz、テレメトリ 5Hz・LiDAR 点群 360 点（新パラメータ `scan_max_points`）、IMU 20Hz、autonomy / joy 10Hz、液晶 2Hz

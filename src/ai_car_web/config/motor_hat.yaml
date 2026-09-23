@@ -4,17 +4,17 @@
 #
 # 車輪の呼び方は進行方向基準で「M1 前左」のように端子名＋位置（前左 / 前右 / 後左 / 後右）で統一する。
 #
-# 1 モーターにつき 6 本の線がある。モーター側 PH2.0 6 ピンの並びは公式データシートで
-#   1 M1 / 2 GND / 3 C1 / 4 C2 / 5 VCC / 6 M2
-# と定義されているが、配線色はケーブルのロットで異なる（公式表は 白 GND / 黄 C1 / 緑 C2 / 青 VCC）。
-# 本機の実物ケーブル（緑・橙・黄・白・赤・黒、青の代わりに橙）での割り付け:
-#   Motor+    赤  → HAT の M 端子 +（赤黒はモーター線。入れ替えると回転方向が逆になるだけで故障しない）
-#   Motor−    黒  → HAT の M 端子 −
-#   VCC       橙  → Motor HAT 上の 3V3 ピン（Pi 40 ピンの引き出し。A/B 出力が GPIO 直結のため 5V は使わない）
+# 1 モーターにつき 6 本の線がある。モーター側 PH2.0 6 ピンの並びは、エンコーダー基板の
+# 印字（M+ / M− / VCC / GND / S1 / S2）を緑側のコネクタから読み取って確認した。
+# 本機の実物ケーブルでの割り付け:
+#   Motor+    緑  → HAT の M 端子 +（入れ替えると回転方向が逆になるだけで故障しない）
+#   Motor−    橙  → HAT の M 端子 −
+#   VCC       黄  → Motor HAT 上の 3V3 ピン（Pi 40 ピンの引き出し。S1/S2 出力が GPIO 直結のため 5V は使わない）
 #   GND       白  → Motor HAT 上の GND ピン（同上）
-#   Encoder A 黄  → Pi GPIO（C1）
-#   Encoder B 緑  → Pi GPIO（C2）
-# VCC / GND を逆に挿すとエンコーダーを壊す恐れがあるため、色が違うケーブルではコネクタのピン番号で確認する。
+#   Encoder A 赤  → Pi GPIO（S1）
+#   Encoder B 黒  → Pi GPIO（S2）
+# 公式の色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用しない。VCC / GND を逆に
+# 挿すとエンコーダーを壊す恐れがあるため、色が違うケーブルでは基板印字とコネクタのピン番号で確認する。
 # Motor+/− は HAT へ、VCC / GND / Encoder A / B の 4 本は
 # 「エンコーダー用ジャンパー線（6 ピン、型番 2024006000）」で Pi の 40 ピンヘッダーへ接続する。
 #
@@ -38,36 +38,36 @@ hat:
   # モーター電源端子（+/−）。Pi の 5V とは絶縁されており 12V 系統を接続する
   power:
     source: バッテリー 12V 系統
-    colors: [赤, 黒]
+    colors: [緑, 橙]
   # エンコーダー線の既定値（VCC は 4 台共通で pin 17 の 3V3）
   encoder:
     power_board: Motor HAT
     vcc_pin: 17
     vcc: 3V3
-    colors: [橙, 白, 黄, 緑]
+    colors: [黄, 白, 赤, 黒]
 
 motors:
   - channel: M1
     wheel: front_left
     reversed: false
-    colors: [赤, 黒]
+    colors: [緑, 橙]
     encoder: {gnd_pin: 30, a_pin: 29, b_pin: 31}
     note: 前左
   - channel: M2
     wheel: front_right
     reversed: true
-    colors: [赤, 黒]
+    colors: [緑, 橙]
     encoder: {gnd_pin: 34, a_pin: 33, b_pin: 35}
     note: 前右。左右対称に取り付くため正転指令で逆回転 → reversed
   - channel: M3
     wheel: rear_left
     reversed: false
-    colors: [赤, 黒]
+    colors: [緑, 橙]
     encoder: {gnd_pin: 39, a_pin: 37, b_pin: 32}
     note: 後左
   - channel: M4
     wheel: rear_right
     reversed: true
-    colors: [赤, 黒]
+    colors: [緑, 橙]
     encoder: {gnd_pin: 25, a_pin: 36, b_pin: 38}
     note: 後右。左右対称に取り付くため正転指令で逆回転 → reversed
