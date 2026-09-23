@@ -38,7 +38,7 @@ hat:
   # モーター電源端子（+/−）。Pi の 5V とは絶縁されており 12V 系統を接続する
   power:
     source: バッテリー 12V 系統
-    colors: [緑, 橙]
+    colors: [赤, 黒]
   # エンコーダー線の既定値（VCC は 4 台共通で pin 17 の 3V3）
   encoder:
     power_board: Motor HAT
