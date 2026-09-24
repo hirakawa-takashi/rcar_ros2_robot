@@ -76,14 +76,14 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 ### モーター 1 台 6 本の接続先（`motor_hat.yaml` の `encoder` / `gpio_pins.yaml`）
 
-各モーターの 6 ピン配線。配線色は端子基板の印字 **M+ / M− / VCC / GND / S1 / S2** に従う。公式の色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用せず、VCC / GND を逆に挿すとエンコーダーを壊す恐れがあるため、基板印字とコネクタのピン番号で確認する:
+各モーターの 6 ピン配線。配線色は端子基板の印字 **M+ / M− / VCC / GND / S1 / S2** を基に、テスターで実測して確認した（Motor+/− は黒-赤間 4Ω・手回しで発電、VCC / GND はダイオードモードと 1kΩ 直列給電で黄を＋にすると約 0.5mA 流れることを確認。VCC / GND は印字の表（白 VCC / 黄 GND）と逆）。公式の色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用せず、VCC / GND を逆に挿すとエンコーダーを壊す恐れがあるため、基板印字とコネクタのピン番号で確認する:
 
 | 配線色 | ピン名称 | 役割 | 接続先 |
 |--------|----------|------|--------|
 | 黒 | Motor+ (M+) | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
 | 赤 | Motor− (M−) | モーター駆動電源（負極） | Motor HAT M端子 − |
-| 白 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
-| 黄 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
+| 黄 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
+| 白 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
 | 橙 | Encoder A (S1) | A 相パルス出力 | Pi GPIO |
 | 緑 | Encoder B (S2) | B 相パルス出力 | Pi GPIO |
 
@@ -91,7 +91,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT 上に多数ある 3V3 / GND ピン（Pi 40 ピンヘッダーの引き出しで番号は共通）へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
 
-| モーター | Motor+ 黒 | Motor− 赤 | VCC 白 | GND 黄 | Encoder A 橙 | Encoder B 緑 |
+| モーター | Motor+ 黒 | Motor− 赤 | VCC 黄 | GND 白 | Encoder A 橙 | Encoder B 緑 |
 |----------|-----------|-----------|--------|--------|--------------|--------------|
 | M1 前左 | HAT M1 + | HAT M1 − | HAT pin 17 (3V3) | HAT pin 30 | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
 | M2 前右 | HAT M2 + | HAT M2 − | HAT pin 17 (3V3) | HAT pin 34 | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |
