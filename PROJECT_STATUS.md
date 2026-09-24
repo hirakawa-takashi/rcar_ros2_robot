@@ -72,7 +72,7 @@
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
 - `motor_hat.yaml` の割り付け（M1〜M4 と車輪位置、`reversed`、配線色）は暫定値。実機のモーター配線と照合し、モーター制御ノード実装時に回転方向を確認して修正が必要
-- 520 モーターエンコーダーの GPIO 割り付け（`motor_hat.yaml` `encoder` / `gpio_pins.yaml`）は未使用ピンから選んだ暫定値。配線色はエンコーダー基板のコネクタ印字（S2 / S1 / GND / VCC / M− / M+ = 緑 / 橙 / 黄 / 白 / 赤 / 黒）から Motor+ 黒 / Motor− 赤 / VCC 白 / GND 黄 / Encoder A（S1）橙 / Encoder B（S2）緑（Motor+/− は黒-赤間 4Ω・手回し発電で確認。黄を VCC として給電した試験では橙・緑が電源 −0.6V のまま変化せず、逆接続だったと判断。正しい向きでのパルス出力は未確認）。公式色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用しない。エンコーダー読み取りノードは未実装
+- 520 モーターエンコーダーの GPIO 割り付け（`motor_hat.yaml` `encoder` / `gpio_pins.yaml`）は未使用ピンから選んだ暫定値。配線色はエンコーダー基板のコネクタ印字（S2 / S1 / GND / VCC / M− / M+ = 緑 / 橙 / 黄 / 白 / 赤 / 黒）から Motor+ 黒 / Motor− 赤 / VCC 白 / GND 黄 / Encoder A（S1）橙 / Encoder B（S2）緑（Motor+/− は黒-赤間 4Ω・手回し発電で確認。黄を VCC として給電した試験では橙・緑が電源 −0.6V のまま変化せず、逆接続だったと判断。2026/09/24 に M1 を白 VCC 3V3 / 黄 GND で Pi GPIO5/6 に直結し、手回しで A/B 相のパルス（位相差あり）を確認。車輪 1 回転あたり約 2,200 カウント（4 逓倍、手回しのため概算）。前進方向の手回しでカウントは負になる）。公式色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用しない。エンコーダー読み取りノードは未実装
 - `gpio_pins.yaml` の配線内容（Motor HAT / BNO055 の I2C・電源・GND、配線色）は HARDWARE_BOM からの暫定値。実配線と照合して修正が必要。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）。AI HAT+ の ID EEPROM ピン（27/28）はヘッダー直挿しのため配線色は `PIN` 表記
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 
