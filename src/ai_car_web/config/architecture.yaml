@@ -46,6 +46,105 @@ hardware:
     - {id: battery, label: CIO SMARTCOBY Pro SLIM 35W ×2, sub: 10000mAh / USB-C PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）/ 12V → Motor HAT のみ, power: 12V, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
 
+print3d:
+  dir: hardware/3d/battery_lidar_mount
+  source: battery_lidar_mount.scad
+  summary:
+    - 天板（154 × 200 mm）の上に載せる 4 種類・5 個の部品。底板にはモーターが付いているので使わない
+    - 前側にバッテリー 2 個の箱とふた（LiDAR・カメラ・DROK を取り付け）、後ろ側に Pi 5 の 3 段（高さ 45 mm）と IMU・液晶の台、前後に衝撃を逃がすバンパー（VL53L1X 付き）
+    - 図とダウンロードする STL は、どれも印刷する向き（STL の向き）のまま。寸法は STL から計算した外形（mm）
+    - 部品の寸法はデータシートと商品画像から読み取ったもので、実物ではまだ確かめていない
+  parts:
+    - id: box
+      label: バッテリー箱
+      file: box.stl
+      qty: 1
+      color: '#35d6ff'
+      material: PLA / PETG
+      orient: フランジ（天板に当たる面）を下
+      holds:
+        - CIO SMARTCOBY Pro SLIM ×2（重ねて収納、右の開口から出し入れ）
+        - Camera Module 3（前面、上下逆、M2 × 6 ×4）
+        - DROK 降圧コンバーター（後ろの壁、結束バンド 1 本）
+      mount: 天板の前側 4 穴に、今のネジより 3 mm 長いネジで留める
+    - id: lid
+      label: ふた + LiDAR 台
+      file: lid.stl
+      qty: 1
+      color: '#f0a040'
+      material: PLA / PETG
+      orient: 板を下
+      holds:
+        - RPLIDAR A1M8（柱 4 本、ふたの裏から M2.5 × 8 ×4）
+        - カメラのフラットケーブル（前端の切り欠きとブリッジ 2 か所）
+        - LiDAR のハーネス（後ろ端の結束バンド用ブリッジ）
+      mount: 箱のボスに M3 × 12 ×4（LiDAR を先にふたへ留める）
+    - id: pi_base
+      label: ラズパイ台（IMU・液晶スタンド付き）
+      file: pi_base.stl
+      qty: 1
+      color: '#43c47a'
+      material: PLA / PETG
+      orient: 板を下
+      holds:
+        - Raspberry Pi 5 + AI HAT+ + Motor HAT（3 段 45 mm、M2.5 ×4）
+        - 加速度センサー（GY-BNO055、四隅の台に両面テープか結束バンド）
+        - ディスプレイ（ZJY-IPS130-V2.0、左右の溝に差し込み 30° 後傾）
+      mount: 天板の後ろ側 4 穴に、今のネジより 3 mm 長いネジで留める
+    - id: bumper
+      label: 前後バンパー（前後共通）
+      file: bumper.stl
+      qty: 2
+      color: '#e05b8a'
+      material: PETG（必須）
+      orient: 上面を下（STL の向きのまま）
+      holds:
+        - 落下防止センサー（VL53L1X）×1（進行方向へ 30° 傾けた受けに上から落とし込む）
+        - 板ばね 4 枚（1.2 mm）で前面の板が 4 mm 逃げ、ストッパー 7.2 mm で止まる
+      mount: 前は箱のフランジ、後ろはラズパイ台の腕の上に重ねて共締め（ネジはさらに 4 mm 長く）
+  settings:
+    - {name: 材料, value: バンパーは PETG（板ばねを繰り返し曲げるため。PLA は割れやすい）。ほかは PLA でも PETG でもよい（車内が熱くなるなら PETG）}
+    - {name: ノズル / 積層ピッチ, value: 0.4 mm / 0.2 mm（目安）}
+    - {name: 壁, value: 3 周以上（ねじ込み穴のまわりを厚くし、板ばね 1.2 mm を壁だけで作るため）}
+    - {name: 充填, value: 20〜30 %（目安）}
+    - {name: サポート, value: 不要（全部品、STL の向きのまま印刷）}
+    - {name: ブリム, value: 任意。箱（148 × 92 mm）は反りやすいので、反るときは付ける}
+  screws:
+    - {place: 天板への取付（箱のフランジ、ラズパイ台の腕、バンパーの腕）, screw: 天板の今のネジ（長いものに交換）, hole: Ø4.4 の通し穴}
+    - {place: ふた → 箱のボス（4 か所）, screw: M3 × 12 mm, hole: 'ふた: Ø3.4 の通し穴 / 箱: M3 のねじ込み穴 深さ 12 mm'}
+    - {place: LiDAR → ふたの柱（4 か所）, screw: M2.5 × 8 mm, hole: 下から座ぐり Ø5.2、上端 4 mm に Ø2.9 の通し穴}
+    - {place: カメラ → 箱の前面ボス（4 か所）, screw: M2 × 6 mm, hole: M2 のねじ込み穴 深さ 6 mm}
+    - {place: Pi 5 → ラズパイ台のボス（4 か所）, screw: M2.5（ネジかスペーサーのオス側）, hole: M2.5 のねじ込み穴 深さ 8 mm}
+    - {place: DROK → 箱の後ろの壁, screw: 結束バンド 1 本（幅 3.6 mm まで）, hole: 取付穴がないため、受けの溝に立てて締める}
+  screw_note: ねじ込み穴は下穴（M2 Ø1.7 / M2.5 Ø2.1 / M3 Ø2.5）。普通の小ネジをねじ込むと、ネジ自身が樹脂にねじ山を切る。きつい・ゆるいときは SCAD の tap_d を 0.1 mm ずつ変える。screw_mode="insert" で熱圧入インサート用の穴にも切り替えられる
+  assembly:
+    - 天板の前側 4 本のネジを外し、フランジの厚さ（3 mm）ぶん長いネジで箱ごと留め直す
+    - バッテリーを、ポートのある短辺を右の開口に向けて 2 個重ねて差し込み、左右のスロットに面ファスナーか結束バンドを通して固定する
+    - LiDAR をふたの柱に載せ、ふたの裏から M2.5 × 8 mm のネジ 4 本で留める（ふたを箱に付ける前に行う）
+    - DROK を部品面を Pi 側に向けて箱の後ろの棚に立て、中央のリブの穴に結束バンドを通して締める（ふたを付ける前のほうが通しやすい）
+    - ふたを M3 × 12 mm のネジ 4 本で箱のボスに留める
+    - カメラを上下逆にして M2 × 6 mm のネジ 4 本で箱の前面に留め、ケーブル（300 mm）をふたの上のブリッジの下に通して Pi へ。映像はソフト側で 180° 回転させる
+    - ラズパイ台を天板の後ろ側 4 穴に長いネジで留め、Pi 5 を M2.5 のネジかスペーサーで留める。IMU（ピン上向き）と液晶を取り付ける
+    - VL53L1X をバンパーの受けに入れ、バンパーを前後に重ねて共締めする
+  gallery:
+    - {file: assembly.png, label: 組み立てイメージ}
+    - {file: side.png, label: 横から（高さの関係）}
+    - {file: top.png, label: 真上から}
+    - {file: sensors.png, label: IMU と液晶の取付}
+    - {file: drok_holder.png, label: DROK の受け（Pi 側から）}
+    - {file: bumper_under.png, label: バンパーを下から}
+    - {file: bumper_spring.png, label: バンパーの板ばねとストッパー}
+    - {file: screw_holes.png, label: ネジ穴の断面}
+    - {file: wiring.png, label: 配線経路（後ろ斜め）}
+    - {file: wiring_front.png, label: 配線経路（前斜め）}
+    - {file: wiring_top.png, label: 配線経路（真上）}
+  unverified:
+    - 寸法はデータシート・商品画像からの読み取りで、実物に合わせていない（VL53L1X・IMU・液晶のピン位置、LiDAR の USB 変換基板の大きさ、DROK の部品の高さ）
+    - LiDAR 底面のねじ穴の深さと、ねじ込み穴（下穴）のきつさ
+    - バンパーの板ばねの硬さ（計算上 約 17 N、ひずみ 約 1.6 %）
+    - 車体や車輪にバンパーの壁が当たらないか、床からセンサーまでの高さ
+    - LiDAR を左へ 8 mm ずらしたので、TF（base_link → laser）の横オフセットも直す必要がある
+
 nodes:
   - id: dashboard_node
     label: dashboard_node
@@ -245,6 +344,7 @@ api:
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
     - {method: GET, path: /api/drive_mode, desc: 現在の運転モード, auth: false}
+    - {method: GET, path: '/print3d/{file}', desc: 3D プリント部品の STL・図・OpenSCAD ソース（hardware/3d/battery_lidar_mount）, auth: false}
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
     - {method: POST, path: /api/stop, desc: 全モード停止（ゼロ速度 + stop モード要求）, auth: true}
     - {method: POST, path: /api/drive_mode, desc: 'モード切替 {mode: manual|auto|stop}', auth: true}
@@ -270,4 +370,5 @@ status:
     - {name: PROJECT_STATUS.md, desc: 実装済み機能・既知の問題・テスト結果・次回作業}
     - {name: PROJECT_RULES.md, desc: 開発ルール}
     - {name: HARDWARE_BOM.md, desc: 部品構成表・電源系統}
+    - {name: hardware/3d/battery_lidar_mount/README.md, desc: 3D プリント部品の寸法・ネジ穴・配線経路・組み立て}
     - {name: CHANGELOG.md, desc: 変更履歴}

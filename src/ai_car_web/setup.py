@@ -4,6 +4,8 @@ from glob import glob
 from setuptools import find_packages, setup
 
 package_name = 'ai_car_web'
+print3d_src = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                           '..', '..', 'hardware', '3d', 'battery_lidar_mount')
 
 setup(
     name=package_name,
@@ -16,6 +18,10 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'static'), glob('static/*')),
+        (os.path.join('share', package_name, 'print3d'),
+            sorted(glob(os.path.join(print3d_src, '*.stl'))
+                   + glob(os.path.join(print3d_src, '*.png'))
+                   + glob(os.path.join(print3d_src, '*.scad')))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

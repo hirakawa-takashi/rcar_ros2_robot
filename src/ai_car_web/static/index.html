@@ -134,6 +134,33 @@
   .arch-edge.arch-reverse { opacity: .38; stroke-dasharray: 5 4; }
   .arch-edge.dim { opacity: .1; }
   .arch-edge.active { opacity: 1; stroke: #8fe0a4; stroke-width: 2.2; }
+  .p3dgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: 14px; margin: 10px 0 16px; }
+  .p3dpart { background: #11161d; border: 1px solid #2c3340; border-radius: 8px; padding: 10px 12px; break-inside: avoid; }
+  .p3dpart h4 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .p3dpart h4 .p3ddl { margin-left: auto; }
+  .p3dpart.wide { grid-column: 1 / -1; }
+  .p3dviewbox { position: relative; aspect-ratio: 1000 / 760; background: #060b14; border-radius: 6px; overflow: hidden; cursor: zoom-in; }
+  .p3dpart.wide .p3dviewbox { cursor: zoom-out; max-width: 1000px; margin: 0 auto; }
+  .p3dviewbox span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #7f98ba; font-size: 13px; }
+  .p3dviews { position: relative; z-index: 1; width: 100%; height: 100%; display: block; }
+  .p3dviews:not([src]) { visibility: hidden; }
+  .p3ddl { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #3a4657; border-radius: 6px;
+           background: #2a3340; color: #e8eaed; text-decoration: none; font-size: 12px; white-space: nowrap; }
+  .p3ddl:hover { filter: brightness(1.25); }
+  .p3dlinks { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -6px 0 10px; }
+  .p3dlinks .note { margin: 0; }
+  .p3dparts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .p3dparts button { padding: 6px 12px; font-size: 12px; }
+  .p3dparts button.active { background: #2e7d4f; border-color: #43c47a; color: #fff; }
+  .p3dcanvas { width: 100%; height: auto; display: block; background: #060b14; border-radius: 8px; cursor: grab; touch-action: none; }
+  .p3dcanvas:active { cursor: grabbing; }
+  .p3dsteps { margin: 6px 0 12px 22px; padding: 0; }
+  .p3dsteps li { margin: 3px 0; }
+  .p3dgallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin: 8px 0 16px; }
+  .p3dgallery a { display: block; color: inherit; text-decoration: none; background: #11161d; border: 1px solid #2c3340; border-radius: 8px; overflow: hidden; }
+  .p3dgallery a:hover { border-color: #35d6ff; }
+  .p3dgallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; display: block; background: #f4f4ee; }
+  .p3dgallery span { display: block; padding: 6px 8px; font-size: 12px; }
   .aboutlink { cursor: pointer; }
   .aboutlink:hover rect, .aboutlink:hover circle { filter: brightness(1.35); }
   .archdetail { background: #1e232b; border: 1px solid #3a4657; border-radius: 6px;
@@ -1170,7 +1197,7 @@ loadMotorHat();
 setInterval(loadMotorHat, 30000);
 
 const ABOUT_TABS = [
-  ['overview', '概要'], ['hardware', 'ハードウェア構成'], ['software', 'ソフトウェア構成'],
+  ['overview', '概要'], ['hardware', 'ハードウェア構成'], ['print3d', '3D プリント'], ['software', 'ソフトウェア構成'],
   ['modes', '運転モードと安全機構'], ['autonomy', '知覚と自律走行'],
   ['api', 'Web API'], ['status', '開発状況'],
 ];
@@ -1450,6 +1477,7 @@ function renderAboutTab(id) {
   body.innerHTML = (ABOUT_RENDERS[id] || renderOverview)(architectureData);
   const slot = document.getElementById('about_wiring');
   if (slot) { const store = document.getElementById('wiring_store'); while (store.firstChild) slot.appendChild(store.firstChild); }
+  if (id === 'print3d') initPrint3d();
   body.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => {
     const jump = el.dataset.jump; if (!jump) return;
     if (jump === 'gpio' || jump === 'motor') {
@@ -1484,7 +1512,342 @@ function renderAboutTab(id) {
     });
   });
 }
-const ABOUT_RENDERS = {overview: renderOverview, hardware: renderHardware, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
+const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, live: {part: null, az: 0.6, el: 0.5, zoom: 1}};
+function p3dParts(a) { return ((a && a.print3d) || {}).parts || []; }
+function p3dUrl(file) { return `/print3d/${encodeURIComponent(file)}`; }
+function p3dSize(mesh) { return [0, 1, 2].map(i => mesh.max[i] - mesh.min[i]); }
+function p3dSizeText(id) {
+  const mesh = P3D.meshes[id];
+  if (mesh) return p3dSize(mesh).map(v => v.toFixed(1)).join(' × ');
+  return P3D.errors[id] ? 'STL を読み込めません' : '計算中…';
+}
+function p3dVec(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  const v = m ? parseInt(m[1], 16) : 0x35d6ff;
+  return [(v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255];
+}
+const p3dDot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const p3dCross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const p3dNorm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+function p3dBasis(back, upHint) {
+  const b = p3dNorm(back);
+  const d = p3dDot(upHint, b);
+  const up = p3dNorm([upHint[0] - b[0] * d, upHint[1] - b[1] * d, upHint[2] - b[2] * d]);
+  return {right: p3dCross(up, b), up, back: b};
+}
+function p3dParse(buf) {
+  const bytes = new Uint8Array(buf);
+  const dv = new DataView(buf);
+  const count = buf.byteLength >= 84 ? dv.getUint32(80, true) : -1;
+  let pos;
+  if (new TextDecoder().decode(bytes.subarray(0, 5)) !== 'solid' || 84 + count * 50 === buf.byteLength) {
+    pos = new Float32Array(count * 9);
+    for (let i = 0; i < count; i++) for (let j = 0; j < 9; j++) pos[i * 9 + j] = dv.getFloat32(84 + i * 50 + 12 + j * 4, true);
+  } else {
+    const text = new TextDecoder().decode(bytes);
+    const re = /vertex\s+(\S+)\s+(\S+)\s+(\S+)/g;
+    const v = [];
+    let m;
+    while ((m = re.exec(text))) v.push(+m[1], +m[2], +m[3]);
+    pos = new Float32Array(v.slice(0, v.length - v.length % 9));
+  }
+  return p3dMesh(pos);
+}
+function p3dMesh(pos) {
+  const n = pos.length / 9;
+  const nrm = new Float32Array(pos.length);
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  const faces = [];
+  for (let i = 0; i < n; i++) {
+    const o = i * 9;
+    const f = p3dNorm(p3dCross([pos[o + 3] - pos[o], pos[o + 4] - pos[o + 1], pos[o + 5] - pos[o + 2]],
+                               [pos[o + 6] - pos[o], pos[o + 7] - pos[o + 1], pos[o + 8] - pos[o + 2]]));
+    faces.push(f);
+    for (let k = 0; k < 3; k++) {
+      nrm.set(f, o + k * 3);
+      for (let j = 0; j < 3; j++) { min[j] = Math.min(min[j], pos[o + k * 3 + j]); max[j] = Math.max(max[j], pos[o + k * 3 + j]); }
+    }
+  }
+  const key = k => `${Math.round(pos[k] * 100)},${Math.round(pos[k + 1] * 100)},${Math.round(pos[k + 2] * 100)}`;
+  const edges = new Map();
+  const lines = [];
+  const push = e => lines.push(pos[e.a], pos[e.a + 1], pos[e.a + 2], pos[e.b], pos[e.b + 1], pos[e.b + 2]);
+  for (let i = 0; i < n; i++) {
+    for (let e = 0; e < 3; e++) {
+      const a = i * 9 + e * 3, b = i * 9 + ((e + 1) % 3) * 3;
+      const ka = key(a), kb = key(b);
+      const k = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+      const prev = edges.get(k);
+      if (!prev) { edges.set(k, {f: i, a, b, shared: false}); continue; }
+      if (!prev.shared && p3dDot(faces[prev.f], faces[i]) < 0.94) push(prev);
+      prev.shared = true;
+    }
+  }
+  edges.forEach(e => { if (!e.shared) push(e); });
+  return {pos, nrm, lines: new Float32Array(lines), min, max, count: n};
+}
+function p3dGl() {
+  if (P3D.gl !== null) return P3D.gl;
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl', {preserveDrawingBuffer: true, antialias: true});
+  if (!gl) return (P3D.gl = false);
+  const shader = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl.VERTEX_SHADER, `attribute vec3 p; attribute vec3 n;
+uniform vec3 c; uniform vec3 r; uniform vec3 u; uniform vec3 b; uniform vec3 k; uniform float lift; varying float s;
+void main() {
+  vec3 d = p - c;
+  vec3 nv = vec3(dot(n, r), dot(n, u), dot(n, b));
+  s = 0.3 + 0.62 * max(dot(nv, normalize(vec3(-0.35, 0.55, 0.76))), 0.0) + 0.12 * max(nv.z, 0.0);
+  gl_Position = vec4(dot(d, r) * k.x, dot(d, u) * k.y, -dot(d, b) * k.z - lift, 1.0);
+}`));
+  gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, `precision mediump float; uniform vec3 col; uniform float solid; varying float s;
+void main() { gl_FragColor = vec4(mix(col * s, col, solid), 1.0); }`));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return (P3D.gl = false);
+  const loc = {p: gl.getAttribLocation(prog, 'p'), n: gl.getAttribLocation(prog, 'n')};
+  ['c', 'r', 'u', 'b', 'k', 'lift', 'col', 'solid'].forEach(name => { loc[name] = gl.getUniformLocation(prog, name); });
+  return (P3D.gl = {canvas, gl, prog, loc, bufs: new WeakMap()});
+}
+function p3dFit(mesh, basis, w, h, fill, pad = [0, 0]) {
+  const center = [0, 1, 2].map(i => (mesh.min[i] + mesh.max[i]) / 2);
+  let ex = 0, ey = 0;
+  for (let i = 0; i < 8; i++) {
+    const p = [0, 1, 2].map(j => ((i >> j) & 1 ? mesh.max[j] : mesh.min[j]) - center[j]);
+    ex = Math.max(ex, Math.abs(p3dDot(p, basis.right)));
+    ey = Math.max(ey, Math.abs(p3dDot(p, basis.up)));
+  }
+  const scale = fill * Math.min((w - pad[0]) / (2 * ex || 1), (h - pad[1]) / (2 * ey || 1));
+  return {...basis, center, scale, depth: Math.hypot(...p3dSize(mesh)) / 2 + 1};
+}
+function p3dRender(mesh, view, w, h, color) {
+  const G = p3dGl();
+  if (!G) return null;
+  const {gl, loc} = G;
+  G.canvas.width = w; G.canvas.height = h;
+  gl.viewport(0, 0, w, h);
+  let bufs = G.bufs.get(mesh);
+  if (!bufs) {
+    const make = data => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
+    bufs = {pos: make(mesh.pos), nrm: make(mesh.nrm), lines: make(mesh.lines)};
+    G.bufs.set(mesh, bufs);
+  }
+  gl.clearColor(0.024, 0.043, 0.078, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(G.prog);
+  gl.uniform3fv(loc.c, view.center); gl.uniform3fv(loc.r, view.right);
+  gl.uniform3fv(loc.u, view.up); gl.uniform3fv(loc.b, view.back);
+  gl.uniform3fv(loc.k, [2 * view.scale / w, 2 * view.scale / h, 1 / view.depth]);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufs.pos); gl.enableVertexAttribArray(loc.p); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufs.nrm); gl.enableVertexAttribArray(loc.n); gl.vertexAttribPointer(loc.n, 3, gl.FLOAT, false, 0, 0);
+  gl.uniform3fv(loc.col, p3dVec(color)); gl.uniform1f(loc.solid, 0); gl.uniform1f(loc.lift, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, mesh.count * 3);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufs.lines); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
+  gl.disableVertexAttribArray(loc.n); gl.vertexAttrib3f(loc.n, 0, 0, 1);
+  gl.uniform3fv(loc.col, [0.02, 0.05, 0.1]); gl.uniform1f(loc.solid, 1); gl.uniform1f(loc.lift, 0.004);
+  gl.drawArrays(gl.LINES, 0, mesh.lines.length / 3);
+  return G.canvas;
+}
+function p3dDim(g, x1, y1, x2, y2, value) {
+  const vertical = x1 === x2;
+  g.save();
+  g.strokeStyle = '#8fb4d8'; g.fillStyle = '#8fb4d8'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+  const head = (x, y, dx, dy) => { g.beginPath(); g.moveTo(x, y); g.lineTo(x + dx * 8 - dy * 3, y + dy * 8 + dx * 3); g.lineTo(x + dx * 8 + dy * 3, y + dy * 8 - dx * 3); g.fill(); };
+  if (vertical) { head(x1, y1, 0, 1); head(x2, y2, 0, -1); } else { head(x1, y1, 1, 0); head(x2, y2, -1, 0); }
+  g.fillStyle = '#e8f7ff'; g.font = '17px system-ui, sans-serif'; g.textAlign = 'center';
+  g.translate((x1 + x2) / 2, (y1 + y2) / 2);
+  if (vertical) g.rotate(-Math.PI / 2);
+  const label = value.toFixed(1);
+  const tw = g.measureText(label).width + 8;
+  g.fillStyle = '#060b14'; g.fillRect(-tw / 2, -11, tw, 20);
+  g.fillStyle = '#e8f7ff'; g.fillText(label, 0, 6);
+  g.restore();
+}
+function p3dExt(g, x1, y1, x2, y2) {
+  g.save(); g.strokeStyle = 'rgba(143, 180, 216, .55)'; g.setLineDash([3, 3]);
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.restore();
+}
+function p3dViews(part, mesh) {
+  const W = 1000, H = 760, cw = 500, ch = 380;
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const g = out.getContext('2d');
+  g.fillStyle = '#060b14'; g.fillRect(0, 0, W, H);
+  const [dx, dy, dz] = p3dSize(mesh);
+  const s = Math.min((cw - 130) / dx, (ch - 110) / dy, (ch - 110) / dz, (cw - 130) / dy);
+  const center = [0, 1, 2].map(i => (mesh.min[i] + mesh.max[i]) / 2);
+  const depth = Math.hypot(dx, dy, dz) / 2 + 1;
+  const ortho = [
+    {name: '平面図（上から）', hint: '下 = 前（+Y）、左 = 右（+X）', back: [0, 0, 1], up: [0, -1, 0], x: 0, y: 0, hw: dx, hh: dy},
+    {name: '正面図（前から）', hint: '左 = 右（+X）', back: [0, 1, 0], up: [0, 0, 1], x: 0, y: ch, hw: dx, hh: dz},
+    {name: '側面図（左から）', hint: '左 = 前（+Y）', back: [-1, 0, 0], up: [0, 0, 1], x: cw, y: ch, hw: dy, hh: dz},
+  ];
+  for (const v of ortho) {
+    const img = p3dRender(mesh, {...p3dBasis(v.back, v.up), center, scale: s, depth}, cw, ch, part.color);
+    if (!img) return null;
+    g.drawImage(img, v.x, v.y);
+    const cx = v.x + cw / 2, cy = v.y + ch / 2, hx = s * v.hw / 2, hy = s * v.hh / 2;
+    if (v.name.startsWith('平面')) {
+      p3dExt(g, cx - hx - 4, cy - hy, cx - hx - 34, cy - hy); p3dExt(g, cx - hx - 4, cy + hy, cx - hx - 34, cy + hy);
+      p3dDim(g, cx - hx - 26, cy - hy, cx - hx - 26, cy + hy, v.hh);
+    } else {
+      p3dExt(g, cx - hx, cy + hy + 4, cx - hx, cy + hy + 34); p3dExt(g, cx + hx, cy + hy + 4, cx + hx, cy + hy + 34);
+      p3dDim(g, cx - hx, cy + hy + 26, cx + hx, cy + hy + 26, v.hw);
+      const side = v.name.startsWith('側面') ? 1 : -1;
+      const ex = cx + side * hx;
+      p3dExt(g, ex + side * 4, cy - hy, ex + side * 34, cy - hy); p3dExt(g, ex + side * 4, cy + hy, ex + side * 34, cy + hy);
+      p3dDim(g, ex + side * 26, cy - hy, ex + side * 26, cy + hy, v.hh);
+    }
+    g.fillStyle = '#35d6ff'; g.font = 'bold 20px system-ui, sans-serif'; g.textAlign = 'left';
+    g.fillText(v.name, v.x + 12, v.y + 28);
+    g.fillStyle = '#9fb0c7'; g.font = '15px system-ui, sans-serif';
+    g.fillText(v.hint, v.x + 12, v.y + 50);
+  }
+  const iso = p3dFit(mesh, p3dBasis([0.75, 1, 0.8], [0, 0, 1]), cw, ch, 0.86, [20, 110]);
+  const isoImg = p3dRender(mesh, iso, cw, ch, part.color);
+  if (!isoImg) return null;
+  g.drawImage(isoImg, cw, 0);
+  g.fillStyle = '#35d6ff'; g.font = 'bold 20px system-ui, sans-serif'; g.textAlign = 'left';
+  g.fillText('立体図（右前の上から）', cw + 12, 28);
+  g.fillStyle = '#9fb0c7'; g.font = '15px system-ui, sans-serif';
+  g.fillText(`外形 ${dx.toFixed(1)} × ${dy.toFixed(1)} × ${dz.toFixed(1)} mm`, cw + 12, ch - 36);
+  g.fillText('単位 mm ／ 第三角法 ／ STL（印刷する向き）', cw + 12, ch - 14);
+  g.strokeStyle = '#2c3340'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(cw + 0.5, 0); g.lineTo(cw + 0.5, H); g.moveTo(0, ch + 0.5); g.lineTo(W, ch + 0.5); g.stroke();
+  return out.toDataURL('image/png');
+}
+function p3dLoad(part) {
+  if (P3D.meshes[part.id]) return Promise.resolve(P3D.meshes[part.id]);
+  if (!P3D.loading[part.id]) {
+    P3D.loading[part.id] = fetch(p3dUrl(part.file))
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then(buf => {
+        const mesh = p3dParse(buf);
+        if (!mesh.count) throw new Error('三角形がありません');
+        delete P3D.errors[part.id];
+        return (P3D.meshes[part.id] = mesh);
+      })
+      .catch(err => { P3D.errors[part.id] = String(err.message || err); delete P3D.loading[part.id]; throw err; });
+  }
+  return P3D.loading[part.id];
+}
+function p3dEnsureViews(part, mesh) {
+  if (!P3D.views[part.id]) { const url = p3dViews(part, mesh); if (url) P3D.views[part.id] = url; }
+  return P3D.views[part.id];
+}
+function p3dPrepareAll() {
+  return Promise.all(p3dParts(architectureData).map(x => p3dLoad(x).then(m => p3dEnsureViews(x, m)).catch(() => null)));
+}
+function p3dUpdate(part) {
+  const body = document.getElementById('about_body');
+  body.querySelectorAll(`[data-p3d-size="${part.id}"]`).forEach(el => { el.textContent = p3dSizeText(part.id); });
+  const box = body.querySelector(`[data-p3d-box="${part.id}"]`);
+  if (!box) return;
+  const mesh = P3D.meshes[part.id];
+  const url = mesh && p3dEnsureViews(part, mesh);
+  if (url) box.querySelector('img').src = url;
+  else box.querySelector('span').textContent = mesh ? 'WebGL が使えないため図を描けません' : `STL を読み込めません（${P3D.errors[part.id] || '不明'}）`;
+}
+function p3dDrawLive() {
+  const cv = document.getElementById('p3d_canvas');
+  if (!cv) return;
+  const L = P3D.live;
+  const part = p3dParts(architectureData).find(x => x.id === L.part);
+  const mesh = part && P3D.meshes[part.id];
+  const g = cv.getContext('2d');
+  g.fillStyle = '#060b14'; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#9fb0c7'; g.font = '16px system-ui, sans-serif'; g.textAlign = 'left';
+  if (!mesh) { g.fillText(part && P3D.errors[part.id] ? `STL を読み込めません（${P3D.errors[part.id]}）` : '読み込み中…', 20, 34); return; }
+  const back = [Math.cos(L.el) * Math.sin(L.az), Math.cos(L.el) * Math.cos(L.az), Math.sin(L.el)];
+  const view = p3dFit(mesh, p3dBasis(back, [0, 0, 1]), cv.width, cv.height, 0.8 * L.zoom, [0, 60]);
+  const img = p3dRender(mesh, view, cv.width, cv.height, part.color);
+  if (!img) { g.fillText('このブラウザでは WebGL が使えないため表示できません', 20, 34); return; }
+  g.drawImage(img, 0, 0);
+  g.fillStyle = '#e8f7ff'; g.font = 'bold 18px system-ui, sans-serif';
+  g.fillText(part.label, 20, 32);
+  g.fillStyle = '#7f98ba'; g.font = '14px system-ui, sans-serif';
+  g.fillText(`${p3dSizeText(part.id)} mm（STL の向き）`, 20, 54);
+  const ox = 70, oy = cv.height - 60;
+  [[[1, 0, 0], '#e05b5b', '右 X'], [[0, 1, 0], '#43c47a', '前 Y'], [[0, 0, 1], '#4a90d9', '上 Z']].forEach(([axis, color, label]) => {
+    const x = ox + 40 * p3dDot(axis, view.right), y = oy - 40 * p3dDot(axis, view.up);
+    g.strokeStyle = color; g.lineWidth = 3; g.beginPath(); g.moveTo(ox, oy); g.lineTo(x, y); g.stroke();
+    g.fillStyle = color; g.font = 'bold 13px system-ui, sans-serif'; g.fillText(label, x + 4, y + 4);
+  });
+}
+function initPrint3d() {
+  const parts = p3dParts(architectureData);
+  if (!parts.length) return;
+  const L = P3D.live;
+  if (!parts.some(x => x.id === L.part)) L.part = parts[0].id;
+  const body = document.getElementById('about_body');
+  const cv = document.getElementById('p3d_canvas');
+  let frame = 0;
+  const redraw = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; p3dDrawLive(); }); };
+  const select = id => {
+    L.part = id;
+    body.querySelectorAll('[data-p3d-live]').forEach(b => b.classList.toggle('active', b.dataset.p3dLive === id));
+    redraw();
+  };
+  body.querySelectorAll('[data-p3d-live]').forEach(b => b.addEventListener('click', () => select(b.dataset.p3dLive)));
+  body.querySelectorAll('.p3dpart .p3dviewbox').forEach(box => box.addEventListener('click', () => box.closest('.p3dpart').classList.toggle('wide')));
+  const reset = () => { L.az = 0.6; L.el = 0.5; L.zoom = 1; redraw(); };
+  const zoom = f => { L.zoom = Math.min(6, Math.max(0.3, L.zoom * f)); redraw(); };
+  body.querySelector('[data-p3d-reset]')?.addEventListener('click', reset);
+  body.querySelector('[data-p3d-zoom="in"]')?.addEventListener('click', () => zoom(1.25));
+  body.querySelector('[data-p3d-zoom="out"]')?.addEventListener('click', () => zoom(0.8));
+  if (cv) {
+    let drag = null;
+    cv.addEventListener('pointerdown', ev => { drag = [ev.clientX, ev.clientY]; cv.setPointerCapture(ev.pointerId); });
+    cv.addEventListener('pointermove', ev => {
+      if (!drag) return;
+      L.az -= (ev.clientX - drag[0]) * 0.01;
+      L.el = Math.min(1.45, Math.max(-1.45, L.el + (ev.clientY - drag[1]) * 0.01));
+      drag = [ev.clientX, ev.clientY];
+      redraw();
+    });
+    const end = () => { drag = null; };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('wheel', ev => { ev.preventDefault(); zoom(Math.exp(-ev.deltaY * 0.0015)); }, {passive: false});
+    cv.addEventListener('dblclick', reset);
+  }
+  select(L.part);
+  parts.forEach(x => p3dLoad(x).catch(() => null).then(() => { p3dUpdate(x); if (x.id === L.part) redraw(); }));
+}
+function renderPrint3d(a) {
+  const p = a.print3d || {};
+  const parts = p.parts || [];
+  const swatch = x => `<span class="swatch" style="background:${esc(x.color || '#35d6ff')}"></span>`;
+  const dl = (file, text) => `<a class="p3ddl" href="${p3dUrl(file)}" download>⬇ ${esc(text || file)}</a>`;
+  const total = parts.reduce((n, x) => n + (Number(x.qty) || 1), 0);
+  const rows = parts.map(x => [
+    `${swatch(x)}${esc(x.label)}`, `${esc(x.qty ?? 1)}`,
+    `<span data-p3d-size="${esc(x.id)}">${p3dSizeText(x.id)}</span>`,
+    esc(x.orient || '-'), esc(x.material || '-'), dl(x.file),
+  ]);
+  const cards = parts.map(x => `<div class="p3dpart"><h4>${swatch(x)}${esc(x.label)}<span class="badge">${esc(x.qty ?? 1)} 個</span>${dl(x.file)}</h4>` +
+    `<div class="p3dviewbox" data-p3d-box="${esc(x.id)}"><img class="p3dviews" alt="${esc(x.label)} の三面図と立体図"${P3D.views[x.id] ? ` src="${P3D.views[x.id]}"` : ''}><span>図を作成中…</span></div>` +
+    `<p class="note">外形（幅 × 奥行き × 高さ） <span data-p3d-size="${esc(x.id)}">${p3dSizeText(x.id)}</span> mm ／ 印刷の向き: ${esc(x.orient || '-')} ／ 材料: ${esc(x.material || '-')}</p>` +
+    `<p><b>取り付けるもの</b></p>${aboutList(x.holds)}<p><b>天板への固定:</b> ${esc(x.mount || '-')}</p></div>`).join('');
+  const gallery = (p.gallery || []).map(x => `<a href="${p3dUrl(x.file)}" target="_blank" rel="noopener"><img src="${p3dUrl(x.file)}" alt="${esc(x.label)}" loading="lazy"><span>${esc(x.label)}</span></a>`).join('');
+  const steps = `<ol class="p3dsteps">${(p.assembly || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>`;
+  return `<h3>概要</h3>${aboutList(p.summary)}` +
+    `<h3>部品一覧（${parts.length} 種類・${total} 個）</h3>` +
+    aboutTable(['部品', '数量', '外形 幅 × 奥行き × 高さ（mm）', '印刷の向き', '材料', 'STL'], rows) +
+    `<div class="p3dlinks">${p.source ? dl(p.source, `${p.source}（OpenSCAD ソース）`) : ''}<span class="note">ソースの場所: ${esc(p.dir || '-')}</span></div>` +
+    `<h3>三面図・立体図</h3><div class="note">座標は天板と同じ（前 = +Y = LiDAR・カメラ側、右 = +X = USB 側、上 = +Z）。前後バンパーは印刷の向き（上面が下）で描いています。図をクリックすると大きく表示します。</div><div class="p3dgrid">${cards}</div>` +
+    `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
+    `<button data-p3d-zoom="in" title="拡大">＋</button><button data-p3d-zoom="out" title="縮小">−</button><button data-p3d-reset>向きを戻す</button></div>` +
+    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転、ホイールで拡大・縮小、ダブルクリックで最初の向きに戻ります。</div></div>` +
+    `<h3>印刷設定（目安）</h3>${aboutTable(['項目', '設定'], (p.settings || []).map(x => [esc(x.name), esc(x.value)]))}` +
+    `<h3>ネジ・固定具</h3>${aboutTable(['場所', 'ネジ', '穴の形'], (p.screws || []).map(x => [esc(x.place), esc(x.screw), esc(x.hole)]))}` +
+    (p.screw_note ? `<div class="note">${esc(p.screw_note)}</div>` : '') +
+    `<h3>組み立て手順</h3>${steps}<h3>組み立て図・配線経路</h3><div class="p3dgallery">${gallery}</div>` +
+    `<h3>実物で確かめていないこと</h3>${aboutList(p.unverified)}`;
+}
+const ABOUT_RENDERS = {overview: renderOverview, hardware: renderHardware, print3d: renderPrint3d, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
 function wiringCardsHtml() {
   return ['gpio_svg', 'motor_svg'].map(id => document.getElementById(id)?.closest('.card')?.outerHTML || '').join('');
 }
@@ -1492,6 +1855,9 @@ function openAboutPdf() {
   if (!architectureData || architectureData.error) { alert('プロジェクト説明の読み込みが完了してから実行してください。'); return; }
   const win = window.open('', '_blank');
   if (!win) { alert('ポップアップがブロックされました。このサイトのポップアップを許可してください。'); return; }
+  p3dPrepareAll().then(() => writeAboutPdf(win));
+}
+function writeAboutPdf(win) {
   const now = new Date();
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const sections = ABOUT_TABS.map(([id, label], i) => {
@@ -1530,7 +1896,8 @@ function openAboutPdf() {
   .totop { margin-left: auto; font-size: 12px; color: #9fb0c7; text-decoration: none; }
   .totop:hover { color: #35d6ff; }
   .docsec .card { margin-top: 14px; }
-  .archdetail { display: none; }
+  .archdetail, .p3dlive { display: none; }
+  .p3dgrid { grid-template-columns: 1fr 1fr; }
   .aboutlink { cursor: default; } .aboutlink:hover rect, .aboutlink:hover circle { filter: none; }
   svg, table, .card { break-inside: avoid; page-break-inside: avoid; }
   .aboutsvg { max-height: 560px; }
