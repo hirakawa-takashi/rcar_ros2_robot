@@ -83,6 +83,7 @@ pi_boss_d = 6;
 pi_boss_h = 6;
 pi_pilot_d = 2.2;         // M2.5 タッピング
 pi_base_t = 3;
+pi_stack_h = 45;          // Pi 5 + AI HAT+ + Motor HAT の 3 段（実測。台のぶん高くなる側で見積もる）
 pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
           [pi_cx - pi_board[0] / 2 + pi_hole_off + dx, pi_cy - pi_hole_dy / 2 + dy]];
 
@@ -194,7 +195,7 @@ module pi_base() {
 module pi_ghost() {
     z = pi_base_t + pi_boss_h;
     color("green", 0.8) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z]) cube([pi_board[0], pi_board[1], 1.6]);
-    color("darkslateblue", 0.5) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z + 1.6]) cube([65, pi_board[1], 30]);
+    color("darkslateblue", 0.5) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z + 1.6]) cube([65, pi_board[1], pi_stack_h - 1.6]);
 }
 
 module camera_ghost() {
@@ -246,4 +247,7 @@ else {
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      lidar_holes = [for (p = lidar_holes_rel) lidar_hole(p)],
      lidar_top_z = box_h + lid_t + lidar_tower_h,
-     cam_holes_xz = cam_pts(), pi_holes = pi_pts);
+     cam_holes_xz = cam_pts(), pi_holes = pi_pts,
+     pi_stack_top_z = pi_base_t + pi_boss_h + pi_stack_h,
+     pi_stack_front_y = pi_cy + pi_board[1] / 2,
+     lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0);
