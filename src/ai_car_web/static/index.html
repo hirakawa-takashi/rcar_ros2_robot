@@ -1215,13 +1215,14 @@ function powerColor(power) {
 function renderHardware(a) {
   const h = a.hardware || {}, devices = h.devices || [], center = [600, 280];
   const positions = {
-    ai_hat: [340, 100], battery: [860, 100],
+    ai_hat: [340, 100], battery: [1050, 95],
     lidar: [90, 110], camera: [90, 280], gamepad: [90, 450],
     motor_hat: [1050, 200], motors: [1050, 360],
-    imu: [340, 460], lcd: [860, 460],
+    imu: [340, 460], lcd: [860, 460], tof: [600, 480], drok: [720, 95],
   };
   const box = (d, x, y) => {
-    const w = 150, hh = 58;
+    const textWidth = t => [...String(t || '')].reduce((n, c) => n + (c.charCodeAt(0) > 0xff ? 13 : 7.5), 0);
+    const w = Math.max(150, textWidth(d.label) + 20, textWidth(d.sub) * 0.8 + 20), hh = 58;
     return `<g class="aboutlink" data-jump="${esc(d.jump || '')}"><rect x="${x - w / 2}" y="${y - hh / 2}" width="${w}" height="${hh}" rx="9" fill="#1e232b" stroke="${d.jump ? '#43c47a' : '#3a4657'}" stroke-width="2"/>` +
       `<text x="${x}" y="${y - 3}" fill="#e8eaed" text-anchor="middle" font-size="13" font-weight="bold">${esc(d.label)}</text>` +
       `<text x="${x}" y="${y + 16}" fill="#9fb0c7" text-anchor="middle" font-size="10">${esc(d.sub || '')}</text></g>`;
@@ -1235,7 +1236,7 @@ function renderHardware(a) {
   };
   const busLabel = id => ({
     ai_hat: 'PCIe / GPIO', battery: '', lidar: 'USB', camera: 'CSI',
-    gamepad: 'USB', imu: 'I2C', lcd: 'SPI / GPIO', motor_hat: 'I2C 0x60',
+    gamepad: 'USB', imu: 'I2C', lcd: 'SPI / GPIO', motor_hat: 'I2C 0x60', tof: 'I2C', drok: 'USB 5V',
   }[id] || '');
   let svg = '<svg class="aboutsvg" viewBox="0 0 1200 560"><defs><filter id="hwshadow"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".5"/></filter></defs>';
   devices.forEach(d => {
@@ -1245,7 +1246,8 @@ function renderHardware(a) {
       svg += edge(m[0], m[1], p[0], p[1], '#e04b4b', 'M1〜M4 12V');
       svg += edge(p[0], p[1], center[0], center[1], '#687383', 'エンコーダー A/B → GPIO', true);
     } else if (d.id === 'battery') {
-      svg += edge(p[0], p[1], center[0], center[1], '#f08b36', '5V');
+      if (byId.drok) svg += edge(p[0], p[1], positions.drok[0], positions.drok[1], '#e04b4b', '12V');
+      else svg += edge(p[0], p[1], center[0], center[1], '#f08b36', '5V');
       if (byId.motor_hat) svg += edge(p[0], p[1], positions.motor_hat[0], positions.motor_hat[1], '#e04b4b', '12V');
     } else {
       svg += edge(center[0], center[1], p[0], p[1], powerColor(d.power), busLabel(d.id));
