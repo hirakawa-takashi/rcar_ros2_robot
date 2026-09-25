@@ -5,8 +5,9 @@
 // 出力: openscad -D 'part="box"' -o box.stl battery_lidar_mount.scad
 //       openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
 //       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
+//       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
 
-part = "assembly"; // "box" | "lid" | "pi_base" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "assembly"
 
 $fn = 48;
 
@@ -98,6 +99,18 @@ lcd_cx = 17.5;
 lcd_y = 56;               // 画面の下端（後ろ向き）
 lcd_tilt = 30;            // 垂直から後ろへ倒す角度
 lcd_lip = 1;              // 基板の左右の縁を押さえる幅
+
+// ---- 前後バンパー + 落下防止センサー（VL53L1X、下向き）----
+// 前は箱のフランジ、後ろはラズパイ台の腕に重ねて四隅の穴で共締め。後ろは前を 180° 回したもの
+bump_t = 4;
+bump_out = 22;            // 天板の端から前に出す長さ
+bump_wall = 3;
+bump_drop = 15;           // 前面の壁を天板上面から下へ伸ばす長さ
+bump_arm_x = [[3, 18], [136, 151]];  // 箱のボスを避けた腕の範囲
+bump_arm_y0 = 183;
+tof_board = [25, 10.7];   // VL53L1X 基板（実物に合わせて変更、長辺を横幅方向に置く）
+tof_lip = 1.5;            // 基板を受ける縁の幅（その内側は窓）
+tof_pocket = 2;
 
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
@@ -244,6 +257,32 @@ module lcd_holder() {
     }
 }
 
+function tof_c() = [plate_w / 2, plate_l + (bump_out - bump_wall) / 2];
+
+module bumper() {
+    z0 = flange_t;
+    y1 = plate_l + bump_out;
+    c = tof_c();
+    difference() {
+        union() {
+            for (a = bump_arm_x) translate([0, 0, z0]) rrect(a[0], bump_arm_y0, a[1], plate_l + 1, 3, bump_t);
+            translate([0, 0, z0]) rrect(0, plate_l, plate_w, y1, 6, bump_t);
+            translate([0, 0, z0 - bump_drop]) rrect(0, y1 - bump_wall, plate_w, y1, 1, bump_drop + bump_t);
+        }
+        for (p = [[11, 189], [143, 189]]) translate([p[0], p[1], z0 - 1]) cylinder(d = mount_hole_d, h = bump_t + 2);
+        // センサー: 上から入れて縁で受け、下向きに床を見る
+        translate([c[0] - tof_board[0] / 2 - 0.3, c[1] - tof_board[1] / 2 - 0.3, z0 + bump_t - tof_pocket])
+            cube([tof_board[0] + 0.6, tof_board[1] + 0.6, tof_pocket + 1]);
+        translate([c[0] - tof_board[0] / 2 + tof_lip, c[1] - tof_board[1] / 2 + tof_lip, z0 - 1])
+            cube([tof_board[0] - 2 * tof_lip, tof_board[1] - 2 * tof_lip, bump_t + 2]);
+    }
+}
+
+module both_bumpers() {
+    bumper();
+    translate([plate_w, plate_l, 0]) rotate([0, 0, 180]) bumper();
+}
+
 module pi_ghost() {
     z = pi_base_t + pi_boss_h;
     color("green", 0.8) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z]) cube([pi_board[0], pi_board[1], 1.6]);
@@ -291,6 +330,7 @@ module lidar_ghost() {
 if (part == "box") box();
 else if (part == "lid") lid();
 else if (part == "pi_base") pi_base();
+else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]) bumper();
 else {
     plate();
     color("royalblue") box();
@@ -301,6 +341,7 @@ else {
     pi_ghost();
     camera_ghost();
     sensor_ghost();
+    color("dimgray") both_bumpers();
 }
 
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
@@ -310,4 +351,5 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      pi_stack_top_z = pi_base_t + pi_boss_h + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
-     lcd_top_z = pi_base_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt));
+     lcd_top_z = pi_base_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
+     tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]]);
