@@ -103,17 +103,25 @@ lcd_lip = 1;              // 基板の左右の縁を押さえる幅
 // ---- 前後バンパー + 落下防止センサー（VL53L1X、下向き）----
 // 前は箱のフランジ、後ろはラズパイ台の腕に重ねて四隅の穴で共締め。後ろは前を 180° 回したもの
 bump_t = 4;
-bump_out = 22;            // 天板の端から前に出す長さ
-bump_wall = 3;
-bump_drop = 15;           // 前面の壁を天板上面から下へ伸ばす長さ
+bump_base_d = 19;         // 固定側の板の奥行き（天板の端から）
+bump_gap = 7;             // 固定側と前面の板のすき間（ばねの長さ）
+bump_travel = 4;          // 前面の板が後ろへ逃げられる量（ストッパーまで）
+bump_face_t = 3;
+bump_drop = 15;           // 前面の板を天板上面から下へ伸ばす長さ
+bump_out = bump_base_d + bump_gap + bump_face_t;
 bump_arm_x = [[3, 18], [136, 151]];  // 箱のボスを避けた腕の範囲
 bump_arm_y0 = 183;
+spring_x = [22, 56, 98, 132];
+spring_t = 1.2;           // ばねの板厚（PETG 推奨。硬すぎれば薄く、柔らかすぎれば厚く）
+spring_amp = 5;           // ジグザグの振れ幅
+spring_n = 4;             // ジグザグの折り返し数
+spring_h = 8;
+stop_x = [8, 39, 115, 146];
 tof_board = [25, 10.7, 1.6];  // VL53L1X 基板（Dovhmoh: 25 x 10.7、長辺を横幅方向に置く）
 tof_lip = 1.5;            // 基板を受ける縁の幅（その内側は窓）
 tof_tilt = 30;            // 真下から進行方向へ傾ける角度
 tof_drop = 8;             // 受けの中心をバンパー下面から下げる量
 tof_face_t = 2;
-tof_notch_w = 34;         // センサーの視野のため前面の壁を切り欠く幅
 
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
@@ -260,7 +268,15 @@ module lcd_holder() {
     }
 }
 
-function tof_c() = [plate_w / 2, plate_l + (bump_out - bump_wall) / 2];
+function tof_c() = [plate_w / 2, plate_l + 9.5];
+
+module zigzag(x, y0, len) {
+    pts = [for (i = [0 : spring_n]) [x + (i == 0 || i == spring_n ? 0 : (i % 2 == 1 ? spring_amp : -spring_amp)), y0 + len * i / spring_n]];
+    for (i = [0 : spring_n - 1]) hull() {
+        translate(pts[i]) circle(d = spring_t);
+        translate(pts[i + 1]) circle(d = spring_t);
+    }
+}
 
 // 受けのローカル座標: センサーは -Z 方向を見る。rotate([tof_tilt, 0, 0]) で前下を向く
 module tof_at(z0) {
@@ -268,9 +284,12 @@ module tof_at(z0) {
     translate([c[0], c[1], z0 - tof_drop]) rotate([tof_tilt, 0, 0]) children();
 }
 
+// 固定側（腕 + 板 + センサー受け）と前面の板を、ジグザグのばねでつなぐ。ぶつかると前面の板だけが後ろへ逃げ、ストッパーで止まる
 module bumper() {
     z0 = flange_t;
-    y1 = plate_l + bump_out;
+    yb = plate_l + bump_base_d;
+    yf = yb + bump_gap;
+    zs = z0 + bump_t - spring_h;
     c = tof_c();
     m = 2.5;
     bw = tof_board[0] + 0.6;
@@ -278,8 +297,11 @@ module bumper() {
     difference() {
         union() {
             for (a = bump_arm_x) translate([0, 0, z0]) rrect(a[0], bump_arm_y0, a[1], plate_l + 1, 3, bump_t);
-            translate([0, 0, z0]) rrect(0, plate_l, plate_w, y1, 6, bump_t);
-            translate([0, 0, z0 - bump_drop]) rrect(0, y1 - bump_wall, plate_w, y1, 1, bump_drop + bump_t);
+            translate([0, 0, z0]) rrect(0, plate_l, plate_w, yb, 6, bump_t);
+            translate([0, 0, zs]) rrect(0, yb - 3, plate_w, yb, 1, spring_h);
+            for (x = stop_x) translate([x - 2, yb - 0.01, zs]) cube([4, bump_gap - bump_travel, spring_h]);
+            for (x = spring_x) translate([0, 0, zs]) linear_extrude(spring_h) zigzag(x, yb - 0.3, bump_gap + 0.6);
+            translate([0, 0, z0 - bump_drop]) rrect(0, yf, plate_w, yf + bump_face_t, 1, bump_drop + bump_t);
             hull() {
                 tof_at(z0) translate([-bw / 2 - m, -bh / 2 - m, -tof_face_t]) cube([bw + 2 * m, bh + 2 * m, tof_face_t + tof_board[2] + 1]);
                 translate([c[0] - bw / 2 - m, c[1] - bh / 2 - m, z0]) cube([bw + 2 * m, bh + 2 * m, bump_t]);
@@ -292,8 +314,6 @@ module bumper() {
             translate([-tof_board[0] / 2 + tof_lip, -tof_board[1] / 2 + tof_lip, -tof_face_t - 1])
                 cube([tof_board[0] - 2 * tof_lip, tof_board[1] - 2 * tof_lip, tof_face_t + 2]);
         }
-        translate([c[0] - tof_notch_w / 2, y1 - bump_wall - 1, z0 - bump_drop - 1])
-            cube([tof_notch_w, bump_wall + 2, bump_drop + 1]);
     }
 }
 
