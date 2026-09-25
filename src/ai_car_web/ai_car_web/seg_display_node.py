@@ -139,6 +139,8 @@ class SegDisplayNode(Node):
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
         self.declare_parameter('state_topic', '/display_state')
         self.declare_parameter('status_timeout', 3.0)
+        # 運転モード（drive_mode_node）。空で無効
+        self.declare_parameter('drive_mode_topic', '/drive_mode')
 
         self.gpio_chip = str(self.get_parameter('gpio_chip').value)
         self.clk_gpio = int(self.get_parameter('clk_gpio').value)
@@ -155,6 +157,8 @@ class SegDisplayNode(Node):
         self._obstacle = None
         self._obstacle_stamp = None
         self._last_motion = None
+        self._drive_mode = None
+        self._drive_mode_stamp = None
         self._state = None
 
         self._state_pub = self.create_publisher(
@@ -172,8 +176,22 @@ class SegDisplayNode(Node):
         self.create_subscription(
             Twist, self.get_parameter('cmd_vel_topic').value,
             self._motion_cb, 10)
+        mode_topic = self.get_parameter('drive_mode_topic').value
+        if mode_topic:
+            self.create_subscription(
+                String, mode_topic, self._drive_mode_cb,
+                QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         rate = float(self.get_parameter('update_rate').value)
         self.create_timer(1.0 / max(rate, 1.0), self._timer_cb)
+
+    def _drive_mode_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if isinstance(payload, dict):
+            self._drive_mode = payload.get('mode')
+            self._drive_mode_stamp = time.monotonic()
 
     def _system_cb(self, msg: String):
         try:
@@ -272,6 +290,15 @@ class SegDisplayNode(Node):
                 return 'ObSt'
             if level == 'slow':
                 return 'SLo '
+
+        mode_fresh = (
+            self._drive_mode_stamp is not None
+            and now - self._drive_mode_stamp < self.status_timeout)
+        if mode_fresh:
+            if self._drive_mode == 'stop':
+                return 'StoP'
+            if self._drive_mode == 'auto':
+                return 'AUto'
 
         if self._last_motion is not None and now - self._last_motion < 1.0:
             return 'HAnd'

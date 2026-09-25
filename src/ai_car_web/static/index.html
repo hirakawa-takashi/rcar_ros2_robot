@@ -78,6 +78,21 @@
   table.pins td.num { text-align: right; font-variant-numeric: tabular-nums; color: #9fb0c7;
                       width: 34px; }
   .pinwrap { overflow-x: auto; }
+  .motor_svg { width: 100%; max-width: 760px; height: auto; display: block; margin: 0 auto 10px;
+               background: #11161d; border-radius: 8px; }
+  .modebar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .modebar button { padding: 10px 0; font-size: 14px; }
+  .modebar button.active { outline: 2px solid #fff; }
+  .modebar button.m-manual.active { background: #2e7d4f; border-color: #43c47a; }
+  .modebar button.m-auto.active { background: #2b5d9e; border-color: #4a90d9; }
+  .modebar button.m-stop.active { background: #7a2530; border-color: #a33; }
+  .modebadge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 15px;
+               font-weight: 700; background: #2a3340; color: #9fb0c7; }
+  .modebadge.manual { background: #1e4a2b; color: #8fe0a4; }
+  .modebadge.auto { background: #1d3b63; color: #9cc4f0; }
+  .modebadge.stop { background: #5a1f1f; color: #f09a9a; }
+  .modebadge.dead { background: #3a3a3a; color: #aaa; }
+  .reject { font-size: 12px; color: #f0c674; margin-top: 6px; min-height: 1.2em; }
 </style>
 </head>
 <body>
@@ -172,7 +187,16 @@
   </div>
 
   <div class="card wide">
-    <h2>手動操作</h2>
+    <h2>運転モード <span class="modebadge dead" id="mode_badge">-</span>
+      <span class="badge" id="mode_src" style="margin-left:8px"></span></h2>
+    <div class="modebar">
+      <button class="m-manual" data-mode="manual">手動</button>
+      <button class="m-auto" data-mode="auto">自動</button>
+      <button class="m-stop" data-mode="stop">停止</button>
+    </div>
+    <div class="reject" id="mode_reject"></div>
+    <div class="speed" id="mode_note">ゲームパッド: START 長押し（2 秒）で手動 ⇄ 自動　BACK: 停止　自動中にスティックを倒すと手動へ復帰</div>
+    <h2 style="margin-top:14px">手動操作</h2>
     <div class="pad">
       <button data-x="1" data-y="1" data-z="0">⭦</button>
       <button data-x="1" data-y="0" data-z="0">前進</button>
@@ -188,9 +212,26 @@
       出力: <span id="gainval">50</span>%
       <input id="gain" type="range" min="10" max="100" value="50">
     </div>
+    <div class="speed">
+      <input id="api_token" type="password" placeholder="API トークン（api_token 設定時）">
+      <span id="auth_note" class="note"></span>
+    </div>
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
     <div class="speed">ゲームパッド F710: <span id="joy_state" class="badge">-</span>
       　左スティック: 前後 / 平行移動　右スティック: 旋回　RB: 全速　B: 停止</div>
+  </div>
+
+  <div class="card wide">
+    <h2>自律走行 <span class="badge" id="au_state">-</span></h2>
+    <table>
+      <tr><td class="k">方式</td><td class="v" id="au_method">-</td></tr>
+      <tr><td class="k">行動</td><td class="v" id="au_behavior">-</td></tr>
+      <tr><td class="k">前 / 左 / 右 / 後 [m]</td><td class="v" id="au_sectors">-</td></tr>
+      <tr><td class="k">指令 vx / vy / wz</td><td class="v" id="au_cmd">-</td></tr>
+      <tr><td class="k">/cmd_vel 出力</td><td class="v" id="au_out">-</td></tr>
+      <tr><td class="k">自動への切替</td><td class="v" id="au_ok">-</td></tr>
+    </table>
+    <div class="note" id="au_note">Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。</div>
   </div>
 
   <div class="card full">
@@ -220,10 +261,49 @@
     <div class="note" id="gpio_note"></div>
   </div>
 
+  <div class="card full">
+    <h2>Motor HAT 接続図 — M1〜M4 と車輪の割り付け <span class="badge" id="motor_badge">-</span></h2>
+    <svg class="motor_svg" id="motor_svg" viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="pinwrap">
+    <table class="pins">
+      <thead><tr>
+        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>回転 / ドライバ / 備考</th>
+      </tr></thead>
+      <tbody id="motor_rows"></tbody>
+    </table>
+    </div>
+    <div class="note" id="motor_note"></div>
+  </div>
+
 
 </div>
 
 <script>
+const TOKEN_KEY = 'ai_car_api_token';
+const urlToken = new URLSearchParams(location.search).get('token');
+if (urlToken) localStorage.setItem(TOKEN_KEY, urlToken);
+const tokenInput = document.getElementById('api_token');
+tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
+tokenInput.addEventListener('change', () => localStorage.setItem(TOKEN_KEY, tokenInput.value));
+
+function authHeaders() {
+  const t = localStorage.getItem(TOKEN_KEY);
+  return t ? {'X-API-Token': t} : {};
+}
+function showAuthWarning() {
+  document.getElementById('auth_note').textContent = '401: API トークンが無効です';
+}
+function apiPost(path, body) {
+  return fetch(path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', ...authHeaders()},
+    body: body === undefined ? undefined : JSON.stringify(body)
+  }).then(r => {
+    if (r.status === 401) showAuthWarning();
+    return r;
+  }).catch(() => {});
+}
+
 const gain = document.getElementById('gain');
 gain.addEventListener('input', () => {
   document.getElementById('gainval').textContent = gain.value;
@@ -231,11 +311,7 @@ gain.addEventListener('input', () => {
 
 function send(x, y, z) {
   const g = gain.value / 100;
-  fetch('/api/cmd_vel', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({linear_x: x * g, linear_y: y * g, angular_z: z * g})
-  }).catch(() => {});
+  apiPost('/api/cmd_vel', {linear_x: x * g, linear_y: y * g, angular_z: z * g});
 }
 
 let holdTimer = null;
@@ -250,13 +326,14 @@ document.querySelectorAll('.pad button').forEach(btn => {
   const end = () => {
     clearInterval(holdTimer);
     holdTimer = null;
-    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+    send(0, 0, 0);
   };
   btn.addEventListener('mousedown', start);
   btn.addEventListener('touchstart', start, {passive: false});
   ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(e =>
     btn.addEventListener(e, end));
 });
+document.querySelector('.pad button.stop').addEventListener('click', () => apiPost('/api/stop'));
 
 document.addEventListener('keydown', ev => {
   const map = {ArrowUp: [1,0,0], ArrowDown: [-1,0,0], ArrowLeft: [0,0,1],
@@ -266,9 +343,68 @@ document.addEventListener('keydown', ev => {
 });
 document.addEventListener('keyup', ev => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','a','d'].includes(ev.key)) {
-    fetch('/api/stop', {method: 'POST'}).catch(() => {});
+    send(0, 0, 0);
   }
 });
+
+document.querySelectorAll('.modebar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    apiPost('/api/drive_mode', {mode: btn.dataset.mode});
+  });
+});
+
+function renderDriveMode(m) {
+  const badge = document.getElementById('mode_badge');
+  const src = document.getElementById('mode_src');
+  const rej = document.getElementById('mode_reject');
+  const alive = m && m.alive;
+  const mode = alive ? m.mode : null;
+  badge.className = 'modebadge ' + (mode || 'dead');
+  badge.textContent = alive ? m.label : 'モード管理未接続';
+  src.textContent = alive ? `${m.source}: ${m.reason}` : '';
+  for (const b of document.querySelectorAll('.modebar button')) {
+    b.classList.toggle('active', b.dataset.mode === mode);
+    b.disabled = !alive;
+  }
+  if (alive && m.last_reject) {
+    rej.textContent = `自動への切替を拒否: ${m.last_reject.reason}`;
+  } else if (alive && mode !== 'auto' && m.auto_block_reasons && m.auto_block_reasons.length) {
+    rej.textContent = `自動へ切替不可: ${m.auto_block_reasons.join(' / ')}`;
+  } else {
+    rej.textContent = '';
+  }
+  const out = document.getElementById('au_out');
+  out.textContent = alive && m.cmd_vel
+    ? `${fmt(m.cmd_vel.linear_x)} / ${fmt(m.cmd_vel.linear_y)} / ${fmt(m.cmd_vel.angular_z)}` : '-';
+  const ok = document.getElementById('au_ok');
+  if (!alive) { ok.innerHTML = '-'; }
+  else if (mode === 'auto') { ok.innerHTML = '<span class="badge ok">自動走行中</span>'; }
+  else if (m.auto_ok) { ok.innerHTML = '<span class="badge ok">可</span>'; }
+  else { ok.innerHTML = '<span class="badge warn">不可</span>'; }
+}
+
+function renderAutonomy(a) {
+  const st = document.getElementById('au_state');
+  if (!a || !a.alive) {
+    st.className = 'badge warn'; st.textContent = '未起動';
+    for (const id of ['au_method', 'au_behavior', 'au_sectors', 'au_cmd']) {
+      document.getElementById(id).textContent = '-';
+    }
+    return;
+  }
+  const running = a.mode === 'auto';
+  st.className = 'badge ' + (running ? 'ok' : '');
+  st.textContent = running ? '走行中' : '待機';
+  document.getElementById('au_method').textContent = `Level ${a.level} ${a.method}`;
+  document.getElementById('au_behavior').textContent =
+    `${a.behavior_label}${a.behavior === 'turn' ? (a.turn_dir === 'left' ? '（左）' : '（右）') : ''} ${fmt(a.behavior_s, 1)} s`;
+  const s = a.sectors || {};
+  document.getElementById('au_sectors').textContent =
+    `${fmt(s.front)} / ${fmt(s.left)} / ${fmt(s.right)} / ${fmt(s.back)}`;
+  const c = a.cmd || {};
+  document.getElementById('au_cmd').textContent =
+    `${fmt(c.linear_x)} / ${fmt(c.linear_y)} / ${fmt(c.angular_z)}`;
+}
 
 function fmt(v, digits = 2) {
   return (v === null || v === undefined) ? '-' : Number(v).toFixed(digits);
@@ -464,6 +600,9 @@ function renderObstacle(o) {
 }
 
 function render(d) {
+  if (!d.auth_required) {
+    document.getElementById('auth_note').textContent = '認証なし（api_token 未設定）';
+  }
   const s = d.scan;
   document.getElementById('s_count').textContent = s ? s.count : '-';
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
@@ -474,6 +613,8 @@ function render(d) {
   drawScanMap(s, danger, frontHalf);
   renderObstacle(d.obstacle);
   renderJoy(d.joy);
+  renderDriveMode(d.drive_mode);
+  renderAutonomy(d.autonomy);
   drawDetections(d.obstacle);
 
   const i = d.imu;
@@ -657,6 +798,155 @@ function loadGpio() {
 loadGpio();
 // 配線表は静的情報のため 30 秒ごとの再取得に留める
 setInterval(loadGpio, 30000);
+
+// ---- Motor HAT 接続図 ----
+function wireHex(c, fallback) {
+  return WIRE_COLORS[String(c).toLowerCase()] || WIRE_COLORS[c] || fallback;
+}
+
+// 上面図（上が前方）。中央に Motor HAT、四隅に車輪。端子 M1〜M4 から車輪へ配線を引く。
+function drawMotorHat(m) {
+  const svg = document.getElementById('motor_svg');
+  const W = 1000, H = 500, cx = W / 2, cy = 230;
+  const hat = { w: 300, h: 150 };
+  // 端子ごとの配線経路（横走り高さ・縦走り位置）をずらして重なりを避ける
+  const route = { M1: { dy: 28, dx: 44 }, M2: { dy: 44, dx: 44 }, M3: { dy: 60, dx: 24 }, M4: { dy: 76, dx: 24 } };
+  const wheel = { w: 44, h: 96, dx: 250, dy: 150 };
+  // 端子位置（HAT 下辺の端子台: M1 M2 | 電源 | M3 M4）
+  const termY = cy + hat.h / 2;
+  const termX = { M1: cx - 105, M2: cx - 65, M3: cx + 65, M4: cx + 105 };
+  const byWheel = {};
+  m.motors.forEach(mo => { byWheel[mo.wheel] = mo; });
+  const wheels = [
+    ['front_left', '前左', cx - wheel.dx, cy - wheel.dy],
+    ['front_right', '前右', cx + wheel.dx, cy - wheel.dy],
+    ['rear_left', '後左', cx - wheel.dx, cy + wheel.dy],
+    ['rear_right', '後右', cx + wheel.dx, cy + wheel.dy],
+  ];
+  let out = `<rect x="0" y="0" width="${W}" height="${H}" rx="8" fill="#11161d"/>`;
+  // 車体（上面図）と前方矢印
+  out += `<rect x="${cx - 250}" y="${cy - 200}" width="500" height="400" rx="26" fill="#1a2029" stroke="#2c3340"/>`;
+  out += `<path d="M ${cx} 22 l -12 18 h 24 z" fill="#9fb0c7"/>`;
+  out += `<text x="${cx + 18}" y="38" font-size="12" fill="#9fb0c7">前方 (x+)</text>`;
+  // 車軸
+  out += `<line x1="${cx - wheel.dx}" y1="${cy - wheel.dy}" x2="${cx + wheel.dx}" y2="${cy - wheel.dy}" stroke="#3a4657" stroke-width="6"/>`;
+  out += `<line x1="${cx - wheel.dx}" y1="${cy + wheel.dy}" x2="${cx + wheel.dx}" y2="${cy + wheel.dy}" stroke="#3a4657" stroke-width="6"/>`;
+  // 配線（HAT 端子 → 車輪）
+  wheels.forEach(([key, , wx, wy]) => {
+    const mo = byWheel[key];
+    if (!mo) return;
+    const tx = termX[mo.channel];
+    if (tx == null) return;
+    const [cp, cn] = [wireHex(mo.colors[0], '#e53935'), wireHex(mo.colors[1], '#f5f5f5')];
+    const side = wx < cx ? -1 : 1;
+    const ex = wx - side * wheel.w / 2;
+    const rt = route[mo.channel];
+    const midY = termY + rt.dy;
+    const vx = ex - side * rt.dx;
+    for (const [off, col] of [[-3, cp], [3, cn]]) {
+      const d = `M ${tx + off} ${termY} L ${tx + off} ${midY + off} L ${vx + off} ${midY + off} L ${vx + off} ${wy + off} L ${ex} ${wy + off}`;
+      out += `<path d="${d}" fill="none" stroke="#8a97a8" stroke-width="5" stroke-linejoin="round"/>`;
+      out += `<path d="${d}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round"/>`;
+    }
+  });
+  // 車輪
+  wheels.forEach(([key, label, wx, wy]) => {
+    const mo = byWheel[key];
+    out += `<g><title>${mo ? `${esc(mo.channel)} ${esc(label)}${mo.reversed ? ' 反転' : ''}\nMotor+ ${esc(mo.colors[0] || '')} / Motor− ${esc(mo.colors[1] || '')}` : `${esc(label)} 未割り付け`} (${key})</title>`;
+    out += `<rect x="${wx - wheel.w / 2}" y="${wy - wheel.h / 2}" width="${wheel.w}" height="${wheel.h}" rx="8" fill="#2b2b2b" stroke="${mo ? '#2e7d32' : '#a33'}" stroke-width="3"/>`;
+    // メカナムのローラー（前左・後右が「\」、前右・後左が「/」の X 配置）
+    const slash = (key === 'front_left' || key === 'rear_right') ? 1 : -1;
+    for (let i = -3; i <= 3; i++) {
+      const y = wy + i * 12;
+      out += `<line x1="${wx - 14}" y1="${y - slash * 6}" x2="${wx + 14}" y2="${y + slash * 6}" stroke="#555" stroke-width="2"/>`;
+    }
+    const lx = wx < cx ? wx - wheel.w / 2 - 8 : wx + wheel.w / 2 + 8;
+    const anchor = wx < cx ? 'end' : 'start';
+    // 表記は「M1 前左」のように端子名＋進行方向基準の車輪位置で統一し、6 本の線をすべて列挙する
+    const wires = (mo && mo.wires) || [];
+    const top = wy - 8 - (wires.length * 12) / 2;
+    out += `<text x="${lx}" y="${top}" text-anchor="${anchor}" font-size="14" fill="${mo ? '#7fd88a' : '#f08080'}" font-weight="bold">${mo ? `${esc(mo.channel)} ${esc(label)}` : `${esc(label)} 未割付`}${mo && mo.reversed ? '<tspan font-size="11" fill="#ffb74d" font-weight="normal"> 反転</tspan>' : ''}</text>`;
+    wires.forEach((w, i) => {
+      const y = top + 14 + i * 12;
+      const hex = wireHex(w.color, '#8a97a8');
+      const sx = anchor === 'end' ? lx - 4 : lx + 4;
+      out += `<rect x="${sx - 4}" y="${y - 7}" width="8" height="8" rx="1" fill="${hex}" stroke="#8a97a8" stroke-width="0.5"/>`;
+      const tx = anchor === 'end' ? lx - 12 : lx + 12;
+      out += `<text x="${tx}" y="${y}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">${esc(w.name)} ${esc(w.color || '-')} → ${esc(w.dest.replace(/^Motor HAT (M\d)/, 'HAT $1').replace(/^Motor HAT pin/, 'HAT pin').replace(/ \((3V3 power|Ground)\)$/, ''))}</text>`;
+    });
+    out += '</g>';
+  });
+  // エンコーダー共通電源の注記
+  const ec = m.hat.encoder;
+  if (ec) {
+    const gnd = (ec.gnd_pins || []).join(',');
+    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">1 モーター 6 本: Motor+ / Motor− → HAT M 端子　VCC ${esc(ec.vcc || '3V3')} / GND → ${esc(ec.power_board || 'Pi')} の 3V3 / GND ピン　Encoder A / B → Pi GPIO</text>`;
+  }
+  // Motor HAT 本体
+  out += `<rect x="${cx - hat.w / 2}" y="${cy - hat.h / 2}" width="${hat.w}" height="${hat.h}" rx="10" fill="#1d3a5f" stroke="#64b5f6" stroke-width="2"/>`;
+  out += `<text x="${cx}" y="${cy - hat.h / 2 + 24}" text-anchor="middle" font-size="14" fill="#e8eaed" font-weight="bold">${esc(m.hat.name || 'Motor HAT')}</text>`;
+  const addr = m.hat.i2c_address ? `I2C ${m.hat.i2c_address}` : '';
+  out += `<text x="${cx}" y="${cy - hat.h / 2 + 44}" text-anchor="middle" font-size="11" fill="#9fb0c7">${esc([m.hat.driver, addr, m.hat.pwm_frequency ? `${m.hat.pwm_frequency} Hz` : ''].filter(Boolean).join(' / '))}</text>`;
+  // 端子台
+  Object.entries(termX).forEach(([ch, tx]) => {
+    const used = m.motors.some(mo => mo.channel === ch);
+    out += `<rect x="${tx - 16}" y="${termY - 30}" width="32" height="30" rx="3" fill="#0e6655" stroke="${used ? '#7fd88a' : '#556'}" stroke-width="1.5"/>`;
+    out += `<circle cx="${tx - 5}" cy="${termY - 15}" r="3" fill="#ccc"/><circle cx="${tx + 5}" cy="${termY - 15}" r="3" fill="#ccc"/>`;
+    out += `<text x="${tx}" y="${termY - 36}" text-anchor="middle" font-size="12" fill="#e8eaed" font-weight="bold">${ch}</text>`;
+  });
+  // 電源端子（+/−）
+  const pw = m.hat.power || {};
+  const [pp, pn] = [wireHex((pw.colors || [])[0], '#e53935'), wireHex((pw.colors || [])[1], '#111')];
+  out += `<rect x="${cx - 24}" y="${termY - 30}" width="48" height="30" rx="3" fill="#0e6655" stroke="#556" stroke-width="1.5"/>`;
+  out += `<text x="${cx}" y="${termY - 36}" text-anchor="middle" font-size="11" fill="#e8eaed">+  −</text>`;
+  out += `<circle cx="${cx - 10}" cy="${termY - 15}" r="3" fill="#ccc"/><circle cx="${cx + 10}" cy="${termY - 15}" r="3" fill="#ccc"/>`;
+  for (const [px, col] of [[cx - 10, pp], [cx + 10, pn]]) {
+    out += `<line x1="${px}" y1="${termY}" x2="${px}" y2="${H - 30}" stroke="#8a97a8" stroke-width="5"/>`;
+    out += `<line x1="${px}" y1="${termY}" x2="${px}" y2="${H - 30}" stroke="${col}" stroke-width="3"/>`;
+  }
+  out += `<text x="${cx}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#9fb0c7">${esc(pw.source || 'モーター電源')}</text>`;
+  svg.innerHTML = out;
+}
+
+
+function renderMotorHat(m) {
+  const badge = document.getElementById('motor_badge');
+  badge.textContent = `割付 ${m.motors.length} / 4`;
+  badge.className = 'badge ' + (m.error || m.warnings.length ? 'warn' : 'ok');
+  drawMotorHat(m);
+  // 1 モーター 6 本を 1 行ずつ列挙（先頭行にモーター名と回転・ドライバ情報を rowspan でまとめる）
+  document.getElementById('motor_rows').innerHTML = m.motors.map(mo => {
+    const wires = mo.wires || [];
+    const n = Math.max(wires.length, 1);
+    const head = `<td rowspan="${n}" style="white-space:nowrap;vertical-align:top"><b>${esc(mo.channel)} ${esc(mo.wheel_label)}</b><br><span class="note" style="margin:0;display:inline">${esc(mo.wheel)}</span></td>`;
+    const info = `<td rowspan="${n}" style="vertical-align:top">` +
+      `${mo.reversed ? '<span class="badge warn">反転</span>' : '<span class="badge ok">正転</span>'}<br>` +
+      `${esc(mo.bridge)} / PCA9685 ch ${mo.pwm_channel} / ${mo.in1_channel} / ${mo.in2_channel}<br>` +
+      `<span class="note" style="margin:0;display:inline">${esc(mo.note)}</span></td>`;
+    if (!wires.length) return `<tr class="used">${head}<td colspan="4"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
+    return wires.map((w, i) =>
+      `<tr class="used">${i === 0 ? head : ''}` +
+      `<td class="num" style="text-align:left;width:auto">${i + 1}</td>` +
+      `<td><b>${esc(w.name)}</b></td>` +
+      `<td>${w.color ? wireSwatch(w.color) : '<span class="badge warn">未設定</span>'}</td>` +
+      `<td>${esc(w.dest)}</td>` +
+      `${i === 0 ? info : ''}</tr>`).join('');
+  }).join('');
+  const note = document.getElementById('motor_note');
+  if (m.error) {
+    note.textContent = `割り付け設定の読み込みに失敗: ${m.error}`;
+  } else {
+    note.textContent = (m.warnings.length ? `注意: ${m.warnings.join(' / ')}。` : '') +
+      `割り付け: ${m.config_path}（編集後は dashboard_node を再起動）`;
+  }
+}
+
+function loadMotorHat() {
+  fetch('/api/motor_hat').then(r => r.json()).then(renderMotorHat)
+    .catch(() => { document.getElementById('motor_note').textContent = '/api/motor_hat の取得に失敗しました'; });
+}
+loadMotorHat();
+setInterval(loadMotorHat, 30000);
 
 let pollTimer = null;
 
