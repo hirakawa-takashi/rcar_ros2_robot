@@ -104,19 +104,22 @@ lcd_lip = 1;              // 基板の左右の縁を押さえる幅
 // 前は箱のフランジ、後ろはラズパイ台の腕に重ねて四隅の穴で共締め。後ろは前を 180° 回したもの
 bump_t = 4;
 bump_base_d = 19;         // 固定側の板の奥行き（天板の端から）
-bump_gap = 7;             // 固定側と前面の板のすき間（ばねの長さ）
 bump_travel = 4;          // 前面の板が後ろへ逃げられる量（ストッパーまで）
 bump_face_t = 3;
 bump_drop = 15;           // 前面の板を天板上面から下へ伸ばす長さ
-bump_out = bump_base_d + bump_gap + bump_face_t;
 bump_arm_x = [[3, 18], [136, 151]];  // 箱のボスを避けた腕の範囲
 bump_arm_y0 = 183;
-spring_x = [22, 56, 98, 132];
-spring_t = 1.2;           // ばねの板厚（PETG 推奨。硬すぎれば薄く、柔らかすぎれば厚く）
-spring_amp = 5;           // ジグザグの振れ幅
-spring_n = 4;             // ジグザグの折り返し数
+// 板ばね: 横長の板の片端を固定側、反対の端を前面の板につなぐ（向きを交互にして前面の板を平行に動かす）
+spring_x = [[7, 40], [41, 74], [80, 113], [114, 147]];  // 板ばねの左端と右端
+spring_t = 1.2;           // 板厚（PETG 推奨）
 spring_h = 8;
-stop_x = [8, 39, 115, 146];
+spring_clr = 1;           // ストッパーで止まったときに残るすき間
+post_w = 3;
+stop_x = [4, 77, 150];
+bump_gap = 2 * (bump_travel + spring_clr) + spring_t;
+bump_out = bump_base_d + bump_gap + bump_face_t;
+// 両端を固定した板ばね（一端がずれる）の曲げひずみ = 3 t δ / L²
+spring_strain = 3 * spring_t * bump_travel / pow(spring_x[0][1] - spring_x[0][0] - post_w, 2);
 tof_board = [25, 10.7, 1.6];  // VL53L1X 基板（Dovhmoh: 25 x 10.7、長辺を横幅方向に置く）
 tof_lip = 1.5;            // 基板を受ける縁の幅（その内側は窓）
 tof_tilt = 30;            // 真下から進行方向へ傾ける角度
@@ -270,21 +273,13 @@ module lcd_holder() {
 
 function tof_c() = [plate_w / 2, plate_l + 9.5];
 
-module zigzag(x, y0, len) {
-    pts = [for (i = [0 : spring_n]) [x + (i == 0 || i == spring_n ? 0 : (i % 2 == 1 ? spring_amp : -spring_amp)), y0 + len * i / spring_n]];
-    for (i = [0 : spring_n - 1]) hull() {
-        translate(pts[i]) circle(d = spring_t);
-        translate(pts[i + 1]) circle(d = spring_t);
-    }
-}
-
 // 受けのローカル座標: センサーは -Z 方向を見る。rotate([tof_tilt, 0, 0]) で前下を向く
 module tof_at(z0) {
     c = tof_c();
     translate([c[0], c[1], z0 - tof_drop]) rotate([tof_tilt, 0, 0]) children();
 }
 
-// 固定側（腕 + 板 + センサー受け）と前面の板を、ジグザグのばねでつなぐ。ぶつかると前面の板だけが後ろへ逃げ、ストッパーで止まる
+// 固定側（腕 + 板 + センサー受け）と前面の板を、板ばねでつなぐ。ぶつかると前面の板だけが後ろへ逃げ、ストッパーで止まる
 module bumper() {
     z0 = flange_t;
     yb = plate_l + bump_base_d;
@@ -300,7 +295,14 @@ module bumper() {
             translate([0, 0, z0]) rrect(0, plate_l, plate_w, yb, 6, bump_t);
             translate([0, 0, zs]) rrect(0, yb - 3, plate_w, yb, 1, spring_h);
             for (x = stop_x) translate([x - 2, yb - 0.01, zs]) cube([4, bump_gap - bump_travel, spring_h]);
-            for (x = spring_x) translate([0, 0, zs]) linear_extrude(spring_h) zigzag(x, yb - 0.3, bump_gap + 0.6);
+            yl = yb + bump_travel + spring_clr;
+            for (i = [0 : len(spring_x) - 1]) {
+                x0 = spring_x[i][0]; x1 = spring_x[i][1];
+                fixed_left = i % 2 == 0;
+                translate([x0, yl, zs]) cube([x1 - x0, spring_t, spring_h]);
+                translate([fixed_left ? x0 : x1 - post_w, yb - 0.01, zs]) cube([post_w, yl - yb + 0.02, spring_h]);
+                translate([fixed_left ? x1 - post_w : x0, yl + spring_t - 0.01, zs]) cube([post_w, yf - yl - spring_t + 0.02, spring_h]);
+            }
             translate([0, 0, z0 - bump_drop]) rrect(0, yf, plate_w, yf + bump_face_t, 1, bump_drop + bump_t);
             hull() {
                 tof_at(z0) translate([-bw / 2 - m, -bh / 2 - m, -tof_face_t]) cube([bw + 2 * m, bh + 2 * m, tof_face_t + tof_board[2] + 1]);
@@ -398,4 +400,5 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
      lcd_top_z = pi_base_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
-     tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt);
+     tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
+     bump_out = bump_out, bump_gap = bump_gap, stop_len = bump_gap - bump_travel, spring_strain = spring_strain);
