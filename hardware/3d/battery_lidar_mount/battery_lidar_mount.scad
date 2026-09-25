@@ -87,6 +87,18 @@ pi_stack_h = 45;          // Pi 5 + AI HAT+ + Motor HAT の 3 段（実測。台
 pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
           [pi_cx - pi_board[0] / 2 + pi_hole_off + dx, pi_cy - pi_hole_dy / 2 + dy]];
 
+// ---- ラズパイ台の左側: IMU（GY-BNO055）と液晶（ZJY-IPS130）----
+wing = [4, 18, 34, 80];   // x0, y0, x1, y1
+imu_board = [20, 27];     // 実物に合わせて変更（長辺を前後方向に置く）
+imu_c = [18, 35];
+imu_lift = 5;             // 下向きのピンヘッダーを逃がす台の高さ
+imu_wall = 1.6;
+lcd_board = [27.5, 39, 1.6];  // 幅 x 高さ x 基板厚（実物に合わせて変更）
+lcd_cx = 17.5;
+lcd_y = 56;               // 画面の下端（後ろ向き）
+lcd_tilt = 30;            // 垂直から後ろへ倒す角度
+lcd_lip = 1;              // 基板の左右の縁を押さえる幅
+
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
 lid_screw_d = 3.4;
@@ -184,6 +196,9 @@ module pi_base() {
                 translate([corners[a[1]][0], corners[a[1]][1], 0]) cylinder(r = 6, h = pi_base_t);
             }
             for (p = pi_pts) translate([p[0], p[1], 0]) cylinder(d = pi_boss_d, h = pi_base_t + pi_boss_h);
+            rrect(wing[0], wing[1], wing[2], wing[3], 4, pi_base_t);
+            imu_holder();
+            lcd_holder();
         }
         for (p = pi_mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = pi_base_t + 2);
         for (p = pi_pts) translate([p[0], p[1], pi_base_t + pi_boss_h - 8]) cylinder(d = pi_pilot_d, h = 9);
@@ -192,10 +207,53 @@ module pi_base() {
     }
 }
 
+module imu_holder() {
+    ix = imu_board[0] + 0.6;
+    iy = imu_board[1] + 0.6;
+    h = imu_lift + 1.6 + 1;
+    translate([imu_c[0], imu_c[1], pi_base_t - 0.01]) difference() {
+        translate([-ix / 2 - imu_wall, -iy / 2 - imu_wall, 0]) cube([ix + 2 * imu_wall, iy + 2 * imu_wall, h]);
+        // 基板の収まる部分
+        translate([-ix / 2, -iy / 2, imu_lift]) cube([ix, iy, h]);
+        // ピンヘッダーの逃げ（四隅の台だけ残す）
+        translate([-ix / 2 + 3, -iy / 2 - imu_wall - 1, -1]) cube([ix - 6, iy + 2 * imu_wall + 2, imu_lift + 2]);
+        translate([-ix / 2 - imu_wall - 1, -iy / 2 + 3, -1]) cube([ix + 2 * imu_wall + 2, iy - 6, imu_lift + 2]);
+        // 配線側（前）の壁を開ける
+        translate([-ix / 2 + 2, iy / 2 - 1, imu_lift]) cube([ix - 4, imu_wall + 2, h]);
+    }
+}
+
+module lcd_frame_local() {
+    W = lcd_board[0]; H = lcd_board[1]; t = lcd_board[2];
+    difference() {
+        translate([-W / 2 - 2.3, -2, -2]) cube([W + 4.6, t + 0.3 + 3.2, H + 2]);
+        translate([-W / 2 - 0.3, 0, 0]) cube([W + 0.6, t + 0.3, H + 5]);
+        translate([-W / 2 + lcd_lip, t, 0]) cube([W - 2 * lcd_lip, 10, H + 5]);
+        translate([-W / 2 + 1.5, -10, 0]) cube([W - 3, 10, H + 5]);
+    }
+}
+
+module lcd_holder() {
+    H = lcd_board[1];
+    translate([lcd_cx, lcd_y, pi_base_t - 0.01]) {
+        rotate([-lcd_tilt, 0, 0]) rotate([0, 0, 180]) translate([0, 0, 2]) lcd_frame_local();
+        // 左右の支え
+        for (sx = [-1, 1]) translate([sx * (lcd_board[0] / 2 + 1.15) - 1.15, 0, 0])
+            rotate([90, 0, 90]) linear_extrude(2.3)
+                polygon([[0, 0], [(H + 2) * sin(lcd_tilt) + 2, 0], [(H + 2) * sin(lcd_tilt), (H + 2) * cos(lcd_tilt)]]);
+    }
+}
+
 module pi_ghost() {
     z = pi_base_t + pi_boss_h;
     color("green", 0.8) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z]) cube([pi_board[0], pi_board[1], 1.6]);
     color("darkslateblue", 0.5) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z + 1.6]) cube([65, pi_board[1], pi_stack_h - 1.6]);
+}
+
+module sensor_ghost() {
+    color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, pi_base_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
+    color("black") translate([lcd_cx, lcd_y, pi_base_t + 2]) rotate([-lcd_tilt, 0, 0])
+        translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, 0]) cube([lcd_board[0], 0.5, lcd_board[1]]);
 }
 
 module camera_ghost() {
@@ -242,6 +300,7 @@ else {
     color("seagreen") pi_base();
     pi_ghost();
     camera_ghost();
+    sensor_ghost();
 }
 
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
@@ -250,4 +309,5 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      cam_holes_xz = cam_pts(), pi_holes = pi_pts,
      pi_stack_top_z = pi_base_t + pi_boss_h + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
-     lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0);
+     lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
+     lcd_top_z = pi_base_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt));
