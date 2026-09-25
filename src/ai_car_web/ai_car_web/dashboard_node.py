@@ -643,7 +643,8 @@ def create_app(node: DashboardNode) -> FastAPI:
 
     app.mount('/static', StaticFiles(directory=static_dir), name='static')
     if os.path.isdir(print3d_dir):
-        app.mount('/print3d', StaticFiles(directory=print3d_dir), name='print3d')
+        app.mount('/print3d', StaticFiles(directory=print3d_dir, follow_symlink=True),
+                  name='print3d')
     return app
 
 
