@@ -446,7 +446,7 @@
     <div class="pinwrap">
     <table class="pins">
       <thead><tr>
-        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>回転 / ドライバ / 備考</th>
+        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>備考</th><th>回転 / ドライバ</th>
       </tr></thead>
       <tbody id="motor_rows"></tbody>
     </table>
@@ -1092,7 +1092,7 @@ function drawMotorHat(m) {
       const sx = anchor === 'end' ? lx - 4 : lx + 4;
       out += `<rect x="${sx - 4}" y="${y - 7}" width="8" height="8" rx="1" fill="${hex}" stroke="#8a97a8" stroke-width="0.5"/>`;
       const tx = anchor === 'end' ? lx - 12 : lx + 12;
-      out += `<text x="${tx}" y="${y}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">${esc(w.name)} ${esc(w.color || '-')} → ${esc(w.dest.replace(/^Motor HAT (M\d)/, 'HAT $1').replace(/^Motor HAT pin/, 'HAT pin').replace(/ \((3V3 power|Ground)\)$/, ''))}</text>`;
+      out += `<text x="${tx}" y="${y}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">${esc(w.name)} ${esc(w.color || '-')} → ${esc(w.dest.replace(/^Motor HAT (M\d)/, 'HAT $1'))}</text>`;
     });
     out += '</g>';
   });
@@ -1100,7 +1100,7 @@ function drawMotorHat(m) {
   const ec = m.hat.encoder;
   if (ec) {
     const gnd = (ec.gnd_pins || []).join(',');
-    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">1 モーター 6 本: Motor+ / Motor− → HAT M 端子　VCC ${esc(ec.vcc || '3V3')} / GND → ${esc(ec.power_board || 'Pi')} の 3V3 / GND ピン　Encoder A / B → Pi GPIO</text>`;
+    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">1 モーター 6 本: Motor+ / Motor− → HAT M 端子　VCC → ${esc(ec.power_board || 'Pi')} (3V3 power) / GND → ${esc(ec.power_board || 'Pi')} (Ground)　Encoder A / B → Pi GPIO</text>`;
   }
   // Motor HAT 本体
   out += `<rect x="${cx - hat.w / 2}" y="${cy - hat.h / 2}" width="${hat.w}" height="${hat.h}" rx="10" fill="#1d3a5f" stroke="#64b5f6" stroke-width="2"/>`;
@@ -1143,13 +1143,14 @@ function renderMotorHat(m) {
       `${mo.reversed ? '<span class="badge warn">反転</span>' : '<span class="badge ok">正転</span>'}<br>` +
       `${esc(mo.bridge)} / PCA9685 ch ${mo.pwm_channel} / ${mo.in1_channel} / ${mo.in2_channel}<br>` +
       `<span class="note" style="margin:0;display:inline">${esc(mo.note)}</span></td>`;
-    if (!wires.length) return `<tr class="used">${head}<td colspan="4"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
+    if (!wires.length) return `<tr class="used">${head}<td colspan="5"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
     return wires.map((w, i) =>
       `<tr class="used">${i === 0 ? head : ''}` +
       `<td class="num" style="text-align:left;width:auto">${i + 1}</td>` +
       `<td><b>${esc(w.name)}</b></td>` +
       `<td>${w.color ? wireSwatch(w.color) : '<span class="badge warn">未設定</span>'}</td>` +
       `<td>${esc(w.dest)}</td>` +
+      `<td>${esc(w.note || '')}</td>` +
       `${i === 0 ? info : ''}</tr>`).join('');
   }).join('');
   const note = document.getElementById('motor_note');
@@ -1214,13 +1215,14 @@ function powerColor(power) {
 function renderHardware(a) {
   const h = a.hardware || {}, devices = h.devices || [], center = [600, 280];
   const positions = {
-    ai_hat: [340, 100], battery: [860, 100],
+    ai_hat: [340, 100], battery: [1050, 95],
     lidar: [90, 110], camera: [90, 280], gamepad: [90, 450],
     motor_hat: [1050, 200], motors: [1050, 360],
-    imu: [340, 460], lcd: [860, 460],
+    imu: [340, 460], lcd: [860, 460], tof: [600, 480], drok: [720, 95],
   };
   const box = (d, x, y) => {
-    const w = 150, hh = 58;
+    const textWidth = t => [...String(t || '')].reduce((n, c) => n + (c.charCodeAt(0) > 0xff ? 13 : 7.5), 0);
+    const w = Math.max(150, textWidth(d.label) + 20, textWidth(d.sub) * 0.8 + 20), hh = 58;
     return `<g class="aboutlink" data-jump="${esc(d.jump || '')}"><rect x="${x - w / 2}" y="${y - hh / 2}" width="${w}" height="${hh}" rx="9" fill="#1e232b" stroke="${d.jump ? '#43c47a' : '#3a4657'}" stroke-width="2"/>` +
       `<text x="${x}" y="${y - 3}" fill="#e8eaed" text-anchor="middle" font-size="13" font-weight="bold">${esc(d.label)}</text>` +
       `<text x="${x}" y="${y + 16}" fill="#9fb0c7" text-anchor="middle" font-size="10">${esc(d.sub || '')}</text></g>`;
@@ -1234,7 +1236,7 @@ function renderHardware(a) {
   };
   const busLabel = id => ({
     ai_hat: 'PCIe / GPIO', battery: '', lidar: 'USB', camera: 'CSI',
-    gamepad: 'USB', imu: 'I2C', lcd: 'SPI / GPIO', motor_hat: 'I2C 0x60',
+    gamepad: 'USB', imu: 'I2C', lcd: 'SPI / GPIO', motor_hat: 'I2C 0x60', tof: 'I2C', drok: 'USB 5V',
   }[id] || '');
   let svg = '<svg class="aboutsvg" viewBox="0 0 1200 560"><defs><filter id="hwshadow"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".5"/></filter></defs>';
   devices.forEach(d => {
@@ -1244,7 +1246,8 @@ function renderHardware(a) {
       svg += edge(m[0], m[1], p[0], p[1], '#e04b4b', 'M1〜M4 12V');
       svg += edge(p[0], p[1], center[0], center[1], '#687383', 'エンコーダー A/B → GPIO', true);
     } else if (d.id === 'battery') {
-      svg += edge(p[0], p[1], center[0], center[1], '#f08b36', '5V');
+      if (byId.drok) svg += edge(p[0], p[1], positions.drok[0], positions.drok[1], '#e04b4b', '12V');
+      else svg += edge(p[0], p[1], center[0], center[1], '#f08b36', '5V');
       if (byId.motor_hat) svg += edge(p[0], p[1], positions.motor_hat[0], positions.motor_hat[1], '#e04b4b', '12V');
     } else {
       svg += edge(center[0], center[1], p[0], p[1], powerColor(d.power), busLabel(d.id));

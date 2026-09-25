@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 
+### Known Issues
+- Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
+
 ### Added
+- Motor HAT 接続図の配線表に 1 本ごとの「備考」列を追加（Motor+ / Motor− は基板印字 M+ / M−、VCC / GND はエンコーダー電源 3V3 / GND、Encoder A / B は A 相（S1）/ B 相（S2）。`/api/motor_hat` の `wires[].note`）。回転・ドライバ情報は「回転 / ドライバ」列に分離
+- エンコーダー VCC / GND の接続先表記を「Motor HAT (3V3 power)」「Motor HAT (Ground)」に統一（ピン番号表記「HAT pin 17 (3V3)」などを廃止。`/api/motor_hat` の `dest`・接続図・BOM・設定コメント）
+- モーター 6 本の配線色をエンコーダー基板のコネクタ印字に基づき修正: Motor+（M+）黒 / Motor−（M−）赤 / VCC 白 / GND 黄 / Encoder A（S1）橙 / Encoder B（S2）緑（旧: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / A 赤 / B 黒）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新
 - モーター 6 本の配線色をエンコーダー基板印字（M+ / M− / VCC / GND / S1 / S2）に基づき確定: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / Encoder A（S1）赤 / Encoder B（S2）黒（旧: Motor− 白 / VCC 青 / GND 黒 / A 緑 / B 黄）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新（接続図・一覧表・GPIO 表は YAML から描画されるため自動反映）
 - プロジェクト説明モーダルのタイトル横に「PDF（全タブ一括）」ボタンを追加。7 タブの内容（配線図カード含む）を目次リンク・章ごとの改ページ付きの 1 ページにまとめて新規タブで開き、ブラウザの印刷から PDF 保存できる（印刷時は白背景・図は元配色）
 - 電源を 12V→5.2V/5A 降圧コンバータに変更して低電圧が解消したため、カメラ取り込み・MJPEG 30fps、推論 15Hz、テレメトリ 10Hz、LiDAR 点群 720 点に戻す（IMU 20Hz、autonomy / joy 10Hz、液晶 2Hz は維持）。`config.txt` に `usb_max_current_enable=1` を設定

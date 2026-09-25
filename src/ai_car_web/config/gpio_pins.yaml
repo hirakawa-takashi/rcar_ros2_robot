@@ -29,41 +29,41 @@ connections:
     note: PCA9685 0x60
 
   # --- モーターエンコーダー線（1 モーター 6 本のうち Encoder A / B の 2 本を Pi GPIO へ。
-  #     VCC / GND は Motor HAT 上の 3V3 / GND ピンに挿すため Pi ヘッダー側は「空き」として扱い、ここには載せない。
-  #     ピン・配線色は motor_hat.yaml と一致させる。Motor+ 緑 / Motor− 橙 は Motor HAT の M 端子へ、
-  #     VCC 黄 / GND 白 は HAT 上の 3V3 / GND へ） ---
+  #     VCC / GND は Motor HAT (3V3 power) / Motor HAT (Ground) に挿すため Pi ヘッダー側は「空き」として扱い、ここには載せない。
+  #     ピン・配線色は motor_hat.yaml と一致させる。Motor+ 黒 / Motor− 赤 は Motor HAT の M 端子へ、
+  #     VCC 白 / GND 黄 は Motor HAT (3V3 power) / Motor HAT (Ground) へ） ---
   - pins: [29]
     device: M1 前左
     signal: Encoder A (GPIO5)
-    color: 赤
+    color: 橙
   - pins: [31]
     device: M1 前左
     signal: Encoder B (GPIO6)
-    color: 黒
+    color: 緑
   - pins: [33]
     device: M2 前右
     signal: Encoder A (GPIO13)
-    color: 赤
+    color: 橙
   - pins: [35]
     device: M2 前右
     signal: Encoder B (GPIO19)
-    color: 黒
+    color: 緑
   - pins: [37]
     device: M3 後左
     signal: Encoder A (GPIO26)
-    color: 赤
+    color: 橙
   - pins: [32]
     device: M3 後左
     signal: Encoder B (GPIO12)
-    color: 黒
+    color: 緑
   - pins: [36]
     device: M4 後右
     signal: Encoder A (GPIO16)
-    color: 赤
+    color: 橙
   - pins: [38]
     device: M4 後右
     signal: Encoder B (GPIO20)
-    color: 黒
+    color: 緑
 
   # --- GY-BNO055 9軸 IMU（I2C 0x29） ---
   - pins: [1]
