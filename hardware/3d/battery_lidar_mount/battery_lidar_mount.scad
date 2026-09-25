@@ -192,6 +192,33 @@ module tie_mount() {
 
 tie_pts_box = [[13, 135], [13, 165], [134, 108]];
 
+// DROK 降圧コンバーター（12V → 5.2V、B09JKHD3SH）。取付穴がないので、箱の後ろの壁に立てて結束バンドで留める
+drok_board = [63, 27, 1.6];   // 商品画像の寸法
+drok_h = 13;                  // 基板の裏から部品の頂点まで（推定）
+drok_gap = 3;                 // 基板の裏と壁のすき間（裏のピンの逃げ）
+drok_cx = box_cx - 4;         // FPC の通り道（X = cam_cx ± fpc_w / 2）より左
+drok_z0 = flange_t + 2.5;     // 基板の下端。フランジとの間に結束バンドを通す
+drok_by = box_y0 - drok_gap;  // 基板の裏面
+drok_tie_x = box_cx - 6;      // 通気スロットの間
+drok_rib_x = [box_cx - 18, box_cx + 18];
+
+module drok_holder() {
+    x0 = drok_cx - drok_board[0] / 2;
+    x1 = drok_cx + drok_board[0] / 2;
+    fy = drok_by - drok_board[2] - 0.4;
+    difference() {
+        union() {
+            translate([drok_tie_x - 3.5, drok_by, drok_z0]) cube([7, drok_gap + 0.01, drok_board[1]]);
+            for (x = drok_rib_x) translate([x - 1, drok_by, drok_z0]) cube([2, drok_gap + 0.01, drok_board[1]]);
+            for (r = [[x0, drok_tie_x - 4.5], [drok_tie_x + 4.5, x1]])
+                translate([r[0], fy - 1.2, flange_t - 0.01]) cube([r[1] - r[0], box_y0 - fy + 1.2, drok_z0 - flange_t + 0.01]);
+            for (x = [drok_cx - 23, drok_cx + 7])
+                translate([x, fy - 1.2, drok_z0 - 0.01]) cube([12, 1.2, 1.5]);
+        }
+        translate([drok_tie_x - tie_w / 2, box_y0 - tie_h, drok_z0 - 1]) cube([tie_w, tie_h + 0.01, drok_board[1] + 2]);
+    }
+}
+
 module box() {
     difference() {
         union() {
@@ -201,6 +228,7 @@ module box() {
             for (p = cam_pts()) translate([p[0], box_y0 + box_y - 0.01, p[1]])
                 rotate([-90, 0, 0]) cylinder(d = cam_boss_d, h = cam_boss_l);
             for (p = tie_pts_box) translate([p[0], p[1], flange_t - 0.01]) tie_mount();
+            drok_holder();
         }
         // バッテリー収納部
         translate([box_x0 + wall, box_y0 + wall, floor_t]) cube([in_x, in_y, in_z + 1]);
@@ -398,6 +426,12 @@ module camera_ghost() {
     color("black") translate([cam_cx, box_y0 + box_y + cam_boss_l + 1, cam_z0 + cam_h - 14.4]) rotate([-90, 0, 0]) cylinder(d = 8, h = 10);
 }
 
+module drok_ghost() {
+    x0 = drok_cx - drok_board[0] / 2;
+    color("darkgreen") translate([x0, drok_by - drok_board[2], drok_z0]) cube([drok_board[0], drok_board[2], drok_board[1]]);
+    color("silver") translate([x0 + 2, drok_by - drok_h, drok_z0 + 2]) cube([drok_board[0] - 4, drok_h - drok_board[2], drok_board[1] - 4]);
+}
+
 module plate() {
     color("skyblue") difference() {
         translate([0, 0, -plate_t]) cube([plate_w, plate_l, plate_t]);
@@ -457,8 +491,13 @@ module cable_ghost() {
     // LiDAR（USB 変換基板）→ Pi の USB
     color("silver") path([[lidar_cx + 10, box_y0 + 20, lt + 3], [lidar_cx, box_y0 + 7, lt + 4], [lidar_cx + 30, box_y0 - 6, lt],
                           [pi_cx + pi_board[0] / 2 + 12, pi_cy + 20, pz + 12], [pi_cx + pi_board[0] / 2 + 2, pi_cy + 19, pz + 12]], 3.5);
-    // バッテリー → Pi の USB-C（後ろ）
-    color("black") path([[box_x0 + box_x + 3, box_cy - 20, floor_t + 8], [134, 108, flange_t + 5], [146, 95, 2],
+    // バッテリー（PD 12V）→ DROK の入力（左端）
+    color("red") path([[box_x0 + box_x + 3, box_cy - 10, floor_t + 8], [box_x0 + box_x + 3, box_y0 - 12, flange_t + 3],
+                       [drok_cx - drok_board[0] / 2 - 4, box_y0 - 20, flange_t + 3],
+                       [drok_cx - drok_board[0] / 2 - 4, drok_by - 6, drok_z0 + 5]], 3);
+    // DROK の USB-A（右端）→ Pi の USB-C（後ろ）
+    color("black") path([[drok_cx + drok_board[0] / 2 + 2, drok_by - 6, drok_z0 + 6], [drok_cx + drok_board[0] / 2 + 18, drok_by - 6, drok_z0 + 6],
+                         [134, 108, flange_t + 5], [146, 95, 2],
                          [146, 10, 2], [pi_cx - pi_board[0] / 2 + 11.2, 8, 2],
                          [pi_cx - pi_board[0] / 2 + 11.2, pi_cy - pi_board[1] / 2 - 10, pz + 1.6]], 4);
     // 液晶 / IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
@@ -487,6 +526,7 @@ else {
     color("seagreen") pi_base();
     pi_ghost();
     camera_ghost();
+    drok_ghost();
     sensor_ghost();
     if (show_cables) cable_ghost();
     color("dimgray") both_bumpers();
@@ -508,4 +548,6 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      lidar_tower_x_max = lidar_cx + 28 + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + lidar_motor_d / 2,
      lidar_motor_bottom_z = box_h + lid_t + lidar_tower_h - lidar_below, lid_top_z = box_h + lid_t,
      lid_screw_head_x_min = boss_pts[1][0] - head_d(3) / 2,
+     drok_x = [drok_cx - drok_board[0] / 2, drok_cx + drok_board[0] / 2], drok_front_y = drok_by - drok_h,
+     drok_top_z = drok_z0 + drok_board[1],
      bump_out = bump_out, bump_gap = bump_gap, stop_len = bump_gap - bump_travel, spring_strain = spring_strain);
