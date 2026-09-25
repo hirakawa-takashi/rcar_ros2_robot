@@ -20,6 +20,30 @@ plate_holes = [[11, 11], [143, 11], [11, 189], [143, 189],
 mount_holes = [[11, 189], [143, 189], [9, 110], [145, 110]];
 mount_hole_d = 4.4;
 
+// ---- ネジ穴 ----
+// "tap": ネジを直接ねじ込んで、ネジ自身にねじ山を切らせる下穴（M2〜M3 のねじ山は FDM ではきれいに出ないため）
+// "insert": 熱圧入インサート（真鍮）を入れる穴
+screw_mode = "tap";
+function tap_d(m) = m == 2 ? 1.7 : m == 2.5 ? 2.1 : 2.5;
+function insert_d(m) = m == 2 ? 3.2 : m == 2.5 ? 3.6 : 4.0;
+function nut_hole_d(m) = screw_mode == "insert" ? insert_d(m) : tap_d(m);
+function clear_d(m) = m + 0.4;
+function head_d(m) = m == 2 ? 4.4 : m == 2.5 ? 5.2 : 6.2;
+
+// 入口を z = 0 とし、-Z 方向へ depth の深さのねじ込み穴（入口に面取り）
+module screw_hole(m, depth) {
+    d = nut_hole_d(m);
+    translate([0, 0, -depth]) cylinder(d = d, h = depth + 0.01);
+    translate([0, 0, -0.6]) cylinder(d1 = d, d2 = d + 1.2, h = 0.61);
+    cylinder(d = d + 1.2, h = 1);
+}
+
+// z = 0 から +Z 方向へ h の厚さを通す穴。cb > 0 なら下側から深さ cb の座ぐり（ネジ頭を中に沈める）
+module clear_hole(m, h, cb = 0) {
+    translate([0, 0, -1]) cylinder(d = clear_d(m), h = h + 2);
+    if (cb > 0) translate([0, 0, -1]) cylinder(d = head_d(m), h = cb + 1);
+}
+
 // ---- バッテリー（CIO SMARTCOBY Pro SLIM 35W）x 2 段重ね ----
 bat_x = 97.6;   // 長辺（X 方向に置く。ポートのある短辺が開口側を向く）
 bat_y = 69;
@@ -53,7 +77,6 @@ box_y0 = box_cy - box_y / 2;
 
 // ふた固定用ボス（箱の外側 4 隅、M3 タッピング）
 boss_d = 8;
-boss_pilot_d = 2.5;
 boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + 6],
             [box_x0 - boss_d / 2 + 1.5, box_y0 + box_y - 6],
@@ -66,9 +89,8 @@ cam_w = 25;
 cam_h = 23.86;
 cam_hole_dx = 21;
 cam_hole_z = [2, 14.5];   // 基板下端（上下逆なのでケーブルと反対側）からの距離
-cam_boss_d = 4.5;
+cam_boss_d = 5.5;
 cam_boss_l = 4;
-cam_pilot_d = 1.8;        // M2 タッピング
 cam_top_gap = 1;          // 箱の上端から基板上端まで
 cable_notch_w = 20;       // ふた前端のケーブル逃げ
 
@@ -82,7 +104,6 @@ pi_hole_dy = 49;
 pi_hole_off = 3.5;        // GPIO 側の短辺からの距離（USB / LAN は +X 側）
 pi_boss_d = 6;
 pi_boss_h = 6;
-pi_pilot_d = 2.2;         // M2.5 タッピング
 pi_base_t = 3;
 pi_stack_h = 45;          // Pi 5 + AI HAT+ + Motor HAT の 3 段（実測。台のぶん高くなる側で見積もる）
 pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
@@ -128,10 +149,9 @@ tof_face_t = 2;
 
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
-lid_screw_d = 3.4;
 lidar_tower_h = 28;     // LiDAR 取付面より下に出ている部分（約 26.5 mm）をかわす高さ
-lidar_tower_d = 7;
-lidar_pilot_d = 2.2;    // M2.5 タッピング（インサートなら 3.5 前後に変更）
+lidar_tower_d = 8.5;
+lidar_floor = 4;        // 柱の上端に残す厚さ。LiDAR 底面の M2.5 ねじ穴へ、ふたの裏から柱の中を通したネジで留める
 lidar_motor_front = true; // LiDAR のモーター側（細い側）を前（+Y）に向ける
 // RPLIDAR A1M8 取付穴（回転中心基準、データシート Figure 5-2）
 //   ヘッド側 2 穴: 中心から 28 mm、間隔 56 mm / モーター側 2 穴: 中心から 42 mm、間隔 40 mm
@@ -176,14 +196,14 @@ module box() {
         for (i = [-2 : 2])
             translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall + 2, in_z - 12]);
         // カメラ取付の下穴
-        for (p = cam_pts()) translate([p[0], box_y0 + box_y + cam_boss_l + 0.01, p[1]])
-            rotate([90, 0, 0]) cylinder(d = cam_pilot_d, h = 6);
+        for (p = cam_pts()) translate([p[0], box_y0 + box_y + cam_boss_l, p[1]])
+            rotate([-90, 0, 0]) screw_hole(2, 6);
         // 床の肉抜き
         translate([box_x0 + wall + 12, box_y0 + wall + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
         // 天板への取付穴
         for (p = mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = flange_t + 2);
         // ふた固定用の下穴
-        for (p = boss_pts) translate([p[0], p[1], box_h - 12]) cylinder(d = boss_pilot_d, h = 13);
+        for (p = boss_pts) translate([p[0], p[1], box_h]) screw_hole(3, 12);
     }
 }
 
@@ -198,10 +218,10 @@ module lid() {
                 translate([q[0], q[1], 0]) cylinder(d = lidar_tower_d, h = lid_t + lidar_tower_h);
             }
         }
-        for (p = boss_pts) translate([p[0], p[1], -1]) cylinder(d = lid_screw_d, h = lid_t + 2);
+        for (p = boss_pts) translate([p[0], p[1], 0]) clear_hole(3, lid_t);
         for (p = lidar_holes_rel) {
             q = lidar_hole(p);
-            translate([q[0], q[1], lid_t + lidar_tower_h - 10]) cylinder(d = lidar_pilot_d, h = 11);
+            translate([q[0], q[1], 0]) clear_hole(2.5, lid_t + lidar_tower_h, lid_t + lidar_tower_h - lidar_floor);
         }
         // カメラケーブルの逃げ（前端中央）
         translate([box_cx - cable_notch_w / 2, box_y0 + box_y - 3, -1]) cube([cable_notch_w, 10, lid_t + 2]);
@@ -228,7 +248,7 @@ module pi_base() {
             lcd_holder();
         }
         for (p = pi_mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = pi_base_t + 2);
-        for (p = pi_pts) translate([p[0], p[1], pi_base_t + pi_boss_h - 8]) cylinder(d = pi_pilot_d, h = 9);
+        for (p = pi_pts) translate([p[0], p[1], pi_base_t + pi_boss_h]) screw_hole(2.5, 8);
         // 配線通し・通気
         translate([pad[0] + 10, pad[1] + 10, -1]) cube([pad[2] - pad[0] - 20, pad[3] - pad[1] - 20, pi_base_t + 2]);
     }
@@ -401,4 +421,5 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      lcd_top_z = pi_base_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
+     screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
      bump_out = bump_out, bump_gap = bump_gap, stop_len = bump_gap - bump_travel, spring_strain = spring_strain);
