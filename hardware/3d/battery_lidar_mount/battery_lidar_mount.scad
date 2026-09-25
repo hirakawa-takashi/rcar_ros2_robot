@@ -4,8 +4,9 @@
 //
 // 出力: openscad -D 'part="box"' -o box.stl battery_lidar_mount.scad
 //       openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
+//       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
 
-part = "assembly"; // "box" | "lid" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "assembly"
 
 $fn = 48;
 
@@ -57,6 +58,34 @@ boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
             [box_x0 - boss_d / 2 + 1.5, box_y0 + box_y - 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + box_y - 6]];
 
+// ---- カメラ（Raspberry Pi Camera Module 3、箱の前面に上下逆向きで取付）----
+// 基板 25 x 23.86 mm、M2 穴 21 x 12.5 mm（ケーブル側と反対の端から 2 / 14.5 mm）
+// ケーブルを上に出すため上下逆に付ける → ソフト側で 180° 回転が必要
+cam_w = 25;
+cam_h = 23.86;
+cam_hole_dx = 21;
+cam_hole_z = [2, 14.5];   // 基板下端（上下逆なのでケーブルと反対側）からの距離
+cam_boss_d = 4.5;
+cam_boss_l = 4;
+cam_pilot_d = 1.8;        // M2 タッピング
+cam_top_gap = 1;          // 箱の上端から基板上端まで
+cable_notch_w = 20;       // ふた前端のケーブル逃げ
+
+// ---- ラズパイ台（Raspberry Pi 5、天板の後ろ側）----
+pi_mount_holes = [[11, 11], [143, 11], [9, 90], [145, 90]];
+pi_cx = 77;               // 基板中心
+pi_cy = 50;
+pi_board = [85, 56];
+pi_hole_dx = 58;
+pi_hole_dy = 49;
+pi_hole_off = 3.5;        // GPIO 側の短辺からの距離（USB / LAN は +X 側）
+pi_boss_d = 6;
+pi_boss_h = 6;
+pi_pilot_d = 2.2;         // M2.5 タッピング
+pi_base_t = 3;
+pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
+          [pi_cx - pi_board[0] / 2 + pi_hole_off + dx, pi_cy - pi_hole_dy / 2 + dy]];
+
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
 lid_screw_d = 3.4;
@@ -74,6 +103,9 @@ function lidar_hole(p) = lidar_motor_front
     ? [lidar_cx + p[0], lidar_cy - p[1]]
     : [lidar_cx + p[0], lidar_cy + p[1]];
 
+cam_z0 = box_h - cam_top_gap - cam_h;
+function cam_pts() = [for (dx = [-cam_hole_dx / 2, cam_hole_dx / 2], z = cam_hole_z) [box_cx + dx, cam_z0 + z]];
+
 module rrect(x0, y0, x1, y1, r, h) {
     hull() for (x = [x0 + r, x1 - r], y = [y0 + r, y1 - r])
         translate([x, y, 0]) cylinder(r = r, h = h);
@@ -85,6 +117,8 @@ module box() {
             rrect(flange_x0, flange_y0, flange_x1, flange_y1, flange_r, flange_t);
             translate([box_x0, box_y0, 0]) cube([box_x, box_y, box_h]);
             for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+            for (p = cam_pts()) translate([p[0], box_y0 + box_y - 0.01, p[1]])
+                rotate([-90, 0, 0]) cylinder(d = cam_boss_d, h = cam_boss_l);
         }
         // バッテリー収納部
         translate([box_x0 + wall, box_y0 + wall, floor_t]) cube([in_x, in_y, in_z + 1]);
@@ -99,8 +133,11 @@ module box() {
         for (y = [box_y0 - 1, box_y0 + box_y - wall - 1])
             translate([sx, y, floor_t + bat_z - strap_w / 2 + 0.5]) cube([strap_len, wall + 2, strap_w]);
         // 通気スロット（長辺）
-        for (i = [-2 : 2], y = [box_y0 - 1, box_y0 + box_y - wall - 1])
-            translate([box_cx + i * 12 - 2.5, y, floor_t + 6]) cube([5, wall + 2, in_z - 12]);
+        for (i = [-2 : 2])
+            translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall + 2, in_z - 12]);
+        // カメラ取付の下穴
+        for (p = cam_pts()) translate([p[0], box_y0 + box_y + cam_boss_l + 0.01, p[1]])
+            rotate([90, 0, 0]) cylinder(d = cam_pilot_d, h = 6);
         // 床の肉抜き
         translate([box_x0 + wall + 12, box_y0 + wall + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
         // 天板への取付穴
@@ -126,9 +163,43 @@ module lid() {
             q = lidar_hole(p);
             translate([q[0], q[1], lid_t + lidar_tower_h - 10]) cylinder(d = lidar_pilot_d, h = 11);
         }
+        // カメラケーブルの逃げ（前端中央）
+        translate([box_cx - cable_notch_w / 2, box_y0 + box_y - 3, -1]) cube([cable_notch_w, 10, lid_t + 2]);
         // 肉抜き + 配線通し
         translate([lidar_cx - 15, lidar_cy - 15 + (lidar_motor_front ? 7 : -7), -1]) cube([30, 30, lid_t + 2]);
     }
+}
+
+module pi_base() {
+    pad = [pi_pts[0][0] - 5, pi_pts[0][1] - 5, pi_pts[3][0] + 5, pi_pts[3][1] + 5];
+    corners = [[pad[0] + 5, pad[1] + 5], [pad[2] - 5, pad[1] + 5], [pad[0] + 5, pad[3] - 5], [pad[2] - 5, pad[3] - 5]];
+    // 天板の穴 → 近い台の角
+    arm = [[0, 0], [1, 1], [2, 2], [3, 3]];
+    difference() {
+        union() {
+            rrect(pad[0], pad[1], pad[2], pad[3], 5, pi_base_t);
+            for (a = arm) hull() {
+                translate([pi_mount_holes[a[0]][0], pi_mount_holes[a[0]][1], 0]) cylinder(r = 6, h = pi_base_t);
+                translate([corners[a[1]][0], corners[a[1]][1], 0]) cylinder(r = 6, h = pi_base_t);
+            }
+            for (p = pi_pts) translate([p[0], p[1], 0]) cylinder(d = pi_boss_d, h = pi_base_t + pi_boss_h);
+        }
+        for (p = pi_mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = pi_base_t + 2);
+        for (p = pi_pts) translate([p[0], p[1], pi_base_t + pi_boss_h - 8]) cylinder(d = pi_pilot_d, h = 9);
+        // 配線通し・通気
+        translate([pad[0] + 10, pad[1] + 10, -1]) cube([pad[2] - pad[0] - 20, pad[3] - pad[1] - 20, pi_base_t + 2]);
+    }
+}
+
+module pi_ghost() {
+    z = pi_base_t + pi_boss_h;
+    color("green", 0.8) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z]) cube([pi_board[0], pi_board[1], 1.6]);
+    color("darkslateblue", 0.5) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z + 1.6]) cube([65, pi_board[1], 30]);
+}
+
+module camera_ghost() {
+    color("darkgreen") translate([box_cx - cam_w / 2, box_y0 + box_y + cam_boss_l, cam_z0]) cube([cam_w, 1, cam_h]);
+    color("black") translate([box_cx, box_y0 + box_y + cam_boss_l + 1, cam_z0 + cam_h - 14.4]) rotate([-90, 0, 0]) cylinder(d = 8, h = 10);
 }
 
 module plate() {
@@ -160,14 +231,19 @@ module lidar_ghost() {
 
 if (part == "box") box();
 else if (part == "lid") lid();
+else if (part == "pi_base") pi_base();
 else {
     plate();
     color("royalblue") box();
     batteries();
     color("orange") translate([0, 0, box_h]) lid();
     lidar_ghost();
+    color("seagreen") pi_base();
+    pi_ghost();
+    camera_ghost();
 }
 
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      lidar_holes = [for (p = lidar_holes_rel) lidar_hole(p)],
-     lidar_top_z = box_h + lid_t + lidar_tower_h);
+     lidar_top_z = box_h + lid_t + lidar_tower_h,
+     cam_holes_xz = cam_pts(), pi_holes = pi_pts);
