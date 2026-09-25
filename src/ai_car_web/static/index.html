@@ -1626,12 +1626,6 @@ function p3dRender(mesh, view, w, h, color) {
   const {gl, loc} = G;
   G.canvas.width = w; G.canvas.height = h;
   gl.viewport(0, 0, w, h);
-  let bufs = G.bufs.get(mesh);
-  if (!bufs) {
-    const make = data => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
-    bufs = {pos: make(mesh.pos), nrm: make(mesh.nrm), lines: make(mesh.lines)};
-    G.bufs.set(mesh, bufs);
-  }
   gl.clearColor(0.024, 0.043, 0.078, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
@@ -1639,14 +1633,23 @@ function p3dRender(mesh, view, w, h, color) {
   gl.uniform3fv(loc.c, view.center); gl.uniform3fv(loc.r, view.right);
   gl.uniform3fv(loc.u, view.up); gl.uniform3fv(loc.b, view.back);
   gl.uniform3fv(loc.k, [2 * view.scale / w, 2 * view.scale / h, 1 / view.depth]);
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufs.pos); gl.enableVertexAttribArray(loc.p); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufs.nrm); gl.enableVertexAttribArray(loc.n); gl.vertexAttribPointer(loc.n, 3, gl.FLOAT, false, 0, 0);
-  gl.uniform3fv(loc.col, p3dVec(color)); gl.uniform1f(loc.solid, 0); gl.uniform1f(loc.lift, 0);
-  gl.drawArrays(gl.TRIANGLES, 0, mesh.count * 3);
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufs.lines); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
-  gl.disableVertexAttribArray(loc.n); gl.vertexAttrib3f(loc.n, 0, 0, 1);
-  gl.uniform3fv(loc.col, [0.02, 0.05, 0.1]); gl.uniform1f(loc.solid, 1); gl.uniform1f(loc.lift, 0.004);
-  gl.drawArrays(gl.LINES, 0, mesh.lines.length / 3);
+  (mesh.parts || [{mesh, color}]).forEach(item => {
+    const m = item.mesh;
+    let bufs = G.bufs.get(m);
+    if (!bufs) {
+      const make = data => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
+      bufs = {pos: make(m.pos), nrm: make(m.nrm), lines: make(m.lines)};
+      G.bufs.set(m, bufs);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufs.pos); gl.enableVertexAttribArray(loc.p); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufs.nrm); gl.enableVertexAttribArray(loc.n); gl.vertexAttribPointer(loc.n, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform3fv(loc.col, p3dVec(item.color)); gl.uniform1f(loc.solid, 0); gl.uniform1f(loc.lift, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, m.count * 3);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufs.lines); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
+    gl.disableVertexAttribArray(loc.n); gl.vertexAttrib3f(loc.n, 0, 0, 1);
+    gl.uniform3fv(loc.col, [0.02, 0.05, 0.1]); gl.uniform1f(loc.solid, 1); gl.uniform1f(loc.lift, 0.004);
+    gl.drawArrays(gl.LINES, 0, m.lines.length / 3);
+  });
   return G.canvas;
 }
 function p3dDim(g, x1, y1, x2, y2, value) {
@@ -1750,16 +1753,58 @@ function p3dUpdate(part) {
   if (url) box.querySelector('img').src = url;
   else box.querySelector('span').textContent = mesh ? 'WebGL が使えないため図を描けません' : `STL を読み込めません（${P3D.errors[part.id] || '不明'}）`;
 }
+const P3D_ASM = 'assembly';
+function p3dAsmView(a) { return ((a && a.print3d) || {}).assembly_view || null; }
+function p3dBoxPos(size) {
+  const [sx, sy, sz] = size;
+  const v = i => [(i & 1) * sx, ((i >> 1) & 1) * sy, ((i >> 2) & 1) * sz - sz];
+  const quads = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]];
+  const pos = [];
+  quads.forEach(([a, b, c, d]) => [a, b, c, a, c, d].forEach(i => pos.push(...v(i))));
+  return new Float32Array(pos);
+}
+function p3dPlace(mesh, item) {
+  const t = item.translate || [0, 0, 0];
+  const r = (Number(item.rotate_z) || 0) * Math.PI / 180;
+  const cs = Math.cos(r), sn = Math.sin(r);
+  const fz = item.flip_z ? -1 : 1;
+  const src = mesh.pos, pos = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i += 9) {
+    for (let k = 0; k < 3; k++) {
+      const s = i + (fz < 0 && k ? 3 - k : k) * 3, o = i + k * 3;
+      pos[o] = t[0] + cs * src[s] - sn * src[s + 1];
+      pos[o + 1] = t[1] + sn * src[s] + cs * src[s + 1];
+      pos[o + 2] = t[2] + fz * src[s + 2];
+    }
+  }
+  return p3dMesh(pos);
+}
+function p3dAssembly(a) {
+  const av = p3dAsmView(a);
+  if (!av) return null;
+  if (P3D.asm) return P3D.asm;
+  const parts = p3dParts(a);
+  const items = av.items || [];
+  const src = items.map(it => parts.find(x => x.id === it.part));
+  if (src.some(x => !x || !P3D.meshes[x.id])) return null;
+  const list = items.map((it, i) => ({mesh: p3dPlace(P3D.meshes[src[i].id], it), color: src[i].color}));
+  if (av.plate && av.plate.size) list.unshift({mesh: p3dMesh(p3dBoxPos(av.plate.size)), color: av.plate.color || '#8fa3b8'});
+  const min = [0, 1, 2].map(j => Math.min(...list.map(x => x.mesh.min[j])));
+  const max = [0, 1, 2].map(j => Math.max(...list.map(x => x.mesh.max[j])));
+  return (P3D.asm = {parts: list, min, max});
+}
 function p3dDrawLive() {
   const cv = document.getElementById('p3d_canvas');
   if (!cv) return;
   const L = P3D.live;
-  const part = p3dParts(architectureData).find(x => x.id === L.part);
-  const mesh = part && P3D.meshes[part.id];
+  const asm = L.part === P3D_ASM ? p3dAsmView(architectureData) : null;
+  const part = asm ? {id: P3D_ASM, label: asm.label || '組み立て図'} : p3dParts(architectureData).find(x => x.id === L.part);
+  const mesh = asm ? p3dAssembly(architectureData) : part && P3D.meshes[part.id];
+  const err = asm ? (asm.items || []).map(it => P3D.errors[it.part]).find(Boolean) : part && P3D.errors[part.id];
   const g = cv.getContext('2d');
   g.fillStyle = '#060b14'; g.fillRect(0, 0, cv.width, cv.height);
   g.fillStyle = '#9fb0c7'; g.font = '16px system-ui, sans-serif'; g.textAlign = 'left';
-  if (!mesh) { g.fillText(part && P3D.errors[part.id] ? `STL を読み込めません（${P3D.errors[part.id]}）` : '読み込み中…', 20, 34); return; }
+  if (!mesh) { g.fillText(err ? `STL を読み込めません（${err}）` : '読み込み中…', 20, 34); return; }
   const back = [Math.cos(L.el) * Math.sin(L.az), Math.cos(L.el) * Math.cos(L.az), Math.sin(L.el)];
   const view = p3dFit(mesh, p3dBasis(back, [0, 0, 1]), cv.width, cv.height, 0.8 * L.zoom, [0, 60]);
   const img = p3dRender(mesh, view, cv.width, cv.height, part.color);
@@ -1768,7 +1813,17 @@ function p3dDrawLive() {
   g.fillStyle = '#e8f7ff'; g.font = 'bold 18px system-ui, sans-serif';
   g.fillText(part.label, 20, 32);
   g.fillStyle = '#7f98ba'; g.font = '14px system-ui, sans-serif';
-  g.fillText(`${p3dSizeText(part.id)} mm（STL の向き）`, 20, 54);
+  g.fillText(asm ? `${p3dSize(mesh).map(v => v.toFixed(1)).join(' × ')} mm（組み立てた向き・天板と同じ座標）` : `${p3dSizeText(part.id)} mm（STL の向き）`, 20, 54);
+  if (asm) {
+    let x = 20;
+    g.font = '13px system-ui, sans-serif';
+    [...(asm.plate ? [{label: '天板', color: asm.plate.color || '#8fa3b8'}] : []),
+     ...p3dParts(architectureData).filter(p => (asm.items || []).some(it => it.part === p.id))].forEach(p => {
+      g.fillStyle = p.color; g.fillRect(x, 66, 12, 12);
+      g.fillStyle = '#cfe0f2'; g.fillText(p.label, x + 17, 77);
+      x += 30 + g.measureText(p.label).width;
+    });
+  }
   const ox = 70, oy = cv.height - 60;
   [[[1, 0, 0], '#e05b5b', '右 X'], [[0, 1, 0], '#43c47a', '前 Y'], [[0, 0, 1], '#4a90d9', '上 Z']].forEach(([axis, color, label]) => {
     const x = ox + 40 * p3dDot(axis, view.right), y = oy - 40 * p3dDot(axis, view.up);
@@ -1780,7 +1835,8 @@ function initPrint3d() {
   const parts = p3dParts(architectureData);
   if (!parts.length) return;
   const L = P3D.live;
-  if (!parts.some(x => x.id === L.part)) L.part = parts[0].id;
+  const asm = p3dAsmView(architectureData);
+  if (!parts.some(x => x.id === L.part) && !(asm && L.part === P3D_ASM)) L.part = asm ? P3D_ASM : parts[0].id;
   const body = document.getElementById('about_body');
   const cv = document.getElementById('p3d_canvas');
   let frame = 0;
@@ -1814,7 +1870,7 @@ function initPrint3d() {
     cv.addEventListener('dblclick', reset);
   }
   select(L.part);
-  parts.forEach(x => p3dLoad(x).catch(() => null).then(() => { p3dUpdate(x); if (x.id === L.part) redraw(); }));
+  parts.forEach(x => p3dLoad(x).catch(() => null).then(() => { p3dUpdate(x); if (x.id === L.part || L.part === P3D_ASM) redraw(); }));
 }
 function renderPrint3d(a) {
   const p = a.print3d || {};
@@ -1838,9 +1894,9 @@ function renderPrint3d(a) {
     aboutTable(['部品', '数量', '外形 幅 × 奥行き × 高さ（mm）', '印刷の向き', '材料', 'STL'], rows) +
     `<div class="p3dlinks">${p.source ? dl(p.source, `${p.source}（OpenSCAD ソース）`) : ''}<span class="note">ソースの場所: ${esc(p.dir || '-')}</span></div>` +
     `<h3>三面図・立体図</h3><div class="note">座標は天板と同じ（前 = +Y = LiDAR・カメラ側、右 = +X = USB 側、上 = +Z）。前後バンパーは印刷の向き（上面が下）で描いています。図をクリックすると大きく表示します。</div><div class="p3dgrid">${cards}</div>` +
-    `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
+    `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${p.assembly_view ? `<button data-p3d-live="${P3D_ASM}">${esc(p.assembly_view.label || '組み立て図')}</button>` : ''}${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
     `<button data-p3d-zoom="in" title="拡大">＋</button><button data-p3d-zoom="out" title="縮小">−</button><button data-p3d-reset>向きを戻す</button></div>` +
-    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転、ホイールで拡大・縮小、ダブルクリックで最初の向きに戻ります。</div></div>` +
+    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転、ホイールで拡大・縮小、ダブルクリックで最初の向きに戻ります。${p.assembly_view && p.assembly_view.note ? `「${esc(p.assembly_view.label || '組み立て図')}」は${esc(p.assembly_view.note)}。` : ''}</div></div>` +
     `<h3>印刷設定（目安）</h3>${aboutTable(['項目', '設定'], (p.settings || []).map(x => [esc(x.name), esc(x.value)]))}` +
     `<h3>ネジ・固定具</h3>${aboutTable(['場所', 'ネジ', '穴の形'], (p.screws || []).map(x => [esc(x.place), esc(x.screw), esc(x.hole)]))}` +
     (p.screw_note ? `<div class="note">${esc(p.screw_note)}</div>` : '') +
