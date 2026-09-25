@@ -140,7 +140,7 @@ class PerceptionNode(Node):
         self.declare_parameter('hailo_temp_warn', 75.0)
         self.declare_parameter('hailo_temp_crit', 85.0)
         # 実効スループット算出用。model_gops は 1 推論あたりの演算量 [GOP]
-        # （YOLOv8s 640x640 = 28.6 GOP）、peak_tops は Hailo-8 の公称性能。
+        # （YOLOv8m 640x640 = 78.9 GOP）、peak_tops は Hailo-8 の公称性能。
         self.declare_parameter('model_gops', 28.6)
         self.declare_parameter('hailo_peak_tops', 26.0)
 
@@ -196,7 +196,7 @@ class PerceptionNode(Node):
             self._detector_note = 'hef_path が未設定のためカメラ推論は無効です'
 
         self._infer_busy = False
-        self.create_timer(0.2, self._inference_tick)
+        self.create_timer(0.02, self._inference_tick)
         self.create_timer(0.2, self._publish_status)
 
     # --- パラメータ ---

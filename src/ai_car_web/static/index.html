@@ -109,6 +109,8 @@
                background: #1e232b; padding: 14px 18px; border-bottom: 1px solid #2c3340; }
   .abouthead h2 { margin: 0; font-size: 18px; }
   .aboutclose { margin-left: auto; padding: 2px 10px; font-size: 24px; line-height: 1; }
+  .aboutpdf { margin-left: 14px; padding: 5px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+  .aboutpdf svg { width: 14px; height: 14px; }
   .abouttabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px;
                background: #1a2029; border-bottom: 1px solid #2c3340; }
   .abouttabs button { padding: 7px 11px; font-size: 12px; }
@@ -265,6 +267,7 @@
 <div id="about" class="modal hidden">
   <div class="aboutpanel" role="dialog" aria-modal="true" aria-labelledby="about_title">
     <div class="abouthead"><h2 id="about_title">AI-CAR プロジェクト説明</h2>
+      <button id="about_pdf" class="aboutpdf" title="全タブを 1 つの印刷用ページにまとめて表示し、ブラウザの印刷から PDF に保存できます"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/><path d="M6 9h4M6 11.5h4"/></svg>PDF（全タブ一括）</button>
       <button id="about_close" class="aboutclose" aria-label="閉じる">×</button></div>
     <div id="about_tabs" class="abouttabs"></div>
     <div id="about_body" class="aboutbody"><span class="badge">読み込み中...</span></div>
@@ -443,7 +446,7 @@
     <div class="pinwrap">
     <table class="pins">
       <thead><tr>
-        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>回転 / ドライバ / 備考</th>
+        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>備考</th><th>回転 / ドライバ</th>
       </tr></thead>
       <tbody id="motor_rows"></tbody>
     </table>
@@ -1089,7 +1092,7 @@ function drawMotorHat(m) {
       const sx = anchor === 'end' ? lx - 4 : lx + 4;
       out += `<rect x="${sx - 4}" y="${y - 7}" width="8" height="8" rx="1" fill="${hex}" stroke="#8a97a8" stroke-width="0.5"/>`;
       const tx = anchor === 'end' ? lx - 12 : lx + 12;
-      out += `<text x="${tx}" y="${y}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">${esc(w.name)} ${esc(w.color || '-')} → ${esc(w.dest.replace(/^Motor HAT (M\d)/, 'HAT $1').replace(/^Motor HAT pin/, 'HAT pin').replace(/ \((3V3 power|Ground)\)$/, ''))}</text>`;
+      out += `<text x="${tx}" y="${y}" text-anchor="${anchor}" font-size="10" fill="#cfd8e3">${esc(w.name)} ${esc(w.color || '-')} → ${esc(w.dest.replace(/^Motor HAT (M\d)/, 'HAT $1'))}</text>`;
     });
     out += '</g>';
   });
@@ -1097,7 +1100,7 @@ function drawMotorHat(m) {
   const ec = m.hat.encoder;
   if (ec) {
     const gnd = (ec.gnd_pins || []).join(',');
-    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">1 モーター 6 本: Motor+ / Motor− → HAT M 端子　VCC ${esc(ec.vcc || '3V3')} / GND → ${esc(ec.power_board || 'Pi')} の 3V3 / GND ピン　Encoder A / B → Pi GPIO</text>`;
+    out += `<text x="14" y="18" font-size="11" fill="#9fb0c7">1 モーター 6 本: Motor+ / Motor− → HAT M 端子　VCC → ${esc(ec.power_board || 'Pi')} (3V3 power) / GND → ${esc(ec.power_board || 'Pi')} (Ground)　Encoder A / B → Pi GPIO</text>`;
   }
   // Motor HAT 本体
   out += `<rect x="${cx - hat.w / 2}" y="${cy - hat.h / 2}" width="${hat.w}" height="${hat.h}" rx="10" fill="#1d3a5f" stroke="#64b5f6" stroke-width="2"/>`;
@@ -1140,13 +1143,14 @@ function renderMotorHat(m) {
       `${mo.reversed ? '<span class="badge warn">反転</span>' : '<span class="badge ok">正転</span>'}<br>` +
       `${esc(mo.bridge)} / PCA9685 ch ${mo.pwm_channel} / ${mo.in1_channel} / ${mo.in2_channel}<br>` +
       `<span class="note" style="margin:0;display:inline">${esc(mo.note)}</span></td>`;
-    if (!wires.length) return `<tr class="used">${head}<td colspan="4"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
+    if (!wires.length) return `<tr class="used">${head}<td colspan="5"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
     return wires.map((w, i) =>
       `<tr class="used">${i === 0 ? head : ''}` +
       `<td class="num" style="text-align:left;width:auto">${i + 1}</td>` +
       `<td><b>${esc(w.name)}</b></td>` +
       `<td>${w.color ? wireSwatch(w.color) : '<span class="badge warn">未設定</span>'}</td>` +
       `<td>${esc(w.dest)}</td>` +
+      `<td>${esc(w.note || '')}</td>` +
       `${i === 0 ? info : ''}</tr>`).join('');
   }).join('');
   const note = document.getElementById('motor_note');
@@ -1211,13 +1215,14 @@ function powerColor(power) {
 function renderHardware(a) {
   const h = a.hardware || {}, devices = h.devices || [], center = [600, 280];
   const positions = {
-    ai_hat: [340, 100], battery: [860, 100],
+    ai_hat: [340, 100], battery: [1050, 95],
     lidar: [90, 110], camera: [90, 280], gamepad: [90, 450],
     motor_hat: [1050, 200], motors: [1050, 360],
-    imu: [340, 460], lcd: [860, 460],
+    imu: [340, 460], lcd: [860, 460], tof: [600, 480], drok: [720, 95],
   };
   const box = (d, x, y) => {
-    const w = 150, hh = 58;
+    const textWidth = t => [...String(t || '')].reduce((n, c) => n + (c.charCodeAt(0) > 0xff ? 13 : 7.5), 0);
+    const w = Math.max(150, textWidth(d.label) + 20, textWidth(d.sub) * 0.8 + 20), hh = 58;
     return `<g class="aboutlink" data-jump="${esc(d.jump || '')}"><rect x="${x - w / 2}" y="${y - hh / 2}" width="${w}" height="${hh}" rx="9" fill="#1e232b" stroke="${d.jump ? '#43c47a' : '#3a4657'}" stroke-width="2"/>` +
       `<text x="${x}" y="${y - 3}" fill="#e8eaed" text-anchor="middle" font-size="13" font-weight="bold">${esc(d.label)}</text>` +
       `<text x="${x}" y="${y + 16}" fill="#9fb0c7" text-anchor="middle" font-size="10">${esc(d.sub || '')}</text></g>`;
@@ -1231,7 +1236,7 @@ function renderHardware(a) {
   };
   const busLabel = id => ({
     ai_hat: 'PCIe / GPIO', battery: '', lidar: 'USB', camera: 'CSI',
-    gamepad: 'USB', imu: 'I2C', lcd: 'SPI / GPIO', motor_hat: 'I2C 0x60',
+    gamepad: 'USB', imu: 'I2C', lcd: 'SPI / GPIO', motor_hat: 'I2C 0x60', tof: 'I2C', drok: 'USB 5V',
   }[id] || '');
   let svg = '<svg class="aboutsvg" viewBox="0 0 1200 560"><defs><filter id="hwshadow"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".5"/></filter></defs>';
   devices.forEach(d => {
@@ -1241,7 +1246,8 @@ function renderHardware(a) {
       svg += edge(m[0], m[1], p[0], p[1], '#e04b4b', 'M1〜M4 12V');
       svg += edge(p[0], p[1], center[0], center[1], '#687383', 'エンコーダー A/B → GPIO', true);
     } else if (d.id === 'battery') {
-      svg += edge(p[0], p[1], center[0], center[1], '#f08b36', '5V');
+      if (byId.drok) svg += edge(p[0], p[1], positions.drok[0], positions.drok[1], '#e04b4b', '12V');
+      else svg += edge(p[0], p[1], center[0], center[1], '#f08b36', '5V');
       if (byId.motor_hat) svg += edge(p[0], p[1], positions.motor_hat[0], positions.motor_hat[1], '#e04b4b', '12V');
     } else {
       svg += edge(center[0], center[1], p[0], p[1], powerColor(d.power), busLabel(d.id));
@@ -1440,9 +1446,8 @@ function renderAboutTab(id) {
   const body = document.getElementById('about_body');
   if (!architectureData) { body.innerHTML = '<span class="badge">読み込み中...</span>'; return; }
   if (architectureData.error) { body.innerHTML = `<span class="badge crit">${esc(architectureData.error)}</span>`; return; }
-  const renders = {overview: renderOverview, hardware: renderHardware, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
   parkWiringCards();
-  body.innerHTML = (renders[id] || renderOverview)(architectureData);
+  body.innerHTML = (ABOUT_RENDERS[id] || renderOverview)(architectureData);
   const slot = document.getElementById('about_wiring');
   if (slot) { const store = document.getElementById('wiring_store'); while (store.firstChild) slot.appendChild(store.firstChild); }
   body.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => {
@@ -1479,6 +1484,84 @@ function renderAboutTab(id) {
     });
   });
 }
+const ABOUT_RENDERS = {overview: renderOverview, hardware: renderHardware, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
+function wiringCardsHtml() {
+  return ['gpio_svg', 'motor_svg'].map(id => document.getElementById(id)?.closest('.card')?.outerHTML || '').join('');
+}
+function openAboutPdf() {
+  if (!architectureData || architectureData.error) { alert('プロジェクト説明の読み込みが完了してから実行してください。'); return; }
+  const win = window.open('', '_blank');
+  if (!win) { alert('ポップアップがブロックされました。このサイトのポップアップを許可してください。'); return; }
+  const now = new Date();
+  const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const sections = ABOUT_TABS.map(([id, label], i) => {
+    let html = ABOUT_RENDERS[id](architectureData);
+    if (id === 'hardware') html = html.replace('<div id="about_wiring"></div>', wiringCardsHtml());
+    html = html.replace(/(<svg class="(?:aboutsvg|motor_svg)"[^>]*>)/g, '$1<rect width="100%" height="100%" fill="#0b1018"/>');
+    return `<section id="sec-${id}" class="docsec"><div class="secbar"><h2>${i + 1}. ${esc(label)}</h2><a class="totop" href="#toc">↑ 目次へ</a></div>${html}</section>`;
+  }).join('');
+  const toc = ABOUT_TABS.map(([id, label], i) => `<li><a href="#sec-${id}"><span class="num">${i + 1}</span>${esc(label)}</a></li>`).join('');
+  const styles = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n');
+  win.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>AI-CAR プロジェクト説明（全タブ一括）</title>
+<style>${styles}</style>
+<style>
+  * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body { padding: 0; margin: 0; }
+  .toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 18px; background: rgba(14, 24, 42, .96); border-bottom: 1px solid #2c3340; backdrop-filter: blur(6px); }
+  .toolbar h1 { margin: 0; font-size: 16px; flex: 1 1 auto; }
+  .toolbar .hint { font-size: 11px; color: #9fb0c7; flex-basis: 100%; }
+  .toolbar button { padding: 7px 14px; font-size: 13px; }
+  .doc { max-width: 1100px; margin: 0 auto; padding: 18px 22px 60px; line-height: 1.55; }
+  .cover { text-align: center; padding: 30px 0 10px; }
+  .cover h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: .04em; }
+  .cover p { margin: 4px 0; color: #9fb0c7; font-size: 13px; }
+  .toc { margin: 18px auto 30px; max-width: 560px; }
+  .toc h2 { font-size: 15px; color: #9cc4f0; margin: 0 0 8px; }
+  .toc ol { list-style: none; margin: 0; padding: 0; }
+  .toc li a { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px dashed #2c3340; color: inherit; text-decoration: none; }
+  .toc li a:hover { background: rgba(53, 214, 255, .08); }
+  .toc .num { display: inline-block; width: 26px; height: 26px; line-height: 26px; text-align: center; border-radius: 50%; background: #1e4a2b; color: #8fe0a4; font-weight: 700; font-size: 12px; }
+  .docsec, #toc { scroll-margin-top: 90px; }
+  .docsec { padding-top: 12px; margin-top: 26px; border-top: 2px solid #2c3340; break-before: page; page-break-before: always; }
+  .docsec h3 { color: #9cc4f0; margin: 18px 0 8px; font-size: 16px; }
+  .docsec p { margin: 5px 0; } .docsec ul { margin: 6px 0 12px 22px; padding: 0; }
+  .secbar { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+  .secbar h2 { margin: 0; font-size: 20px; color: #e8f7ff; }
+  .totop { margin-left: auto; font-size: 12px; color: #9fb0c7; text-decoration: none; }
+  .totop:hover { color: #35d6ff; }
+  .docsec .card { margin-top: 14px; }
+  .archdetail { display: none; }
+  .aboutlink { cursor: default; } .aboutlink:hover rect, .aboutlink:hover circle { filter: none; }
+  svg, table, .card { break-inside: avoid; page-break-inside: avoid; }
+  .aboutsvg { max-height: 560px; }
+  @page { size: A4; margin: 12mm; }
+  @media print {
+    .toolbar, .totop { display: none !important; }
+    body { background: #fff !important; color: #111 !important; }
+    .doc { max-width: none; padding: 0; }
+    .cover h1, .secbar h2, .docsec h3, .toc h2 { color: #0b3d5c !important; }
+    h1 { background: none !important; -webkit-text-fill-color: #0b3d5c; }
+    .toc li a { color: #111; border-bottom-color: #bbb; }
+    .docsec { border-top-color: #bbb; }
+    .abouttable th, table.pins th { color: #333 !important; border-bottom-color: #999 !important; }
+    .abouttable td, table.pins td { border-bottom-color: #ddd !important; color: #111; }
+    table.pins tr.used td { background: #eef5ff !important; }
+    .card { background: #fff !important; border-color: #bbb !important; color: #111 !important; box-shadow: none !important; }
+    .card h2 { color: #0b3d5c !important; }
+    .note, .powerlegend, .gpio_legend, .cover p { color: #444 !important; }
+    .badge { background: #eee !important; color: #333 !important; border-color: #bbb !important; box-shadow: none !important; }
+    .badge.ok { background: #e3f6e8 !important; color: #1b6b35 !important; }
+    .check.done { color: #1b6b35 !important; } .check { color: #888; }
+    .topiclive { color: #1b6b35 !important; } .topicdead { color: #888 !important; }
+    a { color: #0b3d5c; }
+  }
+</style></head><body>
+<div class="toolbar"><h1>AI-CAR プロジェクト説明（全タブ一括）</h1><button onclick="window.print()">PDF に保存 / 印刷</button><button onclick="window.close()">閉じる</button>
+<span class="hint">印刷ダイアログで「送信先: PDF に保存」を選ぶと PDF ファイルになります（各章は改ページ、画面では目次リンクで移動できます）。図の色をそのまま残すには印刷オプションの「背景のグラフィック」をオンにしてください。</span></div>
+<div class="doc"><div class="cover"><h1>AI-CAR プロジェクト説明</h1><p>${esc(architectureData.overview?.subtitle || '')}</p><p>出力日時: ${stamp} ／ ダッシュボード ${esc(location.host)}</p></div>
+<nav class="toc" id="toc"><h2>目次</h2><ol>${toc}</ol></nav>${sections}</div></body></html>`);
+  win.document.close();
+}
 function closeAbout() {
   parkWiringCards();
   document.getElementById('about').classList.add('hidden');
@@ -1498,6 +1581,7 @@ document.getElementById('about_tabs').innerHTML = ABOUT_TABS.map(([id, label]) =
 document.querySelectorAll('#about_tabs button').forEach(b => b.addEventListener('click', () => renderAboutTab(b.dataset.tab)));
 document.getElementById('about_btn').addEventListener('click', openAbout);
 document.getElementById('about_close').addEventListener('click', closeAbout);
+document.getElementById('about_pdf').addEventListener('click', openAboutPdf);
 document.getElementById('about').addEventListener('click', ev => { if (ev.target.id === 'about') closeAbout(); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeAbout(); });
 
