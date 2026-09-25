@@ -9,6 +9,7 @@ dashboard_node:
     odom_topic: "/odom"
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"
+    # ブラウザへの MJPEG 配信レート（カメラ取り込み 15fps と同じ）
     camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
     obstacle_guard: true
@@ -17,11 +18,17 @@ dashboard_node:
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
+    # CPU 負荷軽減のため画面更新 5Hz、LiDAR 点群は 360 点に間引き
     telemetry_rate: 10.0
+    scan_max_points: 720
     # 40 ピンヘッダーの配線表。空なら share/ai_car_web/config/gpio_pins.yaml
     gpio_config: ""
     # Motor HAT の M1〜M4 と車輪の割り付け。空なら share/ai_car_web/config/motor_hat.yaml
     motor_hat_config: ""
+    # プロジェクト説明の構成定義。空なら share/ai_car_web/config/architecture.yaml
+    architecture_config: ""
+    # 構成定義から参照する ROS パラメータ。空なら share/ai_car_web/config/dashboard.yaml
+    params_config: ""
     # ゲームパッドの正規化指令（joy_teleop_node）。この秒数以上途絶えると未接続表示
     joy_cmd_topic: "/joy_cmd"
     joy_timeout: 1.0
@@ -58,7 +65,7 @@ autonomy_node:
     drive_mode_topic: "/drive_mode"
     cmd_topic: "/cmd_vel_auto"
     status_topic: "/autonomy_status"
-    publish_rate: 20.0
+    publish_rate: 10.0   # 判断周期 0.1s（停止距離 0.35m・巡航 0.15m/s に対して十分）
     scan_angle_offset_deg: 180.0
     scan_max_age: 1.0
     cruise_speed: 0.15
@@ -77,7 +84,7 @@ joy_teleop_node:
     # Logitech F710（背面スイッチ X = XInput モード）
     device: "/dev/input/js0"
     joy_cmd_topic: "/joy_cmd"
-    publish_rate: 20.0
+    publish_rate: 10.0
     deadzone: 0.15
     # 通常の出力割合。RB を押している間は全速
     speed_scale: 0.5
@@ -127,7 +134,7 @@ lcd_display_node:
     rst_gpio: 24
     bl_gpio: 23          # -1 でバックライト制御なし（BLK を 3V3 直結）
     rotation: 180        # 0 / 90 / 180 / 270（反時計回りの角度。270 から更に反時計回り 90° で 180）
-    update_rate: 4.0
+    update_rate: 2.0
     font_path: ""        # 空なら IPA ゴシック → Noto CJK → DejaVu の順で探す
     system_status_topic: "/system_status"
     obstacle_topic: "/obstacle_status"
@@ -145,7 +152,7 @@ imu_node:
     i2c_address: 0x29
     frame_id: "imu_link"
     imu_topic: "/imu/data"
-    publish_rate: 50.0
+    publish_rate: 20.0
 
 system_monitor_node:
   ros__parameters:
@@ -163,9 +170,12 @@ perception_node:
     front_angle_deg: 60.0
     stop_distance: 0.35
     slow_distance: 0.8
-    hef_path: "/home/super/AI-CAR_ws/models/yolov8n.hef"
-    inference_rate: 10.0
-    score_threshold: 0.4
+    hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
+    # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）
+    inference_rate: 15.0
+    score_threshold: 0.5
+    detect_confirm_frames: 2
+    detect_history_frames: 3
     camera_hfov_deg: 66.0
     scan_angle_offset_deg: 180.0
     scan_max_age: 1.0
@@ -175,8 +185,8 @@ perception_node:
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
     hailo_temp_crit: 85.0
-    # 実効スループット表示用（YOLOv8n 640x640 = 8.7 GOP / Hailo-8 公称 26 TOPS）
-    model_gops: 8.7
+    # 実効スループット表示用（YOLOv8m 640x640 = 78.9 GOP / Hailo-8 公称 26 TOPS）
+    model_gops: 78.9
     hailo_peak_tops: 26.0
 
 rplidar:
@@ -189,11 +199,14 @@ rplidar:
 camera:
   ros__parameters:
     format: "RGB888"
-    # 1280x720@30fps。JPEG 品質は 95 だと 1 枚 90KB 超で帯域を食うため 80 に下げる
-    width: 1280
-    height: 720
+    # 960x540@15fps（1280x720@30fps は camera_node の CPU が約 50% になるため縮小・間引き）。
+    # JPEG 品質は 95 だと帯域を食うため 80
+    width: 960
+    height: 540
     jpeg_quality: 80
     camera: 0
+    # フレーム間隔の下限 / 上限（µs）。両方 66666 で 15fps 固定
+    FrameDurationLimits: [33333, 33333]
     # 室内だと AE が露光を 33ms（1 フレーム分）まで伸ばして動体がぶれるため、
     # 露光だけ手動 8ms に固定し、明るさはアナログゲイン自動で合わせる
     ExposureTimeMode: 1

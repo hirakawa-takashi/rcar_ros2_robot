@@ -16,6 +16,7 @@ from collections import deque
 
 import rclpy
 import uvicorn
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -28,6 +29,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
 
+from ai_car_web.architecture import load_architecture
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
 
@@ -106,9 +108,13 @@ class DashboardNode(Node):
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
         self.declare_parameter('telemetry_rate', 5.0)
+        # LiDAR 点群をブラウザに送るときの上限点数（間引き）
+        self.declare_parameter('scan_max_points', MAX_SCAN_POINTS)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('gpio_config', '')
         self.declare_parameter('motor_hat_config', '')
+        self.declare_parameter('architecture_config', '')
+        self.declare_parameter('params_config', '')
         # ゲームパッド（joy_teleop_node）からの正規化指令。空で無効
         self.declare_parameter('joy_cmd_topic', '/joy_cmd')
         self.declare_parameter('joy_timeout', 1.0)
@@ -125,6 +131,7 @@ class DashboardNode(Node):
         self.max_angular = float(self.get_parameter('max_angular_speed').value)
         self.cmd_timeout = float(self.get_parameter('cmd_timeout').value)
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
+        self.scan_max_points = max(1, int(self.get_parameter('scan_max_points').value))
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
         self.api_token = str(self.get_parameter('api_token').value) or os.environ.get(
@@ -133,6 +140,10 @@ class DashboardNode(Node):
             get_package_share_directory('ai_car_web'), 'config', 'gpio_pins.yaml')
         self.motor_hat_config = self.get_parameter('motor_hat_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'motor_hat.yaml')
+        self.architecture_config = self.get_parameter('architecture_config').value or os.path.join(
+            get_package_share_directory('ai_car_web'), 'config', 'architecture.yaml')
+        self.params_config = self.get_parameter('params_config').value or os.path.join(
+            get_package_share_directory('ai_car_web'), 'config', 'dashboard.yaml')
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
@@ -212,7 +223,7 @@ class DashboardNode(Node):
     # --- サブスクライバ ---
     def _scan_cb(self, msg: LaserScan):
         ranges = [r for r in msg.ranges if math.isfinite(r) and r > msg.range_min]
-        step = max(1, len(msg.ranges) // MAX_SCAN_POINTS)
+        step = max(1, len(msg.ranges) // self.scan_max_points)
         points = []
         for i in range(0, len(msg.ranges), step):
             r = msg.ranges[i]
@@ -506,6 +517,33 @@ class DashboardNode(Node):
                 },
             }
 
+    def architecture(self):
+        params = {}
+        try:
+            with open(self.params_config, encoding='utf-8') as f:
+                config = yaml.safe_load(f) or {}
+            params = {
+                node: (section.get('ros__parameters') or {})
+                for node, section in config.items()
+                if isinstance(section, dict)
+            }
+        except (OSError, yaml.YAMLError, AttributeError):
+            pass
+        params.setdefault('dashboard_node', {})['api_token'] = bool(self.api_token)
+        data = load_architecture(self.architecture_config, params)
+        try:
+            topics = []
+            for name, _ in self.get_topic_names_and_types():
+                if self.get_publishers_info_by_topic(name):
+                    topics.append(name)
+            data['live'] = {
+                'topics': sorted(topics),
+                'nodes': sorted(self.get_node_names()),
+            }
+        except Exception:
+            data['live'] = {'topics': [], 'nodes': []}
+        return data
+
 
 def create_app(node: DashboardNode) -> FastAPI:
     """ダッシュボードの FastAPI アプリを生成する。"""
@@ -537,6 +575,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.get('/api/motor_hat')
     def motor_hat():
         return load_motor_hat(node.motor_hat_config)
+
+    @app.get('/api/architecture')
+    def architecture():
+        return node.architecture()
 
     @app.post('/api/cmd_vel', dependencies=[Depends(require_token)])
     def cmd_vel(req: CmdVelRequest):

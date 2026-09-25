@@ -39,6 +39,41 @@ COCO_CLASSES = [
 ]
 
 
+def _iou(a, b):
+    """検出枠または [x_min, y_min, x_max, y_max] 同士の IoU を返す。"""
+    box_a = a['box'] if isinstance(a, dict) else a
+    box_b = b['box'] if isinstance(b, dict) else b
+    ax1, ay1, ax2, ay2 = box_a
+    bx1, by1, bx2, by2 = box_b
+    inter_w = max(0.0, min(ax2, bx2) - max(ax1, bx1))
+    inter_h = max(0.0, min(ay2, by2) - max(ay1, by1))
+    intersection = inter_w * inter_h
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - intersection
+    return intersection / union if union else 0.0
+
+
+def _confirm_detections(history, confirm):
+    """履歴中の一定数以上で同じ物体が確認された最新検出だけを返す。"""
+    latest = list(history[-1]) if history else []
+    if confirm <= 1:
+        return latest
+    confirmed = []
+    for detection in latest:
+        matches = sum(
+            any(
+                candidate.get('label') == detection.get('label')
+                and _iou(candidate, detection) >= 0.3
+                for candidate in frame
+            )
+            for frame in history
+        )
+        if matches >= confirm:
+            confirmed.append(detection)
+    return confirmed
+
+
 class HailoDetector:
     """Hailo-8 上で YOLO HEF を実行する最小ラッパー。"""
 
@@ -92,7 +127,9 @@ class PerceptionNode(Node):
         self.declare_parameter('slow_distance', 0.8)
         self.declare_parameter('hef_path', '')
         self.declare_parameter('inference_rate', 4.0)
-        self.declare_parameter('score_threshold', 0.4)
+        self.declare_parameter('score_threshold', 0.5)
+        self.declare_parameter('detect_confirm_frames', 2)
+        self.declare_parameter('detect_history_frames', 3)
         self.declare_parameter('camera_hfov_deg', 66.0)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('scan_max_age', 1.0)
@@ -103,11 +140,12 @@ class PerceptionNode(Node):
         self.declare_parameter('hailo_temp_warn', 75.0)
         self.declare_parameter('hailo_temp_crit', 85.0)
         # 実効スループット算出用。model_gops は 1 推論あたりの演算量 [GOP]
-        # （YOLOv8n 640x640 = 8.7 GOP）、peak_tops は Hailo-8 の公称性能。
-        self.declare_parameter('model_gops', 8.7)
+        # （YOLOv8m 640x640 = 78.9 GOP）、peak_tops は Hailo-8 の公称性能。
+        self.declare_parameter('model_gops', 28.6)
         self.declare_parameter('hailo_peak_tops', 26.0)
 
         self._load_tunables()
+        self._detection_history = deque(maxlen=self.detect_history_frames)
         self.add_on_set_parameters_callback(self._on_set_parameters)
 
         sensor_qos = QoSProfile(
@@ -158,7 +196,7 @@ class PerceptionNode(Node):
             self._detector_note = 'hef_path が未設定のためカメラ推論は無効です'
 
         self._infer_busy = False
-        self.create_timer(0.2, self._inference_tick)
+        self.create_timer(0.02, self._inference_tick)
         self.create_timer(0.2, self._publish_status)
 
     # --- パラメータ ---
@@ -168,6 +206,10 @@ class PerceptionNode(Node):
         self.slow_distance = float(self.get_parameter('slow_distance').value)
         self.inference_rate = float(self.get_parameter('inference_rate').value)
         self.score_threshold = float(self.get_parameter('score_threshold').value)
+        self.detect_confirm_frames = max(
+            1, int(self.get_parameter('detect_confirm_frames').value))
+        self.detect_history_frames = max(
+            1, int(self.get_parameter('detect_history_frames').value))
         self.camera_hfov = math.radians(float(self.get_parameter('camera_hfov_deg').value))
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
@@ -190,6 +232,9 @@ class PerceptionNode(Node):
             'slow_distance': lambda v: setattr(self, 'slow_distance', float(v)),
             'inference_rate': lambda v: setattr(self, 'inference_rate', float(v)),
             'score_threshold': lambda v: setattr(self, 'score_threshold', float(v)),
+            'detect_confirm_frames': lambda v: setattr(
+                self, 'detect_confirm_frames', max(1, int(v))),
+            'detect_history_frames': self._set_detection_history_frames,
             'camera_hfov_deg': lambda v: setattr(self, 'camera_hfov', math.radians(float(v))),
             'scan_angle_offset_deg': lambda v: setattr(
                 self, 'scan_angle_offset', math.radians(float(v))),
@@ -208,6 +253,13 @@ class PerceptionNode(Node):
             if apply is not None:
                 apply(param.value)
         return SetParametersResult(successful=True)
+
+    def _set_detection_history_frames(self, value):
+        history_frames = max(1, int(value))
+        if history_frames == self.detect_history_frames:
+            return
+        self.detect_history_frames = history_frames
+        self._detection_history = deque(self._detection_history, maxlen=history_frames)
 
     # --- サブスクライバ ---
     def _scan_cb(self, msg: LaserScan):
@@ -327,16 +379,30 @@ class PerceptionNode(Node):
             image = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
             if image is None:
                 return
-            resized = cv2.resize(
-                image, (self._detector.input_width, self._detector.input_height))
-            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            model_w = self._detector.input_width
+            model_h = self._detector.input_height
+            img_h, img_w = image.shape[:2]
+            r = min(model_w / img_w, model_h / img_h)
+            resized_w = round(img_w * r)
+            resized_h = round(img_h * r)
+            resized = cv2.resize(image, (resized_w, resized_h))
+            pad_x = (model_w - resized_w) // 2
+            pad_y = (model_h - resized_h) // 2
+            letterboxed = np.full((model_h, model_w, 3), 114, dtype=np.uint8)
+            letterboxed[pad_y:pad_y + resized_h, pad_x:pad_x + resized_w] = resized
+            rgb = cv2.cvtColor(letterboxed, cv2.COLOR_BGR2RGB)
             start = time.time()
             with self._detector_lock:
                 raw = self._detector.infer(rgb)
             elapsed_ms = (time.time() - start) * 1000.0
-            detections = self._parse_detections(raw)
+            geom = (r, pad_x, pad_y, img_w, img_h)
+            detections = self._parse_detections(raw, geom)
+            self._detection_history.append(detections)
+            detections = _confirm_detections(
+                self._detection_history, self.detect_confirm_frames)
+            detections.sort(key=lambda d: d['area'], reverse=True)
             with self._lock:
-                self._detections = detections
+                self._detections = detections[:10]
                 self._detection_stamp = time.time()
                 self._inference_ms = round(elapsed_ms, 1)
                 self._inference_times.append(self._detection_stamp)
@@ -346,8 +412,11 @@ class PerceptionNode(Node):
         finally:
             self._infer_busy = False
 
-    def _parse_detections(self, raw):
+    def _parse_detections(self, raw, geom):
         """HAILO NMS BY CLASS 出力（正規化座標）を検出リストへ変換する。"""
+        r, pad_x, pad_y, img_w, img_h = geom
+        model_w = self._detector.input_width
+        model_h = self._detector.input_height
         per_class = raw[0] if isinstance(raw, (list, tuple)) or (
             isinstance(raw, np.ndarray) and raw.dtype == object) else raw
         detections = []
@@ -359,6 +428,14 @@ class PerceptionNode(Node):
                 if score < self.score_threshold:
                     continue
                 y_min, x_min, y_max, x_max = (float(v) for v in box[:4])
+                x_min = (x_min * model_w - pad_x) / (img_w * r)
+                x_max = (x_max * model_w - pad_x) / (img_w * r)
+                y_min = (y_min * model_h - pad_y) / (img_h * r)
+                y_max = (y_max * model_h - pad_y) / (img_h * r)
+                x_min, x_max = max(0.0, min(1.0, x_min)), max(0.0, min(1.0, x_max))
+                y_min, y_max = max(0.0, min(1.0, y_min)), max(0.0, min(1.0, y_max))
+                if x_max <= x_min or y_max <= y_min:
+                    continue
                 cx = (x_min + x_max) / 2.0
                 distance = self._distance_for_box(x_min, x_max)
                 detections.append({
@@ -371,8 +448,7 @@ class PerceptionNode(Node):
                     'center_x': round(cx, 3),
                     'area': round(max(0.0, x_max - x_min) * max(0.0, y_max - y_min), 4),
                 })
-        detections.sort(key=lambda d: d['area'], reverse=True)
-        return detections[:10]
+        return detections
 
     # --- 判定結果の配信 ---
     def _publish_status(self):

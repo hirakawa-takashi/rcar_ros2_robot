@@ -61,11 +61,12 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 
 - Publish: `/cmd_vel` (`geometry_msgs/Twist`)、`~/status` (`std_msgs/String`)
 - Subscribe: `/scan` (`sensor_msgs/LaserScan`)、`/imu/data` (`sensor_msgs/Imu`)、`/odom` (`nav_msgs/Odometry`)、`/system_status` (`std_msgs/String`)、`/camera/image_raw/compressed` (`sensor_msgs/CompressedImage`)
-- HTTP: `GET /`、`GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
+- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
 - パラメータ: `src/ai_car_web/config/dashboard.yaml`
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。
 `cmd_timeout`（既定 0.7 秒）の間に新しい指令が来ない場合は自動的に停止する。
+画面上部の「プロジェクト説明」ボタンから、`architecture.yaml` に基づく構成・安全機構・API・開発状況の7タブを確認できる。
 `dashboard_node.api_token` または環境変数 `AI_CAR_API_TOKEN` を設定すると、POST `/api/*` に
 `X-API-Token`（または Bearer）ヘッダーが必要になる。UI は `http://<PI_IP>:8080/?token=...` を
 一度開くとトークンを localStorage に保存する。
@@ -230,11 +231,11 @@ python3 -c "from hailo_platform import VDevice; print('ok')"
 
 ```bash
 mkdir -p ~/AI-CAR_ws/models
-curl -L -o ~/AI-CAR_ws/models/yolov8n.hef \
-  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8n.hef
+curl -L -o ~/AI-CAR_ws/models/yolov8m.hef \
+  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8m.hef
 ```
 
-パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する（未設定なら LiDAR 判定のみで動作）。
+標準設定は YOLOv8m で、パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する。YOLOv8s / YOLOv8n を使う場合は `hef_path` をそれぞれ `~/AI-CAR_ws/models/yolov8s.hef` / `~/AI-CAR_ws/models/yolov8n.hef` に変更する（未設定なら LiDAR 判定のみで動作）。
 
 ## 依存
 
@@ -247,9 +248,11 @@ pip3 install fastapi uvicorn
 pip3 install --user --break-system-packages "websockets>=13"
 ```
 
-映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 1280` /
-`height: 720` / `jpeg_quality: 80`（約 30fps・約 2.9MB/s）、`dashboard_node.camera_stream_rate: 30.0`、
-`perception_node.inference_rate: 10.0`。帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
+映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 960` /
+`height: 540` / `jpeg_quality: 80`（`FrameDurationLimits` により約 30fps。以前の 1280×720 は camera_node の CPU が約 50% になるため縮小）、`dashboard_node.camera_stream_rate: 30.0`、
+`perception_node.inference_rate: 15.0`、`dashboard_node.telemetry_rate: 10.0`、`dashboard_node.scan_max_points: 720`、
+`autonomy_node.publish_rate: 10.0`、`joy_teleop_node.publish_rate: 10.0`、`imu_node.publish_rate: 20.0`、`lcd_display_node.update_rate: 2.0` に設定している。
+帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
 
 ## ドキュメント
 
