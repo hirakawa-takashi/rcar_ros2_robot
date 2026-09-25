@@ -108,6 +108,8 @@ class DashboardNode(Node):
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
         self.declare_parameter('telemetry_rate', 5.0)
+        # LiDAR 点群をブラウザに送るときの上限点数（間引き）
+        self.declare_parameter('scan_max_points', MAX_SCAN_POINTS)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('gpio_config', '')
         self.declare_parameter('motor_hat_config', '')
@@ -129,6 +131,7 @@ class DashboardNode(Node):
         self.max_angular = float(self.get_parameter('max_angular_speed').value)
         self.cmd_timeout = float(self.get_parameter('cmd_timeout').value)
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
+        self.scan_max_points = max(1, int(self.get_parameter('scan_max_points').value))
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
         self.api_token = str(self.get_parameter('api_token').value) or os.environ.get(
@@ -220,7 +223,7 @@ class DashboardNode(Node):
     # --- サブスクライバ ---
     def _scan_cb(self, msg: LaserScan):
         ranges = [r for r in msg.ranges if math.isfinite(r) and r > msg.range_min]
-        step = max(1, len(msg.ranges) // MAX_SCAN_POINTS)
+        step = max(1, len(msg.ranges) // self.scan_max_points)
         points = []
         for i in range(0, len(msg.ranges), step):
             r = msg.ranges[i]

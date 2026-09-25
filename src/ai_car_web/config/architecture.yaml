@@ -26,7 +26,7 @@ overview:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
     - {name: FastAPI + uvicorn, role: Web ダッシュボード / REST / WebSocket}
-    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8n）}
+    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8m）}
     - {name: libcamera (rpicam), role: カメラ v3 取り込み}
     - {name: spidev / libgpiod / Pillow, role: ST7789 液晶描画}
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
@@ -38,11 +38,13 @@ hardware:
     - {id: motor_hat, label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2, bus: I2C 0x60, power: 12V（モーター）, jump: motor, side: right}
     - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
     - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
-    - {id: camera, label: カメラモジュール v3, sub: IMX708 1280×720 30fps, bus: CSI, power: 5V, side: left}
-    - {id: imu, label: GY-BNO055, sub: 9 軸 IMU 50 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
-    - {id: lcd, label: ZJY-IPS130-V2.0, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
+    - {id: camera, label: カメラモジュール v3, sub: IMX708 960×540 30fps, bus: CSI, power: 5V, side: left}
+    - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
+    - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
-    - {id: battery, label: バッテリー, sub: 5V / 12V 2 系統, bus: 5V → Pi 5・センサー / 12V → Motor HAT のみ, power: '', side: top}
+    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 30° 前傾, bus: I2C（初期 0x29、未配線）, power: 3V3, side: bottom}
+    - {id: battery, label: CIO SMARTCOBY Pro SLIM 35W ×2, sub: 10000mAh / USB-C PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）/ 12V → Motor HAT のみ, power: 12V, side: top}
+    - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
 
 nodes:
   - id: dashboard_node
@@ -60,7 +62,7 @@ nodes:
   - id: joy_teleop_node
     label: joy_teleop_node
     file: ai_car_web/joy_teleop_node.py
-    role: Logitech F710 を Linux joystick API で読み、正規化 Twist を 20 Hz で publish。START 長押しで手動 ⇄ 自動、BACK で停止要求
+    role: Logitech F710 を Linux joystick API で読み、正規化 Twist を 10 Hz で publish。START 長押しで手動 ⇄ 自動、BACK で停止要求
     publishes: [/joy_cmd, /drive_mode_request]
     subscribes: [/drive_mode]
     params:
@@ -85,7 +87,7 @@ nodes:
   - id: autonomy_node
     label: autonomy_node
     file: ai_car_web/autonomy_node.py
-    role: Level 1 自律走行。/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退を決定して /cmd_vel_auto に 20 Hz で常時 publish（AUTO 以外はゼロ）
+    role: Level 1 自律走行。/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退を決定して /cmd_vel_auto に 10 Hz で常時 publish（AUTO 以外はゼロ）
     publishes: [/cmd_vel_auto, /autonomy_status]
     subscribes: [/scan, /obstacle_status, /drive_mode]
     params:
@@ -103,7 +105,7 @@ nodes:
   - id: perception_node
     label: perception_node
     file: ai_car_web/perception_node.py
-    role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8n）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御
+    role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
     subscribes: [/scan, /camera/image_raw/compressed, /system_status]
     params:
@@ -111,6 +113,10 @@ nodes:
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
       - {name: danger_distance, ref: perception_node.danger_distance, unit: m, desc: 検出枠を赤にする距離}
       - {name: inference_rate, ref: perception_node.inference_rate, unit: Hz, desc: 推論レート上限}
+      - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
+      - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
+      - {name: detect_history_frames, ref: perception_node.detect_history_frames, unit: frame, desc: 検出確認に使う履歴長}
+      - {name: model_gops, ref: perception_node.model_gops, unit: GOP, desc: YOLOv8m 640x640 の演算量}
       - {name: cpu_temp_warn, ref: perception_node.cpu_temp_warn, unit: ℃, desc: 推論 40% へ}
       - {name: cpu_temp_crit, ref: perception_node.cpu_temp_crit, unit: ℃, desc: 推論停止（LiDAR 判定は継続）}
       - {name: hailo_temp_warn, ref: perception_node.hailo_temp_warn, unit: ℃, desc: 推論 40% へ}
@@ -127,7 +133,7 @@ nodes:
   - id: camera
     label: camera（camera_ros）
     file: 外部パッケージ camera_ros + Raspberry Pi 版 libcamera
-    role: IMX708 を 1280×720 30fps で取り込み JPEG（品質 80）で publish（launch 側で respawn）
+    role: IMX708 を 960×540 30fps で取り込み JPEG（品質 80）で publish（launch 側で respawn）
     publishes: [/camera/image_raw/compressed]
     subscribes: []
     params: []
@@ -135,7 +141,7 @@ nodes:
   - id: imu_node
     label: imu_node
     file: ai_car_web/imu_node.py
-    role: GY-BNO055（I2C 0x29）を読み /imu/data を 50 Hz で publish
+    role: GY-BNO055（I2C 0x29）を読み /imu/data を 20 Hz で publish
     publishes: [/imu/data]
     subscribes: []
     params: []
@@ -170,12 +176,12 @@ nodes:
 topics:
   - {name: /scan, type: sensor_msgs/LaserScan, desc: LiDAR 360° スキャン（約 8 Hz）}
   - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（30 Hz）}
-  - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（50 Hz）}
+  - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
-  - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（20 Hz）}
+  - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
-  - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（20 Hz、AUTO 以外はゼロ）}
+  - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（10 Hz、AUTO 以外はゼロ）}
   - {name: /drive_mode_request, type: std_msgs/String (JSON), desc: 'モード切替要求 {mode: manual|auto|stop|toggle, source}'}
   - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz・transient local）}
   - {name: /cmd_vel, type: geometry_msgs/Twist, desc: 最終速度指令（drive_mode_node のみが publish）}
@@ -186,7 +192,7 @@ topics:
 drive_modes:
   states:
     - {id: manual, label: 手動, desc: /cmd_vel_manual（Web + ゲームパッド）を /cmd_vel へ中継。起動時の既定}
-    - {id: auto, label: 自動, desc: /cmd_vel_auto（autonomy_node）を 20 Hz で中継}
+    - {id: auto, label: 自動, desc: /cmd_vel_auto（autonomy_node）を 10 Hz で中継}
     - {id: stop, label: 停止, desc: ゼロ速度を定期的に publish。手動指令は無視し、明示的に「手動」へ戻す必要がある}
   transitions:
     - {from: manual, to: auto, trigger: Web「自動」/ START 長押し, condition: 進入条件をすべて満たす（下記）}
@@ -228,7 +234,7 @@ autonomy:
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg 180°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
-    - カメラ JPEG → 640×640 にリサイズ → Hailo-8 YOLOv8n（約 9 ms）→ 検出枠の横位置を camera_hfov_deg で方位角へ → LiDAR の同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の同方位クラスタ（cluster_gap）の中央値を距離として付与
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（減速 speed_scale）、液晶表示
 
 api:

@@ -12,14 +12,16 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 | 1 | **Raspberry Pi 5** | 8GB RAM（メインボード） | — |
 | 2 | **Raspberry Pi AI HAT+** | 26TOPS NPU（推論アクセラレーション） | Pi 5 GPIO ヘッダー |
 | 3 | **Adafruit DC & Stepper Motor HAT** | モーター駆動制御（4ch） | Pi 5 GPIO ヘッダー（I²C） |
-| 4 | **Raspberry Pi カメラモジュール v3** | 1280×720・30fps | CSI バス |
+| 4 | **Raspberry Pi カメラモジュール v3** | 960×540・30fps | CSI バス |
 | 5 | **LiDAR（RPLIDAR A1M8）** | 2D レーザースキャナ（最大距離8m） | USB シリアル |
 | 6 | **9軸 IMU（GY-BNO055）** | 加速度・ジャイロ・地磁気融合 | I²C |
 | 7 | **状態表示液晶 ZJY-IPS130-V2.0** | 1.3 インチ 240×240 IPS、ST7789、7 ピン（CS なし）。旧 TM1637 7 セグ LED を置き換え | SPI0（pin 19/23）＋ GPIO24/25/23（RES/DC/BLK） |
 | 8 | **Logicool G ゲームパッド** | 手動操作ジョイスティック | USB Bluetooth |
 | 9 | **メカナムホイール駆動系** | オムニディレクショナル移動（4輪）。OSOYOO 520 エンコーダー付きモーター ×4 | モーター HAT 経由（エンコーダーは Pi GPIO 直結） |
 | 9a | **エンコーダー用ジャンパー線** ×2 | 25cm、2.54mm ピッチ、メス-メス 6ピン to 6ピン。OSOYOO 520 モーターエンコーダー↔Pi 接続専用。型番 2024006000 | モーター 6ピン → HAT M端子（M+/M−）と Pi ヘッダー（VCC/GND/A/B） |
-| 10 | **バッテリー** | 5V / 12V 2系統出力 | — |
+| 10 | **バッテリー（CIO SMARTCOBY Pro SLIM 35W）** ×2 | 10000mAh、USB-C PD（12V 出力）。3D プリントの箱に 2 個重ねて収納 | USB-C PD 12V → DROK 降圧コンバーター / Motor HAT |
+| 10a | **DROK 降圧コンバーター**（B09JKHD3SH） | DC 9〜36V → 5.2V / 5A、USB-A 出力。基板 63×27 mm | 12V 入力（DC ジャック / 端子）→ USB-A → Pi 5 USB-C |
+| 10b | **落下防止センサー（Dovhmoh VL53L1X）** ×2 | ToF 測距、3〜5V。前後バンパーに真下から進行方向へ 30° 傾けて取付。I²C 初期アドレス 0x29（BNO055 と重なるため XSHUT でアドレス変更が必要）。未配線 | I²C |
 | 11 | **配線ケーブル一式** | 接続用 | — |
 | 12 | **シャーシ（ロボット車体）** | 機械構造 | — |
 
@@ -63,72 +65,50 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 
 ## Motor HAT モーター端子の割り付け（`src/ai_car_web/config/motor_hat.yaml`）
 
-車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は **赤 Motor+ / 白 Motor−**（6 本の内訳は次節）。
+車輪の呼び方は進行方向基準で「**M1 前左**」のように端子名＋位置で統一する。モーター線は **黒 Motor+ / 赤 Motor−**（6 本の内訳は次節）。
 
 | 端子 | 車輪 | Motor+ / Motor− | 回転 | TB6612 | PCA9685 ch (PWM / IN1 / IN2) |
 |------|------|-----------------|------|--------|-------------------------------|
-| M1 | 前左（front_left） | 赤 / 白 | 正転 | #1 A | 8 / 10 / 9 |
-| M2 | 前右（front_right） | 赤 / 白 | 反転 | #1 B | 13 / 11 / 12 |
-| M3 | 後左（rear_left） | 赤 / 白 | 正転 | #2 A | 2 / 4 / 3 |
-| M4 | 後右（rear_right） | 赤 / 白 | 反転 | #2 B | 7 / 5 / 6 |
+| M1 | 前左（front_left） | 黒 / 赤 | 正転 | #1 A | 8 / 10 / 9 |
+| M2 | 前右（front_right） | 黒 / 赤 | 反転 | #1 B | 13 / 11 / 12 |
+| M3 | 後左（rear_left） | 黒 / 赤 | 正転 | #2 A | 2 / 4 / 3 |
+| M4 | 後右（rear_right） | 黒 / 赤 | 反転 | #2 B | 7 / 5 / 6 |
 
 > 暫定値。実配線と照合し、モーター制御ノードで回転方向を確認して `reversed` を修正する。
 
 ### モーター 1 台 6 本の接続先（`motor_hat.yaml` の `encoder` / `gpio_pins.yaml`）
 
-各モーターの 6 ピン配線（メーカー資料の配線色）:
+各モーターの 6 ピン配線。配線色はエンコーダー基板のコネクタ横の印字 **S2 / S1 / GND / VCC / M− / M+**（線は順に 緑 / 橙 / 黄 / 白 / 赤 / 黒）で確認した（Motor+/− はテスターで黒-赤間 4Ω・手回しで発電も確認）。公式の色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用せず、VCC / GND を逆に挿すとエンコーダーを壊す恐れがあるため、基板印字とコネクタのピン番号で確認する:
 
 | 配線色 | ピン名称 | 役割 | 接続先 |
 |--------|----------|------|--------|
-| 赤 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
-| 白 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
-| 青 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
-| 黒 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
-| 緑 | Encoder A | A 相パルス出力 | Pi GPIO |
-| 黄 | Encoder B | B 相パルス出力 | Pi GPIO |
+| 黒 | Motor+ (M+) | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
+| 赤 | Motor− (M−) | モーター駆動電源（負極） | Motor HAT M端子 − |
+| 白 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT (3V3 power) |
+| 黄 | GND | エンコーダー用グランド | Motor HAT (Ground) |
+| 橙 | Encoder A (S1) | A 相パルス出力 | Pi GPIO |
+| 緑 | Encoder B (S2) | B 相パルス出力 | Pi GPIO |
 
-Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT 上に多数ある 3V3 / GND ピン（Pi 40 ピンヘッダーの引き出しで番号は共通）へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
+> **注意**: 赤（Motor−）と黒（Motor+）はモーター端子の 2 本で、一般的な「赤 = 電源 + / 黒 = GND」ではない。どちらも Motor HAT の M 端子以外（Pi や電池の GND など）にはつながない。入れ替えても回転方向が逆になるだけで故障しない。
 
-| モーター | Motor+ 赤 | Motor− 白 | VCC 青 | GND 黒 | Encoder A 緑 | Encoder B 黄 |
+Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT (3V3 power) / Motor HAT (Ground) へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
+
+| モーター | Motor+ 黒 | Motor− 赤 | VCC 白 | GND 黄 | Encoder A 橙 | Encoder B 緑 |
 |----------|-----------|-----------|--------|--------|--------------|--------------|
-| M1 前左 | HAT M1 + | HAT M1 − | HAT pin 17 (3V3) | HAT pin 30 | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
-| M2 前右 | HAT M2 + | HAT M2 − | HAT pin 17 (3V3) | HAT pin 34 | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |
-| M3 後左 | HAT M3 + | HAT M3 − | HAT pin 17 (3V3) | HAT pin 39 | Pi pin 37 (GPIO26) | Pi pin 32 (GPIO12) |
-| M4 後右 | HAT M4 + | HAT M4 − | HAT pin 17 (3V3) | HAT pin 25 | Pi pin 36 (GPIO16) | Pi pin 38 (GPIO20) |
+| M1 前左 | HAT M1 + | HAT M1 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
+| M2 前右 | HAT M2 + | HAT M2 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |
+| M3 後左 | HAT M3 + | HAT M3 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 37 (GPIO26) | Pi pin 32 (GPIO12) |
+| M4 後右 | HAT M4 + | HAT M4 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 36 (GPIO16) | Pi pin 38 (GPIO20) |
 
-- VCC / GND は Motor HAT 上の 3V3 / GND ピンを使う（`motor_hat.yaml` の `power_board: Motor HAT`）。VCC は **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
+- VCC / GND は Motor HAT (3V3 power) / Motor HAT (Ground) を使う（`motor_hat.yaml` の `power_board: Motor HAT`）。VCC は **3V3**（4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
 - 使用済みの液晶ピン（pin 16/18/19/22/23、ZJY-IPS130）と I2C（pin 3/5）は避けている
 - GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
-> Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
-
---------|----------|------|--------|
-| 赤 | Motor+ | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
-| 白 | Motor− | モーター駆動電源（負極） | Motor HAT M端子 − |
-| 青 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
-| 黒 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
-| 緑 | Encoder A | A 相パルス出力 | Pi GPIO |
-| 黄 | Encoder B | B 相パルス出力 | Pi GPIO |
-
-Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT 上に多数ある 3V3 / GND ピン（Pi 40 ピンヘッダーの引き出しで番号は共通）へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
-
-| 端子 | 車輪 | Encoder A（緑）→ Pi ピン (GPIO) | Encoder B（黄）→ Pi ピン (GPIO) |
-|------|------|--------------------------------|--------------------------------|
-| M1 | 前左 | 29 (GPIO5) | 31 (GPIO6) |
-| M2 | 前右 | 33 (GPIO13) | 35 (GPIO19) |
-| M3 | 後左 | 37 (GPIO26) | 32 (GPIO12) |
-| M4 | 後右 | 36 (GPIO16) | 38 (GPIO20) |
-
-- エンコーダー VCC（青）: **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが A/B 出力が GPIO 直結のため 5V は使わない
-- エンコーダー GND（黒）: pin 30 / 34 / 39 / 25
-- 使用済みの液晶ピン（pin 16/18/19/22/23、ZJY-IPS130）と I2C（pin 3/5）は避けている
-- GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
-
-> Pi 側のピン割り付けは暫定値。実配線と照合し、A/B の逆相（カウント方向）はエンコーダー読み取りノードで確認して修正する。
+> Pi 側のピン割り付けは暫定値。M1 は白 Motor HAT (3V3 power) / 黄 Motor HAT (Ground) / 橙 GPIO5 / 緑 GPIO6 で A/B 相パルスを確認済み（車輪 1 回転あたり約 2,200 カウント、4 逓倍の概算。前進方向の手回しでカウントは負）。A/B の逆相（カウント方向）はエンコーダー読み取りノードで符号を合わせる。
 
 ---
 
 ## メモ
-- カメラ解像度は 1280×720 / 30fps・JPEG 品質80 に設定（ダッシュボード表示の滑らかさ優先）
+- カメラ解像度は 960×540 / 30fps・JPEG 品質80 に設定（CPU 負荷とダッシュボード表示の滑らかさのバランス）
 - AI HAT+ は NPU 推論用（ROS2 ノードと連携）
 - GY-BNO055 は ROS2 の `imu` トピックを公開

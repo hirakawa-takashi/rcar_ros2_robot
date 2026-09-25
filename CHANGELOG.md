@@ -2,7 +2,21 @@
 
 ## [Unreleased]
 
+### Known Issues
+- Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
+
 ### Added
+- Motor HAT 接続図の配線表に 1 本ごとの「備考」列を追加（Motor+ / Motor− は基板印字 M+ / M−、VCC / GND はエンコーダー電源 3V3 / GND、Encoder A / B は A 相（S1）/ B 相（S2）。`/api/motor_hat` の `wires[].note`）。回転・ドライバ情報は「回転 / ドライバ」列に分離
+- エンコーダー VCC / GND の接続先表記を「Motor HAT (3V3 power)」「Motor HAT (Ground)」に統一（ピン番号表記「HAT pin 17 (3V3)」などを廃止。`/api/motor_hat` の `dest`・接続図・BOM・設定コメント）
+- モーター 6 本の配線色をエンコーダー基板のコネクタ印字に基づき修正: Motor+（M+）黒 / Motor−（M−）赤 / VCC 白 / GND 黄 / Encoder A（S1）橙 / Encoder B（S2）緑（旧: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / A 赤 / B 黒）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新
+- モーター 6 本の配線色をエンコーダー基板印字（M+ / M− / VCC / GND / S1 / S2）に基づき確定: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / Encoder A（S1）赤 / Encoder B（S2）黒（旧: Motor− 白 / VCC 青 / GND 黒 / A 緑 / B 黄）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新（接続図・一覧表・GPIO 表は YAML から描画されるため自動反映）
+- プロジェクト説明モーダルのタイトル横に「PDF（全タブ一括）」ボタンを追加。7 タブの内容（配線図カード含む）を目次リンク・章ごとの改ページ付きの 1 ページにまとめて新規タブで開き、ブラウザの印刷から PDF 保存できる（印刷時は白背景・図は元配色）
+- 電源を 12V→5.2V/5A 降圧コンバータに変更して低電圧が解消したため、カメラ取り込み・MJPEG 30fps、推論 15Hz、テレメトリ 10Hz、LiDAR 点群 720 点に戻す（IMU 20Hz、autonomy / joy 10Hz、液晶 2Hz は維持）。`config.txt` に `usb_max_current_enable=1` を設定
+- CPU 使用率 20% 以下を目標に周期を見直し: カメラ取り込み 15fps（`FrameDurationLimits`）、推論 5Hz、テレメトリ 5Hz・LiDAR 点群 360 点（新パラメータ `scan_max_points`）、IMU 20Hz、autonomy / joy 10Hz、液晶 2Hz
+- CPU 負荷軽減のためカメラ解像度を 1280×720 → 960×540 に変更（camera_node の JPEG 圧縮負荷を削減。検出側はレターボックスで 640×640 に揃えるため入力サイズ非依存）
+- CPU 負荷軽減のため推論レート上限を 15 Hz（YOLOv8m の実効約 12 Hz は不変）、MJPEG 配信を 15 fps に変更（カメラ取り込みは 30 fps のまま）
+- カメラ物体検出を YOLOv8m に変更し推論レートを 30 Hz に引き上げ（推論タイマー 0.2 s → 0.02 s で `inference_rate` 上限が実際に効くよう修正。従来は実効 5 Hz 上限）
+- ダッシュボードにネイビー×シアンの計器パネル風テーマを適用（CSS のみ。カードのガラス風背景・数値の等幅フォント・状態バッジの発光・接続ドット / AUTO バッジのパルス・カメラ / LiDAR 枠のコーナーマーカー。レイアウトと表示内容は不変）
 - GPIO 40 ピンヘッダー / Motor HAT 接続図カードをメイン画面からプロジェクト説明「ハードウェア構成」タブへ移動
 - LiDAR (/scan) 表示の距離リングに数値ラベル（m）を追加
 - プロジェクト説明ボタンと7タブの全画面モーダルを追加（`architecture.yaml` / `/api/architecture` による構成・安全機構・API・開発状況表示、dashboard.yaml の実値と生存ノード / Topic を反映）
@@ -15,6 +29,7 @@
 - ダッシュボード: 運転モードバッジ・3 ボタン（`GET/POST /api/drive_mode`）と自律走行カードを追加。7 セグに `AUto` / `StoP` を追加
 
 ### Changed
+- `perception_node` のカメラ推論を YOLOv8m（640x640 / 78.9 GOP）へ更新。レターボックス前処理でアスペクト比を維持し、検出枠を元画像座標へ復元。信頼度 0.5 と複数フレーム確認（履歴3フレーム中2回）で誤検出を抑制
 - 状態表示器を TM1637 7 セグから ZJY-IPS130-V2.0 液晶へ置き換え（launch 既定 `use_lcd_display=true` / `use_seg_display=false`。`gpio_pins.yaml`・BOM・README の配線を pin 16/17/18/19/20/22/23 の液晶接続に更新）
 - `dashboard_node` の手動指令出力を `/cmd_vel` から `/cmd_vel_manual` に変更（`/cmd_vel` は `drive_mode_node` が発行）
 - Motor HAT 接続図・一覧表を 1 モーター 6 本（Motor+ / Motor− / VCC / GND / Encoder A / Encoder B）すべて明示する形に変更（`/api/motor_hat` に `wires`）。エンコーダー VCC / GND は Motor HAT 上の 3V3 / GND ピンへ（`motor_hat.yaml` `hat.encoder.power_board`）
