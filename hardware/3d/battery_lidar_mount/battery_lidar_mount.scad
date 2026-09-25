@@ -8,6 +8,7 @@
 //       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
 
 part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "assembly"
+show_cables = false;  // 組立図に配線経路の目安を描く
 
 $fn = 48;
 
@@ -53,7 +54,7 @@ clr = 0.6;      // 片側のすき間
 
 // ---- 箱 ----
 wall = 2.5;
-floor_t = 2;
+floor_t = 3;          // フランジと同じ厚さ（バッテリーを段差なしで引き出せる）
 flange_t = 3;
 flange_y0 = 104;
 flange_y1 = 196;
@@ -92,7 +93,12 @@ cam_hole_z = [2, 14.5];   // 基板下端（上下逆なのでケーブルと反
 cam_boss_d = 5.5;
 cam_boss_l = 4;
 cam_top_gap = 1;          // 箱の上端から基板上端まで
+cam_cx = 113;             // 右寄せ: フラットケーブルを LiDAR のモーター（ふたの上 1.5 mm まで下がる）と柱の横に通す
 cable_notch_w = 20;       // ふた前端のケーブル逃げ
+fpc_w = 16;               // カメラ用フラットケーブル（Standard 側の幅）
+fpc_clip_y = [125, 160];  // ふたの上でケーブルを押さえるブリッジ
+tie_w = 4.5;              // 結束バンド（幅 3.6 mm まで）を通すトンネル
+tie_h = 2;
 
 // ---- ラズパイ台（Raspberry Pi 5、天板の後ろ側）----
 pi_mount_holes = [[11, 11], [143, 11], [9, 90], [145, 90]];
@@ -112,12 +118,12 @@ pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
 // ---- ラズパイ台の左側: IMU（GY-BNO055）と液晶（ZJY-IPS130）----
 wing = [4, 18, 34, 80];   // x0, y0, x1, y1
 imu_board = [20, 27];     // 実物に合わせて変更（長辺を前後方向に置く）
-imu_c = [18, 35];
-imu_lift = 5;             // 下向きのピンヘッダーを逃がす台の高さ
+imu_c = [18, 35];         // 液晶より後ろ（液晶は上端が前へ出るように倒すので、IMU の上が空く）
+imu_lift = 3;             // ピンヘッダーは上向きに付ける（台はハンダ面の逃げ）
 imu_wall = 1.6;
 lcd_board = [27.5, 39, 1.6];  // 幅 x 高さ x 基板厚（実物に合わせて変更）
 lcd_cx = 17.5;
-lcd_y = 56;               // 画面の下端（後ろ向き）
+lcd_y = 56;               // 画面の下端（後ろ向き）。ピンは上端の裏側で、配線は前上の GPIO ヘッダーへ
 lcd_tilt = 30;            // 垂直から後ろへ倒す角度
 lcd_lip = 1;              // 基板の左右の縁を押さえる幅
 
@@ -156,7 +162,12 @@ lidar_motor_front = true; // LiDAR のモーター側（細い側）を前（+Y�
 // RPLIDAR A1M8 取付穴（回転中心基準、データシート Figure 5-2）
 //   ヘッド側 2 穴: 中心から 28 mm、間隔 56 mm / モーター側 2 穴: 中心から 42 mm、間隔 40 mm
 lidar_holes_rel = [[-28, 28], [28, 28], [-20, -42], [20, -42]];
-lidar_cx = box_cx;
+lidar_dx = -8;          // 左へ寄せ、右側にカメラのフラットケーブルの通り道を空ける（TF の横オフセットに反映すること）
+lidar_cx = box_cx + lidar_dx;
+lidar_motor_d = 32;     // 取付面より下に出るモーター（回転中心から 45.5 mm、取付面から 26.5 mm 下まで）
+lidar_motor_off = 45.5;
+lidar_below = 26.5;
+lidar_core_below = 8;   // ヘッドの下の基板部（約 60 x 60 mm）が取付面から下に出る量（図からの読み取り）
 lidar_cy = box_cy + (lidar_motor_front ? -7 : 7);
 
 function lidar_hole(p) = lidar_motor_front
@@ -164,12 +175,22 @@ function lidar_hole(p) = lidar_motor_front
     : [lidar_cx + p[0], lidar_cy + p[1]];
 
 cam_z0 = box_h - cam_top_gap - cam_h;
-function cam_pts() = [for (dx = [-cam_hole_dx / 2, cam_hole_dx / 2], z = cam_hole_z) [box_cx + dx, cam_z0 + z]];
+function cam_pts() = [for (dx = [-cam_hole_dx / 2, cam_hole_dx / 2], z = cam_hole_z) [cam_cx + dx, cam_z0 + z]];
 
 module rrect(x0, y0, x1, y1, r, h) {
     hull() for (x = [x0 + r, x1 - r], y = [y0 + r, y1 - r])
         translate([x, y, 0]) cylinder(r = r, h = h);
 }
+
+// 結束バンドを下にくぐらせるブリッジ。ケーブルは Y 方向に沿って上に載せ、バンドは X 方向に通す
+module tie_mount() {
+    difference() {
+        translate([-4, -3, 0]) cube([8, 6, tie_h + 1.4]);
+        translate([-5, -tie_w / 2, -0.01]) cube([10, tie_w, tie_h]);
+    }
+}
+
+tie_pts_box = [[13, 135], [13, 165], [134, 108]];
 
 module box() {
     difference() {
@@ -179,6 +200,7 @@ module box() {
             for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
             for (p = cam_pts()) translate([p[0], box_y0 + box_y - 0.01, p[1]])
                 rotate([-90, 0, 0]) cylinder(d = cam_boss_d, h = cam_boss_l);
+            for (p = tie_pts_box) translate([p[0], p[1], flange_t - 0.01]) tie_mount();
         }
         // バッテリー収納部
         translate([box_x0 + wall, box_y0 + wall, floor_t]) cube([in_x, in_y, in_z + 1]);
@@ -217,16 +239,26 @@ module lid() {
                 q = lidar_hole(p);
                 translate([q[0], q[1], 0]) cylinder(d = lidar_tower_d, h = lid_t + lidar_tower_h);
             }
+            for (y = fpc_clip_y) translate([cam_cx, y, lid_t - 0.01]) fpc_clip();
+            // LiDAR のハーネスと USB ケーブルの固定（ヘッドの柱の間、ふたの後ろ端）
+            translate([lidar_cx, box_y0 + 7, lid_t - 0.01]) rotate([0, 0, 90]) tie_mount();
         }
         for (p = boss_pts) translate([p[0], p[1], 0]) clear_hole(3, lid_t);
         for (p = lidar_holes_rel) {
             q = lidar_hole(p);
             translate([q[0], q[1], 0]) clear_hole(2.5, lid_t + lidar_tower_h, lid_t + lidar_tower_h - lidar_floor);
         }
-        // カメラケーブルの逃げ（前端中央）
-        translate([box_cx - cable_notch_w / 2, box_y0 + box_y - 3, -1]) cube([cable_notch_w, 10, lid_t + 2]);
-        // 肉抜き + 配線通し
-        translate([lidar_cx - 15, lidar_cy - 15 + (lidar_motor_front ? 7 : -7), -1]) cube([30, 30, lid_t + 2]);
+        // カメラケーブルを上から折り返す逃げ（前端）
+        translate([cam_cx - cable_notch_w / 2, box_y0 + box_y - 3, -1]) cube([cable_notch_w, 10, lid_t + 2]);
+    }
+}
+
+// フラットケーブルを下に差し込むブリッジ（すき間 1.5 mm）
+module fpc_clip() {
+    w = fpc_w + 1.5;
+    difference() {
+        translate([-w / 2 - 2, -3, 0]) cube([w + 4, 6, 2.7]);
+        translate([-w / 2, -4, -0.01]) cube([w, 8, 1.5]);
     }
 }
 
@@ -249,8 +281,8 @@ module pi_base() {
         }
         for (p = pi_mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = pi_base_t + 2);
         for (p = pi_pts) translate([p[0], p[1], pi_base_t + pi_boss_h]) screw_hole(2.5, 8);
-        // 配線通し・通気
-        translate([pad[0] + 10, pad[1] + 10, -1]) cube([pad[2] - pad[0] - 20, pad[3] - pad[1] - 20, pi_base_t + 2]);
+        // 配線通し・通気（後ろ側は台の縁まで開け、天板の開口から上がるモーター線を Pi の後ろへ出す）
+        translate([pad[0] + 10, pad[1] - 1, -1]) cube([pad[2] - pad[0] - 20, pad[3] - pad[1] - 9, pi_base_t + 2]);
     }
 }
 
@@ -362,8 +394,8 @@ module sensor_ghost() {
 }
 
 module camera_ghost() {
-    color("darkgreen") translate([box_cx - cam_w / 2, box_y0 + box_y + cam_boss_l, cam_z0]) cube([cam_w, 1, cam_h]);
-    color("black") translate([box_cx, box_y0 + box_y + cam_boss_l + 1, cam_z0 + cam_h - 14.4]) rotate([-90, 0, 0]) cylinder(d = 8, h = 10);
+    color("darkgreen") translate([cam_cx - cam_w / 2, box_y0 + box_y + cam_boss_l, cam_z0]) cube([cam_w, 1, cam_h]);
+    color("black") translate([cam_cx, box_y0 + box_y + cam_boss_l + 1, cam_z0 + cam_h - 14.4]) rotate([-90, 0, 0]) cylinder(d = 8, h = 10);
 }
 
 module plate() {
@@ -390,6 +422,55 @@ module lidar_ghost() {
             translate([lidar_cx, lidar_cy, 0]) cylinder(d = 72, h = 2);
             translate([lidar_cx, lidar_cy - s * 50, 0]) cylinder(d = 24, h = 2);
         }
+        translate([lidar_cx, lidar_cy - s * lidar_motor_off, -lidar_below]) cylinder(d = lidar_motor_d, h = lidar_below);
+        translate([lidar_cx - 30, lidar_cy - 30, -lidar_core_below]) cube([60, 60, lidar_core_below]);
+    }
+}
+
+// 配線経路の目安（組立図のみ）
+module path(pts, d) {
+    for (i = [0 : len(pts) - 2]) hull() {
+        translate(pts[i]) sphere(d = d, $fn = 12);
+        translate(pts[i + 1]) sphere(d = d, $fn = 12);
+    }
+}
+
+module fpc_path(pts) {
+    for (i = [0 : len(pts) - 2]) hull() {
+        translate(pts[i]) cube([fpc_w, 0.6, 0.6], center = true);
+        translate(pts[i + 1]) cube([fpc_w, 0.6, 0.6], center = true);
+    }
+}
+
+module cable_ghost() {
+    lt = box_h + lid_t;
+    cy = box_y0 + box_y + cam_boss_l - 0.8;
+    pz = pi_base_t + pi_boss_h + 1.6;
+    // カメラ → ふたの上 → USB / LAN 端子の上 → 45° に折って HAT の下へ → CAM 端子
+    color("orange") {
+        fpc_path([[cam_cx, cy, cam_z0 + cam_h], [cam_cx, cy, lt + 1], [cam_cx, box_y0 + box_y - 4, lt + 0.8],
+                  [cam_cx, box_y0 - 2, lt + 0.8], [cam_cx, pi_cy + pi_board[1] / 2 + 2, pz + 16],
+                  [cam_cx, pi_cy - 12, pz + 14.5]]);
+        translate([cam_cx - 8, pi_cy - 12 - 8, pz + 14.5]) cube([0.6, 16, 0.6]);
+        path([[cam_cx - 8, pi_cy - 13, pz + 14.5], [pi_cx - pi_board[0] / 2 + 52, pi_cy - 13, pz + 2]], 1.5);
+    }
+    // LiDAR（USB 変換基板）→ Pi の USB
+    color("silver") path([[lidar_cx + 10, box_y0 + 20, lt + 3], [lidar_cx, box_y0 + 7, lt + 4], [lidar_cx + 30, box_y0 - 6, lt],
+                          [pi_cx + pi_board[0] / 2 + 12, pi_cy + 20, pz + 12], [pi_cx + pi_board[0] / 2 + 2, pi_cy + 19, pz + 12]], 3.5);
+    // バッテリー → Pi の USB-C（後ろ）
+    color("black") path([[box_x0 + box_x + 3, box_cy - 20, floor_t + 8], [134, 108, flange_t + 5], [146, 95, 2],
+                         [146, 10, 2], [pi_cx - pi_board[0] / 2 + 11.2, 8, 2],
+                         [pi_cx - pi_board[0] / 2 + 11.2, pi_cy - pi_board[1] / 2 - 10, pz + 1.6]], 4);
+    // 液晶 / IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
+    hy = pi_cy + pi_board[1] / 2 - 3.5;
+    ht = pi_base_t + pi_boss_h + pi_stack_h + 4;
+    color("magenta") path([[lcd_cx, lcd_y + 21, pi_base_t + 38], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
+    color("purple") path([[imu_c[0], imu_c[1] - 12, pi_base_t + 20], [imu_c[0] + 12, imu_c[1], pi_base_t + 45], [pi_cx - 34, hy + 2, ht]], 2.5);
+    color("yellow") {
+        path([[plate_w / 2, plate_l + 5, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 165, flange_t + 5],
+              [13, 135, flange_t + 5], [20, 100, 10], [pi_cx - 25, hy + 2, ht]], 2.5);
+        path([[plate_w / 2, -5, flange_t + 12], [plate_w / 2, 10, pi_base_t + pi_boss_h + pi_stack_h + 8],
+              [pi_cx - 20, hy, ht + 2]], 2.5);
     }
 }
 
@@ -407,6 +488,7 @@ else {
     pi_ghost();
     camera_ghost();
     sensor_ghost();
+    if (show_cables) cable_ghost();
     color("dimgray") both_bumpers();
     tof_ghost();
 }
@@ -422,4 +504,8 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
      screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
+     fpc_x = [cam_cx - fpc_w / 2, cam_cx + fpc_w / 2],
+     lidar_tower_x_max = lidar_cx + 28 + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + lidar_motor_d / 2,
+     lidar_motor_bottom_z = box_h + lid_t + lidar_tower_h - lidar_below, lid_top_z = box_h + lid_t,
+     lid_screw_head_x_min = boss_pts[1][0] - head_d(3) / 2,
      bump_out = bump_out, bump_gap = bump_gap, stop_len = bump_gap - bump_travel, spring_strain = spring_strain);
