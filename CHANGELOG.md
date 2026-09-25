@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- エンコーダー VCC / GND の接続先表記を「Motor HAT (3V3 power)」「Motor HAT (Ground)」に統一（ピン番号表記「HAT pin 17 (3V3)」などを廃止。`/api/motor_hat` の `dest`・接続図・BOM・設定コメント）
 - モーター 6 本の配線色をエンコーダー基板のコネクタ印字に基づき修正: Motor+（M+）黒 / Motor−（M−）赤 / VCC 白 / GND 黄 / Encoder A（S1）橙 / Encoder B（S2）緑（旧: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / A 赤 / B 黒）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新
 - モーター 6 本の配線色をエンコーダー基板印字（M+ / M− / VCC / GND / S1 / S2）に基づき確定: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / Encoder A（S1）赤 / Encoder B（S2）黒（旧: Motor− 白 / VCC 青 / GND 黒 / A 緑 / B 黄）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新（接続図・一覧表・GPIO 表は YAML から描画されるため自動反映）
 - プロジェクト説明モーダルのタイトル横に「PDF（全タブ一括）」ボタンを追加。7 タブの内容（配線図カード含む）を目次リンク・章ごとの改ページ付きの 1 ページにまとめて新規タブで開き、ブラウザの印刷から PDF 保存できる（印刷時は白背景・図は元配色）

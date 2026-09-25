@@ -9,8 +9,8 @@
 # （Motor+/− はテスターで抵抗 4Ω と手回し発電も確認）:
 #   Motor+    黒  → HAT の M 端子 +（入れ替えると回転方向が逆になるだけで故障しない）
 #   Motor−    赤  → HAT の M 端子 −（赤だが電源 + ではない。Pi / 電池の GND にもつながない）
-#   VCC       白  → Motor HAT 上の 3V3 ピン（Pi 40 ピンの引き出し。S1/S2 出力が GPIO 直結のため 5V は使わない）
-#   GND       黄  → Motor HAT 上の GND ピン（同上）
+#   VCC       白  → Motor HAT (3V3 power)（S1/S2 出力が GPIO 直結のため 5V は使わない）
+#   GND       黄  → Motor HAT (Ground)
 #   Encoder A 橙  → Pi GPIO（S1）
 #   Encoder B 緑  → Pi GPIO（S2）
 # 公式の色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用しない。VCC / GND を逆に
@@ -25,7 +25,7 @@
 #   colors   : [Motor+, Motor−] の配線色
 #   encoder  : Pi 40 ピンヘッダーの物理ピン番号
 #     vcc_pin / gnd_pin : VCC / GND の 40 ピン番号（vcc_pin を省略すると hat.encoder.vcc_pin を使う）。
-#                         hat.encoder.power_board が 'Motor HAT' なら HAT 上の同番ピンに挿す
+#                         hat.encoder.power_board が 'Motor HAT' なら Motor HAT (3V3 power) / (Ground) に挿す
 #     a_pin / b_pin     : Encoder A / Encoder B
 #     colors            : [VCC, GND, Encoder A, Encoder B] の配線色（省略時は hat.encoder.colors）
 #   note     : 備考
@@ -39,7 +39,7 @@ hat:
   power:
     source: バッテリー 12V 系統
     colors: [赤, 黒]
-  # エンコーダー線の既定値（VCC は 4 台共通で pin 17 の 3V3）
+  # エンコーダー線の既定値（VCC は 4 台共通で Motor HAT (3V3 power)）
   encoder:
     power_board: Motor HAT
     vcc_pin: 17

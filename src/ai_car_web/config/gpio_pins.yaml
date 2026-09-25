@@ -29,9 +29,9 @@ connections:
     note: PCA9685 0x60
 
   # --- モーターエンコーダー線（1 モーター 6 本のうち Encoder A / B の 2 本を Pi GPIO へ。
-  #     VCC / GND は Motor HAT 上の 3V3 / GND ピンに挿すため Pi ヘッダー側は「空き」として扱い、ここには載せない。
+  #     VCC / GND は Motor HAT (3V3 power) / Motor HAT (Ground) に挿すため Pi ヘッダー側は「空き」として扱い、ここには載せない。
   #     ピン・配線色は motor_hat.yaml と一致させる。Motor+ 黒 / Motor− 赤 は Motor HAT の M 端子へ、
-  #     VCC 白 / GND 黄 は HAT 上の 3V3 / GND へ） ---
+  #     VCC 白 / GND 黄 は Motor HAT (3V3 power) / Motor HAT (Ground) へ） ---
   - pins: [29]
     device: M1 前左
     signal: Encoder A (GPIO5)

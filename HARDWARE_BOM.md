@@ -82,27 +82,27 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 |--------|----------|------|--------|
 | 黒 | Motor+ (M+) | モーター駆動電源（正極 DC 12V） | Motor HAT M端子 + |
 | 赤 | Motor− (M−) | モーター駆動電源（負極） | Motor HAT M端子 − |
-| 白 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT 上の 3V3 ピン（Pi pin 17 の引き出し） |
-| 黄 | GND | エンコーダー用グランド | Motor HAT 上の GND ピン（Pi GND の引き出し） |
+| 白 | VCC | エンコーダー用電源（DC 3.3〜5V） | Motor HAT (3V3 power) |
+| 黄 | GND | エンコーダー用グランド | Motor HAT (Ground) |
 | 橙 | Encoder A (S1) | A 相パルス出力 | Pi GPIO |
 | 緑 | Encoder B (S2) | B 相パルス出力 | Pi GPIO |
 
 > **注意**: 赤（Motor−）と黒（Motor+）はモーター端子の 2 本で、一般的な「赤 = 電源 + / 黒 = GND」ではない。どちらも Motor HAT の M 端子以外（Pi や電池の GND など）にはつながない。入れ替えても回転方向が逆になるだけで故障しない。
 
-Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT 上に多数ある 3V3 / GND ピン（Pi 40 ピンヘッダーの引き出しで番号は共通）へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
+Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− は HAT の M 端子へ、VCC / GND は Motor HAT (3V3 power) / Motor HAT (Ground) へ、Encoder A / B は Pi GPIO へエンコーダー用ジャンパー線で接続する（OSOYOO の資料では PWM HAT 経由だが本機は Pi 直結）。
 
 | モーター | Motor+ 黒 | Motor− 赤 | VCC 白 | GND 黄 | Encoder A 橙 | Encoder B 緑 |
 |----------|-----------|-----------|--------|--------|--------------|--------------|
-| M1 前左 | HAT M1 + | HAT M1 − | HAT pin 17 (3V3) | HAT pin 30 | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
-| M2 前右 | HAT M2 + | HAT M2 − | HAT pin 17 (3V3) | HAT pin 34 | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |
-| M3 後左 | HAT M3 + | HAT M3 − | HAT pin 17 (3V3) | HAT pin 39 | Pi pin 37 (GPIO26) | Pi pin 32 (GPIO12) |
-| M4 後右 | HAT M4 + | HAT M4 − | HAT pin 17 (3V3) | HAT pin 25 | Pi pin 36 (GPIO16) | Pi pin 38 (GPIO20) |
+| M1 前左 | HAT M1 + | HAT M1 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 29 (GPIO5) | Pi pin 31 (GPIO6) |
+| M2 前右 | HAT M2 + | HAT M2 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 33 (GPIO13) | Pi pin 35 (GPIO19) |
+| M3 後左 | HAT M3 + | HAT M3 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 37 (GPIO26) | Pi pin 32 (GPIO12) |
+| M4 後右 | HAT M4 + | HAT M4 − | Motor HAT (3V3 power) | Motor HAT (Ground) | Pi pin 36 (GPIO16) | Pi pin 38 (GPIO20) |
 
-- VCC / GND は Motor HAT 上の 3V3 / GND ピンを使う（`motor_hat.yaml` の `power_board: Motor HAT`）。VCC は **3V3**（pin 17、4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
+- VCC / GND は Motor HAT (3V3 power) / Motor HAT (Ground) を使う（`motor_hat.yaml` の `power_board: Motor HAT`）。VCC は **3V3**（4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
 - 使用済みの液晶ピン（pin 16/18/19/22/23、ZJY-IPS130）と I2C（pin 3/5）は避けている
 - GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
-> Pi 側のピン割り付けは暫定値。M1 は白 VCC 3V3 / 黄 GND / 橙 GPIO5 / 緑 GPIO6 で A/B 相パルスを確認済み（車輪 1 回転あたり約 2,200 カウント、4 逓倍の概算。前進方向の手回しでカウントは負）。A/B の逆相（カウント方向）はエンコーダー読み取りノードで符号を合わせる。
+> Pi 側のピン割り付けは暫定値。M1 は白 Motor HAT (3V3 power) / 黄 Motor HAT (Ground) / 橙 GPIO5 / 緑 GPIO6 で A/B 相パルスを確認済み（車輪 1 回転あたり約 2,200 カウント、4 逓倍の概算。前進方向の手回しでカウントは負）。A/B の逆相（カウント方向）はエンコーダー読み取りノードで符号を合わせる。
 
 ---
 

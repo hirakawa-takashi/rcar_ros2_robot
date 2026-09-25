@@ -68,6 +68,12 @@ def _pin_text(p, board='Pi'):
     return f'{board} pin {p["pin"]} ({detail})'
 
 
+def _power_text(p, board='Pi'):
+    if not p:
+        return '-'
+    return f'{board} ({p["name"]})' if board != 'Pi' else _pin_text(p, board)
+
+
 def load_motor_hat(path):
     """割り付け YAML を読み、ダッシュボード表示用の辞書を返す。"""
     if not path or not os.path.exists(path):
@@ -133,9 +139,9 @@ def load_motor_hat(path):
         if encoder:
             wires += [
                 {'name': 'VCC', 'color': ecol[0],
-                 'dest': _pin_text(encoder['vcc'], power_board)},
+                 'dest': _power_text(encoder['vcc'], power_board)},
                 {'name': 'GND', 'color': ecol[1],
-                 'dest': _pin_text(encoder['gnd'], power_board)},
+                 'dest': _power_text(encoder['gnd'], power_board)},
                 {'name': 'Encoder A', 'color': ecol[2], 'dest': _pin_text(encoder['a'])},
                 {'name': 'Encoder B', 'color': ecol[3], 'dest': _pin_text(encoder['b'])},
             ]
