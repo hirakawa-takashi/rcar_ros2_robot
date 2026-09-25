@@ -4,8 +4,7 @@ from glob import glob
 from setuptools import find_packages, setup
 
 package_name = 'ai_car_web'
-print3d_src = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                           '..', '..', 'hardware', '3d', 'battery_lidar_mount')
+print3d_src = os.path.join('..', '..', 'hardware', '3d', 'battery_lidar_mount')
 
 setup(
     name=package_name,
