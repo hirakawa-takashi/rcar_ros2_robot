@@ -446,7 +446,7 @@
     <div class="pinwrap">
     <table class="pins">
       <thead><tr>
-        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>回転 / ドライバ / 備考</th>
+        <th>モーター（端子 車輪）</th><th>線</th><th>ピン名称</th><th>配線色</th><th>接続先</th><th>備考</th><th>回転 / ドライバ</th>
       </tr></thead>
       <tbody id="motor_rows"></tbody>
     </table>
@@ -1143,13 +1143,14 @@ function renderMotorHat(m) {
       `${mo.reversed ? '<span class="badge warn">反転</span>' : '<span class="badge ok">正転</span>'}<br>` +
       `${esc(mo.bridge)} / PCA9685 ch ${mo.pwm_channel} / ${mo.in1_channel} / ${mo.in2_channel}<br>` +
       `<span class="note" style="margin:0;display:inline">${esc(mo.note)}</span></td>`;
-    if (!wires.length) return `<tr class="used">${head}<td colspan="4"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
+    if (!wires.length) return `<tr class="used">${head}<td colspan="5"><span class="badge warn">配線未設定</span></td>${info}</tr>`;
     return wires.map((w, i) =>
       `<tr class="used">${i === 0 ? head : ''}` +
       `<td class="num" style="text-align:left;width:auto">${i + 1}</td>` +
       `<td><b>${esc(w.name)}</b></td>` +
       `<td>${w.color ? wireSwatch(w.color) : '<span class="badge warn">未設定</span>'}</td>` +
       `<td>${esc(w.dest)}</td>` +
+      `<td>${esc(w.note || '')}</td>` +
       `${i === 0 ? info : ''}</tr>`).join('');
   }).join('');
   const note = document.getElementById('motor_note');

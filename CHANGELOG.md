@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Motor HAT 接続図の配線表に 1 本ごとの「備考」列を追加（Motor+ / Motor− は基板印字 M+ / M−、VCC / GND はエンコーダー電源 3V3 / GND、Encoder A / B は A 相（S1）/ B 相（S2）。`/api/motor_hat` の `wires[].note`）。回転・ドライバ情報は「回転 / ドライバ」列に分離
 - エンコーダー VCC / GND の接続先表記を「Motor HAT (3V3 power)」「Motor HAT (Ground)」に統一（ピン番号表記「HAT pin 17 (3V3)」などを廃止。`/api/motor_hat` の `dest`・接続図・BOM・設定コメント）
 - モーター 6 本の配線色をエンコーダー基板のコネクタ印字に基づき修正: Motor+（M+）黒 / Motor−（M−）赤 / VCC 白 / GND 黄 / Encoder A（S1）橙 / Encoder B（S2）緑（旧: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / A 赤 / B 黒）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新
 - モーター 6 本の配線色をエンコーダー基板印字（M+ / M− / VCC / GND / S1 / S2）に基づき確定: Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / Encoder A（S1）赤 / Encoder B（S2）黒（旧: Motor− 白 / VCC 青 / GND 黒 / A 緑 / B 黄）。`motor_hat.yaml`・`gpio_pins.yaml`・`HARDWARE_BOM.md` を更新（接続図・一覧表・GPIO 表は YAML から描画されるため自動反映）

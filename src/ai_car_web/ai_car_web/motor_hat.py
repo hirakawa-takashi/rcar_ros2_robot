@@ -133,17 +133,24 @@ def load_motor_hat(path):
         # 1 モーター 6 本の線をすべて列挙（表示・配線作業用）
         mcol = (colors + [''] * 2)[:2]
         wires = [
-            {'name': 'Motor+', 'color': mcol[0], 'dest': f'Motor HAT {channel} +'},
-            {'name': 'Motor−', 'color': mcol[1], 'dest': f'Motor HAT {channel} −'},
+            {'name': 'Motor+', 'color': mcol[0], 'dest': f'Motor HAT {channel} +',
+             'note': 'モーター +（基板印字 M+）'},
+            {'name': 'Motor−', 'color': mcol[1], 'dest': f'Motor HAT {channel} −',
+             'note': 'モーター −（基板印字 M−）'},
         ]
         if encoder:
+            vcc = enc_common.get('vcc') or ''
             wires += [
                 {'name': 'VCC', 'color': ecol[0],
-                 'dest': _power_text(encoder['vcc'], power_board)},
+                 'dest': _power_text(encoder['vcc'], power_board),
+                 'note': f'エンコーダー電源 {vcc}（基板印字 VCC）'},
                 {'name': 'GND', 'color': ecol[1],
-                 'dest': _power_text(encoder['gnd'], power_board)},
-                {'name': 'Encoder A', 'color': ecol[2], 'dest': _pin_text(encoder['a'])},
-                {'name': 'Encoder B', 'color': ecol[3], 'dest': _pin_text(encoder['b'])},
+                 'dest': _power_text(encoder['gnd'], power_board),
+                 'note': 'エンコーダー GND（基板印字 GND）'},
+                {'name': 'Encoder A', 'color': ecol[2], 'dest': _pin_text(encoder['a']),
+                 'note': 'エンコーダー A 相（基板印字 S1）'},
+                {'name': 'Encoder B', 'color': ecol[3], 'dest': _pin_text(encoder['b']),
+                 'note': 'エンコーダー B 相（基板印字 S2）'},
             ]
         else:
             warnings.append(f'{tag}: encoder が未設定（6 本中 4 本が未割り付け）')
