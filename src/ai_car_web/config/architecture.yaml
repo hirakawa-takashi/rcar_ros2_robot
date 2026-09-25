@@ -102,6 +102,16 @@ print3d:
         - 落下防止センサー（VL53L1X）×1（進行方向へ 30° 傾けた受けに上から落とし込む）
         - 板ばね 4 枚（1.2 mm）で前面の板が 4 mm 逃げ、ストッパー 7.2 mm で止まる
       mount: 前は箱のフランジ、後ろはラズパイ台の腕の上に重ねて共締め（ネジはさらに 4 mm 長く）
+  assembly_view:
+    label: 組み立て図
+    note: 天板（154 × 200 × 3 mm）の上に 4 種類・5 個の部品を組み立てた位置で表示（バッテリー・Pi・センサーなどの購入品は表示しない）
+    plate: {size: [154, 200, 3], color: '#8fa3b8'}
+    items:
+      - {part: box}
+      - {part: lid, translate: [0, 0, 36.4]}
+      - {part: pi_base}
+      - {part: bumper, flip_z: true, translate: [0, 0, 7]}
+      - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
   settings:
     - {name: 材料, value: バンパーは PETG（板ばねを繰り返し曲げるため。PLA は割れやすい）。ほかは PLA でも PETG でもよい（車内が熱くなるなら PETG）}
     - {name: ノズル / 積層ピッチ, value: 0.4 mm / 0.2 mm（目安）}

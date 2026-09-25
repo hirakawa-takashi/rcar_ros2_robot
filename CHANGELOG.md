@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- 3D プリントタブの「立体図（回して見る）」に「組み立て図」を追加（最初に表示）。天板と 4 種類・5 個の部品を組み立てた位置に色分けして重ね、回して見られる。配置は `architecture.yaml` の `print3d.assembly_view`（部品ごとの `translate` / `rotate_z` / `flip_z`）で指定し、ブラウザで各 STL を移動して描画
 - ラズパイ台の加速度センサー（GY-BNO055）の受けを、ピンヘッダー下向きに合わせて高さ 25 mm の台（四隅の柱 + 上端の位置決め枠、四方開放）に変更。画面を隠さないよう IMU を液晶の前へ、液晶を後ろへ入れ替え（`imu_lift` 25、`imu_c` [18, 64]、`lcd_y` 24）。`pi_base.stl` と組み立て図・配線図を更新
 - プロジェクト説明に「3D プリント」タブを追加（`architecture.yaml` の `print3d`）。部品一覧（外形は STL から計算）、STL / OpenSCAD ソースのダウンロード、部品ごとの三面図（平面・正面・側面、寸法線付き）と立体図、ドラッグで回せる 3D 表示、印刷設定、ネジ一覧、組み立て手順、組み立て図・配線経路の画像を表示。`hardware/3d/battery_lidar_mount` の STL・PNG・SCAD を `share/ai_car_web/print3d` にインストールし、`GET /print3d/{file}` で配信
 - Motor HAT 接続図の配線表に 1 本ごとの「備考」列を追加（Motor+ / Motor− は基板印字 M+ / M−、VCC / GND はエンコーダー電源 3V3 / GND、Encoder A / B は A 相（S1）/ B 相（S2）。`/api/motor_hat` の `wires[].note`）。回転・ドライバ情報は「回転 / ドライバ」列に分離
