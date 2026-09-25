@@ -547,8 +547,9 @@ class DashboardNode(Node):
 
 def create_app(node: DashboardNode) -> FastAPI:
     """ダッシュボードの FastAPI アプリを生成する。"""
-    static_dir = os.path.join(
-        get_package_share_directory('ai_car_web'), 'static')
+    share_dir = get_package_share_directory('ai_car_web')
+    static_dir = os.path.join(share_dir, 'static')
+    print3d_dir = os.path.join(share_dir, 'print3d')
     app = FastAPI(title='AI-CAR Dashboard')
 
     def require_token(request: Request):
@@ -641,6 +642,8 @@ def create_app(node: DashboardNode) -> FastAPI:
             pass
 
     app.mount('/static', StaticFiles(directory=static_dir), name='static')
+    if os.path.isdir(print3d_dir):
+        app.mount('/print3d', StaticFiles(directory=print3d_dir), name='print3d')
     return app
 
 
