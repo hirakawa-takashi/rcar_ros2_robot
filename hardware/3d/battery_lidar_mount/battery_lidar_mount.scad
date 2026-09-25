@@ -108,9 +108,12 @@ bump_wall = 3;
 bump_drop = 15;           // 前面の壁を天板上面から下へ伸ばす長さ
 bump_arm_x = [[3, 18], [136, 151]];  // 箱のボスを避けた腕の範囲
 bump_arm_y0 = 183;
-tof_board = [25, 10.7];   // VL53L1X 基板（実物に合わせて変更、長辺を横幅方向に置く）
+tof_board = [25, 10.7, 1.6];  // VL53L1X 基板（Dovhmoh: 25 x 10.7、長辺を横幅方向に置く）
 tof_lip = 1.5;            // 基板を受ける縁の幅（その内側は窓）
-tof_pocket = 2;
+tof_tilt = 30;            // 真下から進行方向へ傾ける角度
+tof_drop = 8;             // 受けの中心をバンパー下面から下げる量
+tof_face_t = 2;
+tof_notch_w = 34;         // センサーの視野のため前面の壁を切り欠く幅
 
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
@@ -259,23 +262,44 @@ module lcd_holder() {
 
 function tof_c() = [plate_w / 2, plate_l + (bump_out - bump_wall) / 2];
 
+// 受けのローカル座標: センサーは -Z 方向を見る。rotate([tof_tilt, 0, 0]) で前下を向く
+module tof_at(z0) {
+    c = tof_c();
+    translate([c[0], c[1], z0 - tof_drop]) rotate([tof_tilt, 0, 0]) children();
+}
+
 module bumper() {
     z0 = flange_t;
     y1 = plate_l + bump_out;
     c = tof_c();
+    m = 2.5;
+    bw = tof_board[0] + 0.6;
+    bh = tof_board[1] + 0.6;
     difference() {
         union() {
             for (a = bump_arm_x) translate([0, 0, z0]) rrect(a[0], bump_arm_y0, a[1], plate_l + 1, 3, bump_t);
             translate([0, 0, z0]) rrect(0, plate_l, plate_w, y1, 6, bump_t);
             translate([0, 0, z0 - bump_drop]) rrect(0, y1 - bump_wall, plate_w, y1, 1, bump_drop + bump_t);
+            hull() {
+                tof_at(z0) translate([-bw / 2 - m, -bh / 2 - m, -tof_face_t]) cube([bw + 2 * m, bh + 2 * m, tof_face_t + tof_board[2] + 1]);
+                translate([c[0] - bw / 2 - m, c[1] - bh / 2 - m, z0]) cube([bw + 2 * m, bh + 2 * m, bump_t]);
+            }
         }
         for (p = [[11, 189], [143, 189]]) translate([p[0], p[1], z0 - 1]) cylinder(d = mount_hole_d, h = bump_t + 2);
-        // センサー: 上から入れて縁で受け、下向きに床を見る
-        translate([c[0] - tof_board[0] / 2 - 0.3, c[1] - tof_board[1] / 2 - 0.3, z0 + bump_t - tof_pocket])
-            cube([tof_board[0] + 0.6, tof_board[1] + 0.6, tof_pocket + 1]);
-        translate([c[0] - tof_board[0] / 2 + tof_lip, c[1] - tof_board[1] / 2 + tof_lip, z0 - 1])
-            cube([tof_board[0] - 2 * tof_lip, tof_board[1] - 2 * tof_lip, bump_t + 2]);
+        // 上から斜めの穴に落とし込み、縁で受ける（ピンは上向き、配線は穴から上へ）
+        tof_at(z0) {
+            translate([-bw / 2, -bh / 2, 0]) cube([bw, bh, 60]);
+            translate([-tof_board[0] / 2 + tof_lip, -tof_board[1] / 2 + tof_lip, -tof_face_t - 1])
+                cube([tof_board[0] - 2 * tof_lip, tof_board[1] - 2 * tof_lip, tof_face_t + 2]);
+        }
+        translate([c[0] - tof_notch_w / 2, y1 - bump_wall - 1, z0 - bump_drop - 1])
+            cube([tof_notch_w, bump_wall + 2, bump_drop + 1]);
     }
+}
+
+module tof_ghost() {
+    for (r = [0, 180]) translate([plate_w / 2, plate_l / 2, 0]) rotate([0, 0, r]) translate([-plate_w / 2, -plate_l / 2, 0])
+        tof_at(flange_t) translate([-tof_board[0] / 2, -tof_board[1] / 2, 0.05]) color("black") cube(tof_board);
 }
 
 module both_bumpers() {
@@ -342,6 +366,7 @@ else {
     camera_ghost();
     sensor_ghost();
     color("dimgray") both_bumpers();
+    tof_ghost();
 }
 
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
@@ -352,4 +377,5 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
      lcd_top_z = pi_base_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
-     tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]]);
+     tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
+     tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt);
