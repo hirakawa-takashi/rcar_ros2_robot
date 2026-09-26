@@ -69,14 +69,16 @@ module clear_hole(m, h, cb = 0) {
 }
 
 // ---- バッテリー（CIO SMARTCOBY Pro SLIM 35W）x 2 段重ね ----
-bat_x = 97.6;   // 長辺（X 方向に置く。ポートのある短辺が開口側を向く）
-bat_y = 69;
+bat_x = 98.2;   // 長辺（実測。X 方向に置く。ポートのある短辺が開口側を向く）
+bat_y = 66.8;   // 短辺（実測）
 bat_z = 16.2;
 bat_n = 2;
-clr = 0.6;      // 片側のすき間
+clr = 0.4;      // 前後の片側のすき間
+clr_x = 0.3;    // 左右の片側のすき間
 
 // ---- 箱 ----
 wall = 2.5;
+wall_y = 3.8;   // 前後の壁（外形 75.2 mm を保ち、内側へ厚くしてすき間を clr にする）
 floor_t = recess_t;   // 前のモーターのネジの上に載るので、くぼみの分だけフランジより厚い
 flange_t = 3;
 flange_y0 = 104;
@@ -88,11 +90,11 @@ open_end = "right";   // バッテリー出し入れ・ケーブル側: "right"(
 strap_w = 12;         // 面ファスナー / 結束バンド用スロットの高さ
 strap_len = 3;        // スロットの幅（ストラップ厚み方向）
 
-in_x = bat_x + 2 * clr;
+in_x = bat_x + 2 * clr_x;
 in_y = bat_y + 2 * clr;
 in_z = bat_n * bat_z + 1.0;
 box_x = in_x + 2 * wall;
-box_y = in_y + 2 * wall;
+box_y = in_y + 2 * wall_y;
 box_h = floor_t + in_z;
 box_cx = plate_w / 2;
 box_cy = (flange_y0 + flange_y1) / 2;
@@ -104,7 +106,7 @@ box_y0 = box_cy - box_y / 2;
 bat_disp = [7, 20, 9, 21];
 disp_lid_m = 1;           // ふたの窓の余白
 disp_cov_m = 2;           // カバーの窓の余白（斜めから見る分）
-function disp_rect() = let(x1 = box_x0 + wall + clr + bat_x, y0 = box_y0 + wall + clr)
+function disp_rect() = let(x1 = box_x0 + wall + clr_x + bat_x, y0 = box_y0 + wall_y + clr)
     [x1 - bat_disp[1], y0 + bat_disp[2], x1 - bat_disp[0], y0 + bat_disp[3]];
 
 // ふた固定用ボス（箱の外側 4 隅、M3 タッピング）
@@ -161,11 +163,13 @@ imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向
 imu_post = 2;             // 四隅の受けが基板の角を受ける幅
 imu_cable_hole = [13, 3, 19];  // Pi 側（+X）の壁のケーブル穴（幅、台の上面からの下端、高さ）
 imu_wall = 1.6;
-lcd_board = [27.5, 39, 1.6];  // 幅 x 高さ x 基板厚（実物に合わせて変更）
+lcd_board = [28.1, 39, 1.6];  // 幅 x 高さ x 基板厚（幅は実物に合わせて 0.6 mm 広げた）
 lcd_cx = 17.5;
-lcd_y = 24;               // 画面の下端（後ろ向き）。ピンは上端の裏側で、配線は前上の GPIO ヘッダーへ。上端は前へ倒れて IMU の上に来る
+lcd_y = 24;               // 枠の下端（後ろ向き）。上端は前へ倒れて IMU の上に来る
 lcd_tilt = 30;            // 垂直から後ろへ倒す角度
 lcd_lip = 1;              // 基板の左右の縁を押さえる幅
+lcd_raise = 10;           // 基板の下端を枠の底から上げる高さ（垂直方向）。下端の裏のピンヘッダーが台に当たらないように
+lcd_rs = lcd_raise / cos(lcd_tilt);  // 溝に沿った長さ
 
 // ---- 前後バンパー + 落下防止センサー（VL53L1X、下向き）----
 // 前は箱のフランジ、後ろはラズパイ台の腕に重ねて四隅の穴で共締め。後ろは前を 180° 回したもの
@@ -287,11 +291,11 @@ module box() {
             drok_holder();
         }
         // バッテリー収納部
-        translate([box_x0 + wall, box_y0 + wall, floor_t]) cube([in_x, in_y, in_z + 1]);
+        translate([box_x0 + wall, box_y0 + wall_y, floor_t]) cube([in_x, in_y, in_z + 1]);
         // 開口側の端（全面開口）
         ox = open_end == "right" ? box_x0 + box_x - wall - 1 : box_x0 - 1;
         difference() {
-            translate([ox, box_y0 + wall, floor_t]) cube([wall + 2, in_y, in_z + 1]);
+            translate([ox, box_y0 + wall_y, floor_t]) cube([wall + 2, in_y, in_z + 1]);
             for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
         }
         // 反対側の端: 押し出し用の窓
@@ -299,13 +303,13 @@ module box() {
         translate([cx, box_cy - 20, floor_t + 4]) cube([wall + 2, 40, in_z - 8]);
         // 固定用ストラップのスロット（上下バッテリーの境目の高さ、開口側寄り）
         sx = open_end == "right" ? box_x0 + box_x - wall - 12 : box_x0 + wall + 12 - strap_len;
-        for (y = [box_y0 - 1, box_y0 + box_y - wall - 1])
-            translate([sx, y, floor_t + bat_z - strap_w / 2 + 0.5]) cube([strap_len, wall + 2, strap_w]);
+        for (y = [box_y0 - 1, box_y0 + box_y - wall_y - 1])
+            translate([sx, y, floor_t + bat_z - strap_w / 2 + 0.5]) cube([strap_len, wall_y + 2, strap_w]);
         // 通気スロット（長辺）
         for (i = [-2 : 2])
-            translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall + 2, in_z - 12]);
+            translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall_y + 2, in_z - 12]);
         // 床の肉抜き
-        translate([box_x0 + wall + 12, box_y0 + wall + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
+        translate([box_x0 + wall + 12, box_y0 + wall_y + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
         // 天板への取付穴
         for (p = mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = flange_t + 2);
         // ふた固定用の下穴
@@ -420,10 +424,10 @@ module lcd_floor_local() {
 module lcd_frame_local() {
     W = lcd_board[0]; H = lcd_board[1]; t = lcd_board[2];
     difference() {
-        translate([-W / 2 - 2.3, -2, -2]) cube([W + 4.6, t + 0.3 + 3.2, H + 2]);
-        translate([-W / 2 - 0.3, 0, 0]) cube([W + 0.6, t + 0.3, H + 5]);
-        translate([-W / 2 + lcd_lip, t, 0]) cube([W - 2 * lcd_lip, 10, H + 5]);
-        translate([-W / 2 + 1.5, -10, 0]) cube([W - 3, 10, H + 5]);
+        translate([-W / 2 - 2.3, -2, -2]) cube([W + 4.6, t + 0.3 + 3.2, lcd_rs + H + 2]);
+        translate([-W / 2 - 0.3, 0, lcd_rs]) cube([W + 0.6, t + 0.3, H + 5]);
+        translate([-W / 2 + lcd_lip, t, lcd_rs]) cube([W - 2 * lcd_lip, 10, H + 5]);
+        translate([-W / 2 + 1.5, -10, lcd_rs]) cube([W - 3, 10, H + 5]);
     }
 }
 
@@ -439,7 +443,7 @@ module lcd_holder() {
         // 左右の支え
         for (sx = [-1, 1]) translate([sx * (lcd_board[0] / 2 + 1.15) - 1.15, 0, 0])
             rotate([90, 0, 90]) linear_extrude(2.3)
-                polygon([[0, 0], [(H + 2) * sin(lcd_tilt) + 2, 0], [(H + 2) * sin(lcd_tilt), (H + 2) * cos(lcd_tilt)]]);
+                polygon([[0, 0], [(lcd_rs + H + 2) * sin(lcd_tilt) + 2, 0], [(lcd_rs + H + 2) * sin(lcd_tilt), (lcd_rs + H + 2) * cos(lcd_tilt)]]);
     }
 }
 
@@ -512,7 +516,7 @@ module pi_ghost() {
 module sensor_ghost() {
     color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, wing_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
     color("black") translate([lcd_cx, lcd_y, wing_t + 2]) rotate([-lcd_tilt, 0, 0])
-        translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, 0]) cube([lcd_board[0], 0.5, lcd_board[1]]);
+        translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, lcd_rs]) cube([lcd_board[0], 0.5, lcd_board[1]]);
 }
 
 module camera_ghost() {
@@ -536,7 +540,7 @@ module plate() {
 module batteries() {
     for (i = [0 : bat_n - 1])
         color(i == 0 ? "dimgray" : "gray")
-            translate([box_x0 + wall + clr, box_y0 + wall + clr, floor_t + i * bat_z])
+            translate([box_x0 + wall + clr_x, box_y0 + wall_y + clr, floor_t + i * bat_z])
                 cube([bat_x, bat_y, bat_z - 0.2]);
 }
 
@@ -601,7 +605,7 @@ module cable_ghost() {
     // 液晶 / IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
     hy = pi_cy + pi_board[1] / 2 - 3.5;
     ht = pi_base_t + pi_boss_h + pi_stack_h + 4;
-    color("magenta") path([[lcd_cx, lcd_y + 21, wing_t + 38], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
+    color("magenta") path([[lcd_cx, lcd_y + (lcd_rs + 4.5) * sin(lcd_tilt) + 8 * cos(lcd_tilt), wing_t + (lcd_rs + 4.5) * cos(lcd_tilt) - 8 * sin(lcd_tilt)], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
     color("purple") path([[imu_c[0], imu_c[1], wing_t + imu_lift - 8], [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1], wing_t + imu_lift - 8],
                           [30, hy - 2, wing_t + 34], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
@@ -789,7 +793,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
      imu_top_z = wing_t + imu_lift + 1.6,
-     lcd_top_z = wing_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
+     lcd_top_z = wing_t + 2 + (lcd_rs + lcd_board[1] + 2) * cos(lcd_tilt),
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
      screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
