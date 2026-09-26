@@ -13,6 +13,12 @@ dashboard_node:
     camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
     obstacle_guard: true
+    # 落下防止ガード: 前の段差で前進、後ろの段差で後退を 0 にする（AUTO 中は STOP）
+    cliff_guard: true
+    cliff_timeout: 0.5
+    # true にすると、センサーの受信なし・異常の側も段差ありとみなして止める。
+    # 配線して動作を確かめるまでは false（センサーなしでも走れる）
+    cliff_required: false
     # LiDAR は前方が機体後方を向く取り付けのため 180 度補正する
     scan_angle_offset_deg: 180.0
     max_linear_speed: 0.3
@@ -47,6 +53,7 @@ drive_mode_node:
     mode_topic: "/drive_mode"
     obstacle_topic: "/obstacle_status"
     joy_cmd_topic: "/joy_cmd"
+    cliff_topic: "/cliff_status"
     initial_mode: "manual"
     publish_rate: 5.0
     auto_timeout: 0.5        # 自動指令が途絶えたら STOP
@@ -153,6 +160,28 @@ imu_node:
     frame_id: "imu_link"
     imu_topic: "/imu/data"
     publish_rate: 20.0
+
+cliff_sensor_node:
+  ros__parameters:
+    # 前後バンパーの VL53L1X（初期アドレス 0x29 は BNO055 と重なるため、
+    # 起動時に XSHUT で 1 個ずつ起こしてアドレスを書き換える）
+    i2c_bus: 1
+    gpio_chip: ""
+    names: ["front", "rear"]
+    xshut_gpios: [17, 27]
+    addresses: [0x2A, 0x2B]
+    topic: "/cliff_status"
+    poll_rate: 100.0
+    publish_rate: 10.0
+    # 短距離モード。測定 20 ms・25 ms ごと（約 40 回/秒）
+    timing_budget_ms: 20
+    intermeasurement_ms: 25
+    # 平らな床は 45° 前傾・床から約 67 mm で約 95 mm。+35 mm（段差 約 25 mm）で段差とみなす
+    cliff_distance_mm: 130
+    # 段差判定に必要な連続回数 / 解除に必要な連続回数
+    cliff_confirm: 2
+    clear_confirm: 5
+    sample_timeout: 0.3
 
 system_monitor_node:
   ros__parameters:

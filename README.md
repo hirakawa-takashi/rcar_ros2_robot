@@ -158,6 +158,21 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 `dashboard.launch.py` の `use_imu`（既定 `true`）で起動し、無効化する場合は
 `use_imu:=false` を指定する。
 
+## 落下防止センサー (VL53L1X ×2) のセットアップ
+
+`cliff_sensor_node` は前後バンパーの VL53L1X を I2C バス1で読み、段差を `/cliff_status` に publish する。
+2 個とも初期アドレスが `0x29`（BNO055 と同じ）なので、XSHUT（前 GPIO17 / 後ろ GPIO27）で 1 個ずつ起こし、
+前 `0x2A`・後ろ `0x2B` に書き換える。配線は `config/gpio_pins.yaml`（ダッシュボードの GPIO 40 ピンヘッダー）。
+
+```bash
+i2cdetect -y 1    # ノード起動後に 0x29（BNO055）・0x2a・0x2b が表示されることを確認
+ros2 topic echo /cliff_status
+```
+
+`drive_mode_node` は前の段差で前進、後ろの段差で後退を止め、自動運転中なら停止する。
+`dashboard.launch.py` の `use_cliff`（既定 `true`）で起動する。配線して動作を確かめたら、
+`drive_mode_node.cliff_required: true` にすると、センサーの受信が途絶えたときも止まる。
+
 ## カメラ (IMX708 / Camera Module v3) のセットアップ（Ubuntu 24.04）
 
 ダッシュボードは `/camera/image_raw/compressed` を購読し、`/api/camera/stream` で MJPEG 配信する。カメラノードは `camera_ros`（libcamera）を使用し、`dashboard.launch.py` の `use_camera`（既定 true）で起動する。
