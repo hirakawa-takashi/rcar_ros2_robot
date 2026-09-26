@@ -102,7 +102,8 @@ print3d:
         - 落下防止センサー（VL53L1X）×1（進行方向へ 30° 傾けた受けに上から落とし込む）
         - 板ばね 4 枚（1.2 mm）で前面の板が 4 mm 逃げ、ストッパー 7.2 mm で止まる
         - 手で触る縁は 1 mm の面取り
-      mount: 前は箱のフランジ、後ろはラズパイ台の腕の上に重ねて共締め（ネジはさらに 4 mm 長く）
+        - 左右の腕の下の爪が、前は箱のフランジの前の縁、後ろはラズパイ台の腕の端に当たり、ぶつかった力をネジではなく左右 2 か所の面で受ける
+      mount: 前は箱のフランジ、後ろはラズパイ台の腕の上に重ねて共締め（ネジはさらに 4 mm 長く）。爪を縁の前（後ろ）に落とし込んでから締める
     - id: cover
       label: 上面カバー
       file: cover.stl
@@ -177,6 +178,7 @@ print3d:
     - {file: drok_holder.png, label: DROK の受け（Pi 側から）}
     - {file: bumper_under.png, label: バンパーを下から}
     - {file: bumper_spring.png, label: バンパーの板ばねとストッパー}
+    - {file: bumper_hook.png, label: バンパーの爪（横から見た断面）}
     - {file: screw_holes.png, label: ネジ穴の断面}
     - {file: wiring.png, label: 配線経路（後ろ斜め）}
     - {file: wiring_front.png, label: 配線経路（前斜め）}
