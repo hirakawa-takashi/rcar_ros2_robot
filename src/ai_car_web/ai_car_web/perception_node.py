@@ -132,6 +132,9 @@ class PerceptionNode(Node):
         self.declare_parameter('detect_history_frames', 3)
         self.declare_parameter('camera_hfov_deg', 66.0)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
+        # LiDAR の回転中心から見たカメラのレンズの位置 [m]（x: 前、y: 左）
+        self.declare_parameter('camera_offset_x_m', 0.0)
+        self.declare_parameter('camera_offset_y_m', 0.0)
         self.declare_parameter('scan_max_age', 1.0)
         self.declare_parameter('cluster_gap', 0.25)
         self.declare_parameter('danger_distance', 0.3)
@@ -214,6 +217,8 @@ class PerceptionNode(Node):
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
+        self.camera_offset_x = float(self.get_parameter('camera_offset_x_m').value)
+        self.camera_offset_y = float(self.get_parameter('camera_offset_y_m').value)
         self.scan_max_age = float(self.get_parameter('scan_max_age').value)
         self.cluster_gap = float(self.get_parameter('cluster_gap').value)
         self.danger_distance = float(self.get_parameter('danger_distance').value)
@@ -238,6 +243,8 @@ class PerceptionNode(Node):
             'camera_hfov_deg': lambda v: setattr(self, 'camera_hfov', math.radians(float(v))),
             'scan_angle_offset_deg': lambda v: setattr(
                 self, 'scan_angle_offset', math.radians(float(v))),
+            'camera_offset_x_m': lambda v: setattr(self, 'camera_offset_x', float(v)),
+            'camera_offset_y_m': lambda v: setattr(self, 'camera_offset_y', float(v)),
             'scan_max_age': lambda v: setattr(self, 'scan_max_age', float(v)),
             'cluster_gap': lambda v: setattr(self, 'cluster_gap', float(v)),
             'danger_distance': lambda v: setattr(self, 'danger_distance', float(v)),
@@ -272,8 +279,11 @@ class PerceptionNode(Node):
                 continue
             angle = self._normalize(
                 msg.angle_min + i * msg.angle_increment + self.scan_angle_offset)
-            if abs(angle) <= math.pi / 2.0:
-                bearings.append((angle, r))
+            # カメラから見た方位（カメラの前方の点だけ）。距離は LiDAR からの値のまま
+            cx = r * math.cos(angle) - self.camera_offset_x
+            cy = r * math.sin(angle) - self.camera_offset_y
+            if cx > 0.0:
+                bearings.append((math.atan2(cy, cx), r))
             if abs(angle) <= half:
                 front.append(r)
                 if angle > half / 3.0:
@@ -309,6 +319,7 @@ class PerceptionNode(Node):
         """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
 
         画像左端が +HFOV/2、右端が -HFOV/2（ROS の左旋回正）に対応する。
+        LiDAR の点はカメラの位置（camera_offset_x_m / _y_m）から見た方位で照合する。
         方位窓内の点は距離でクラスタリングし、最も手前のまとまった面の
         代表距離（中央値）を返す。単発の外れ点で極端に近い値にならない。
         """

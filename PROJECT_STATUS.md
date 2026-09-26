@@ -35,7 +35,7 @@
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`
   - カメラノード: `camera_ros`（libcamera）を `dashboard.launch.py` の `use_camera` で起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
   - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像は AI HAT+（Hailo-8, `yolov8m.hef`）でレターボックス推論し、元画像座標へ復元した検出枠を複数フレーム（履歴3中2回）で確認して物体名を補助情報として付与。結果は `/obstacle_status`（JSON, 5Hz）
-  - 検出物体の距離: 画像の横位置を `camera_hfov_deg`（66°）で方位角に変換し、LiDAR の同方位の距離を採用。カメラ映像に検出枠（`danger_distance` 0.3m 以内は赤、それ以外は緑）と距離を重畳し、LiDAR 点群マップでは前方 ±30°（`front_angle_deg` 60°）内かつ 0.3m 以内の点を赤点で表示。点群マップには前方／後方／左／右のラベルを表示（上＝前方）。方位角範囲内の点は距離でクラスタリングし（`cluster_gap` 0.25m）、最も手前のまとまりの中央値を採用する。スキャンが `scan_max_age`（1秒）より古い場合は距離を出さない。LiDAR の取り付け向きは `scan_angle_offset_deg` で補正し、実機は前方が機体後方を向くため 180° を設定済み
+  - 検出物体の距離: 画像の横位置を `camera_hfov_deg`（66°）で方位角に変換し、LiDAR の同方位の距離を採用（LiDAR の点は、LiDAR の中心から見たカメラの位置 `camera_offset_x_m` 0.053 / `camera_offset_y_m` −0.044（前 53 mm・右 44 mm）でカメラから見た方位に直して照合する）。カメラ映像に検出枠（`danger_distance` 0.3m 以内は赤、それ以外は緑）と距離を重畳し、LiDAR 点群マップでは前方 ±30°（`front_angle_deg` 60°）内かつ 0.3m 以内の点を赤点で表示。点群マップには前方／後方／左／右のラベルを表示（上＝前方）。方位角範囲内の点は距離でクラスタリングし（`cluster_gap` 0.25m）、最も手前のまとまりの中央値を採用する。スキャンが `scan_max_age`（1秒）より古い場合は距離を出さない。LiDAR の取り付け向きは `scan_angle_offset_deg` で補正し、実機は前方が機体後方を向くため 180° を設定済み
   - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
   - 画面（`static/index.html`）: 手動操作カードは LiDAR カードの直下（4 列固定グリッド、幅 2 列分）に配置。メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止

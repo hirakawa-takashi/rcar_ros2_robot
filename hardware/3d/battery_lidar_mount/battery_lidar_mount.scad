@@ -170,7 +170,7 @@ lidar_motor_front = true; // LiDAR のモーター側（細い側）を前（+Y�
 // RPLIDAR A1M8 取付穴（回転中心基準、データシート Figure 5-2）
 //   ヘッド側 2 穴: 中心から 28 mm、間隔 56 mm / モーター側 2 穴: 中心から 42 mm、間隔 40 mm
 lidar_holes_rel = [[-28, 28], [28, 28], [-20, -42], [20, -42]];
-lidar_dx = -8;          // 左へ寄せ、右側にカメラのフラットケーブルの通り道を空ける（TF の横オフセットに反映すること）
+lidar_dx = -8;          // 左へ寄せ、右側にカメラのフラットケーブルの通り道を空ける（カメラとの位置の差は dashboard.yaml の camera_offset_x_m / _y_m に反映すること）
 lidar_cx = box_cx + lidar_dx;
 lidar_motor_d = 32;     // 取付面より下に出るモーター（回転中心から 45.5 mm、取付面から 26.5 mm 下まで）
 lidar_motor_off = 45.5;
