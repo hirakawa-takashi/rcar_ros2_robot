@@ -1512,7 +1512,7 @@ function renderAboutTab(id) {
     });
   });
 }
-const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, live: {part: null, az: 0.6, el: 0.5, zoom: 1}};
+const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, asm: {}, live: {part: null, az: 0.6, el: 0.5, zoom: 1}};
 function p3dParts(a) { return ((a && a.print3d) || {}).parts || []; }
 function p3dUrl(file) { return `/print3d/${encodeURIComponent(file)}`; }
 function p3dSize(mesh) { return [0, 1, 2].map(i => mesh.max[i] - mesh.min[i]); }
@@ -1754,7 +1754,11 @@ function p3dUpdate(part) {
   else box.querySelector('span').textContent = mesh ? 'WebGL が使えないため図を描けません' : `STL を読み込めません（${P3D.errors[part.id] || '不明'}）`;
 }
 const P3D_ASM = 'assembly';
-function p3dAsmView(a) { return ((a && a.print3d) || {}).assembly_view || null; }
+function p3dAsmViews(a) {
+  const p = (a && a.print3d) || {};
+  return (p.assembly_views || (p.assembly_view ? [p.assembly_view] : [])).map((v, i) => ({...v, id: `${P3D_ASM}:${i}`}));
+}
+function p3dAsmView(a, id) { return p3dAsmViews(a).find(v => v.id === id) || null; }
 function p3dBoxPos(size) {
   const [sx, sy, sz] = size;
   const v = i => [(i & 1) * sx, ((i >> 1) & 1) * sy, ((i >> 2) & 1) * sz - sz];
@@ -1779,10 +1783,10 @@ function p3dPlace(mesh, item) {
   }
   return p3dMesh(pos);
 }
-function p3dAssembly(a) {
-  const av = p3dAsmView(a);
+function p3dAssembly(a, id) {
+  const av = p3dAsmView(a, id);
   if (!av) return null;
-  if (P3D.asm) return P3D.asm;
+  if (P3D.asm[id]) return P3D.asm[id];
   const parts = p3dParts(a);
   const items = av.items || [];
   const src = items.map(it => parts.find(x => x.id === it.part));
@@ -1791,15 +1795,15 @@ function p3dAssembly(a) {
   if (av.plate && av.plate.size) list.unshift({mesh: p3dMesh(p3dBoxPos(av.plate.size)), color: av.plate.color || '#8fa3b8'});
   const min = [0, 1, 2].map(j => Math.min(...list.map(x => x.mesh.min[j])));
   const max = [0, 1, 2].map(j => Math.max(...list.map(x => x.mesh.max[j])));
-  return (P3D.asm = {parts: list, min, max});
+  return (P3D.asm[id] = {parts: list, min, max});
 }
 function p3dDrawLive() {
   const cv = document.getElementById('p3d_canvas');
   if (!cv) return;
   const L = P3D.live;
-  const asm = L.part === P3D_ASM ? p3dAsmView(architectureData) : null;
-  const part = asm ? {id: P3D_ASM, label: asm.label || '組み立て図'} : p3dParts(architectureData).find(x => x.id === L.part);
-  const mesh = asm ? p3dAssembly(architectureData) : part && P3D.meshes[part.id];
+  const asm = p3dAsmView(architectureData, L.part);
+  const part = asm ? {id: asm.id, label: asm.label || '組み立て図'} : p3dParts(architectureData).find(x => x.id === L.part);
+  const mesh = asm ? p3dAssembly(architectureData, asm.id) : part && P3D.meshes[part.id];
   const err = asm ? (asm.items || []).map(it => P3D.errors[it.part]).find(Boolean) : part && P3D.errors[part.id];
   const g = cv.getContext('2d');
   g.fillStyle = '#060b14'; g.fillRect(0, 0, cv.width, cv.height);
@@ -1835,8 +1839,8 @@ function initPrint3d() {
   const parts = p3dParts(architectureData);
   if (!parts.length) return;
   const L = P3D.live;
-  const asm = p3dAsmView(architectureData);
-  if (!parts.some(x => x.id === L.part) && !(asm && L.part === P3D_ASM)) L.part = asm ? P3D_ASM : parts[0].id;
+  const asms = p3dAsmViews(architectureData);
+  if (!parts.some(x => x.id === L.part) && !asms.some(v => v.id === L.part)) L.part = asms.length ? asms[0].id : parts[0].id;
   const body = document.getElementById('about_body');
   const cv = document.getElementById('p3d_canvas');
   let frame = 0;
@@ -1870,11 +1874,12 @@ function initPrint3d() {
     cv.addEventListener('dblclick', reset);
   }
   select(L.part);
-  parts.forEach(x => p3dLoad(x).catch(() => null).then(() => { p3dUpdate(x); if (x.id === L.part || L.part === P3D_ASM) redraw(); }));
+  parts.forEach(x => p3dLoad(x).catch(() => null).then(() => { p3dUpdate(x); if (x.id === L.part || p3dAsmView(architectureData, L.part)) redraw(); }));
 }
 function renderPrint3d(a) {
   const p = a.print3d || {};
   const parts = p.parts || [];
+  const asms = p3dAsmViews(a);
   const swatch = x => `<span class="swatch" style="background:${esc(x.color || '#35d6ff')}"></span>`;
   const dl = (file, text) => `<a class="p3ddl" href="${p3dUrl(file)}" download>⬇ ${esc(text || file)}</a>`;
   const total = parts.reduce((n, x) => n + (Number(x.qty) || 1), 0);
@@ -1894,9 +1899,9 @@ function renderPrint3d(a) {
     aboutTable(['部品', '数量', '外形 幅 × 奥行き × 高さ（mm）', '印刷の向き', '材料', 'STL'], rows) +
     `<div class="p3dlinks">${p.source ? dl(p.source, `${p.source}（OpenSCAD ソース）`) : ''}<span class="note">ソースの場所: ${esc(p.dir || '-')}</span></div>` +
     `<h3>三面図・立体図</h3><div class="note">座標は天板と同じ（前 = +Y = LiDAR・カメラ側、右 = +X = USB 側、上 = +Z）。前後バンパーは印刷の向き（上面が下）で描いています。図をクリックすると大きく表示します。</div><div class="p3dgrid">${cards}</div>` +
-    `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${p.assembly_view ? `<button data-p3d-live="${P3D_ASM}">${esc(p.assembly_view.label || '組み立て図')}</button>` : ''}${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
+    `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${asms.map(v => `<button data-p3d-live="${esc(v.id)}">${esc(v.label || '組み立て図')}</button>`).join('')}${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
     `<button data-p3d-zoom="in" title="拡大">＋</button><button data-p3d-zoom="out" title="縮小">−</button><button data-p3d-reset>向きを戻す</button></div>` +
-    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転、ホイールで拡大・縮小、ダブルクリックで最初の向きに戻ります。${p.assembly_view && p.assembly_view.note ? `「${esc(p.assembly_view.label || '組み立て図')}」は${esc(p.assembly_view.note)}。` : ''}</div></div>` +
+    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転、ホイールで拡大・縮小、ダブルクリックで最初の向きに戻ります。${asms.filter(v => v.note).map(v => `「${esc(v.label || '組み立て図')}」は${esc(v.note)}。`).join('')}</div></div>` +
     `<h3>印刷設定（目安）</h3>${aboutTable(['項目', '設定'], (p.settings || []).map(x => [esc(x.name), esc(x.value)]))}` +
     `<h3>ネジ・固定具</h3>${aboutTable(['場所', 'ネジ', '穴の形'], (p.screws || []).map(x => [esc(x.place), esc(x.screw), esc(x.hole)]))}` +
     (p.screw_note ? `<div class="note">${esc(p.screw_note)}</div>` : '') +

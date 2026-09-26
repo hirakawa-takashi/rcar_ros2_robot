@@ -6,9 +6,11 @@
 //       openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
 //       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
 //       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
+//       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
 
-part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "cover" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
+show_cover = false;   // 組立図に上面カバーを描く
 
 $fn = 48;
 
@@ -518,10 +520,128 @@ module cable_ghost() {
     }
 }
 
+
+// ---- 上面カバー（天板全体を覆う。左右のフックで天板の端の裏に引っかける。工具不要）----
+// LiDAR はカバーの上に出る。LiDAR の外形より大きく抜いてあるので、LiDAR を付けたまま真上へ抜ける
+cov_t = 2.4;              // 壁と上面の厚さ
+cov_clr = 0.3;            // 天板の端とのすき間
+cov_top = 60;             // 上面の裏（Pi 3 段の上端 54 mm の上に 6 mm）
+cov_y0 = -1;              // 後ろの壁の内側（後ろのバンパーの上）
+cov_y1 = 206.5;           // 前の壁の内側（LiDAR の前端 205 mm の前）
+cov_skirt_z = 11;         // 前後の壁の下端。バンパー上面（7 mm）との間に VL53L1X の線を通す
+cov_ch = 6;               // 上面の角の面取り
+cov_rear = [38.4, 18];    // 後ろの斜面: 後ろの壁の上端の高さ、斜面が上面に届く Y（外側）
+cov_hook_y = [45, 193];   // フックの位置（左右とも）
+cov_hook_w = 12;
+cov_hook_root = 28;       // フックの付け根の高さ（ここから下がたわむ）
+cov_hook_lip = 2;         // 天板の裏にかかる深さ
+cov_stop_y = [8, 100, 170];  // 天板の上面に載せる受け（左右とも）
+cov_rib_x = [[21, 25], [127, 131]];  // ふたの前後の縁をはさんで前後の位置を決めるリブ
+cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
+cov_eye_w = 24;           // 前面の窓（右はカメラ、左は左右対称の飾り）
+cov_eye_h = 31;
+cov_lcd = [4, 31, 14, 16];           // 液晶の窓（X0, X1, 後ろの壁の下端 Z, 斜面の上端 Y）
+cov_vent = [42, 112, 28, 72];        // Pi の上の六角の通気口の範囲
+
+cov_ox0 = -cov_clr - cov_t;
+cov_ox1 = plate_w + cov_clr + cov_t;
+cov_oy0 = cov_y0 - cov_t;
+cov_oy1 = cov_y1 + cov_t;
+cov_oz = cov_top + cov_t;
+
+// LiDAR を真上へ抜くための外形（ヘッド、柱 4 本、前のモーター側）
+module cover_lidar_cut() {
+    hull() {
+        translate([lidar_cx, lidar_cy]) circle(r = 38);
+        for (p = lidar_holes_rel) translate(lidar_hole(p)) circle(r = 8);
+        translate([lidar_cx, lidar_cy + 47]) circle(r = 16);
+    }
+}
+
+// o = 0: 外形、o = cov_t: 内側（面取りと後ろの斜面を厚さぶん内へずらす）
+module cover_solid(o) {
+    c = cov_ch; e = o * sqrt(2) - o;
+    dy = cov_rear[1] - cov_oy0; dz = cov_oz - cov_rear[0]; L = sqrt(dy * dy + dz * dz);
+    ny = dz / L; nz = -dy / L;
+    rz = cov_rear[0] + o * nz + (o - o * ny) / dy * dz;          // 斜面と後ろの壁の交点の Z
+    ry = cov_oy0 + o * ny + (cov_oz - o - cov_rear[0] - o * nz) / dz * dy;  // 斜面と上面の交点の Y
+    intersection() {
+        rotate([90, 0, 0]) translate([0, 0, -300]) linear_extrude(600)
+            polygon([[cov_ox0 + o, -20], [cov_ox1 - o, -20], [cov_ox1 - o, cov_oz - c - e],
+                     [cov_ox1 - c - e, cov_oz - o], [cov_ox0 + c + e, cov_oz - o], [cov_ox0 + o, cov_oz - c - e]]);
+        rotate([90, 0, 90]) translate([0, 0, -300]) linear_extrude(600)
+            polygon([[cov_oy0 + o, -20], [cov_oy1 - o, -20], [cov_oy1 - o, cov_oz - c - e],
+                     [cov_oy1 - c - e, cov_oz - o], [ry, cov_oz - o], [cov_oy0 + o, rz]]);
+    }
+}
+
+module cover_hook() {
+    // 天板の裏にかかる爪（上面が掛かり面、下面は押し込むと外へ逃げる斜面）と、外へ引く指かけ
+    rotate([90, 0, 0]) linear_extrude(cov_hook_w, center = true) {
+        polygon([[-cov_clr, -plate_t - 0.2], [cov_hook_lip, -plate_t - 0.2], [-cov_clr, -plate_t - 3.5]]);
+        polygon([[cov_ox0, -plate_t - 3.5], [cov_ox0 - 2.5, -plate_t - 3.5], [cov_ox0, -plate_t - 1]]);
+        translate([cov_ox0, -plate_t - 3.5]) square([cov_t, 3.5]);
+    }
+}
+
+module cover() {
+    difference() {
+        union() {
+            difference() {
+                cover_solid(0);
+                cover_solid(cov_t);
+                translate([cov_ox0 - 1, cov_oy0 - 1, -50]) cube([cov_ox1 - cov_ox0 + 2, cov_oy1 - cov_oy0 + 2, 50 - plate_t]);
+                // 前後の壁は天板の上面より上だけ（下はバンパー）
+                for (y = [[cov_oy0 - 1, cov_y0 + 0.01], [cov_y1 - 0.01, cov_oy1 + 1]])
+                    translate([-cov_clr, y[0], -10]) cube([plate_w + 2 * cov_clr, y[1] - y[0], 10 + cov_skirt_z]);
+            }
+            // フック
+            for (x = [0, 1], y = cov_hook_y)
+                translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0]) cover_hook();
+            // 天板の上面に載る受け（下は平ら、上は 45° で壁へ）
+            for (x = [0, 1], y = cov_stop_y)
+                translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0])
+                    rotate([90, 0, 0]) linear_extrude(8, center = true)
+                        polygon([[-cov_clr - 0.01, 0], [2.5, 0], [2.5, 0.8], [-cov_clr - 0.01, 3.6]]);
+            // ふたの前後の縁をはさむリブ
+            for (r = cov_rib_x, y = [[box_y0 - 5.3, box_y0 - 2.3], [box_y0 + box_y + 2.3, box_y0 + box_y + 5.3]])
+                translate([r[0], y[0], box_h + 1]) cube([r[1] - r[0], y[1] - y[0], cov_top - box_h - 0.99]);
+        }
+        // フックのまわりの切れ目（1 mm）
+        for (x = [0, 1], y = cov_hook_y)
+            translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0])
+                for (s = [-1, 1]) translate([cov_ox0 - 3, s > 0 ? cov_hook_w / 2 : -cov_hook_w / 2 - 1, -10])
+                    cube([cov_t + 3 + cov_clr + 0.01, 1, 10 + cov_hook_root]);
+        // LiDAR
+        translate([0, 0, box_h + lid_t + 1]) linear_extrude(cov_oz) cover_lidar_cut();
+        // 充電口（右側面）
+        translate([plate_w - 1, cov_chg[0], cov_chg[2]]) rotate([0, 90, 0]) translate([-(cov_chg[3] - cov_chg[2]), 0, 0])
+            linear_extrude(cov_t + cov_clr + 2) offset(r = 4) offset(delta = -4) square([cov_chg[3] - cov_chg[2], cov_chg[1] - cov_chg[0]]);
+        // 前面の窓（下が開いた U 字。カメラのレンズは壁より後ろにあるので、真上へ抜ける）
+        for (x = [cam_cx, plate_w - cam_cx])
+            translate([x - cov_eye_w / 2, cov_y1 - 1, -1]) cube([cov_eye_w, cov_t + 2, cov_eye_h + 1]);
+        // 前面のスリット（飾り）
+        for (i = [0 : 2]) translate([plate_w / 2 - 14, cov_y1 - 1, 20 + i * 7]) cube([28, cov_t + 2, 3]);
+        // 液晶の窓（後ろ左の角。後ろ向きに倒した画面を斜め後ろ上から見る）
+        translate([cov_lcd[0], cov_oy0 - 1, cov_lcd[2]]) cube([cov_lcd[1] - cov_lcd[0], cov_lcd[3] - cov_oy0 + 1, cov_oz]);
+        // 六角の通気口
+        for (i = [0 : 12], j = [0 : 8]) {
+            x = cov_vent[0] + i * 6 + (j % 2) * 3;
+            y = cov_vent[2] + j * 5.2;
+            if (x <= cov_vent[1] && y <= cov_vent[3]) translate([x, y, cov_top - 1]) cylinder(r = 2.4, h = cov_t + 2, $fn = 6);
+        }
+        // 文字
+        translate([140, 150, cov_oz - 0.8]) rotate([0, 0, 90]) linear_extrude(1)
+            text("AI-CAR", size = 9, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+    }
+}
+
 if (part == "box") box();
 else if (part == "lid") lid();
 else if (part == "pi_base") pi_base();
 else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]) bumper();
+else if (part == "cover") translate([0, 0, cov_oz]) mirror([0, 0, 1]) cover();
+else if (part == "cover_asm") cover();
 else {
     plate();
     color("royalblue") box();
@@ -536,6 +656,7 @@ else {
     if (show_cables) cable_ghost();
     color("dimgray") both_bumpers();
     tof_ghost();
+    if (show_cover) color("#3c4452") cover();
 }
 
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
