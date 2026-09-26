@@ -63,7 +63,7 @@ print3d:
       material: PLA / PETG
       orient: フランジ（天板に当たる面）を下
       holds:
-        - CIO SMARTCOBY Pro SLIM ×2（重ねて収納、右の開口から出し入れ）
+        - CIO SMARTCOBY Pro SLIM ×2（重ねて収納、ふたを外して上から出し入れ。右の開口は充電口とケーブル用）
         - DROK 降圧コンバーター（後ろの壁、結束バンド 1 本）
       mount: 天板の前側 4 穴に、今のネジより 3 mm 長いネジで留める
     - id: lid

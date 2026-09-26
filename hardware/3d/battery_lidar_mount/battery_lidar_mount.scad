@@ -267,7 +267,10 @@ module box() {
         translate([box_x0 + wall, box_y0 + wall, floor_t]) cube([in_x, in_y, in_z + 1]);
         // 開口側の端（全面開口）
         ox = open_end == "right" ? box_x0 + box_x - wall - 1 : box_x0 - 1;
-        translate([ox, box_y0 + wall, floor_t]) cube([wall + 2, in_y, in_z + 1]);
+        difference() {
+            translate([ox, box_y0 + wall, floor_t]) cube([wall + 2, in_y, in_z + 1]);
+            for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+        }
         // 反対側の端: 押し出し用の窓
         cx = open_end == "right" ? box_x0 - 1 : box_x0 + box_x - wall - 1;
         translate([cx, box_cy - 20, floor_t + 4]) cube([wall + 2, 40, in_z - 8]);
