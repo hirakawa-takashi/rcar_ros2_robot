@@ -78,6 +78,14 @@ box_cy = (flange_y0 + flange_y1) / 2;
 box_x0 = box_cx - box_x / 2;
 box_y0 = box_cy - box_y / 2;
 
+// 上のバッテリーの残量表示（ロゴの面を上、ポートを右にして入れる）
+// ポートの短辺から 7〜20 mm、ロゴの面でポートを上にしたときの右の長辺から 9〜21 mm（21 は写真からの推定）
+bat_disp = [7, 20, 9, 21];
+disp_lid_m = 1;           // ふたの窓の余白
+disp_cov_m = 2;           // カバーの窓の余白（斜めから見る分）
+function disp_rect() = let(x1 = box_x0 + wall + clr + bat_x, y0 = box_y0 + wall + clr)
+    [x1 - bat_disp[1], y0 + bat_disp[2], x1 - bat_disp[0], y0 + bat_disp[3]];
+
 // ふた固定用ボス（箱の外側 4 隅、M3 タッピング）
 boss_d = 8;
 boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
@@ -101,7 +109,10 @@ cam_plate_w = 28;
 cam_rib_l = 12;           // 板の後ろの補強リブの長さ
 cam_cx = 113;             // 右寄せ: フラットケーブルを LiDAR のモーター（ふたの上 1.5 mm まで下がる）と柱の横に通す
 fpc_w = 16;               // カメラ用フラットケーブル（Standard 側の幅）
-fpc_clip_y = [125, 160];  // ふたの上でケーブルを押さえるブリッジ
+fpc_rx = 83;              // ふたの後ろ半分の通り道の中心（LiDAR の後ろの柱の間。バッテリーの表示の窓をよける）
+fpc_jog_y = 150;          // X = cam_cx から X = fpc_rx へ 45° に 2 回折って移る帯の中心
+fpc_air_y = 94;           // ふたの後ろ端から下りたあと、X = cam_cx へ戻す帯の中心（DROK の上）
+fpc_clips = [[cam_cx, 168], [fpc_rx, 128]];  // ふたの上でケーブルを押さえるブリッジ
 tie_w = 4.5;              // 結束バンド（幅 3.6 mm まで）を通すトンネル
 tie_h = 2;
 
@@ -286,7 +297,7 @@ module lid() {
                 q = lidar_hole(p);
                 translate([q[0], q[1], 0]) cylinder(d = lidar_tower_d, h = lid_t + lidar_tower_h);
             }
-            for (y = fpc_clip_y) translate([cam_cx, y, lid_t - 0.01]) fpc_clip();
+            for (p = fpc_clips) translate([p[0], p[1], lid_t - 0.01]) fpc_clip();
             cam_mount();
             // LiDAR のハーネスと USB ケーブルの固定（ヘッドの柱の間、ふたの後ろ端）
             translate([lidar_cx, box_y0 + 7, lid_t - 0.01]) rotate([0, 0, 90]) tie_mount();
@@ -297,6 +308,9 @@ module lid() {
             translate([q[0], q[1], 0]) clear_hole(2.5, lid_t + lidar_tower_h, lid_t + lidar_tower_h - lidar_floor);
         }
         cam_mount_cut();
+        // バッテリーの残量表示の窓
+        d = disp_rect();
+        translate([d[0] - disp_lid_m, d[1] - disp_lid_m, -1]) cube([d[2] - d[0] + 2 * disp_lid_m, d[3] - d[1] + 2 * disp_lid_m, lid_t + 2]);
     }
 }
 
@@ -534,13 +548,17 @@ module cable_ghost() {
     // カメラの下端 → 板の下の窓 → ふたの上 → USB / LAN 端子の上 → 45° に折って HAT の下へ → CAM 端子
     color("white") {
         fpc_path([[cam_cx, cy, cam_z0 + 0.5], [cam_cx, cy - 1.5, lt + 1.5], [cam_cx, cam_by - cam_plate_t - 2, lt + 0.8],
-                  [cam_cx, box_y0 - 2, lt + 0.8], [cam_cx, pi_cy + pi_board[1] / 2 + 2, pz + 16],
+                  [cam_cx, fpc_jog_y + fpc_w / 2, lt + 0.8]]);
+        translate([fpc_rx - fpc_w / 2, fpc_jog_y - fpc_w / 2, lt + 0.5]) cube([cam_cx - fpc_rx + fpc_w, fpc_w, 0.6]);
+        fpc_path([[fpc_rx, fpc_jog_y - fpc_w / 2, lt + 0.8], [fpc_rx, box_y0 - 2, lt + 0.8], [fpc_rx, fpc_air_y + fpc_w / 2, lt - 4]]);
+        translate([fpc_rx - fpc_w / 2, fpc_air_y - fpc_w / 2, lt - 4.3]) cube([cam_cx - fpc_rx + fpc_w, fpc_w, 0.6]);
+        fpc_path([[cam_cx, fpc_air_y - fpc_w / 2, lt - 4], [cam_cx, pi_cy + pi_board[1] / 2 + 2, pz + 16],
                   [cam_cx, pi_cy - 12, pz + 14.5]]);
         translate([cam_cx - 8, pi_cy - 12 - 8, pz + 14.5]) cube([0.6, 16, 0.6]);
         path([[cam_cx - 8, pi_cy - 13, pz + 14.5], [pi_cx - pi_board[0] / 2 + 52, pi_cy - 13, pz + 2]], 1.5);
     }
     // LiDAR（USB 変換基板）→ Pi の USB
-    color("silver") path([[lidar_cx + 10, box_y0 + 20, lt + 3], [lidar_cx, box_y0 + 7, lt + 4], [lidar_cx + 30, box_y0 - 6, lt],
+    color("silver") path([[lidar_cx - 6, box_y0 + 20, lt + 3], [lidar_cx - 2, box_y0 + 7, lt + 4], [lidar_cx + 30, box_y0 - 6, lt],
                           [pi_cx + pi_board[0] / 2 + 12, pi_cy + 20, pz + 12], [pi_cx + pi_board[0] / 2 + 2, pi_cy + 19, pz + 12]], 3.5);
     // バッテリー（PD 12V）→ DROK の入力（左端）
     color("red") path([[box_x0 + box_x + 3, box_cy - 10, floor_t + 8], [box_x0 + box_x + 3, box_y0 - 12, flange_t + 3],
@@ -686,6 +704,14 @@ module cover() {
         // カメラ（上面から前面へ抜いた切り欠き。カメラと板を囲むので、真上へ抜ける）
         translate([0, cov_oy1 + 1, 0]) rotate([90, 0, 0]) linear_extrude(cov_oy1 + 1 - (cam_by - cam_plate_t - 1.5))
             translate([cam_cx - cov_cam_w / 2, cov_cam_z]) offset(r = 3) offset(delta = -3) square([cov_cam_w, cov_oz + 10 - cov_cam_z]);
+        // バッテリーの残量表示の窓（上面。縁は面取り）
+        let (d = disp_rect(), m = disp_cov_m) {
+            translate([d[0] - m, d[1] - m, cov_top - 1]) cube([d[2] - d[0] + 2 * m, d[3] - d[1] + 2 * m, cov_t + 2]);
+            hull() {
+                translate([d[0] - m, d[1] - m, cov_oz - cov_edge]) cube([d[2] - d[0] + 2 * m, d[3] - d[1] + 2 * m, 0.01]);
+                translate([d[0] - m - cov_edge, d[1] - m - cov_edge, cov_oz]) cube([d[2] - d[0] + 2 * (m + cov_edge), d[3] - d[1] + 2 * (m + cov_edge), 1]);
+            }
+        }
         // 前面のスリット（飾り）
         for (i = [0 : 2]) translate([plate_w / 2 - 14, cov_y1 - 1, 20 + i * 7]) cube([28, cov_t + 2, 3]);
         // 液晶の窓（後ろ左の角。後ろ向きに倒した画面を斜め後ろ上から見る）
@@ -738,7 +764,8 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
      screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
-     fpc_x = [cam_cx - fpc_w / 2, cam_cx + fpc_w / 2],
+     fpc_x = [cam_cx - fpc_w / 2, cam_cx + fpc_w / 2], fpc_rear_x = [fpc_rx - fpc_w / 2, fpc_rx + fpc_w / 2],
+     fpc_jog_band_y = [fpc_jog_y - fpc_w / 2, fpc_jog_y + fpc_w / 2], bat_disp_rect = disp_rect(),
      lidar_tower_x_max = lidar_cx + 28 + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + lidar_motor_d / 2,
      lidar_motor_bottom_z = box_h + lid_t + lidar_tower_h - lidar_below, lid_top_z = box_h + lid_t,
      lid_screw_head_x_min = boss_pts[1][0] - head_d(3) / 2,
