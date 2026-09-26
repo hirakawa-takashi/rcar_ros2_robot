@@ -23,6 +23,27 @@ plate_holes = [[11, 11], [143, 11], [11, 189], [143, 189],
 mount_holes = [[11, 189], [143, 189], [9, 110], [145, 110]];
 mount_hole_d = 4.4;
 
+// 天板の上に頭が出ているモーター取付のネジ（図面: 28 x 28 mm の範囲 4 か所、左右の端から 7 mm、前後の端から 38 mm、高さ 3 mm）
+// 上に載る部品（前は箱、後ろ左はラズパイ台）の底にくぼみを付けて逃げる
+motor_scr_sq = 28;
+motor_scr_h = 3;
+motor_scr_pts = [[7, 38], [plate_w - 7 - motor_scr_sq, 38],
+                 [7, plate_l - 38 - motor_scr_sq], [plate_w - 7 - motor_scr_sq, plate_l - 38 - motor_scr_sq]];  // 各範囲の左後ろの角
+recess_clr = 0.5;         // ネジとくぼみのすき間（横と上）
+recess_roof = 1.5;        // くぼみの上に残す厚さ
+recess_rim = 1.5;         // くぼみの周りの縁
+recess_t = motor_scr_h + recess_clr + recess_roof;  // くぼみの上の部品の厚さ
+
+module motor_recess() {
+    for (p = motor_scr_pts) translate([p[0] - recess_clr, p[1] - recess_clr, -1])
+        cube([motor_scr_sq + 2 * recess_clr, motor_scr_sq + 2 * recess_clr, 1 + motor_scr_h + recess_clr]);
+}
+
+module motor_recess_pad(pts) {
+    m = recess_clr + recess_rim;
+    for (p = pts) rrect(p[0] - m, p[1] - m, p[0] + motor_scr_sq + m, p[1] + motor_scr_sq + m, 2, recess_t);
+}
+
 // ---- ネジ穴 ----
 // "tap": ネジを直接ねじ込んで、ネジ自身にねじ山を切らせる下穴（M2〜M3 のねじ山は FDM ではきれいに出ないため）
 // "insert": 熱圧入インサート（真鍮）を入れる穴
@@ -56,7 +77,7 @@ clr = 0.6;      // 片側のすき間
 
 // ---- 箱 ----
 wall = 2.5;
-floor_t = 3;          // フランジと同じ厚さ（バッテリーを段差なしで引き出せる）
+floor_t = recess_t;   // 前のモーターのネジの上に載るので、くぼみの分だけフランジより厚い
 flange_t = 3;
 flange_y0 = 104;
 flange_y1 = 196;
@@ -127,6 +148,7 @@ pi_hole_off = 3.5;        // GPIO 側の短辺からの距離（USB / LAN は +X
 pi_boss_d = 6;
 pi_boss_h = 6;
 pi_base_t = 3;
+wing_t = recess_t;        // 左側（IMU・液晶の台）は後ろ左のモーターのネジの上に載るので厚くする
 pi_stack_h = 45;          // Pi 5 + AI HAT+ + Motor HAT の 3 段（実測。台のぶん高くなる側で見積もる）
 pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
           [pi_cx - pi_board[0] / 2 + pi_hole_off + dx, pi_cy - pi_hole_dy / 2 + dy]];
@@ -225,7 +247,7 @@ module tie_mount() {
     }
 }
 
-tie_pts_box = [[13, 135], [13, 165], [134, 108]];
+tie_pts_box = [[13, 128], [13, 168], [134, 108]];  // 左の 2 個はモーターのネジのくぼみの前後
 
 // DROK 降圧コンバーター（12V → 5.2V、B09JKHD3SH）。取付穴がないので、箱の後ろの壁に立てて結束バンドで留める
 drok_board = [63, 27, 1.6];   // 商品画像の寸法
@@ -260,6 +282,7 @@ module box() {
             rrect(flange_x0, flange_y0, flange_x1, flange_y1, flange_r, flange_t);
             translate([box_x0, box_y0, 0]) cube([box_x, box_y, box_h]);
             for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+            motor_recess_pad([motor_scr_pts[2], motor_scr_pts[3]]);
             for (p = tie_pts_box) translate([p[0], p[1], flange_t - 0.01]) tie_mount();
             drok_holder();
         }
@@ -267,7 +290,10 @@ module box() {
         translate([box_x0 + wall, box_y0 + wall, floor_t]) cube([in_x, in_y, in_z + 1]);
         // 開口側の端（全面開口）
         ox = open_end == "right" ? box_x0 + box_x - wall - 1 : box_x0 - 1;
-        translate([ox, box_y0 + wall, floor_t]) cube([wall + 2, in_y, in_z + 1]);
+        difference() {
+            translate([ox, box_y0 + wall, floor_t]) cube([wall + 2, in_y, in_z + 1]);
+            for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+        }
         // 反対側の端: 押し出し用の窓
         cx = open_end == "right" ? box_x0 - 1 : box_x0 + box_x - wall - 1;
         translate([cx, box_cy - 20, floor_t + 4]) cube([wall + 2, 40, in_z - 8]);
@@ -284,6 +310,7 @@ module box() {
         for (p = mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = flange_t + 2);
         // ふた固定用の下穴
         for (p = boss_pts) translate([p[0], p[1], box_h]) screw_hole(3, 12);
+        motor_recess();
     }
 }
 
@@ -351,13 +378,15 @@ module pi_base() {
                 translate([corners[a[1]][0], corners[a[1]][1], 0]) cylinder(r = 6, h = pi_base_t);
             }
             for (p = pi_pts) translate([p[0], p[1], 0]) cylinder(d = pi_boss_d, h = pi_base_t + pi_boss_h);
-            rrect(wing[0], wing[1], wing[2], wing[3], 4, pi_base_t);
+            rrect(wing[0], wing[1], wing[2], wing[3], 4, wing_t);
+            motor_recess_pad([motor_scr_pts[0]]);
             // 後ろのバンパーの爪を受ける平らな端（前のフランジの縁と同じ位置 Y = plate_l - flange_y1）
             for (a = bump_arm_x) rrect(a[0], plate_l - flange_y1, a[1], plate_l - bump_arm_y0, 1, pi_base_t);
             imu_holder();
             lcd_holder();
         }
         for (p = pi_mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = pi_base_t + 2);
+        motor_recess();
         for (p = pi_pts) translate([p[0], p[1], pi_base_t + pi_boss_h]) screw_hole(2.5, 8);
         // 配線通し・通気（後ろ側は台の縁まで開け、天板の開口から上がるモーター線を Pi の後ろへ出す）
         translate([pad[0] + 10, pad[1] - 1, -1]) cube([pad[2] - pad[0] - 20, pad[3] - pad[1] - 9, pi_base_t + 2]);
@@ -369,7 +398,7 @@ module imu_holder() {
     iy = imu_board[1] + 0.6;
     ox = ix + 2 * imu_wall;
     oy = iy + 2 * imu_wall;
-    translate([imu_c[0], imu_c[1], pi_base_t - 0.01]) {
+    translate([imu_c[0], imu_c[1], wing_t - 0.01]) {
         // 四方の壁（上端は基板の上面より 1 mm 上で、基板の位置決めを兼ねる）。下向きのピンの線は Pi 側の壁の穴から出す
         difference() {
             translate([-ox / 2, -oy / 2, 0]) cube([ox, oy, imu_lift + 1.6 + 1]);
@@ -400,7 +429,7 @@ module lcd_frame_local() {
 
 module lcd_holder() {
     H = lcd_board[1];
-    translate([lcd_cx, lcd_y, pi_base_t - 0.01]) {
+    translate([lcd_cx, lcd_y, wing_t - 0.01]) {
         rotate([-lcd_tilt, 0, 0]) rotate([0, 0, 180]) translate([0, 0, 2]) lcd_frame_local();
         // 枠の底の下を台まで埋める（底が浮かないように）
         hull() {
@@ -481,8 +510,8 @@ module pi_ghost() {
 }
 
 module sensor_ghost() {
-    color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, pi_base_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
-    color("black") translate([lcd_cx, lcd_y, pi_base_t + 2]) rotate([-lcd_tilt, 0, 0])
+    color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, wing_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
+    color("black") translate([lcd_cx, lcd_y, wing_t + 2]) rotate([-lcd_tilt, 0, 0])
         translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, 0]) cube([lcd_board[0], 0.5, lcd_board[1]]);
 }
 
@@ -572,12 +601,12 @@ module cable_ghost() {
     // 液晶 / IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
     hy = pi_cy + pi_board[1] / 2 - 3.5;
     ht = pi_base_t + pi_boss_h + pi_stack_h + 4;
-    color("magenta") path([[lcd_cx, lcd_y + 21, pi_base_t + 38], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
-    color("purple") path([[imu_c[0], imu_c[1], pi_base_t + imu_lift - 8], [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1], pi_base_t + imu_lift - 8],
-                          [30, hy - 2, pi_base_t + 34], [pi_cx - 34, hy + 2, ht]], 2.5);
+    color("magenta") path([[lcd_cx, lcd_y + 21, wing_t + 38], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
+    color("purple") path([[imu_c[0], imu_c[1], wing_t + imu_lift - 8], [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1], wing_t + imu_lift - 8],
+                          [30, hy - 2, wing_t + 34], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
-        path([[plate_w / 2, plate_l + tof_dy - 20, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 165, flange_t + 5],
-              [13, 135, flange_t + 5], [20, 100, 10], [pi_cx - 25, hy + 2, ht]], 2.5);
+        path([[plate_w / 2, plate_l + tof_dy - 20, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 168, flange_t + 5],
+              [13, 128, flange_t + 5], [20, 100, 10], [pi_cx - 25, hy + 2, ht]], 2.5);
         path([[plate_w / 2, 20 - tof_dy, flange_t + 12], [plate_w / 2, 10, pi_base_t + pi_boss_h + pi_stack_h + 8],
               [pi_cx - 20, hy, ht + 2]], 2.5);
     }
@@ -759,8 +788,8 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      pi_stack_top_z = pi_base_t + pi_boss_h + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
-     imu_top_z = pi_base_t + imu_lift + 1.6,
-     lcd_top_z = pi_base_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
+     imu_top_z = wing_t + imu_lift + 1.6,
+     lcd_top_z = wing_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
      screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
@@ -768,6 +797,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      fpc_jog_band_y = [fpc_jog_y - fpc_w / 2, fpc_jog_y + fpc_w / 2], bat_disp_rect = disp_rect(),
      lidar_tower_x_max = lidar_cx + 28 + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + lidar_motor_d / 2,
      lidar_motor_bottom_z = box_h + lid_t + lidar_tower_h - lidar_below, lid_top_z = box_h + lid_t,
+     motor_recess = [for (p = motor_scr_pts) [p[0] - recess_clr, p[1] - recess_clr, p[0] + motor_scr_sq + recess_clr, p[1] + motor_scr_sq + recess_clr]], recess_t = recess_t,
      lid_screw_head_x_min = boss_pts[1][0] - head_d(3) / 2,
      drok_x = [drok_cx - drok_board[0] / 2, drok_cx + drok_board[0] / 2], drok_front_y = drok_by - drok_h,
      drok_top_z = drok_z0 + drok_board[1],
