@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- プロジェクト説明の「ハードウェア構成」の構成ブロック図とデバイス一覧で、バッテリーを 2 個に分けて表示（「バッテリー（Pi 5 用）」→ DROK、「バッテリー（モーター用）」→ Motor HAT）。`architecture.yaml` のデバイスに `feeds`（電源の供給先）を追加し、図の線はそこから引く
 - ダッシュボードの「プロジェクト説明」の右に「開発日記」ボタンを追加。main の記録（PR のマージ・直接のコミット）を日付ごとに新しい順に並べ、PR へのリンク、CHANGELOG に追加した行、印刷し直す STL、分類（3D プリント / 配線 / ダッシュボード / ソフト / ドキュメント、変更したファイルから判定）を表示し、分類で絞り込める。`GET /api/dev_diary`（`ai_car_web/dev_diary.py`、HEAD が変わるまでキャッシュ）。読むリポジトリは `dashboard_node.repo_dir`（空ならインストール先を含むワークスペース）
 - ダッシュボードの見出しの横と、プロジェクト説明の「概要」タブ・PDF の表紙に「開発者：ひらかわたかし（GitHub: github.com/hirakawa-takashi）」を表示（`architecture.yaml` の `overview.developer` / `developer_github`、GitHub はリンク）
 - 天板の上に 3 mm 出ているモーター取付ネジ（28 × 28 mm の範囲 4 か所、左右の端から 7 mm・前後の端から 38 mm）をよけるため、上に載る部品の底に 29 × 29 × 3.5 mm のくぼみを付けた（`motor_scr_pts`・`motor_recess()`）。前の 2 か所は箱（床を 3 → 5 mm にし、フランジだけの部分に 5 mm の台を追加。箱・ふた・LiDAR・カメラが 2 mm 高くなる。左の結束バンドの受けを Y 128 / 168 mm へ移動）、後ろ左はラズパイ台の左側のベース（3 → 5 mm。IMU・液晶が 2 mm 高くなる）。後ろ右は上に部品がないので変更なし。`box.stl`・`pi_base.stl`・`cover.stl`（ふたの縁のリブと LiDAR の抜きの高さ）と `side.png` を更新し、`motor_recess.png` を追加。組み立て図のふたの高さを 38.4 mm に変更

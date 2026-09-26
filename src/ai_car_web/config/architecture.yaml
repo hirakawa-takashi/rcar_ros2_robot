@@ -45,7 +45,8 @@ hardware:
     - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C（初期 0x29、未配線）, power: 3V3, side: bottom}
-    - {id: battery, label: CIO SMARTCOBY Pro SLIM 35W ×2, sub: 10000mAh / USB-C PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）/ 12V → Motor HAT のみ, power: 12V, side: top}
+    - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
+    - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
 
 print3d:
