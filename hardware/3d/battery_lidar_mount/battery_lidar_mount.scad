@@ -144,6 +144,10 @@ bump_edge = 1;            // 手で触る縁の面取り
 bump_drop = 15;           // 前面の板を天板上面から下へ伸ばす長さ
 bump_arm_x = [[3, 18], [136, 151]];  // 箱のボスを避けた腕の範囲
 bump_arm_y0 = 183;
+// 腕の下の爪: 箱のフランジの前の縁（後ろはラズパイ台の腕の端）に当て、衝撃をネジではなく左右 2 か所の面で受ける
+bump_hook_x = [[7.2, 18], [136, 146.8]];  // フランジの角の丸みを避けた平らな範囲
+bump_hook_clr = 0.1;      // 爪と縁のすき間
+bump_hook_y1 = plate_l + 4;  // 爪の前端（天板の前端より前まで伸ばして腕と板につなぐ）
 // 板ばね: 横長の板の片端を固定側、反対の端を前面の板につなぐ（向きを交互にして前面の板を平行に動かす）
 spring_x = [[7, 40], [41, 74], [80, 113], [114, 147]];  // 板ばねの左端と右端
 spring_t = 1.2;           // 板厚（PETG 推奨）
@@ -333,6 +337,8 @@ module pi_base() {
             }
             for (p = pi_pts) translate([p[0], p[1], 0]) cylinder(d = pi_boss_d, h = pi_base_t + pi_boss_h);
             rrect(wing[0], wing[1], wing[2], wing[3], 4, pi_base_t);
+            // 後ろのバンパーの爪を受ける平らな端（前のフランジの縁と同じ位置 Y = plate_l - flange_y1）
+            for (a = bump_arm_x) rrect(a[0], plate_l - flange_y1, a[1], plate_l - bump_arm_y0, 1, pi_base_t);
             imu_holder();
             lcd_holder();
         }
@@ -414,6 +420,8 @@ module bumper() {
     difference() {
         union() {
             for (a = bump_arm_x) translate([0, 0, z0]) rrect(a[0], bump_arm_y0, a[1], plate_l + 1, 3, bump_t);
+            for (h = bump_hook_x) translate([h[0], flange_y1 + bump_hook_clr, 0])
+                cube([h[1] - h[0], bump_hook_y1 - flange_y1 - bump_hook_clr, z0 + 0.01]);
             translate([0, 0, z0]) crrect(0, plate_l, plate_w, yb, 6, bump_t, bump_edge);
             translate([0, 0, zs]) rrect(0, yb - 3, plate_w, yb, 1, spring_h);
             for (x = stop_x) translate([x - 2, yb - 0.01, zs]) cube([4, bump_gap - bump_travel, spring_h]);
