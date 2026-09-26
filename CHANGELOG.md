@@ -45,6 +45,7 @@
 - ダッシュボード: 運転モードバッジ・3 ボタン（`GET/POST /api/drive_mode`）と自律走行カードを追加。7 セグに `AUto` / `StoP` を追加
 
 ### Changed
+- 箱の開口側の角にあるふたのボス 2 本が、開口の切り抜きで内側 2.5 mm 欠けていた（M3 のねじ込み穴の壁が 0.25 mm）のを、欠けのない円柱（壁 2.75 mm）に戻した。ボスはバッテリーの通り道にかかるため、バッテリーはふたを外して上から出し入れする（説明と `architecture.yaml` を修正）。印刷し直すのは `box.stl`
 - `perception_node` のカメラ推論を YOLOv8m（640x640 / 78.9 GOP）へ更新。レターボックス前処理でアスペクト比を維持し、検出枠を元画像座標へ復元。信頼度 0.5 と複数フレーム確認（履歴3フレーム中2回）で誤検出を抑制
 - 状態表示器を TM1637 7 セグから ZJY-IPS130-V2.0 液晶へ置き換え（launch 既定 `use_lcd_display=true` / `use_seg_display=false`。`gpio_pins.yaml`・BOM・README の配線を pin 16/17/18/19/20/22/23 の液晶接続に更新）
 - `dashboard_node` の手動指令出力を `/cmd_vel` から `/cmd_vel_manual` に変更（`/cmd_vel` は `drive_mode_node` が発行）
