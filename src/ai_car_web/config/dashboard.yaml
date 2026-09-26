@@ -29,6 +29,8 @@ dashboard_node:
     architecture_config: ""
     # 構成定義から参照する ROS パラメータ。空なら share/ai_car_web/config/dashboard.yaml
     params_config: ""
+    # 開発日記（/api/dev_diary）で読む git リポジトリ。空ならインストール先を含むリポジトリ（ワークスペース）
+    repo_dir: ""
     # ゲームパッドの正規化指令（joy_teleop_node）。この秒数以上途絶えると未接続表示
     joy_cmd_topic: "/joy_cmd"
     joy_timeout: 1.0

@@ -400,6 +400,7 @@ api:
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーの配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
+    - {method: GET, path: /api/dev_diary, desc: 開発日記（main の PR マージ・コミットと CHANGELOG の追加行を日付ごとにまとめたもの）, auth: false}
     - {method: GET, path: /api/drive_mode, desc: 現在の運転モード, auth: false}
     - {method: GET, path: '/print3d/{file}', desc: 3D プリント部品の STL・図・OpenSCAD ソース（hardware/3d/battery_lidar_mount）, auth: false}
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
