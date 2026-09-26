@@ -5,6 +5,7 @@
 overview:
   title: AI-CAR
   subtitle: Raspberry Pi 5 + ROS 2 Jazzy のメカナム 4 輪自律走行ロボット
+  developer: ひらかわたかし
   purpose:
     - Raspberry Pi 5（8GB）上で ROS 2 Jazzy を動かし、LiDAR・カメラ・IMU を使って自律走行するロボットカーを作る
     - Web ダッシュボード（FastAPI）でテレメトリ表示・手動操作・システム監視・配線図の確認を行う
