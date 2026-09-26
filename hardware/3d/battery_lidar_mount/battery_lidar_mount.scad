@@ -85,18 +85,21 @@ boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
             [box_x0 - boss_d / 2 + 1.5, box_y0 + box_y - 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + box_y - 6]];
 
-// ---- カメラ（Raspberry Pi Camera Module 3、箱の前面に上下逆向きで取付）----
-// 基板 25 x 23.86 mm、M2 穴 21 x 12.5 mm（ケーブル側と反対の端から 2 / 14.5 mm）
-// ケーブルを上に出すため上下逆に付ける → ソフト側で 180° 回転が必要
+// ---- カメラ（Raspberry Pi Camera Module 3、ふたの前端に立てた板に正立で取付）----
+// 基板 25 x 23.86 mm、M2 穴 21 x 12.5 mm（ケーブルと反対の上端から 2 / 14.5 mm）
+// ケーブルは基板の下端から出て、水平に後ろへ折れ、板の下の窓をくぐってふたの上を通る
 cam_w = 25;
 cam_h = 23.86;
 cam_hole_dx = 21;
-cam_hole_z = [2, 14.5];   // 基板下端（上下逆なのでケーブルと反対側）からの距離
+cam_hole_top = [2, 14.5]; // 基板の上端からの距離
+cam_lens_z = 9.46;        // レンズ中心の基板下端からの高さ（上端から 14.4 mm）
 cam_boss_d = 5.5;
 cam_boss_l = 4;
-cam_top_gap = 1;          // 箱の上端から基板上端まで
+cam_fpc_gap = 4;          // ふたの上面から基板の下端まで（ケーブルを下から後ろへ曲げる分）
+cam_plate_t = 3;          // カメラを留める板
+cam_plate_w = 28;
+cam_rib_l = 12;           // 板の後ろの補強リブの長さ
 cam_cx = 113;             // 右寄せ: フラットケーブルを LiDAR のモーター（ふたの上 1.5 mm まで下がる）と柱の横に通す
-cable_notch_w = 20;       // ふた前端のケーブル逃げ
 fpc_w = 16;               // カメラ用フラットケーブル（Standard 側の幅）
 fpc_clip_y = [125, 160];  // ふたの上でケーブルを押さえるブリッジ
 tie_w = 4.5;              // 結束バンド（幅 3.6 mm まで）を通すトンネル
@@ -119,10 +122,11 @@ pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
 
 // ---- ラズパイ台の左側: IMU（GY-BNO055）と液晶（ZJY-IPS130）----
 wing = [4, 18, 34, 80];   // x0, y0, x1, y1
-imu_board = [20, 27];     // 実物に合わせて変更（長辺を前後方向に置く）
+imu_board = [12, 20];     // 実物に合わせて変更（長辺を前後方向に置く）
 imu_c = [18, 64];         // 液晶より前（基板の上端が天板から約 30 mm になるので、後ろ向きの画面を隠さないよう前に置く）
 imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向きで、ジャンパー線のコネクターを下に収める
-imu_post = 3;             // 四隅の柱が基板の角を受ける幅
+imu_post = 2;             // 四隅の受けが基板の角を受ける幅
+imu_cable_hole = [13, 3, 19];  // Pi 側（+X）の壁のケーブル穴（幅、台の上面からの下端、高さ）
 imu_wall = 1.6;
 lcd_board = [27.5, 39, 1.6];  // 幅 x 高さ x 基板厚（実物に合わせて変更）
 lcd_cx = 17.5;
@@ -136,6 +140,7 @@ bump_t = 4;
 bump_base_d = 19;         // 固定側の板の奥行き（天板の端から）
 bump_travel = 4;          // 前面の板が後ろへ逃げられる量（ストッパーまで）
 bump_face_t = 3;
+bump_edge = 1;            // 手で触る縁の面取り
 bump_drop = 15;           // 前面の板を天板上面から下へ伸ばす長さ
 bump_arm_x = [[3, 18], [136, 151]];  // 箱のボスを避けた腕の範囲
 bump_arm_y0 = 183;
@@ -177,12 +182,23 @@ function lidar_hole(p) = lidar_motor_front
     ? [lidar_cx + p[0], lidar_cy - p[1]]
     : [lidar_cx + p[0], lidar_cy + p[1]];
 
-cam_z0 = box_h - cam_top_gap - cam_h;
-function cam_pts() = [for (dx = [-cam_hole_dx / 2, cam_hole_dx / 2], z = cam_hole_z) [cam_cx + dx, cam_z0 + z]];
+cam_by = box_y0 + box_y + 2;          // 板の前面（ふたの前端）
+cam_z0 = box_h + lid_t + cam_fpc_gap;  // 基板の下端
+cam_top = cam_z0 + cam_h + 1;          // 板の上端（上の穴のボスを覆う）
+function cam_pts() = [for (dx = [-cam_hole_dx / 2, cam_hole_dx / 2], z = cam_hole_top) [cam_cx + dx, cam_z0 + cam_h - z]];
 
 module rrect(x0, y0, x1, y1, r, h) {
     hull() for (x = [x0 + r, x1 - r], y = [y0 + r, y1 - r])
         translate([x, y, 0]) cylinder(r = r, h = h);
+}
+
+// 角丸の板の上下の縁を c だけ面取りしたもの（手で触る部品）
+module crrect(x0, y0, x1, y1, r, h, c) {
+    hull() for (x = [x0 + r, x1 - r], y = [y0 + r, y1 - r]) translate([x, y, 0]) {
+        cylinder(r1 = r - c, r2 = r, h = c);
+        translate([0, 0, c]) cylinder(r = r, h = h - 2 * c);
+        translate([0, 0, h - c]) cylinder(r1 = r, r2 = r - c, h = c);
+    }
 }
 
 // 結束バンドを下にくぐらせるブリッジ。ケーブルは Y 方向に沿って上に載せ、バンドは X 方向に通す
@@ -228,8 +244,6 @@ module box() {
             rrect(flange_x0, flange_y0, flange_x1, flange_y1, flange_r, flange_t);
             translate([box_x0, box_y0, 0]) cube([box_x, box_y, box_h]);
             for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
-            for (p = cam_pts()) translate([p[0], box_y0 + box_y - 0.01, p[1]])
-                rotate([-90, 0, 0]) cylinder(d = cam_boss_d, h = cam_boss_l);
             for (p = tie_pts_box) translate([p[0], p[1], flange_t - 0.01]) tie_mount();
             drok_holder();
         }
@@ -248,9 +262,6 @@ module box() {
         // 通気スロット（長辺）
         for (i = [-2 : 2])
             translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall + 2, in_z - 12]);
-        // カメラ取付の下穴
-        for (p = cam_pts()) translate([p[0], box_y0 + box_y + cam_boss_l, p[1]])
-            rotate([-90, 0, 0]) screw_hole(2, 6);
         // 床の肉抜き
         translate([box_x0 + wall + 12, box_y0 + wall + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
         // 天板への取付穴
@@ -271,6 +282,7 @@ module lid() {
                 translate([q[0], q[1], 0]) cylinder(d = lidar_tower_d, h = lid_t + lidar_tower_h);
             }
             for (y = fpc_clip_y) translate([cam_cx, y, lid_t - 0.01]) fpc_clip();
+            cam_mount();
             // LiDAR のハーネスと USB ケーブルの固定（ヘッドの柱の間、ふたの後ろ端）
             translate([lidar_cx, box_y0 + 7, lid_t - 0.01]) rotate([0, 0, 90]) tie_mount();
         }
@@ -279,9 +291,23 @@ module lid() {
             q = lidar_hole(p);
             translate([q[0], q[1], 0]) clear_hole(2.5, lid_t + lidar_tower_h, lid_t + lidar_tower_h - lidar_floor);
         }
-        // カメラケーブルを上から折り返す逃げ（前端）
-        translate([cam_cx - cable_notch_w / 2, box_y0 + box_y - 3, -1]) cube([cable_notch_w, 10, lid_t + 2]);
+        cam_mount_cut();
     }
+}
+
+// カメラを留める板（ふたの座標。板の下の窓にフラットケーブルを通す）
+module cam_mount() {
+    x0 = cam_cx - cam_plate_w / 2;
+    y0 = cam_by - cam_plate_t;
+    translate([x0, y0, lid_t - 0.01]) cube([cam_plate_w, cam_plate_t, cam_top - box_h - lid_t + 0.01]);
+    for (p = cam_pts()) translate([p[0], cam_by - 0.01, p[1] - box_h]) rotate([-90, 0, 0]) cylinder(d = cam_boss_d, h = cam_boss_l + 0.01);
+    for (x = [x0, x0 + cam_plate_w - 2]) translate([x, 0, 0]) rotate([90, 0, 90]) linear_extrude(2)
+        polygon([[y0 + 0.01, lid_t - 0.01], [y0 - cam_rib_l, lid_t - 0.01], [y0 + 0.01, lid_t + 18]]);
+}
+
+module cam_mount_cut() {
+    translate([cam_cx - fpc_w / 2 - 1, cam_by - cam_plate_t - 1, lid_t - 0.02]) cube([fpc_w + 2, cam_plate_t + 2, cam_fpc_gap + 3]);
+    for (p = cam_pts()) translate([p[0], cam_by + cam_boss_l, p[1] - box_h]) rotate([-90, 0, 0]) screw_hole(2, 6);
 }
 
 // フラットケーブルを下に差し込むブリッジ（すき間 1.5 mm）
@@ -322,18 +348,23 @@ module imu_holder() {
     iy = imu_board[1] + 0.6;
     ox = ix + 2 * imu_wall;
     oy = iy + 2 * imu_wall;
-    ring_z = imu_lift - 3;
     translate([imu_c[0], imu_c[1], pi_base_t - 0.01]) {
-        // 四隅の柱（上端で基板の角を受ける）。柱のあいだは四方とも開けて、下向きのピンの線をどちらへでも出せる
-        for (sx = [-1, 1], sy = [-1, 1])
-            translate([sx > 0 ? ox / 2 - imu_wall - imu_post : -ox / 2, sy > 0 ? oy / 2 - imu_wall - imu_post : -oy / 2, 0])
-                cube([imu_wall + imu_post, imu_wall + imu_post, imu_lift]);
-        // 基板の位置決めの枠
+        // 四方の壁（上端は基板の上面より 1 mm 上で、基板の位置決めを兼ねる）。下向きのピンの線は Pi 側の壁の穴から出す
         difference() {
-            translate([-ox / 2, -oy / 2, ring_z]) cube([ox, oy, imu_lift + 1.6 + 1 - ring_z]);
-            translate([-ix / 2, -iy / 2, ring_z - 1]) cube([ix, iy, imu_lift + 5]);
+            translate([-ox / 2, -oy / 2, 0]) cube([ox, oy, imu_lift + 1.6 + 1]);
+            translate([-ix / 2, -iy / 2, 0.01]) cube([ix, iy, imu_lift + 5]);
+            translate([ix / 2 - 1, -imu_cable_hole[0] / 2, imu_cable_hole[1]]) cube([imu_wall + 2, imu_cable_hole[0], imu_cable_hole[2]]);
         }
+        // 四隅の受け（上端で基板の角を受ける）
+        for (sx = [-1, 1], sy = [-1, 1])
+            translate([sx > 0 ? ix / 2 - imu_post : -ix / 2, sy > 0 ? iy / 2 - imu_post : -iy / 2, 0])
+                cube([imu_post, imu_post, imu_lift]);
     }
+}
+
+module lcd_floor_local() {
+    W = lcd_board[0]; t = lcd_board[2];
+    translate([-W / 2 - 2.3, -2, -2]) cube([W + 4.6, t + 0.3 + 3.2, 2]);
 }
 
 module lcd_frame_local() {
@@ -350,6 +381,11 @@ module lcd_holder() {
     H = lcd_board[1];
     translate([lcd_cx, lcd_y, pi_base_t - 0.01]) {
         rotate([-lcd_tilt, 0, 0]) rotate([0, 0, 180]) translate([0, 0, 2]) lcd_frame_local();
+        // 枠の底の下を台まで埋める（底が浮かないように）
+        hull() {
+            rotate([-lcd_tilt, 0, 0]) rotate([0, 0, 180]) translate([0, 0, 2]) lcd_floor_local();
+            linear_extrude(0.01) projection() rotate([-lcd_tilt, 0, 0]) rotate([0, 0, 180]) translate([0, 0, 2]) lcd_floor_local();
+        }
         // 左右の支え
         for (sx = [-1, 1]) translate([sx * (lcd_board[0] / 2 + 1.15) - 1.15, 0, 0])
             rotate([90, 0, 90]) linear_extrude(2.3)
@@ -378,7 +414,7 @@ module bumper() {
     difference() {
         union() {
             for (a = bump_arm_x) translate([0, 0, z0]) rrect(a[0], bump_arm_y0, a[1], plate_l + 1, 3, bump_t);
-            translate([0, 0, z0]) rrect(0, plate_l, plate_w, yb, 6, bump_t);
+            translate([0, 0, z0]) crrect(0, plate_l, plate_w, yb, 6, bump_t, bump_edge);
             translate([0, 0, zs]) rrect(0, yb - 3, plate_w, yb, 1, spring_h);
             for (x = stop_x) translate([x - 2, yb - 0.01, zs]) cube([4, bump_gap - bump_travel, spring_h]);
             yl = yb + bump_travel + spring_clr;
@@ -389,7 +425,7 @@ module bumper() {
                 translate([fixed_left ? x0 : x1 - post_w, yb - 0.01, zs]) cube([post_w, yl - yb + 0.02, spring_h]);
                 translate([fixed_left ? x1 - post_w : x0, yl + spring_t - 0.01, zs]) cube([post_w, yf - yl - spring_t + 0.02, spring_h]);
             }
-            translate([0, 0, z0 - bump_drop]) rrect(0, yf, plate_w, yf + bump_face_t, 1, bump_drop + bump_t);
+            translate([0, 0, z0 - bump_drop]) crrect(0, yf, plate_w, yf + bump_face_t, bump_face_t / 2, bump_drop + bump_t, bump_edge);
             hull() {
                 tof_at(z0) translate([-bw / 2 - m, -bh / 2 - m, -tof_face_t]) cube([bw + 2 * m, bh + 2 * m, tof_face_t + tof_board[2] + 1]);
                 translate([c[0] - bw / 2 - m, c[1] - bh / 2 - m, z0]) cube([bw + 2 * m, bh + 2 * m, bump_t]);
@@ -428,8 +464,8 @@ module sensor_ghost() {
 }
 
 module camera_ghost() {
-    color("darkgreen") translate([cam_cx - cam_w / 2, box_y0 + box_y + cam_boss_l, cam_z0]) cube([cam_w, 1, cam_h]);
-    color("black") translate([cam_cx, box_y0 + box_y + cam_boss_l + 1, cam_z0 + cam_h - 14.4]) rotate([-90, 0, 0]) cylinder(d = 8, h = 10);
+    color("darkgreen") translate([cam_cx - cam_w / 2, cam_by + cam_boss_l, cam_z0]) cube([cam_w, 1, cam_h]);
+    color("black") translate([cam_cx, cam_by + cam_boss_l + 1, cam_z0 + cam_lens_z]) rotate([-90, 0, 0]) cylinder(d = 8, h = 10);
 }
 
 module drok_ghost() {
@@ -484,11 +520,11 @@ module fpc_path(pts) {
 
 module cable_ghost() {
     lt = box_h + lid_t;
-    cy = box_y0 + box_y + cam_boss_l - 0.8;
+    cy = cam_by + cam_boss_l - 0.8;
     pz = pi_base_t + pi_boss_h + 1.6;
-    // カメラ → ふたの上 → USB / LAN 端子の上 → 45° に折って HAT の下へ → CAM 端子
-    color("orange") {
-        fpc_path([[cam_cx, cy, cam_z0 + cam_h], [cam_cx, cy, lt + 1], [cam_cx, box_y0 + box_y - 4, lt + 0.8],
+    // カメラの下端 → 板の下の窓 → ふたの上 → USB / LAN 端子の上 → 45° に折って HAT の下へ → CAM 端子
+    color("white") {
+        fpc_path([[cam_cx, cy, cam_z0 + 0.5], [cam_cx, cy - 1.5, lt + 1.5], [cam_cx, cam_by - cam_plate_t - 2, lt + 0.8],
                   [cam_cx, box_y0 - 2, lt + 0.8], [cam_cx, pi_cy + pi_board[1] / 2 + 2, pz + 16],
                   [cam_cx, pi_cy - 12, pz + 14.5]]);
         translate([cam_cx - 8, pi_cy - 12 - 8, pz + 14.5]) cube([0.6, 16, 0.6]);
@@ -510,8 +546,8 @@ module cable_ghost() {
     hy = pi_cy + pi_board[1] / 2 - 3.5;
     ht = pi_base_t + pi_boss_h + pi_stack_h + 4;
     color("magenta") path([[lcd_cx, lcd_y + 21, pi_base_t + 38], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
-    color("purple") path([[imu_c[0], imu_c[1], pi_base_t + imu_lift - 8], [2, imu_c[1], pi_base_t + imu_lift - 8],
-                          [2, imu_c[1] + 10, pi_base_t + 34], [6, hy - 4, ht - 6], [pi_cx - 34, hy + 2, ht]], 2.5);
+    color("purple") path([[imu_c[0], imu_c[1], pi_base_t + imu_lift - 8], [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1], pi_base_t + imu_lift - 8],
+                          [30, hy - 2, pi_base_t + 34], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
         path([[plate_w / 2, plate_l + 5, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 165, flange_t + 5],
               [13, 135, flange_t + 5], [20, 100, 10], [pi_cx - 25, hy + 2, ht]], 2.5);
@@ -530,16 +566,17 @@ cov_y0 = -1;              // 後ろの壁の内側（後ろのバンパーの上
 cov_y1 = 206.5;           // 前の壁の内側（LiDAR の前端 205 mm の前）
 cov_skirt_z = 11;         // 前後の壁の下端。バンパー上面（7 mm）との間に VL53L1X の線を通す
 cov_ch = 6;               // 上面の角の面取り
+cov_edge = 1;             // 手で触る縁（外側の角、下端、充電口）の面取り
 cov_rear = [38.4, 18];    // 後ろの斜面: 後ろの壁の上端の高さ、斜面が上面に届く Y（外側）
 cov_hook_y = [45, 193];   // フックの位置（左右とも）
 cov_hook_w = 12;
 cov_hook_root = 28;       // フックの付け根の高さ（ここから下がたわむ）
 cov_hook_lip = 2;         // 天板の裏にかかる深さ
 cov_stop_y = [8, 100, 170];  // 天板の上面に載せる受け（左右とも）
-cov_rib_x = [[21, 25], [127, 131]];  // ふたの前後の縁をはさんで前後の位置を決めるリブ
+cov_rib_x = [[21, 25], [129, 133]];  // ふたの前後の縁をはさんで前後の位置を決めるリブ（右はカメラの板の横）
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
-cov_eye_w = 24;           // 前面の窓（右はカメラ、左は左右対称の飾り）
-cov_eye_h = 31;
+cov_cam_w = cam_plate_w + 2;         // カメラの切り欠き（上面から前面まで。カメラは上面より上に出る）
+cov_cam_z = cam_z0 + cam_lens_z - 8; // 切り欠きの前面の下端（レンズの下 8 mm）
 cov_lcd = [4, 31, 14, 16];           // 液晶の窓（X0, X1, 後ろの壁の下端 Z, 斜面の上端 Y）
 cov_vent = [42, 112, 28, 72];        // Pi の上の六角の通気口の範囲
 
@@ -575,6 +612,19 @@ module cover_solid(o) {
     }
 }
 
+// 外形をこの形でふくらませて縁を面取りする（軸方向と 45° 方向に 1 ずつ）
+module cover_edge_k() {
+    a = 1 / sqrt(2);
+    hull() for (p = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+                     [a, 0, a], [-a, 0, a], [a, 0, -a], [-a, 0, -a], [0, a, a], [0, -a, a], [0, a, -a], [0, -a, -a]])
+        translate(p * cov_edge) cube(0.001, center = true);
+}
+
+module cover_chg_profile(d) {
+    translate([plate_w - 1, cov_chg[0], cov_chg[2]]) rotate([0, 90, 0]) translate([-(cov_chg[3] - cov_chg[2]), 0, 0])
+        children();
+}
+
 module cover_hook() {
     // 天板の裏にかかる爪（上面が掛かり面、下面は押し込むと外へ逃げる斜面）と、外へ引く指かけ
     rotate([90, 0, 0]) linear_extrude(cov_hook_w, center = true) {
@@ -588,8 +638,13 @@ module cover() {
     difference() {
         union() {
             difference() {
-                cover_solid(0);
+                minkowski() { cover_solid(cov_edge); cover_edge_k(); }
                 cover_solid(cov_t);
+                // 下端の外側の縁の面取り（左右は天板の裏の高さ、前後は壁の下端）
+                for (x = [cov_ox0, cov_ox1]) translate([x, (cov_oy0 + cov_oy1) / 2, -plate_t])
+                    rotate([0, 45, 0]) cube([cov_edge * sqrt(2), cov_oy1 - cov_oy0 + 2, cov_edge * sqrt(2)], center = true);
+                for (y = [cov_oy0, cov_oy1]) translate([plate_w / 2, y, cov_skirt_z])
+                    rotate([45, 0, 0]) cube([cov_ox1 - cov_ox0 + 2, cov_edge * sqrt(2), cov_edge * sqrt(2)], center = true);
                 translate([cov_ox0 - 1, cov_oy0 - 1, -50]) cube([cov_ox1 - cov_ox0 + 2, cov_oy1 - cov_oy0 + 2, 50 - plate_t]);
                 // 前後の壁は天板の上面より上だけ（下はバンパー）
                 for (y = [[cov_oy0 - 1, cov_y0 + 0.01], [cov_y1 - 0.01, cov_oy1 + 1]])
@@ -615,11 +670,13 @@ module cover() {
         // LiDAR
         translate([0, 0, box_h + lid_t + 1]) linear_extrude(cov_oz) cover_lidar_cut();
         // 充電口（右側面）
-        translate([plate_w - 1, cov_chg[0], cov_chg[2]]) rotate([0, 90, 0]) translate([-(cov_chg[3] - cov_chg[2]), 0, 0])
-            linear_extrude(cov_t + cov_clr + 2) offset(r = 4) offset(delta = -4) square([cov_chg[3] - cov_chg[2], cov_chg[1] - cov_chg[0]]);
-        // 前面の窓（下が開いた U 字。カメラのレンズは壁より後ろにあるので、真上へ抜ける）
-        for (x = [cam_cx, plate_w - cam_cx])
-            translate([x - cov_eye_w / 2, cov_y1 - 1, -1]) cube([cov_eye_w, cov_t + 2, cov_eye_h + 1]);
+        cover_chg_profile() linear_extrude(cov_t + cov_clr + 2) offset(r = 4) offset(delta = -4) square([cov_chg[3] - cov_chg[2], cov_chg[1] - cov_chg[0]]);
+        hull() for (d = [[cov_ox1 - cov_edge - (plate_w - 1), 0], [cov_ox1 - (plate_w - 1) + 0.01, cov_edge + 0.01]])
+            cover_chg_profile() translate([0, 0, d[0]]) linear_extrude(0.01)
+                offset(delta = d[1]) offset(r = 4) offset(delta = -4) square([cov_chg[3] - cov_chg[2], cov_chg[1] - cov_chg[0]]);
+        // カメラ（上面から前面へ抜いた切り欠き。カメラと板を囲むので、真上へ抜ける）
+        translate([0, cov_oy1 + 1, 0]) rotate([90, 0, 0]) linear_extrude(cov_oy1 + 1 - (cam_by - cam_plate_t - 1.5))
+            translate([cam_cx - cov_cam_w / 2, cov_cam_z]) offset(r = 3) offset(delta = -3) square([cov_cam_w, cov_oz + 10 - cov_cam_z]);
         // 前面のスリット（飾り）
         for (i = [0 : 2]) translate([plate_w / 2 - 14, cov_y1 - 1, 20 + i * 7]) cube([28, cov_t + 2, 3]);
         // 液晶の窓（後ろ左の角。後ろ向きに倒した画面を斜め後ろ上から見る）
@@ -662,7 +719,8 @@ else {
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      lidar_holes = [for (p = lidar_holes_rel) lidar_hole(p)],
      lidar_top_z = box_h + lid_t + lidar_tower_h,
-     cam_holes_xz = cam_pts(), pi_holes = pi_pts,
+     cam_holes_xz = cam_pts(), cam_z = [cam_z0, cam_z0 + cam_h], cam_plate_top_z = cam_top,
+     cam_lens_center_z = cam_z0 + cam_lens_z, pi_holes = pi_pts,
      pi_stack_top_z = pi_base_t + pi_boss_h + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
