@@ -163,11 +163,13 @@ imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向
 imu_post = 2;             // 四隅の受けが基板の角を受ける幅
 imu_cable_hole = [13, 3, 19];  // Pi 側（+X）の壁のケーブル穴（幅、台の上面からの下端、高さ）
 imu_wall = 1.6;
-lcd_board = [27.5, 39, 1.6];  // 幅 x 高さ x 基板厚（実物に合わせて変更）
+lcd_board = [28.1, 39, 1.6];  // 幅 x 高さ x 基板厚（幅は実物に合わせて 0.6 mm 広げた）
 lcd_cx = 17.5;
-lcd_y = 24;               // 画面の下端（後ろ向き）。ピンは上端の裏側で、配線は前上の GPIO ヘッダーへ。上端は前へ倒れて IMU の上に来る
+lcd_y = 24;               // 枠の下端（後ろ向き）。上端は前へ倒れて IMU の上に来る
 lcd_tilt = 30;            // 垂直から後ろへ倒す角度
 lcd_lip = 1;              // 基板の左右の縁を押さえる幅
+lcd_raise = 10;           // 基板の下端を枠の底から上げる高さ（垂直方向）。下端の裏のピンヘッダーが台に当たらないように
+lcd_rs = lcd_raise / cos(lcd_tilt);  // 溝に沿った長さ
 
 // ---- 前後バンパー + 落下防止センサー（VL53L1X、下向き）----
 // 前は箱のフランジ、後ろはラズパイ台の腕に重ねて四隅の穴で共締め。後ろは前を 180° 回したもの
@@ -422,10 +424,10 @@ module lcd_floor_local() {
 module lcd_frame_local() {
     W = lcd_board[0]; H = lcd_board[1]; t = lcd_board[2];
     difference() {
-        translate([-W / 2 - 2.3, -2, -2]) cube([W + 4.6, t + 0.3 + 3.2, H + 2]);
-        translate([-W / 2 - 0.3, 0, 0]) cube([W + 0.6, t + 0.3, H + 5]);
-        translate([-W / 2 + lcd_lip, t, 0]) cube([W - 2 * lcd_lip, 10, H + 5]);
-        translate([-W / 2 + 1.5, -10, 0]) cube([W - 3, 10, H + 5]);
+        translate([-W / 2 - 2.3, -2, -2]) cube([W + 4.6, t + 0.3 + 3.2, lcd_rs + H + 2]);
+        translate([-W / 2 - 0.3, 0, lcd_rs]) cube([W + 0.6, t + 0.3, H + 5]);
+        translate([-W / 2 + lcd_lip, t, lcd_rs]) cube([W - 2 * lcd_lip, 10, H + 5]);
+        translate([-W / 2 + 1.5, -10, lcd_rs]) cube([W - 3, 10, H + 5]);
     }
 }
 
@@ -441,7 +443,7 @@ module lcd_holder() {
         // 左右の支え
         for (sx = [-1, 1]) translate([sx * (lcd_board[0] / 2 + 1.15) - 1.15, 0, 0])
             rotate([90, 0, 90]) linear_extrude(2.3)
-                polygon([[0, 0], [(H + 2) * sin(lcd_tilt) + 2, 0], [(H + 2) * sin(lcd_tilt), (H + 2) * cos(lcd_tilt)]]);
+                polygon([[0, 0], [(lcd_rs + H + 2) * sin(lcd_tilt) + 2, 0], [(lcd_rs + H + 2) * sin(lcd_tilt), (lcd_rs + H + 2) * cos(lcd_tilt)]]);
     }
 }
 
@@ -514,7 +516,7 @@ module pi_ghost() {
 module sensor_ghost() {
     color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, wing_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
     color("black") translate([lcd_cx, lcd_y, wing_t + 2]) rotate([-lcd_tilt, 0, 0])
-        translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, 0]) cube([lcd_board[0], 0.5, lcd_board[1]]);
+        translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, lcd_rs]) cube([lcd_board[0], 0.5, lcd_board[1]]);
 }
 
 module camera_ghost() {
@@ -603,7 +605,7 @@ module cable_ghost() {
     // 液晶 / IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
     hy = pi_cy + pi_board[1] / 2 - 3.5;
     ht = pi_base_t + pi_boss_h + pi_stack_h + 4;
-    color("magenta") path([[lcd_cx, lcd_y + 21, wing_t + 38], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
+    color("magenta") path([[lcd_cx, lcd_y + (lcd_rs + 4.5) * sin(lcd_tilt) + 8 * cos(lcd_tilt), wing_t + (lcd_rs + 4.5) * cos(lcd_tilt) - 8 * sin(lcd_tilt)], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
     color("purple") path([[imu_c[0], imu_c[1], wing_t + imu_lift - 8], [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1], wing_t + imu_lift - 8],
                           [30, hy - 2, wing_t + 34], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
@@ -791,7 +793,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
      imu_top_z = wing_t + imu_lift + 1.6,
-     lcd_top_z = wing_t + 2 + (lcd_board[1] + 2) * cos(lcd_tilt),
+     lcd_top_z = wing_t + 2 + (lcd_rs + lcd_board[1] + 2) * cos(lcd_tilt),
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
      screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
