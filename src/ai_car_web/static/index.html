@@ -1514,7 +1514,10 @@ function renderAboutTab(id) {
 }
 const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, asm: {}, live: {part: null, az: 0.6, el: 0.5, zoom: 1}};
 function p3dParts(a) { return ((a && a.print3d) || {}).parts || []; }
-function p3dUrl(file) { return `/print3d/${encodeURIComponent(file)}`; }
+function p3dUrl(file) {
+  const rev = ((architectureData || {}).print3d || {}).rev;
+  return `/print3d/${encodeURIComponent(file)}${rev ? `?v=${rev}` : ''}`;
+}
 function p3dSize(mesh) { return [0, 1, 2].map(i => mesh.max[i] - mesh.min[i]); }
 function p3dSizeText(id) {
   const mesh = P3D.meshes[id];

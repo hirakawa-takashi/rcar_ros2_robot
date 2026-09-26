@@ -552,6 +552,20 @@ def create_app(node: DashboardNode) -> FastAPI:
     print3d_dir = os.path.join(share_dir, 'print3d')
     app = FastAPI(title='AI-CAR Dashboard')
 
+    @app.middleware('http')
+    async def revalidate(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path == '/' or request.url.path.startswith('/print3d/'):
+            response.headers['Cache-Control'] = 'no-cache'
+        return response
+
+    def print3d_rev():
+        try:
+            return int(max(os.path.getmtime(os.path.join(print3d_dir, f))
+                           for f in os.listdir(print3d_dir)))
+        except (OSError, ValueError):
+            return 0
+
     def require_token(request: Request):
         if not node.api_token:
             return
@@ -579,7 +593,10 @@ def create_app(node: DashboardNode) -> FastAPI:
 
     @app.get('/api/architecture')
     def architecture():
-        return node.architecture()
+        data = node.architecture()
+        if isinstance(data.get('print3d'), dict):
+            data['print3d']['rev'] = print3d_rev()
+        return data
 
     @app.post('/api/cmd_vel', dependencies=[Depends(require_token)])
     def cmd_vel(req: CmdVelRequest):
