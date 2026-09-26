@@ -97,6 +97,7 @@
   .headrow h1 { margin: 0; }
   .headrow .status { margin: 0; }
   .developer { font-size: 12px; color: #9fb0c7; }
+  .developer a { color: inherit; }
   .aboutbtn { margin-left: auto; padding: 8px 14px; font-size: 13px; }
   .modal { position: fixed; inset: 0; z-index: 20; background: rgba(5, 8, 12, .86);
            display: flex; align-items: center; justify-content: center; padding: 4vh 3vw; }
@@ -1227,12 +1228,18 @@ function aboutTable(headers, rows) {
 function architectureNode(id) {
   return ((architectureData || {}).nodes || []).find(n => n.id === id);
 }
+function developerHtml(o) {
+  if (!o?.developer) return '';
+  const gh = o.developer_github;
+  return `開発者：${esc(o.developer)}` + (gh ?
+    `（GitHub: <a href="https://github.com/${encodeURIComponent(gh)}" target="_blank" rel="noopener">github.com/${esc(gh)}</a>）` : '');
+}
 function renderOverview(a) {
   const o = a.overview || {};
   const milestones = (o.milestones || []).map(m =>
     `<li><span class="check ${m.state === 'done' ? 'done' : ''}">${m.state === 'done' ? '☑' : '☐'}</span>${esc(m.text)}</li>`).join('');
   return `<h3>${esc(o.title || 'AI-CAR')}</h3><p>${esc(o.subtitle || '')}</p>` +
-    (o.developer ? `<p>開発者：${esc(o.developer)}</p>` : '') +
+    (o.developer ? `<p>${developerHtml(o)}</p>` : '') +
     `<h3>目的</h3>${aboutList(o.purpose)}<h3>現在の到達レベル</h3>` +
     `<p><span class="badge ok">${esc(o.current_level?.label || '-')}</span> ${esc(o.current_level?.detail || '')}</p>` +
     `<h3>マイルストーン</h3><ul>${milestones}</ul><h3>技術スタック</h3>` +
@@ -2007,7 +2014,7 @@ function writeAboutPdf(win) {
 </style></head><body>
 <div class="toolbar"><h1>AI-CAR プロジェクト説明（全タブ一括）</h1><button onclick="window.print()">PDF に保存 / 印刷</button><button onclick="window.close()">閉じる</button>
 <span class="hint">印刷ダイアログで「送信先: PDF に保存」を選ぶと PDF ファイルになります（各章は改ページ、画面では目次リンクで移動できます）。図の色をそのまま残すには印刷オプションの「背景のグラフィック」をオンにしてください。</span></div>
-<div class="doc"><div class="cover"><h1>AI-CAR プロジェクト説明</h1><p>${esc(architectureData.overview?.subtitle || '')}</p>${architectureData.overview?.developer ? `<p>開発者：${esc(architectureData.overview.developer)}</p>` : ''}<p>出力日時: ${stamp} ／ ダッシュボード ${esc(location.host)}</p></div>
+<div class="doc"><div class="cover"><h1>AI-CAR プロジェクト説明</h1><p>${esc(architectureData.overview?.subtitle || '')}</p>${architectureData.overview?.developer ? `<p>${developerHtml(architectureData.overview)}</p>` : ''}<p>出力日時: ${stamp} ／ ダッシュボード ${esc(location.host)}</p></div>
 <nav class="toc" id="toc"><h2>目次</h2><ol>${toc}</ol></nav>${sections}</div></body></html>`);
   win.document.close();
 }
@@ -2032,8 +2039,7 @@ document.getElementById('about_btn').addEventListener('click', openAbout);
 document.getElementById('about_close').addEventListener('click', closeAbout);
 document.getElementById('about_pdf').addEventListener('click', openAboutPdf);
 fetch('/api/architecture').then(r => r.json()).then(a => {
-  const name = a.overview?.developer;
-  if (name) document.getElementById('developer').textContent = `開発者：${name}`;
+  document.getElementById('developer').innerHTML = developerHtml(a.overview);
 }).catch(() => {});
 document.getElementById('about').addEventListener('click', ev => { if (ev.target.id === 'about') closeAbout(); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeAbout(); });
