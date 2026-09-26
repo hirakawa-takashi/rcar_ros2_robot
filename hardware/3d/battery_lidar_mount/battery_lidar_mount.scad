@@ -161,8 +161,9 @@ bump_out = bump_base_d + bump_gap + bump_face_t;
 spring_strain = 3 * spring_t * bump_travel / pow(spring_x[0][1] - spring_x[0][0] - post_w, 2);
 tof_board = [25, 10.7, 1.6];  // VL53L1X 基板（Dovhmoh: 25 x 10.7、長辺を横幅方向に置く）
 tof_lip = 1.5;            // 基板を受ける縁の幅（その内側は窓）
-tof_tilt = 30;            // 真下から進行方向へ傾ける角度
+tof_tilt = 45;            // 真下から進行方向へ傾ける角度
 tof_drop = 8;             // 受けの中心をバンパー下面から下げる量
+tof_dy = 14;              // 受けの中心の天板の端からの距離（上から落とし込む穴が天板の角にかからない位置）
 tof_face_t = 2;
 
 // ---- ふた + LiDAR 台 ----
@@ -399,7 +400,7 @@ module lcd_holder() {
     }
 }
 
-function tof_c() = [plate_w / 2, plate_l + 9.5];
+function tof_c() = [plate_w / 2, plate_l + tof_dy];
 
 // 受けのローカル座標: センサーは -Z 方向を見る。rotate([tof_tilt, 0, 0]) で前下を向く
 module tof_at(z0) {
@@ -557,9 +558,9 @@ module cable_ghost() {
     color("purple") path([[imu_c[0], imu_c[1], pi_base_t + imu_lift - 8], [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1], pi_base_t + imu_lift - 8],
                           [30, hy - 2, pi_base_t + 34], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
-        path([[plate_w / 2, plate_l + 5, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 165, flange_t + 5],
+        path([[plate_w / 2, plate_l + tof_dy - 20, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 165, flange_t + 5],
               [13, 135, flange_t + 5], [20, 100, 10], [pi_cx - 25, hy + 2, ht]], 2.5);
-        path([[plate_w / 2, -5, flange_t + 12], [plate_w / 2, 10, pi_base_t + pi_boss_h + pi_stack_h + 8],
+        path([[plate_w / 2, 20 - tof_dy, flange_t + 12], [plate_w / 2, 10, pi_base_t + pi_boss_h + pi_stack_h + 8],
               [pi_cx - 20, hy, ht + 2]], 2.5);
     }
 }
