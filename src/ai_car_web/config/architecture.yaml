@@ -377,7 +377,7 @@ autonomy:
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg 180°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
-    - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 53 mm・右 44 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（減速 speed_scale）、液晶表示
 
 api:
