@@ -65,6 +65,7 @@ print3d:
       holds:
         - CIO SMARTCOBY Pro SLIM ×2（重ねて収納、ふたを外して上から出し入れ。右の開口は充電口とケーブル用）
         - DROK 降圧コンバーター（後ろの壁、結束バンド 1 本）
+        - 底の前の 2 か所に、天板の上に 3 mm 出ているモーター取付ネジのくぼみ（29 × 29 × 3.5 mm。そのため床は 5 mm）
       mount: 天板の前側 4 穴に、今のネジより 3 mm 長いネジで留める
     - id: lid
       label: ふた + LiDAR 台
@@ -91,6 +92,7 @@ print3d:
         - Raspberry Pi 5 + AI HAT+ + Motor HAT（3 段 45 mm、M2.5 ×4）
         - 加速度センサー（GY-BNO055、12 × 20 mm、ピン下向き。四方を壁で囲んだ高さ 25 mm の台の受けに両面テープ。線は Pi 側の壁の穴から出す）
         - ディスプレイ（ZJY-IPS130-V2.0、左右の溝に差し込み 30° 後傾。枠の底の下は台まで埋め、左右の支えまでベースを広げてある）
+        - 左側のベースの底に、モーター取付ネジのくぼみ（29 × 29 × 3.5 mm。そのためベースは 5 mm）
       mount: 天板の後ろ側 4 穴に、今のネジより 3 mm 長いネジで留める
     - id: bumper
       label: 前後バンパー（前後共通）
@@ -125,7 +127,7 @@ print3d:
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
         - {part: box}
-        - {part: lid, translate: [0, 0, 36.4]}
+        - {part: lid, translate: [0, 0, 38.4]}
         - {part: pi_base}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
@@ -134,7 +136,7 @@ print3d:
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
         - {part: box}
-        - {part: lid, translate: [0, 0, 36.4]}
+        - {part: lid, translate: [0, 0, 38.4]}
         - {part: pi_base}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
@@ -184,6 +186,7 @@ print3d:
     - {file: bumper_hook.png, label: バンパーの爪（横から見た断面）}
     - {file: tof_view.png, label: 落下防止センサーの視野（横から、45°）}
     - {file: screw_holes.png, label: ネジ穴の断面}
+    - {file: motor_recess.png, label: モーターのネジのくぼみ（下から見た図、左右が反転。赤がネジの範囲）}
     - {file: wiring.png, label: 配線経路（後ろ斜め）}
     - {file: wiring_front.png, label: 配線経路（前斜め）}
     - {file: wiring_top.png, label: 配線経路（真上）}
@@ -194,7 +197,8 @@ print3d:
     - 車体や車輪にバンパーの壁が当たらないか、床からセンサーまでの高さ
     - バッテリーの残量表示の位置（ポートの短辺から 7〜20 mm は実測、右の長辺から 9〜21 mm のうち 21 mm は写真からの推定）と、カメラのケーブル（300 mm）の長さの余裕（約 2 cm）
     - LiDAR を左へ 8 mm ずらしたので、TF（base_link → laser）の横オフセットも直す必要がある
-    - カバー: バッテリーの USB-C の口の位置（右側面の充電口は、箱の右の開口に合わせて広めに開けた）、天板の端の裏のすき間（板の厚さは実測の 2 mm で爪を掛ける）、フックの固さ、カバーを付けたときの Pi 5 と AI HAT+ の温度
+    - モーター取付ネジの頭が、図面の 28 × 28 mm の範囲に収まり、高さ 3 mm 以下か（くぼみは 29 × 29 × 3.5 mm）
+    - カバー：バッテリーの USB-C の口の位置（右側面の充電口は、箱の右の開口に合わせて広めに開けた）、天板の端の裏のすき間（板の厚さは実測の 2 mm で爪を掛ける）、フックの固さ、カバーを付けたときの Pi 5 と AI HAT+ の温度
 
 nodes:
   - id: dashboard_node
