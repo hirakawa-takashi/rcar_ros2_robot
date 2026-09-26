@@ -1512,7 +1512,7 @@ function renderAboutTab(id) {
     });
   });
 }
-const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, asm: {}, live: {part: null, az: 0.6, el: 0.5, zoom: 1}};
+const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, asm: {}, live: {part: null, az: 0.6, el: 0.5, zoom: 1, pan: [0, 0, 0], view: null}};
 function p3dParts(a) { return ((a && a.print3d) || {}).parts || []; }
 function p3dUrl(file) {
   const rev = ((architectureData || {}).print3d || {}).rev;
@@ -1814,6 +1814,8 @@ function p3dDrawLive() {
   if (!mesh) { g.fillText(err ? `STL を読み込めません（${err}）` : '読み込み中…', 20, 34); return; }
   const back = [Math.cos(L.el) * Math.sin(L.az), Math.cos(L.el) * Math.cos(L.az), Math.sin(L.el)];
   const view = p3dFit(mesh, p3dBasis(back, [0, 0, 1]), cv.width, cv.height, 0.8 * L.zoom, [0, 60]);
+  view.center = view.center.map((v, i) => v + L.pan[i]);
+  L.view = view;
   const img = p3dRender(mesh, view, cv.width, cv.height, part.color);
   if (!img) { g.fillText('このブラウザでは WebGL が使えないため表示できません', 20, 34); return; }
   g.drawImage(img, 0, 0);
@@ -1849,27 +1851,40 @@ function initPrint3d() {
   let frame = 0;
   const redraw = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; p3dDrawLive(); }); };
   const select = id => {
+    if (L.part !== id) L.pan = [0, 0, 0];
     L.part = id;
     body.querySelectorAll('[data-p3d-live]').forEach(b => b.classList.toggle('active', b.dataset.p3dLive === id));
     redraw();
   };
   body.querySelectorAll('[data-p3d-live]').forEach(b => b.addEventListener('click', () => select(b.dataset.p3dLive)));
   body.querySelectorAll('.p3dpart .p3dviewbox').forEach(box => box.addEventListener('click', () => box.closest('.p3dpart').classList.toggle('wide')));
-  const reset = () => { L.az = 0.6; L.el = 0.5; L.zoom = 1; redraw(); };
+  const reset = () => { L.az = 0.6; L.el = 0.5; L.zoom = 1; L.pan = [0, 0, 0]; redraw(); };
   const zoom = f => { L.zoom = Math.min(6, Math.max(0.3, L.zoom * f)); redraw(); };
   body.querySelector('[data-p3d-reset]')?.addEventListener('click', reset);
   body.querySelector('[data-p3d-zoom="in"]')?.addEventListener('click', () => zoom(1.25));
   body.querySelector('[data-p3d-zoom="out"]')?.addEventListener('click', () => zoom(0.8));
   if (cv) {
     let drag = null;
-    cv.addEventListener('pointerdown', ev => { drag = [ev.clientX, ev.clientY]; cv.setPointerCapture(ev.pointerId); });
+    cv.addEventListener('pointerdown', ev => {
+      drag = {x: ev.clientX, y: ev.clientY, pan: ev.button !== 0 || ev.shiftKey || ev.ctrlKey};
+      cv.setPointerCapture(ev.pointerId);
+    });
     cv.addEventListener('pointermove', ev => {
       if (!drag) return;
-      L.az -= (ev.clientX - drag[0]) * 0.01;
-      L.el = Math.min(1.45, Math.max(-1.45, L.el + (ev.clientY - drag[1]) * 0.01));
-      drag = [ev.clientX, ev.clientY];
+      const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+      const V = L.view;
+      if (drag.pan && V) {
+        // 画面上の移動量 [px] を、表示面の上の距離 [mm] にして注視点をずらす
+        const k = cv.width / (cv.clientWidth || cv.width) / V.scale;
+        L.pan = L.pan.map((v, i) => v - dx * k * V.right[i] + dy * k * V.up[i]);
+      } else {
+        L.az -= dx * 0.01;
+        L.el = Math.min(1.45, Math.max(-1.45, L.el + dy * 0.01));
+      }
+      drag.x = ev.clientX; drag.y = ev.clientY;
       redraw();
     });
+    cv.addEventListener('contextmenu', ev => ev.preventDefault());
     const end = () => { drag = null; };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
@@ -1903,8 +1918,8 @@ function renderPrint3d(a) {
     `<div class="p3dlinks">${p.source ? dl(p.source, `${p.source}（OpenSCAD ソース）`) : ''}<span class="note">ソースの場所: ${esc(p.dir || '-')}</span></div>` +
     `<h3>三面図・立体図</h3><div class="note">座標は天板と同じ（前 = +Y = LiDAR・カメラ側、右 = +X = USB 側、上 = +Z）。前後バンパーは印刷の向き（上面が下）で描いています。図をクリックすると大きく表示します。</div><div class="p3dgrid">${cards}</div>` +
     `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${asms.map(v => `<button data-p3d-live="${esc(v.id)}">${esc(v.label || '組み立て図')}</button>`).join('')}${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
-    `<button data-p3d-zoom="in" title="拡大">＋</button><button data-p3d-zoom="out" title="縮小">−</button><button data-p3d-reset>向きを戻す</button></div>` +
-    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転、ホイールで拡大・縮小、ダブルクリックで最初の向きに戻ります。${asms.filter(v => v.note).map(v => `「${esc(v.label || '組み立て図')}」は${esc(v.note)}。`).join('')}</div></div>` +
+    `<button data-p3d-zoom="in" title="拡大">＋</button><button data-p3d-zoom="out" title="縮小">−</button><button data-p3d-reset>向き・位置を戻す</button></div>` +
+    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転、右ドラッグ（または Shift ＋ドラッグ）で注視点の移動、ホイールで拡大・縮小、ダブルクリックで最初の向きと位置に戻ります。${asms.filter(v => v.note).map(v => `「${esc(v.label || '組み立て図')}」は${esc(v.note)}。`).join('')}</div></div>` +
     `<h3>印刷設定（目安）</h3>${aboutTable(['項目', '設定'], (p.settings || []).map(x => [esc(x.name), esc(x.value)]))}` +
     `<h3>ネジ・固定具</h3>${aboutTable(['場所', 'ネジ', '穴の形'], (p.screws || []).map(x => [esc(x.place), esc(x.screw), esc(x.hole)]))}` +
     (p.screw_note ? `<div class="note">${esc(p.screw_note)}</div>` : '') +
