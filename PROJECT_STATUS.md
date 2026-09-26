@@ -29,6 +29,7 @@
   - 運転モード UI: 手動操作カード上部にモードバッジ（手動 / 自動 / 停止）と 3 ボタン（`POST /api/drive_mode`）、拒否理由表示。自律走行カードに行動・各方向距離・自動指令・`/cmd_vel` 出力を表示
   - Subscribe: `/scan`、`/imu/data`、`/odom`、`/camera/image_raw/compressed`
   - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate`
+  - `cliff_sensor_node`（落下防止、実機未確認）: 前後バンパーの VL53L1X ×2 を `/dev/i2c-1` から直接読む（追加の Python 依存なし、XSHUT は libgpiod）。起動時に XSHUT（前 GPIO17 / 後ろ GPIO27）で 1 個ずつ起こし、0x29 では読まずにアドレスだけ前 0x2A / 後ろ 0x2B へ書き換える（BNO055 と重ならない）。短距離モード・測定 20 ms・25 ms 間隔。距離が `cliff_distance_mm`（130 mm、平らな床は約 95 mm）を超えるか反射が返らない状態が `cliff_confirm`（2）回続いたら段差、`clear_confirm`（5）回床が見えたら解除。`/cliff_status`（JSON）を 10Hz と変化時に publish。`drive_mode_node` は前の段差で前進、後ろの段差で後退を 0 にし、AUTO 中は STOP（`cliff_guard`）。受信なしの扱いは `cliff_required`（既定 false、配線して確かめたら true を推奨）。横移動・旋回は止めない
   - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は自動スケール）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）

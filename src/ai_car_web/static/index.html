@@ -1320,13 +1320,13 @@ function renderNodes(a) {
   const nodes = a.nodes || [], topics = a.topics || [], live = a.live || {};
   const nodeCoords = {
     rplidar: [100, 80], camera: [100, 150], imu_node: [100, 220],
-    system_monitor_node: [100, 290], joy_teleop_node: [100, 400], dashboard_node: [100, 520],
+    system_monitor_node: [100, 290], cliff_sensor_node: [100, 345], joy_teleop_node: [100, 400], dashboard_node: [100, 520],
     perception_node: [560, 115], autonomy_node: [560, 300],
     drive_mode_node: [1000, 300], motor_control_node: [1000, 520], lcd_display_node: [1000, 80],
   };
   const topicCoords = {
     '/scan': [330, 80], '/camera/image_raw/compressed': [330, 150], '/imu/data': [330, 220],
-    '/system_status': [330, 290], '/joy_cmd': [330, 400], '/cmd_vel_manual': [330, 520],
+    '/system_status': [330, 290], '/cliff_status': [330, 345], '/joy_cmd': [330, 400], '/cmd_vel_manual': [330, 520],
     '/drive_mode_request': [330, 580], '/obstacle_status': [790, 115], '/cmd_vel_auto': [790, 300],
     '/autonomy_status': [790, 360], '/drive_mode': [790, 460], '/cmd_vel': [1000, 410],
     '/display_state': [1000, 150],

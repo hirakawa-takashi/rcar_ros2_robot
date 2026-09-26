@@ -42,7 +42,7 @@ hardware:
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
-    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C（初期 0x29、未配線）, power: 3V3, side: bottom}
+    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 前 0x2A・後ろ 0x2B（XSHUT GPIO17・GPIO27）, power: 3V3, jump: gpio, side: bottom}
     - {id: battery, label: CIO SMARTCOBY Pro SLIM 35W ×2, sub: 10000mAh / USB-C PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）/ 12V → Motor HAT のみ, power: 12V, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
 
@@ -224,7 +224,7 @@ nodes:
     file: ai_car_web/drive_mode_node.py
     role: 手動 / 自動 / 停止のマルチプレクサ。/cmd_vel を publish する唯一のノード。各 watchdog と障害物最終ガードを持つ
     publishes: [/cmd_vel, /drive_mode]
-    subscribes: [/cmd_vel_manual, /cmd_vel_auto, /drive_mode_request, /obstacle_status, /joy_cmd]
+    subscribes: [/cmd_vel_manual, /cmd_vel_auto, /drive_mode_request, /obstacle_status, /joy_cmd, /cliff_status]
     params:
       - {name: manual_timeout, ref: drive_mode_node.manual_timeout, unit: s, desc: MANUAL 中に手動指令が途絶えたら STOP}
       - {name: auto_timeout, ref: drive_mode_node.auto_timeout, unit: s, desc: AUTO 中に自動指令が途絶えたら STOP}
@@ -233,6 +233,9 @@ nodes:
       - {name: auto_requires_joy, ref: drive_mode_node.auto_requires_joy, unit: '', desc: AUTO にゲームパッド接続を必須にする}
       - {name: manual_override, ref: drive_mode_node.manual_override, unit: '', desc: AUTO 中の手動指令で MANUAL へ復帰}
       - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: stop 判定中は前進を 0 にする}
+      - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 前の段差で前進、後ろの段差で後退を 0 にする}
+      - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 落下防止センサーの判定がこれより古ければ受信なし}
+      - {name: cliff_required, ref: drive_mode_node.cliff_required, unit: '', desc: 受信なし・センサー異常の側も段差ありとみなす}
     layer: control
   - id: autonomy_node
     label: autonomy_node
@@ -296,6 +299,19 @@ nodes:
     subscribes: []
     params: []
     layer: sensor
+  - id: cliff_sensor_node
+    label: cliff_sensor_node
+    file: ai_car_web/cliff_sensor_node.py
+    role: 前後バンパーの VL53L1X ×2 を XSHUT で 1 個ずつ起こしてアドレスを 0x2A / 0x2B に変え、約 40 回/秒で床までの距離を読む。距離がしきい値を超えるか反射が返らない状態が続いたら段差として /cliff_status に publish
+    publishes: [/cliff_status]
+    subscribes: []
+    params:
+      - {name: cliff_distance_mm, ref: cliff_sensor_node.cliff_distance_mm, unit: mm, desc: この距離を超えたら段差（平らな床は約 95 mm）}
+      - {name: cliff_confirm, ref: cliff_sensor_node.cliff_confirm, unit: 回, desc: 段差と判定するまでの連続回数}
+      - {name: clear_confirm, ref: cliff_sensor_node.clear_confirm, unit: 回, desc: 解除するまでの連続回数}
+      - {name: timing_budget_ms, ref: cliff_sensor_node.timing_budget_ms, unit: ms, desc: 1 回の測定時間（短距離モード）}
+      - {name: intermeasurement_ms, ref: cliff_sensor_node.intermeasurement_ms, unit: ms, desc: 測定の間隔}
+    layer: sensor
   - id: system_monitor_node
     label: system_monitor_node
     file: ai_car_web/system_monitor_node.py
@@ -329,6 +345,7 @@ topics:
   - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
+  - {name: /cliff_status, type: std_msgs/String (JSON), desc: 前後の落下防止センサーの距離・段差判定（10 Hz ＋ 変化時）}
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
   - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（10 Hz、AUTO 以外はゼロ）}
@@ -357,6 +374,7 @@ drive_modes:
     - ゲームパッドが接続中（auto_requires_joy）
     - スティック・手動操作がニュートラル
     - /cmd_vel_auto が生きている（autonomy_node 起動中）
+    - 落下防止センサーが前後とも段差を示していない（cliff_required なら受信中であることも必要）
   safety:
     - {name: Web 指令タイムアウト, where: dashboard_node, ref: dashboard_node.cmd_timeout, unit: s, desc: 無指令でゼロ速度}
     - {name: 手動 watchdog, where: drive_mode_node, ref: drive_mode_node.manual_timeout, unit: s, desc: MANUAL 中の手動指令途絶で STOP}
@@ -364,6 +382,7 @@ drive_modes:
     - {name: LiDAR 途絶, where: drive_mode_node, ref: drive_mode_node.obstacle_timeout, unit: s, desc: 障害物判定が古ければ AUTO を拒否 / STOP}
     - {name: ゲームパッド切断, where: drive_mode_node, ref: drive_mode_node.joy_timeout, unit: s, desc: AUTO 中の切断で STOP}
     - {name: 障害物最終ガード, where: drive_mode_node / dashboard_node, ref: '', unit: '', desc: stop 判定中はどのモードでも前進を 0 にする。slow 判定では speed_scale で減速}
+    - {name: 落下防止ガード, where: drive_mode_node, ref: drive_mode_node.cliff_guard, unit: '', desc: 前の段差で前進、後ろの段差で後退を 0 にする。AUTO 中に段差を検出したら STOP。横移動・旋回は止めない（前後のセンサーは横を見ていない）}
     - {name: モード遷移時のゼロ速度, where: drive_mode_node, ref: '', unit: '', desc: 遷移時と起動時に必ず一度ゼロ速度を publish}
     - {name: サーマル制御, where: perception_node, ref: '', unit: '', desc: CPU 70℃ / Hailo 75℃ で推論 40%、78℃ / 85℃ で推論停止（LiDAR 判定は継続）}
     - {name: API トークン認証, where: dashboard_node, ref: '', unit: '', desc: api_token 設定時は POST API に X-API-Token / Bearer が必須}
@@ -411,6 +430,7 @@ status:
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
     - IMU の搭載向きが imu_link と一致しておらず軸補正が必要
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
+    - 落下防止センサー（VL53L1X）は配線・プログラムのみで、実機では未確認。モーター制御ノードが未実装のため、段差で /cmd_vel を止めても実際のモーターはまだ止まらない
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
     - 実配線に合わせた motor_hat.yaml / gpio_pins.yaml の修正

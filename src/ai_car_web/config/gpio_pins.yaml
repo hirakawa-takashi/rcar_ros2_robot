@@ -128,3 +128,46 @@ connections:
     signal: BLK (GPIO23)
     color: 紫
     note: バックライト。libgpiod 出力（gpiochip4 pinctrl-rp1）
+
+  # --- 落下防止センサー VL53L1X ×2（前後バンパー、I2C バス 1）
+  #     初期アドレス 0x29 が BNO055・もう 1 個と重なるので、XSHUT で 1 個ずつ起こして
+  #     前 0x2A / 後ろ 0x2B に書き換える（cliff_sensor_node）。GPIO1（割り込み）は使わない。
+  #     3V3・SDA・SCL は 1 本のピンに 2 本以上つなぐため、分岐（Y 字のジャンパー線など）が要る ---
+  - pins: [1]
+    device: VL53L1X 前
+    signal: VIN 3V3
+    note: IMU と同じピンから分岐
+  - pins: [14]
+    device: VL53L1X 前
+    signal: GND
+  - pins: [3]
+    device: VL53L1X 前
+    signal: I2C SDA
+    note: IMU と同じピンから分岐。起動後 0x2A
+  - pins: [5]
+    device: VL53L1X 前
+    signal: I2C SCL
+    note: IMU と同じピンから分岐。起動後 0x2A
+  - pins: [11]
+    device: VL53L1X 前
+    signal: XSHUT (GPIO17)
+    note: libgpiod 出力。Low で停止、High で起動
+  - pins: [17]
+    device: VL53L1X 後ろ
+    signal: VIN 3V3
+    note: 液晶と同じピンから分岐
+  - pins: [25]
+    device: VL53L1X 後ろ
+    signal: GND
+  - pins: [3]
+    device: VL53L1X 後ろ
+    signal: I2C SDA
+    note: IMU と同じピンから分岐。起動後 0x2B
+  - pins: [5]
+    device: VL53L1X 後ろ
+    signal: I2C SCL
+    note: IMU と同じピンから分岐。起動後 0x2B
+  - pins: [13]
+    device: VL53L1X 後ろ
+    signal: XSHUT (GPIO27)
+    note: libgpiod 出力。Low で停止、High で起動

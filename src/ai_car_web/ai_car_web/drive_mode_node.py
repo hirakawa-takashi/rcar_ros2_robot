@@ -17,6 +17,8 @@
   - 手動指令が途絶えたら STOP
   - モード遷移時は必ず一度ゼロ速度を送る
   - 障害物 "stop" 判定中はどのモードでも前進を止める（最終段ガード）
+  - 落下防止センサー（/cliff_status）が前の段差を示す間は前進、後ろの段差を
+    示す間は後退を止める。AUTO 中に段差を検出したら STOP
 """
 
 import json
@@ -50,6 +52,7 @@ class DriveModeNode(Node):
         self.declare_parameter('mode_topic', '/drive_mode')
         self.declare_parameter('obstacle_topic', '/obstacle_status')
         self.declare_parameter('joy_cmd_topic', '/joy_cmd')
+        self.declare_parameter('cliff_topic', '/cliff_status')
         self.declare_parameter('initial_mode', 'manual')
         self.declare_parameter('publish_rate', 5.0)
         # 自動指令がこの秒数途絶えたら STOP
@@ -66,6 +69,12 @@ class DriveModeNode(Node):
         self.declare_parameter('manual_override', True)
         # 最終段の障害物ガード（"stop" 判定で前進を止める）
         self.declare_parameter('obstacle_guard', True)
+        # 落下防止ガード（前の段差で前進、後ろの段差で後退を止める）
+        self.declare_parameter('cliff_guard', True)
+        # 落下防止センサーの判定がこの秒数より古ければ受信なしとみなす
+        self.declare_parameter('cliff_timeout', 0.5)
+        # true: 受信なし・センサー異常の側は段差ありとみなして止める
+        self.declare_parameter('cliff_required', False)
 
         self.auto_timeout = float(self.get_parameter('auto_timeout').value)
         self.manual_timeout = float(self.get_parameter('manual_timeout').value)
@@ -74,6 +83,9 @@ class DriveModeNode(Node):
         self.auto_requires_joy = bool(self.get_parameter('auto_requires_joy').value)
         self.manual_override = bool(self.get_parameter('manual_override').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
+        self.cliff_guard = bool(self.get_parameter('cliff_guard').value)
+        self.cliff_timeout = float(self.get_parameter('cliff_timeout').value)
+        self.cliff_required = bool(self.get_parameter('cliff_required').value)
 
         self._lock = threading.Lock()
         mode = str(self.get_parameter('initial_mode').value).lower()
@@ -90,6 +102,8 @@ class DriveModeNode(Node):
         self._joy_moving = False
         self._obstacle = None
         self._obstacle_stamp = 0.0
+        self._cliff = None
+        self._cliff_stamp = 0.0
         self._last_out = Twist()
         self._last_out_time = 0.0
 
@@ -106,6 +120,9 @@ class DriveModeNode(Node):
             String, self.get_parameter('request_topic').value, self._request_cb, 10)
         self.create_subscription(
             String, self.get_parameter('obstacle_topic').value, self._obstacle_cb, 10)
+        cliff_topic = self.get_parameter('cliff_topic').value
+        if cliff_topic:
+            self.create_subscription(String, cliff_topic, self._cliff_cb, 10)
         joy_topic = self.get_parameter('joy_cmd_topic').value
         if joy_topic:
             self.create_subscription(Twist, joy_topic, self._joy_cb, 10)
@@ -179,6 +196,22 @@ class DriveModeNode(Node):
                 self._obstacle = payload
                 self._obstacle_stamp = time.monotonic()
 
+    def _cliff_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        with self._lock:
+            self._cliff = payload
+            self._cliff_stamp = time.monotonic()
+            last = self._last_out
+        # 直前の出力が段差の方向へ動いていれば、次の指令を待たずに止める
+        front, rear = self._cliff_block()
+        if (front and last.linear.x > 0.0) or (rear and last.linear.x < 0.0):
+            self._publish_cmd(last)
+
     def _request_cb(self, msg: String):
         text = msg.data.strip()
         source = 'request'
@@ -236,6 +269,10 @@ class DriveModeNode(Node):
                 reasons.append(f"前方に障害物（{obstacle.get('reason') or 'stop'}）")
             elif level == 'unknown':
                 reasons.append('LiDAR データなし')
+        front, rear = self._cliff_block()
+        if front or rear:
+            side = ' / '.join(n for n, b in (('前', front), ('後ろ', rear)) if b)
+            reasons.append(f'{side}に段差（落下防止センサー）')
         if self.auto_requires_joy and (joy_age is None or joy_age > self.joy_timeout):
             reasons.append('ゲームパッドが未接続です')
         if entering:
@@ -269,6 +306,10 @@ class DriveModeNode(Node):
         out.angular.z = msg.angular.z
         if self.obstacle_guard and out.linear.x > 0.0 and self._obstacle_stop():
             out.linear.x = 0.0
+        if self.cliff_guard and out.linear.x != 0.0:
+            front, rear = self._cliff_block()
+            if (front and out.linear.x > 0.0) or (rear and out.linear.x < 0.0):
+                out.linear.x = 0.0
         with self._lock:
             self._last_out = out
             self._last_out_time = time.monotonic()
@@ -281,6 +322,29 @@ class DriveModeNode(Node):
         if not obstacle or age is None or age > self.obstacle_timeout:
             return False
         return obstacle.get('level') == 'stop'
+
+    def _cliff_sides(self):
+        """落下防止センサーの (受信中か, 前の判定, 後ろの判定) を返す。判定は True / False / None（不明）。"""
+        with self._lock:
+            cliff = self._cliff
+            age = time.monotonic() - self._cliff_stamp if self._cliff_stamp else None
+        if not cliff or age is None or age > self.cliff_timeout:
+            return False, None, None
+        sensors = cliff.get('sensors') or {}
+
+        def side(name):
+            s = sensors.get(name) or {}
+            return bool(s.get('cliff')) if s.get('ok') else None
+        return True, side('front'), side('rear')
+
+    def _cliff_block(self):
+        """(前進を止めるか, 後退を止めるか)。"""
+        if not self.cliff_guard:
+            return False, False
+        _, front, rear = self._cliff_sides()
+        if self.cliff_required:
+            return front is not False, rear is not False
+        return bool(front), bool(rear)
 
     def state(self):
         now = time.monotonic()
@@ -309,6 +373,8 @@ class DriveModeNode(Node):
                     'angular_z': round(self._last_out.angular.z, 3),
                 },
             }
+        cliff_alive, cliff_front, cliff_rear = self._cliff_sides()
+        payload['cliff'] = {'alive': cliff_alive, 'front': cliff_front, 'rear': cliff_rear}
         block = self._auto_block_reasons(entering=(mode != 'auto'))
         payload['auto_ok'] = not block
         payload['auto_block_reasons'] = block
