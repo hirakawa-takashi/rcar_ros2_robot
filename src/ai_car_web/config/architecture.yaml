@@ -5,6 +5,8 @@
 overview:
   title: AI-CAR
   subtitle: Raspberry Pi 5 + ROS 2 Jazzy のメカナム 4 輪自律走行ロボット
+  developer: ひらかわたかし
+  developer_github: hirakawa-takashi
   purpose:
     - Raspberry Pi 5（8GB）上で ROS 2 Jazzy を動かし、LiDAR・カメラ・IMU を使って自律走行するロボットカーを作る
     - Web ダッシュボード（FastAPI）でテレメトリ表示・手動操作・システム監視・配線図の確認を行う
@@ -43,7 +45,8 @@ hardware:
     - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 前 0x2A・後ろ 0x2B（XSHUT GPIO17・GPIO27）, power: 3V3, jump: gpio, side: bottom}
-    - {id: battery, label: CIO SMARTCOBY Pro SLIM 35W ×2, sub: 10000mAh / USB-C PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）/ 12V → Motor HAT のみ, power: 12V, side: top}
+    - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
+    - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
 
 print3d:
@@ -417,6 +420,7 @@ api:
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーの配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
+    - {method: GET, path: /api/dev_diary, desc: 開発日記（main の PR マージ・コミットと CHANGELOG の追加行を日付ごとにまとめたもの）, auth: false}
     - {method: GET, path: /api/drive_mode, desc: 現在の運転モード, auth: false}
     - {method: GET, path: '/print3d/{file}', desc: 3D プリント部品の STL・図・OpenSCAD ソース（hardware/3d/battery_lidar_mount）, auth: false}
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}

@@ -18,6 +18,7 @@ description: ROS 2や実機を使用せず、AI-CARダッシュボードの設�
   - `/api/motor_hat`: `ai_car_web.motor_hat.load_motor_hat(config/motor_hat.yaml)`
   - `/api/gpio`: `ai_car_web.gpio_pinout.build_pinout(config/gpio_pins.yaml)`
   - `/api/architecture`: `ai_car_web.architecture.load_architecture(config/architecture.yaml, {})`
+  - `/api/dev_diary`: `ai_car_web.dev_diary.load_dev_diary(ai_car_web.dev_diary.find_repo(パッケージルート))`（git の記録から作る。開発日記ボタンで表示）
   - `/api/status`: `{}`。ライブテレメトリーではないことを明示する。
 - WSが利用できなければUIはstatusのポーリングに切り替わる。カメラなど未提供APIの表示は対象外とする。
 - 日本語が豆腐になる場合は`fonts-noto-cjk`を導入し、Chromeを再起動する。単純な再読み込みでは反映されない場合がある。
