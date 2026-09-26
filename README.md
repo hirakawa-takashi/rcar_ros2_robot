@@ -61,7 +61,7 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 
 - Publish: `/cmd_vel` (`geometry_msgs/Twist`)、`~/status` (`std_msgs/String`)
 - Subscribe: `/scan` (`sensor_msgs/LaserScan`)、`/imu/data` (`sensor_msgs/Imu`)、`/odom` (`nav_msgs/Odometry`)、`/system_status` (`std_msgs/String`)、`/camera/image_raw/compressed` (`sensor_msgs/CompressedImage`)
-- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
+- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`GET /api/dev_diary`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
 - パラメータ: `src/ai_car_web/config/dashboard.yaml`
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。

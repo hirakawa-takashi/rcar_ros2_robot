@@ -30,6 +30,7 @@ from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
 
 from ai_car_web.architecture import load_architecture
+from ai_car_web.dev_diary import find_repo, load_dev_diary
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
 
@@ -115,6 +116,7 @@ class DashboardNode(Node):
         self.declare_parameter('motor_hat_config', '')
         self.declare_parameter('architecture_config', '')
         self.declare_parameter('params_config', '')
+        self.declare_parameter('repo_dir', '')
         # ゲームパッド（joy_teleop_node）からの正規化指令。空で無効
         self.declare_parameter('joy_cmd_topic', '/joy_cmd')
         self.declare_parameter('joy_timeout', 1.0)
@@ -144,6 +146,8 @@ class DashboardNode(Node):
             get_package_share_directory('ai_car_web'), 'config', 'architecture.yaml')
         self.params_config = self.get_parameter('params_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'dashboard.yaml')
+        self.repo_dir = find_repo(self.get_parameter('repo_dir').value
+                                  or get_package_share_directory('ai_car_web'))
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
@@ -597,6 +601,10 @@ def create_app(node: DashboardNode) -> FastAPI:
         if isinstance(data.get('print3d'), dict):
             data['print3d']['rev'] = print3d_rev()
         return data
+
+    @app.get('/api/dev_diary')
+    def dev_diary():
+        return load_dev_diary(node.repo_dir)
 
     @app.post('/api/cmd_vel', dependencies=[Depends(require_token)])
     def cmd_vel(req: CmdVelRequest):

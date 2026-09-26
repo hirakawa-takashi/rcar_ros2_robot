@@ -99,6 +99,14 @@
   .developer { font-size: 12px; color: #9fb0c7; }
   .developer a { color: inherit; }
   .aboutbtn { margin-left: auto; padding: 8px 14px; font-size: 13px; }
+  .aboutbtn.diarybtn { margin-left: 0; }
+  .diaryday { margin-bottom: 18px; }
+  .diaryentry { border: 1px solid #3a4657; border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+  .diaryentry .meta { font-size: 12px; color: #9fb0c7; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .diaryentry .ttl { font-weight: 700; margin: 4px 0; }
+  .diaryentry .ttl a { color: inherit; }
+  .diaryentry ul { margin: 4px 0 4px 20px; font-size: 13px; }
+  .diaryentry .prints { font-size: 12px; color: #f0c674; }
   .modal { position: fixed; inset: 0; z-index: 20; background: rgba(5, 8, 12, .86);
            display: flex; align-items: center; justify-content: center; padding: 4vh 3vw; }
   .modal.hidden { display: none; }
@@ -292,6 +300,16 @@
   <div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
   <span id="developer" class="developer"></span>
   <button id="about_btn" class="aboutbtn">プロジェクト説明</button>
+  <button id="diary_btn" class="aboutbtn diarybtn">開発日記</button>
+</div>
+
+<div id="diary" class="modal hidden">
+  <div class="aboutpanel" role="dialog" aria-modal="true" aria-labelledby="diary_title">
+    <div class="abouthead"><h2 id="diary_title">AI-CAR 開発日記</h2>
+      <button id="diary_close" class="aboutclose" aria-label="閉じる">×</button></div>
+    <div id="diary_tabs" class="abouttabs"></div>
+    <div id="diary_body" class="aboutbody"><span class="badge">読み込み中...</span></div>
+  </div>
 </div>
 
 <div id="about" class="modal hidden">
@@ -2043,6 +2061,52 @@ fetch('/api/architecture').then(r => r.json()).then(a => {
 }).catch(() => {});
 document.getElementById('about').addEventListener('click', ev => { if (ev.target.id === 'about') closeAbout(); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeAbout(); });
+
+const DIARY_TAGS = ['すべて', '3D プリント', '配線', 'ダッシュボード', 'ソフト', 'ドキュメント'];
+let diaryData = null;
+let diaryTag = 'すべて';
+
+function diaryText(s) { return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>'); }
+function diaryEntryHtml(e) {
+  const ref = e.kind === 'pr' ? `#${e.number}` : e.sha;
+  const link = e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(ref)}</a>` : esc(ref);
+  const changes = e.changes.length > 3 ?
+    `<details><summary>${e.changes.length} 件の変更</summary><ul>${e.changes.map(c => `<li>${diaryText(c)}</li>`).join('')}</ul></details>` :
+    (e.changes.length ? `<ul>${e.changes.map(c => `<li>${diaryText(c)}</li>`).join('')}</ul>` : '');
+  return `<div class="diaryentry"><div class="meta"><span>${esc(e.time)}</span>${link}` +
+    e.tags.map(t => `<span class="badge">${esc(t)}</span>`).join('') + `<span>ファイル ${e.files} 個</span></div>` +
+    `<div class="ttl">${diaryText(e.title)}</div>${changes}` +
+    (e.prints.length ? `<div class="prints">印刷し直す部品: ${e.prints.map(esc).join('、')}</div>` : '') + '</div>';
+}
+function renderDiary() {
+  document.querySelectorAll('#diary_tabs button').forEach(b => b.classList.toggle('active', b.dataset.tag === diaryTag));
+  const body = document.getElementById('diary_body');
+  if (!diaryData.available) {
+    body.innerHTML = `<span class="badge warn">${esc(diaryData.reason || '開発日記を作れません')}</span>`;
+    return;
+  }
+  const days = diaryData.days.map(d => ({date: d.date,
+    entries: d.entries.filter(e => diaryTag === 'すべて' || e.tags.includes(diaryTag))})).filter(d => d.entries.length);
+  body.innerHTML = '<p>main に入った変更（PR のマージ）と CHANGELOG に追加した行から、自動で作っています。</p>' +
+    (days.length ? days.map(d => `<div class="diaryday"><h3>${esc(d.date)}（${d.entries.length} 件）</h3>` +
+      d.entries.map(diaryEntryHtml).join('') + '</div>').join('') : '<p>該当する変更はありません。</p>');
+}
+function closeDiary() { document.getElementById('diary').classList.add('hidden'); }
+function openDiary() {
+  document.getElementById('diary').classList.remove('hidden');
+  document.getElementById('diary_body').innerHTML = '<span class="badge">読み込み中...</span>';
+  fetch('/api/dev_diary').then(r => r.json()).then(d => { diaryData = d; renderDiary(); })
+    .catch(() => { document.getElementById('diary_body').innerHTML = '<span class="badge crit">/api/dev_diary の取得に失敗しました</span>'; });
+}
+document.getElementById('diary_tabs').innerHTML = DIARY_TAGS.map(t => `<button data-tag="${t}">${t}</button>`).join('');
+document.querySelectorAll('#diary_tabs button').forEach(b => b.addEventListener('click', () => {
+  diaryTag = b.dataset.tag;
+  if (diaryData) renderDiary();
+}));
+document.getElementById('diary_btn').addEventListener('click', openDiary);
+document.getElementById('diary_close').addEventListener('click', closeDiary);
+document.getElementById('diary').addEventListener('click', ev => { if (ev.target.id === 'diary') closeDiary(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeDiary(); });
 
 let pollTimer = null;
 
