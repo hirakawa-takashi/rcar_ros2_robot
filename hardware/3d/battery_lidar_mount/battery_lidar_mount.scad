@@ -161,7 +161,7 @@ imu_board = [12, 20];     // 長辺を前後方向に置く。ピンヘッダー
 imu_c = [134, 25.6];      // LAN 端子（X 約 124.5 まで）と後ろ右のモーターのネジ（Y 37.5 から）と天板の穴 [143, 11] のネジ頭の間
 imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向きで、ジャンパー線のコネクターを下に収める
 imu_wall = 1.6;
-imu_ledge = 1;            // 溝が基板の縁を上下から押さえる幅（ピンヘッダーのない 3 辺）
+imu_ledge = 1;            // 基板の縁を下から受ける幅（ピンヘッダーのない 3 辺）。上面は縁までチップ部品があるので押さえない
 imu_pad = [124, 12.5, 141.5, 37.4];  // IMU の台の下の板（x0, y0, x1, y1）
 lcd_board = [28.1, 39, 1.6];  // 幅 x 高さ x 基板厚（幅は実物に合わせて 0.6 mm 広げた）
 lcd_cx = 17.5;
@@ -405,10 +405,10 @@ module imu_holder() {
     ox = ix + 2 * imu_wall;
     oy = iy + 2 * imu_wall;
     h = imu_lift + 1.6 + 0.3 + 1.2;
-    // ピンヘッダーのある +X 側は壁なしで開け、基板をジャンパー線を差したまま +X 側から溝に差し込む
+    // ピンヘッダーのある +X 側は壁なしで開け、基板をジャンパー線を差したまま上から入れて縁の受けに載せる
     translate([imu_c[0], imu_c[1], pi_base_t - 0.01]) difference() {
         translate([-ox / 2, -oy / 2, 0]) cube([ix + imu_wall, oy, h]);
-        translate([-ix / 2, -iy / 2, imu_lift]) cube([ix + 5, iy, 1.6 + 0.3]);
+        translate([-ix / 2, -iy / 2, imu_lift]) cube([ix + 5, iy, h]);
         translate([-ix / 2 + imu_ledge, -iy / 2 + imu_ledge, 0.01]) cube([ix + 5, iy - 2 * imu_ledge, h + 1]);
     }
 }
