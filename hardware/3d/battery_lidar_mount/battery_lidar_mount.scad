@@ -7,9 +7,8 @@
 //       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
 //       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
 //       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
-//       openscad -D 'part="bat_shim"' -o bat_shim.stl battery_lidar_mount.scad（バッテリーの長手方向のすき間の確認用プレート）
 
-part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "cover" | "bat_shim" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "cover" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
 
@@ -101,13 +100,16 @@ box_cx = plate_w / 2;
 box_cy = (flange_y0 + flange_y1) / 2;
 box_x0 = box_cx - box_x / 2;
 box_y0 = box_cy - box_y / 2;
+// 開口と反対側の端の壁を内側へ厚くする量（実物の長手方向のすき間 約 2 mm を 2 mm のプレートでふさいで確認）
+end_fill = 2;
+in_x0 = box_x0 + wall + (open_end == "right" ? end_fill : 0);  // バッテリーを入れる空間の左端
 
 // 上のバッテリーの残量表示（ロゴの面を上、ポートを右にして入れる）
 // ポートの短辺から 7〜20 mm、ロゴの面でポートを上にしたときの右の長辺から 9〜21 mm（21 は写真からの推定）
 bat_disp = [7, 20, 9, 21];
 disp_lid_m = 1;           // ふたの窓の余白
 disp_cov_m = 2;           // カバーの窓の余白（斜めから見る分）
-function disp_rect() = let(x1 = box_x0 + wall + clr_x + bat_x, y0 = box_y0 + wall_y + clr)
+function disp_rect() = let(x1 = in_x0 + clr_x + bat_x, y0 = box_y0 + wall_y + clr)
     [x1 - bat_disp[1], y0 + bat_disp[2], x1 - bat_disp[0], y0 + bat_disp[3]];
 
 // ふた固定用ボス（箱の外側 4 隅、M3 タッピング）
@@ -299,7 +301,7 @@ module box() {
             drok_holder();
         }
         // バッテリー収納部
-        translate([box_x0 + wall, box_y0 + wall_y, floor_t]) cube([in_x, in_y, in_z + 1]);
+        translate([in_x0, box_y0 + wall_y, floor_t]) cube([in_x - end_fill, in_y, in_z + 1]);
         // 開口側の端（全面開口）
         ox = open_end == "right" ? box_x0 + box_x - wall - 1 : box_x0 - 1;
         difference() {
@@ -307,8 +309,8 @@ module box() {
             for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
         }
         // 反対側の端: 押し出し用の窓
-        cx = open_end == "right" ? box_x0 - 1 : box_x0 + box_x - wall - 1;
-        translate([cx, box_cy - 20, floor_t + 4]) cube([wall + 2, 40, in_z - 8]);
+        cx = open_end == "right" ? box_x0 - 1 : box_x0 + box_x - wall - end_fill - 1;
+        translate([cx, box_cy - 20, floor_t + 4]) cube([wall + end_fill + 2, 40, in_z - 8]);
         // 固定用ストラップのスロット（上下バッテリーの境目の高さ、開口側寄り）
         sx = open_end == "right" ? box_x0 + box_x - wall - 12 : box_x0 + wall + 12 - strap_len;
         for (y = [box_y0 - 1, box_y0 + box_y - wall_y - 1])
@@ -323,17 +325,6 @@ module box() {
         // ふた固定用の下穴
         for (p = boss_pts) translate([p[0], p[1], box_h]) screw_hole(3, 12);
         motor_recess();
-    }
-}
-
-// バッテリーと箱の開口と反対側の端の壁の間に入れる、すき間の確認用プレート（寝かせて印刷する向き）。
-// 外形は箱の内側の断面から周りに shim_clr のすき間をとり、押し出し用の窓と同じ窓を開ける
-shim_t = 2;
-shim_clr = 0.2;
-module bat_shim() {
-    difference() {
-        cube([in_y - 2 * shim_clr, in_z - shim_clr, shim_t]);
-        translate([(in_y - 2 * shim_clr) / 2 - 20, 4, -1]) cube([40, in_z - 8, shim_t + 2]);
     }
 }
 
@@ -571,7 +562,7 @@ module plate() {
 module batteries() {
     for (i = [0 : bat_n - 1])
         color(i == 0 ? "dimgray" : "gray")
-            translate([box_x0 + wall + clr_x, box_y0 + wall_y + clr, floor_t + i * bat_z])
+            translate([in_x0 + clr_x, box_y0 + wall_y + clr, floor_t + i * bat_z])
                 cube([bat_x, bat_y, bat_z - 0.2]);
 }
 
@@ -798,7 +789,6 @@ else if (part == "pi_base") pi_base();
 else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]) bumper();
 else if (part == "cover") translate([0, 0, cov_oz]) mirror([0, 0, 1]) cover();
 else if (part == "cover_asm") cover();
-else if (part == "bat_shim") bat_shim();
 else {
     plate();
     color("royalblue") box();
@@ -816,7 +806,7 @@ else {
     if (show_cover) color("#3c4452") cover();
 }
 
-echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
+echo(box_outer = [box_x, box_y, box_h], interior = [in_x - end_fill, in_y, in_z],
      lidar_holes = [for (p = lidar_holes_rel) lidar_hole(p)],
      lidar_top_z = box_h + lid_t + lidar_tower_h,
      cam_holes_xz = cam_pts(), cam_z = [cam_z0, cam_z0 + cam_h], cam_plate_top_z = cam_top,

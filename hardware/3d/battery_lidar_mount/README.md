@@ -15,7 +15,6 @@
 | `wiring.png` / `wiring_front.png` / `wiring_top.png` | 配線経路の目安（後ろ斜め / 前斜め / 真上。`-D show_cables=true` で描画） |
 | `drok_holder.png` | DROK の受け（箱の後ろの壁、Pi 側から見た図） |
 | `cover.stl` | 上面カバー（上面を下にした向きで出力済み、サポート不要） |
-| `bat_shim.stl` | バッテリーの長手方向のすき間の確認用プレート（67.2 x 33.2 x 2 mm、押し出し用の窓 40 x 25.4 mm 付き。寝かせて印刷、サポート不要）。箱の開口と反対側の端の壁とバッテリーの間に入れて、がたつきが止まるかを確かめる。合った厚さは箱に反映する |
 | `cover_assembly.png` / `cover_right.png` / `cover_rear.png` / `cover_hook.png` / `battery_display.png` | カバーを付けた状態 / 右側面の充電口 / 後ろ斜め（液晶の窓・通気口） / フックの断面 / バッテリーの残量表示の窓（`-D show_cover=true` で組立図に描画） |
 
 ## ネジ穴
@@ -37,7 +36,7 @@
 
 ## 主な寸法
 
-- 箱の外形: 103.8 x 75.2 x 38.4 mm（内寸 98.8 x 67.6 x 33.4 mm）。バッテリーの実測 98.2 x 66.8 mm に対し、すき間は前後が片側 0.4 mm、左右が片側 0.3 mm。前後の壁は 3.8 mm（外形はそのままで内側へ厚くした）、左右の壁は 2.5 mm。床は 5 mm（フランジ 3 mm より 2 mm 厚い。下のモーターのネジのくぼみの分）。開口側の角にあるふたのボス 2 本（Ø8）がバッテリーの通り道に前後 5.8 mm ずつかかるので、バッテリーはふたを外して上から出し入れする
+- 箱の外形: 103.8 x 75.2 x 38.4 mm（内寸 96.8 x 67.6 x 33.4 mm）。バッテリーの実測 98.2 x 66.8 mm に対し、前後のすき間は片側 0.4 mm。前後の壁は 3.8 mm（外形はそのままで内側へ厚くした）。左右の壁は、開口側が 2.5 mm、反対側が 4.5 mm（`end_fill`。実物では長手方向に約 2 mm のすき間があったので、2 mm のプレートで確かめてから内側へ 2 mm 厚くした）。床は 5 mm（フランジ 3 mm より 2 mm 厚い。下のモーターのネジのくぼみの分）。開口側の角にあるふたのボス 2 本（Ø8）がバッテリーの通り道に前後 5.8 mm ずつかかるので、バッテリーはふたを外して上から出し入れする
 - フランジ: 148 x 92 x 3 mm。天板の前側 4 穴（四隅 2 個 + 前端から 90 mm の 2 個）に合わせた Ø4.4 穴
 - LiDAR 取付柱: 高さ 28 mm、太さ Ø8.5。LiDAR 底面の M2.5 ねじ穴に、ふたの裏から柱の中を通したネジで留める（柱の下から Ø5.2 の座ぐりでネジ頭を沈め、上端 4 mm だけ Ø2.9 の通し穴を残す）。穴位置はデータシート Figure 5-2（ヘッド側 56 mm 間隔、モーター側 40 mm 間隔）
 - LiDAR 取付面の高さ: 天板上面から 70.4 mm。モーター側の先端は天板前端から約 5 mm はみ出す
@@ -143,5 +142,4 @@ openscad -D 'part="box"' -o box.stl battery_lidar_mount.scad
 openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
 openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
 openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad
-openscad -D 'part="bat_shim"' -o bat_shim.stl battery_lidar_mount.scad
 ```
