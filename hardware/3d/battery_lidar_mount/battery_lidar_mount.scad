@@ -197,7 +197,8 @@ bump_out = bump_base_d + bump_gap + bump_face_t;
 // 両端を固定した板ばね（一端がずれる）の曲げひずみ = 3 t δ / L²
 spring_strain = 3 * spring_t * bump_travel / pow(spring_x[0][1] - spring_x[0][0] - post_w, 2);
 tof_board = [25, 10.7, 1.6];  // VL53L1X 基板（Dovhmoh: 25 x 10.7、長辺を横幅方向に置く）
-tof_lip = 1.5;            // 基板を受ける縁の幅（その内側は窓）
+tof_cover = [12.2, 7.4];  // 下面のレンズのカバー（実測、写真から）。中心は基板の中心から 1.9 mm ピンと反対側へ寄り、縁は基板の長辺まで来る
+tof_win = tof_cover[0] + 1.2;  // 窓の幅。長辺の方向は受けの穴いっぱいに開け、基板を左右の耳（丸穴の部分）で受ける
 tof_tilt = 45;            // 真下から進行方向へ傾ける角度
 tof_drop = 8;             // 受けの中心をバンパー下面から下げる量
 tof_dy = 14;              // 受けの中心の天板の端からの距離（上から落とし込む穴が天板の角にかからない位置）
@@ -487,15 +488,17 @@ module bumper() {
         // 上から斜めの穴に落とし込み、縁で受ける（ピンは上向き、配線は穴から上へ）
         tof_at(z0) {
             translate([-bw / 2, -bh / 2, 0]) cube([bw, bh, 60]);
-            translate([-tof_board[0] / 2 + tof_lip, -tof_board[1] / 2 + tof_lip, -tof_face_t - 1])
-                cube([tof_board[0] - 2 * tof_lip, tof_board[1] - 2 * tof_lip, tof_face_t + 2]);
+            translate([-tof_win / 2, -bh / 2, -tof_face_t - 1]) cube([tof_win, bh, tof_face_t + 2]);
         }
     }
 }
 
 module tof_ghost() {
     for (r = [0, 180]) translate([plate_w / 2, plate_l / 2, 0]) rotate([0, 0, r]) translate([-plate_w / 2, -plate_l / 2, 0])
-        tof_at(flange_t) translate([-tof_board[0] / 2, -tof_board[1] / 2, 0.05]) color("black") cube(tof_board);
+        tof_at(flange_t) {
+            color("darkgreen") translate([-tof_board[0] / 2, -tof_board[1] / 2, 0.05]) cube([tof_board[0], tof_board[1], 1.6]);
+            color("black") translate([-tof_cover[0] / 2, tof_board[1] / 2 - tof_cover[1], -1.55]) cube([tof_cover[0], tof_cover[1], 1.6]);
+        }
 }
 
 module both_bumpers() {
