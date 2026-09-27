@@ -162,6 +162,7 @@ imu_c = [134, 25.6];      // LAN 端子（X 約 124.5 まで）と後ろ右の�
 imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向きで、ジャンパー線のコネクターを下に収める
 imu_wall = 1.6;
 imu_ledge = 1;            // 基板の縁を下から受ける幅（ピンヘッダーのない 3 辺）。上面は縁までチップ部品があるので押さえない
+imu_hdr = 2.56;           // 基板の下のピンヘッダーの列（+X 側の長辺に沿って全長）の幅。台はこの分を受けずに外へ出す
 imu_pad = [124, 12.5, 141.5, 37.4];  // IMU の台の下の板（x0, y0, x1, y1）
 lcd_board = [28.1, 39, 1.6];  // 幅 x 高さ x 基板厚（幅は実物に合わせて 0.6 mm 広げた）
 lcd_cx = 17.5;
@@ -405,9 +406,9 @@ module imu_holder() {
     ox = ix + 2 * imu_wall;
     oy = iy + 2 * imu_wall;
     h = imu_lift + 1.6 + 0.3 + 1.2;
-    // ピンヘッダーのある +X 側は壁なしで開け、基板をジャンパー線を差したまま上から入れて縁の受けに載せる
+    // ピンヘッダーのある +X 側は壁なしで開け、ピンヘッダーの列の幅だけ台を短くして基板をはみ出させ、ジャンパー線を差したまま上から入れて縁の受けに載せる
     translate([imu_c[0], imu_c[1], pi_base_t - 0.01]) difference() {
-        translate([-ox / 2, -oy / 2, 0]) cube([ix + imu_wall, oy, h]);
+        translate([-ox / 2, -oy / 2, 0]) cube([ox / 2 + imu_board[0] / 2 - imu_hdr, oy, h]);
         translate([-ix / 2, -iy / 2, imu_lift]) cube([ix + 5, iy, h]);
         translate([-ix / 2 + imu_ledge, -iy / 2 + imu_ledge, 0.01]) cube([ix + 5, iy - 2 * imu_ledge, h + 1]);
     }
@@ -514,7 +515,7 @@ module pi_ghost() {
 
 module sensor_ghost() {
     color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, pi_base_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
-    color("black") translate([imu_c[0] + imu_board[0] / 2 - 2.54, imu_c[1] - 8.9, pi_base_t + imu_lift - 14]) cube([2.54, 17.8, 14]);
+    color("black") translate([imu_c[0] + imu_board[0] / 2 - imu_hdr, imu_c[1] - imu_board[1] / 2, pi_base_t + imu_lift - 14]) cube([imu_hdr, imu_board[1], 14]);
     color("black") translate([lcd_cx, lcd_y, wing_t + 2]) rotate([-lcd_tilt, 0, 0])
         translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, lcd_rs]) cube([lcd_board[0], 0.5, lcd_board[1]]);
 }
