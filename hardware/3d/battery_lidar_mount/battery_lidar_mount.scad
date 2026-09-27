@@ -147,9 +147,14 @@ pi_board = [85, 56];
 pi_hole_dx = 58;
 pi_hole_dy = 49;
 pi_hole_off = 3.5;        // GPIO 側の短辺からの距離（USB / LAN は +X 側）
-pi_boss_d = 6;
+pi_so_hole_d = 6.2;       // 幅 5 mm の M2.5 六角支柱を差し込む丸い穴（六角の角と角の間 5.77 mm + 0.43 mm）
+pi_so_in = 5;             // 支柱を差し込む深さ
+pi_so_l = 5;              // 支柱の長さ（Pi の基板の下に出ている部分。仮の値で、Pi の高さの図とカバーの確認だけに使う）
+pi_boss_d = pi_so_hole_d + 2 * 1.6;
 pi_boss_h = 6;
+pi_screw_cb = 2;          // 台の裏から支柱を留める M2.5 のネジの頭を沈める深さ
 pi_base_t = 3;
+pi_z = pi_base_t + pi_boss_h - pi_so_in + pi_so_l;   // Pi の基板の下面
 wing_t = recess_t;        // 左側（液晶の台）は後ろ左のモーターのネジの上に載るので厚くする
 pi_stack_h = 45;          // Pi 5 + AI HAT+ + Motor HAT の 3 段（実測。台のぶん高くなる側で見積もる）
 pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
@@ -402,7 +407,12 @@ module pi_base() {
         }
         for (p = pi_mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = pi_base_t + 2);
         motor_recess();
-        for (p = pi_pts) translate([p[0], p[1], pi_base_t + pi_boss_h]) screw_hole(2.5, 8);
+        // 六角支柱を差し込む丸い穴。支柱は台の裏から M2.5 のネジで留める
+        for (p = pi_pts) translate([p[0], p[1], 0]) {
+            translate([0, 0, pi_base_t + pi_boss_h - pi_so_in]) cylinder(d = pi_so_hole_d, h = pi_so_in + 1);
+            translate([0, 0, pi_base_t + pi_boss_h - 0.5]) cylinder(d1 = pi_so_hole_d, d2 = pi_so_hole_d + 1, h = 0.51);
+            clear_hole(2.5, pi_base_t + pi_boss_h - pi_so_in, pi_screw_cb);
+        }
         // 配線通し・通気（後ろ側は台の縁まで開け、天板の開口から上がるモーター線を Pi の後ろへ出す）
         translate([pad[0] + 10, pad[1] - 1, -1]) cube([pad[2] - pad[0] - 20, pad[3] - pad[1] - 9, pi_base_t + 2]);
     }
@@ -516,7 +526,7 @@ module both_bumpers() {
 }
 
 module pi_ghost() {
-    z = pi_base_t + pi_boss_h;
+    z = pi_z;
     color("green", 0.8) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z]) cube([pi_board[0], pi_board[1], 1.6]);
     color("darkslateblue", 0.5) translate([pi_cx - pi_board[0] / 2, pi_cy - pi_board[1] / 2, z + 1.6]) cube([65, pi_board[1], pi_stack_h - 1.6]);
 }
@@ -586,7 +596,7 @@ module fpc_path(pts) {
 module cable_ghost() {
     lt = box_h + lid_t;
     cy = cam_by + cam_boss_l - 0.8;
-    pz = pi_base_t + pi_boss_h + 1.6;
+    pz = pi_z + 1.6;
     // カメラの下端 → 板の下の窓 → ふたの上 → USB / LAN 端子の上 → 45° に折って HAT の下へ → CAM 端子
     color("white") {
         fpc_path([[cam_cx, cy, cam_z0 + 0.5], [cam_cx, cy - 1.5, lt + 1.5], [cam_cx, cam_by - cam_plate_t - 2, lt + 0.8],
@@ -613,14 +623,14 @@ module cable_ghost() {
                          [pi_cx - pi_board[0] / 2 + 11.2, pi_cy - pi_board[1] / 2 - 10, pz + 1.6]], 4);
     // 液晶 / IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
     hy = pi_cy + pi_board[1] / 2 - 3.5;
-    ht = pi_base_t + pi_boss_h + pi_stack_h + 4;
+    ht = pi_z + pi_stack_h + 4;
     color("magenta") path([[lcd_cx, lcd_y + (lcd_rs + 4.5) * sin(lcd_tilt) + 8 * cos(lcd_tilt), wing_t + (lcd_rs + 4.5) * cos(lcd_tilt) - 8 * sin(lcd_tilt)], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
     color("purple") path([[imu_c[0] + imu_board[0] / 2 - 1.3, imu_c[1], pi_base_t + imu_lift - 14], [imu_c[0] + imu_board[0] / 2 + 5, imu_c[1], pi_base_t + imu_lift - 14],
                           [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1] + 6, ht - 6], [pi_cx + 20, hy + 2, ht], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
         path([[plate_w / 2, plate_l + tof_dy - 20, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 168, flange_t + 5],
               [13, 128, flange_t + 5], [20, 100, 10], [pi_cx - 25, hy + 2, ht]], 2.5);
-        path([[plate_w / 2, 20 - tof_dy, flange_t + 12], [plate_w / 2, 10, pi_base_t + pi_boss_h + pi_stack_h + 8],
+        path([[plate_w / 2, 20 - tof_dy, flange_t + 12], [plate_w / 2, 10, pi_z + pi_stack_h + 8],
               [pi_cx - 20, hy, ht + 2]], 2.5);
     }
 }
@@ -798,7 +808,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      lidar_top_z = box_h + lid_t + lidar_tower_h,
      cam_holes_xz = cam_pts(), cam_z = [cam_z0, cam_z0 + cam_h], cam_plate_top_z = cam_top,
      cam_lens_center_z = cam_z0 + cam_lens_z, pi_holes = pi_pts,
-     pi_stack_top_z = pi_base_t + pi_boss_h + pi_stack_h,
+     pi_stack_top_z = pi_z + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
      imu_top_z = pi_base_t + imu_lift + 1.6,
