@@ -385,6 +385,14 @@ module pi_base() {
             }
             for (p = pi_pts) translate([p[0], p[1], 0]) cylinder(d = pi_boss_d, h = pi_base_t + pi_boss_h);
             rrect(wing[0], wing[1], wing[2], wing[3], 4, wing_t);
+            // 左側（液晶の台・後ろ左の 2 本の腕・台の左の角）は、すき間を残さず 1 枚の板にまとめる
+            hull() {
+                rrect(wing[0], wing[1], wing[2], wing[3], 4, pi_base_t);
+                for (i = [0, 2]) {
+                    translate([pi_mount_holes[i][0], pi_mount_holes[i][1], 0]) cylinder(r = 6, h = pi_base_t);
+                    translate([corners[i][0], corners[i][1], 0]) cylinder(r = 6, h = pi_base_t);
+                }
+            }
             motor_recess_pad([motor_scr_pts[0]]);
             // 後ろのバンパーの爪を受ける平らな端（前のフランジの縁と同じ位置 Y = plate_l - flange_y1）
             for (a = bump_arm_x) rrect(a[0], plate_l - flange_y1, a[1], plate_l - bump_arm_y0, 1, pi_base_t);
