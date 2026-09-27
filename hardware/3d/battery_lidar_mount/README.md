@@ -15,6 +15,7 @@
 | `wiring.png` / `wiring_front.png` / `wiring_top.png` | 配線経路の目安（後ろ斜め / 前斜め / 真上。`-D show_cables=true` で描画） |
 | `drok_holder.png` | DROK の受け（箱の後ろの壁、Pi 側から見た図） |
 | `cover.stl` | 上面カバー（上面を下にした向きで出力済み、サポート不要） |
+| `bat_shim.stl` | バッテリーの長手方向のすき間の確認用プレート（67.2 x 33.2 x 2 mm、押し出し用の窓 40 x 25.4 mm 付き。寝かせて印刷、サポート不要）。箱の開口と反対側の端の壁とバッテリーの間に入れて、がたつきが止まるかを確かめる。合った厚さは箱に反映する |
 | `cover_assembly.png` / `cover_right.png` / `cover_rear.png` / `cover_hook.png` / `battery_display.png` | カバーを付けた状態 / 右側面の充電口 / 後ろ斜め（液晶の窓・通気口） / フックの断面 / バッテリーの残量表示の窓（`-D show_cover=true` で組立図に描画） |
 
 ## ネジ穴
@@ -142,4 +143,5 @@ openscad -D 'part="box"' -o box.stl battery_lidar_mount.scad
 openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
 openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
 openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad
+openscad -D 'part="bat_shim"' -o bat_shim.stl battery_lidar_mount.scad
 ```

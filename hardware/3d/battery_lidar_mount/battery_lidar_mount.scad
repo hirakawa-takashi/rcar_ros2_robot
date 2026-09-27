@@ -7,8 +7,9 @@
 //       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
 //       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
 //       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
+//       openscad -D 'part="bat_shim"' -o bat_shim.stl battery_lidar_mount.scad（バッテリーの長手方向のすき間の確認用プレート）
 
-part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "cover" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "bumper" | "cover" | "bat_shim" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
 
@@ -322,6 +323,17 @@ module box() {
         // ふた固定用の下穴
         for (p = boss_pts) translate([p[0], p[1], box_h]) screw_hole(3, 12);
         motor_recess();
+    }
+}
+
+// バッテリーと箱の開口と反対側の端の壁の間に入れる、すき間の確認用プレート（寝かせて印刷する向き）。
+// 外形は箱の内側の断面から周りに shim_clr のすき間をとり、押し出し用の窓と同じ窓を開ける
+shim_t = 2;
+shim_clr = 0.2;
+module bat_shim() {
+    difference() {
+        cube([in_y - 2 * shim_clr, in_z - shim_clr, shim_t]);
+        translate([(in_y - 2 * shim_clr) / 2 - 20, 4, -1]) cube([40, in_z - 8, shim_t + 2]);
     }
 }
 
@@ -786,6 +798,7 @@ else if (part == "pi_base") pi_base();
 else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]) bumper();
 else if (part == "cover") translate([0, 0, cov_oz]) mirror([0, 0, 1]) cover();
 else if (part == "cover_asm") cover();
+else if (part == "bat_shim") bat_shim();
 else {
     plate();
     color("royalblue") box();
