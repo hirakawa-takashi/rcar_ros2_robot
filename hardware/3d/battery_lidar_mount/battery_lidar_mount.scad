@@ -169,8 +169,10 @@ imu_board = [12, 20];     // 長辺を前後方向に置く。ピンヘッダー
 imu_c = [134, 25.6];      // LAN 端子（X 約 124.5 まで）と後ろ右のモーターのネジ（Y 37.5 から）と天板の穴 [143, 11] のネジ頭の間
 imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向きで、ジャンパー線のコネクターを下に収める
 imu_wall = 1.6;
-imu_ledge = 1;            // 基板の縁を下から受ける幅（ピンヘッダーのない 3 辺）。上面は縁までチップ部品があるので押さえない
+imu_ledge = 1;            // 基板の縁を下から受ける幅（ピンヘッダーのない 3 辺）
 imu_hdr = 2.56;           // 基板の下のピンヘッダーの列（+X 側の長辺に沿って全長）の幅。台はこの分を受けずに外へ出す
+imu_lip = 3;              // 奥の長辺（Pi 側、-X）の壁から内側へ出して、基板の縁を上から押さえる出っ張りの幅
+imu_lip_t = 3;            // 出っ張りの厚さ
 imu_pad = [124, 12.5, 141.5, 37.4];  // IMU の台の下の板（x0, y0, x1, y1）
 lcd_board = [28.1, 39, 1.6];  // 幅 x 高さ x 基板厚（幅は実物に合わせて 0.6 mm 広げた）
 lcd_cx = 17.5;
@@ -433,6 +435,8 @@ module imu_holder() {
         translate([-ix / 2, -iy / 2, imu_lift]) cube([ix + 5, iy, h]);
         translate([-ix / 2 + imu_ledge, -iy / 2 + imu_ledge, 0.01]) cube([ix + 5, iy - 2 * imu_ledge, h + 1]);
     }
+    // 奥の長辺の出っ張り: 基板は +X 側から斜めに差し込み、-X 側の縁をこの下に入れてから段に載せる
+    translate([imu_c[0] - ox / 2, imu_c[1] - oy / 2, pi_base_t + imu_lift + 1.6 + 0.3]) cube([imu_wall + imu_lip, oy, imu_lip_t]);
 }
 
 module lcd_floor_local() {
