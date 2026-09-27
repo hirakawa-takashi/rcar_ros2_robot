@@ -150,22 +150,22 @@ pi_hole_off = 3.5;        // GPIO 側の短辺からの距離（USB / LAN は +X
 pi_boss_d = 6;
 pi_boss_h = 6;
 pi_base_t = 3;
-wing_t = recess_t;        // 左側（IMU・液晶の台）は後ろ左のモーターのネジの上に載るので厚くする
+wing_t = recess_t;        // 左側（液晶の台）は後ろ左のモーターのネジの上に載るので厚くする
 pi_stack_h = 45;          // Pi 5 + AI HAT+ + Motor HAT の 3 段（実測。台のぶん高くなる側で見積もる）
 pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
           [pi_cx - pi_board[0] / 2 + pi_hole_off + dx, pi_cy - pi_hole_dy / 2 + dy]];
 
-// ---- ラズパイ台の左側: IMU（GY-BNO055）と液晶（ZJY-IPS130）----
+// ---- ラズパイ台の左側: 液晶（ZJY-IPS130）、右側（USB・LAN の側）: IMU（GY-BNO055）----
 wing = [1, 18, 34, 80];   // x0, y0, x1, y1（液晶の枠と左右の支えの下まで広げる）
-imu_board = [12, 20];     // 実物に合わせて変更（長辺を前後方向に置く）
-imu_c = [18, 64];         // 液晶より前（基板の上端が天板から約 30 mm になるので、後ろ向きの画面を隠さないよう前に置く）
+imu_board = [12, 20];     // 長辺を前後方向に置く。ピンヘッダーは +X 側の長辺
+imu_c = [132, 25.6];      // LAN 端子（X 約 122.5 まで）と後ろ右のモーターのネジ（Y 37.5 から）と天板の穴 [143, 11] のネジ頭の間
 imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向きで、ジャンパー線のコネクターを下に収める
-imu_post = 2;             // 四隅の受けが基板の角を受ける幅
-imu_cable_hole = [13, 3, 19];  // Pi 側（+X）の壁のケーブル穴（幅、台の上面からの下端、高さ）
 imu_wall = 1.6;
+imu_ledge = 1;            // 溝が基板の縁を上下から押さえる幅（ピンヘッダーのない 3 辺）
+imu_pad = [122, 12.5, 139.5, 37.4];  // IMU の台の下の板（x0, y0, x1, y1）
 lcd_board = [28.1, 39, 1.6];  // 幅 x 高さ x 基板厚（幅は実物に合わせて 0.6 mm 広げた）
 lcd_cx = 17.5;
-lcd_y = 24;               // 枠の下端（後ろ向き）。上端は前へ倒れて IMU の上に来る
+lcd_y = 24;               // 枠の下端（後ろ向き）。上端は前へ倒れる
 lcd_tilt = 30;            // 垂直から後ろへ倒す角度
 lcd_lip = 1;              // 基板の左右の縁を押さえる幅
 lcd_raise = 10;           // 基板の下端を枠の底から上げる高さ（垂直方向）。下端の裏のピンヘッダーが台に当たらないように
@@ -386,6 +386,7 @@ module pi_base() {
             motor_recess_pad([motor_scr_pts[0]]);
             // 後ろのバンパーの爪を受ける平らな端（前のフランジの縁と同じ位置 Y = plate_l - flange_y1）
             for (a = bump_arm_x) rrect(a[0], plate_l - flange_y1, a[1], plate_l - bump_arm_y0, 1, pi_base_t);
+            rrect(imu_pad[0], imu_pad[1], imu_pad[2], imu_pad[3], 3, pi_base_t);
             imu_holder();
             lcd_holder();
         }
@@ -402,17 +403,12 @@ module imu_holder() {
     iy = imu_board[1] + 0.6;
     ox = ix + 2 * imu_wall;
     oy = iy + 2 * imu_wall;
-    translate([imu_c[0], imu_c[1], wing_t - 0.01]) {
-        // 四方の壁（上端は基板の上面より 1 mm 上で、基板の位置決めを兼ねる）。下向きのピンの線は Pi 側の壁の穴から出す
-        difference() {
-            translate([-ox / 2, -oy / 2, 0]) cube([ox, oy, imu_lift + 1.6 + 1]);
-            translate([-ix / 2, -iy / 2, 0.01]) cube([ix, iy, imu_lift + 5]);
-            translate([ix / 2 - 1, -imu_cable_hole[0] / 2, imu_cable_hole[1]]) cube([imu_wall + 2, imu_cable_hole[0], imu_cable_hole[2]]);
-        }
-        // 四隅の受け（上端で基板の角を受ける）
-        for (sx = [-1, 1], sy = [-1, 1])
-            translate([sx > 0 ? ix / 2 - imu_post : -ix / 2, sy > 0 ? iy / 2 - imu_post : -iy / 2, 0])
-                cube([imu_post, imu_post, imu_lift]);
+    h = imu_lift + 1.6 + 0.3 + 1.2;
+    // ピンヘッダーのある +X 側は壁なしで開け、基板をジャンパー線を差したまま +X 側から溝に差し込む
+    translate([imu_c[0], imu_c[1], pi_base_t - 0.01]) difference() {
+        translate([-ox / 2, -oy / 2, 0]) cube([ix + imu_wall, oy, h]);
+        translate([-ix / 2, -iy / 2, imu_lift]) cube([ix + 5, iy, 1.6 + 0.3]);
+        translate([-ix / 2 + imu_ledge, -iy / 2 + imu_ledge, 0.01]) cube([ix + 5, iy - 2 * imu_ledge, h + 1]);
     }
 }
 
@@ -514,7 +510,8 @@ module pi_ghost() {
 }
 
 module sensor_ghost() {
-    color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, wing_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
+    color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, pi_base_t + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
+    color("black") translate([imu_c[0] + imu_board[0] / 2 - 2.54, imu_c[1] - 8.9, pi_base_t + imu_lift - 14]) cube([2.54, 17.8, 14]);
     color("black") translate([lcd_cx, lcd_y, wing_t + 2]) rotate([-lcd_tilt, 0, 0])
         translate([-lcd_board[0] / 2, -lcd_board[2] - 0.5, lcd_rs]) cube([lcd_board[0], 0.5, lcd_board[1]]);
 }
@@ -606,8 +603,8 @@ module cable_ghost() {
     hy = pi_cy + pi_board[1] / 2 - 3.5;
     ht = pi_base_t + pi_boss_h + pi_stack_h + 4;
     color("magenta") path([[lcd_cx, lcd_y + (lcd_rs + 4.5) * sin(lcd_tilt) + 8 * cos(lcd_tilt), wing_t + (lcd_rs + 4.5) * cos(lcd_tilt) - 8 * sin(lcd_tilt)], [lcd_cx + 12, hy + 4, ht - 4], [pi_cx - 12, hy, ht]], 3);
-    color("purple") path([[imu_c[0], imu_c[1], wing_t + imu_lift - 8], [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1], wing_t + imu_lift - 8],
-                          [30, hy - 2, wing_t + 34], [pi_cx - 34, hy + 2, ht]], 2.5);
+    color("purple") path([[imu_c[0] + imu_board[0] / 2 - 1.3, imu_c[1], pi_base_t + imu_lift - 14], [imu_c[0] + imu_board[0] / 2 + 5, imu_c[1], pi_base_t + imu_lift - 14],
+                          [imu_c[0] + imu_board[0] / 2 + 6, imu_c[1] + 6, ht - 6], [pi_cx + 20, hy + 2, ht], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
         path([[plate_w / 2, plate_l + tof_dy - 20, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 168, flange_t + 5],
               [13, 128, flange_t + 5], [20, 100, 10], [pi_cx - 25, hy + 2, ht]], 2.5);
@@ -792,7 +789,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x, in_y, in_z],
      pi_stack_top_z = pi_base_t + pi_boss_h + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
-     imu_top_z = wing_t + imu_lift + 1.6,
+     imu_top_z = pi_base_t + imu_lift + 1.6,
      lcd_top_z = wing_t + 2 + (lcd_rs + lcd_board[1] + 2) * cos(lcd_tilt),
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
