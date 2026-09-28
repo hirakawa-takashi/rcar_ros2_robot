@@ -17,6 +17,7 @@
   - 手動指令が途絶えたら STOP
   - モード遷移時は必ず一度ゼロ速度を送る
   - 障害物 "stop" 判定中はどのモードでも前進を止める（最終段ガード）
+  - 落下防止センサーが段差を検出した向き（前 / 後）への移動を止め、AUTO は STOP にする
 """
 
 import json
@@ -66,6 +67,12 @@ class DriveModeNode(Node):
         self.declare_parameter('manual_override', True)
         # 最終段の障害物ガード（"stop" 判定で前進を止める）
         self.declare_parameter('obstacle_guard', True)
+        # 落下防止センサー（cliff_node）。空で無効
+        self.declare_parameter('cliff_topic', '/cliff_status')
+        # 段差を検出した向きへの前進 / 後退を止める
+        self.declare_parameter('cliff_guard', True)
+        # 段差判定がこの秒数より古ければ使わない（配線済みなら AUTO を拒否 / STOP）
+        self.declare_parameter('cliff_timeout', 1.0)
 
         self.auto_timeout = float(self.get_parameter('auto_timeout').value)
         self.manual_timeout = float(self.get_parameter('manual_timeout').value)
@@ -74,6 +81,8 @@ class DriveModeNode(Node):
         self.auto_requires_joy = bool(self.get_parameter('auto_requires_joy').value)
         self.manual_override = bool(self.get_parameter('manual_override').value)
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
+        self.cliff_guard = bool(self.get_parameter('cliff_guard').value)
+        self.cliff_timeout = float(self.get_parameter('cliff_timeout').value)
 
         self._lock = threading.Lock()
         mode = str(self.get_parameter('initial_mode').value).lower()
@@ -90,6 +99,8 @@ class DriveModeNode(Node):
         self._joy_moving = False
         self._obstacle = None
         self._obstacle_stamp = 0.0
+        self._cliff = None
+        self._cliff_stamp = 0.0
         self._last_out = Twist()
         self._last_out_time = 0.0
 
@@ -109,6 +120,9 @@ class DriveModeNode(Node):
         joy_topic = self.get_parameter('joy_cmd_topic').value
         if joy_topic:
             self.create_subscription(Twist, joy_topic, self._joy_cb, 10)
+        cliff_topic = self.get_parameter('cliff_topic').value
+        if cliff_topic:
+            self.create_subscription(String, cliff_topic, self._cliff_cb, 10)
 
         rate = float(self.get_parameter('publish_rate').value)
         self.create_timer(1.0 / max(rate, 1.0), self._timer_cb)
@@ -179,6 +193,16 @@ class DriveModeNode(Node):
                 self._obstacle = payload
                 self._obstacle_stamp = time.monotonic()
 
+    def _cliff_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if isinstance(payload, dict):
+            with self._lock:
+                self._cliff = payload
+                self._cliff_stamp = time.monotonic()
+
     def _request_cb(self, msg: String):
         text = msg.data.strip()
         source = 'request'
@@ -228,6 +252,15 @@ class DriveModeNode(Node):
             joy_moving = self._joy_moving
             manual_moving = self._manual_moving and now - self._manual_stamp < 0.5
             auto_age = now - self._auto_stamp if self._auto_stamp else None
+            cliff = self._cliff
+            cliff_age = now - self._cliff_stamp if self._cliff_stamp else None
+        if self.cliff_guard and cliff and cliff.get('wired'):
+            if cliff_age is None or cliff_age > self.cliff_timeout:
+                reasons.append('落下防止センサーの判定が受信できていません')
+            elif cliff.get('level') == 'unknown':
+                reasons.append(f"落下防止センサーが使えません（{cliff.get('reason') or '不明'}）")
+            elif cliff.get('level') == 'cliff':
+                reasons.append(f"段差を検出（{cliff.get('reason') or 'cliff'}）")
         if obstacle is None or obs_age is None or obs_age > self.obstacle_timeout:
             reasons.append('障害物判定（LiDAR）が受信できていません')
         else:
@@ -269,6 +302,10 @@ class DriveModeNode(Node):
         out.angular.z = msg.angular.z
         if self.obstacle_guard and out.linear.x > 0.0 and self._obstacle_stop():
             out.linear.x = 0.0
+        if self.cliff_guard and out.linear.x != 0.0:
+            block_forward, block_backward = self._cliff_block()
+            if (out.linear.x > 0.0 and block_forward) or (out.linear.x < 0.0 and block_backward):
+                out.linear.x = 0.0
         with self._lock:
             self._last_out = out
             self._last_out_time = time.monotonic()
@@ -281,6 +318,15 @@ class DriveModeNode(Node):
         if not obstacle or age is None or age > self.obstacle_timeout:
             return False
         return obstacle.get('level') == 'stop'
+
+    def _cliff_block(self):
+        """段差で止める向き (前進, 後退) を返す。判定が古い・未配線なら止めない。"""
+        with self._lock:
+            cliff = self._cliff
+            age = time.monotonic() - self._cliff_stamp if self._cliff_stamp else None
+        if not cliff or age is None or age > self.cliff_timeout:
+            return False, False
+        return bool(cliff.get('block_forward')), bool(cliff.get('block_backward'))
 
     def state(self):
         now = time.monotonic()

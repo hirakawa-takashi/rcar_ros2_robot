@@ -158,6 +158,31 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 `dashboard.launch.py` の `use_imu`（既定 `true`）で起動し、無効化する場合は
 `use_imu:=false` を指定する。
 
+## 落下防止センサー (VL53L1X ×2) のセットアップ
+
+`cliff_node` は前後バンパーの Dovhmoh VL53L1X（真下から進行方向へ 45° 前傾）で床までの距離を測り、
+段差の判定を `/cliff_status`（`std_msgs/String`、JSON、20 Hz）へ publish する。
+測った距離が `cliff_distance_m`（既定 0.15 m。平らな床は約 0.095 m）を超えるか、床が見えない状態が
+`confirm_count` 回続くと段差とする。`drive_mode_node` は前が段差なら前進、後ろが段差なら後退を止め、
+自動運転は停止モードにする。
+
+現在は未配線で、`cliff_node.wired: false` の間は I2C / GPIO に触らず「未配線」だけを配信する
+（ダッシュボードの「落下防止センサー」カードに表示）。予定のピン割り付けは `gpio_pins.yaml`（配線色は未定）。
+
+| 信号 | 前（0x30） | 後（0x31） |
+| --- | --- | --- |
+| VIN 3V3 | pin 1（IMU と分岐） | pin 17（液晶と分岐） |
+| GND | pin 14 | pin 25 |
+| SDA / SCL | pin 3 / 5（I2C バス 1 共有） | pin 3 / 5 |
+| XSHUT | pin 11（GPIO17） | pin 13（GPIO27） |
+
+VL53L1X の初期アドレス 0x29 は BNO055 と同じなので、`cliff_node` が XSHUT を 1 台ずつ上げ、
+起動直後に 0x30 / 0x31 へ変える。モジュールの XSHUT は基板上で引き上げられていることが多く、
+配線したのに `cliff_node` が動いていないと 0x29 で BNO055 とぶつかる。配線したら
+`dashboard.yaml` の `cliff_node.wired` を `true` にしてサービスを再起動し、`i2cdetect -y 1` で
+0x29（BNO055）・0x30・0x31・0x60（Motor HAT）が見えることを確かめる。
+`dashboard.launch.py` の `use_cliff`（既定 `true`）で起動する。
+
 ## カメラ (IMX708 / Camera Module v3) のセットアップ（Ubuntu 24.04）
 
 ダッシュボードは `/camera/image_raw/compressed` を購読し、`/api/camera/stream` で MJPEG 配信する。カメラノードは `camera_ros`（libcamera）を使用し、`dashboard.launch.py` の `use_camera`（既定 true）で起動する。

@@ -44,7 +44,7 @@ hardware:
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
-    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C（初期 0x29、未配線）, power: 3V3, side: bottom}
+    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線・配線色未定）, power: 3V3, jump: gpio, side: bottom}
     - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
     - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
@@ -209,7 +209,7 @@ nodes:
     file: ai_car_web/dashboard_node.py
     role: FastAPI サーバー（別スレッド）+ rclpy ノード。ブラウザと ROS 2 の橋渡し。Web 操作とゲームパッドの指令を同じ経路で /cmd_vel_manual に変換する
     publishes: [/cmd_vel_manual, /drive_mode_request]
-    subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status]
+    subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status]
     params:
       - {name: max_linear_speed, ref: dashboard_node.max_linear_speed, unit: m/s, desc: 正規化指令 1.0 のときの並進速度}
       - {name: max_angular_speed, ref: dashboard_node.max_angular_speed, unit: rad/s, desc: 正規化指令 1.0 のときの旋回速度}
@@ -229,9 +229,9 @@ nodes:
   - id: drive_mode_node
     label: drive_mode_node
     file: ai_car_web/drive_mode_node.py
-    role: 手動 / 自動 / 停止のマルチプレクサ。/cmd_vel を publish する唯一のノード。各 watchdog と障害物最終ガードを持つ
+    role: 手動 / 自動 / 停止のマルチプレクサ。/cmd_vel を publish する唯一のノード。各 watchdog と障害物・段差の最終ガードを持つ
     publishes: [/cmd_vel, /drive_mode]
-    subscribes: [/cmd_vel_manual, /cmd_vel_auto, /drive_mode_request, /obstacle_status, /joy_cmd]
+    subscribes: [/cmd_vel_manual, /cmd_vel_auto, /drive_mode_request, /obstacle_status, /joy_cmd, /cliff_status]
     params:
       - {name: manual_timeout, ref: drive_mode_node.manual_timeout, unit: s, desc: MANUAL 中に手動指令が途絶えたら STOP}
       - {name: auto_timeout, ref: drive_mode_node.auto_timeout, unit: s, desc: AUTO 中に自動指令が途絶えたら STOP}
@@ -240,6 +240,8 @@ nodes:
       - {name: auto_requires_joy, ref: drive_mode_node.auto_requires_joy, unit: '', desc: AUTO にゲームパッド接続を必須にする}
       - {name: manual_override, ref: drive_mode_node.manual_override, unit: '', desc: AUTO 中の手動指令で MANUAL へ復帰}
       - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: stop 判定中は前進を 0 にする}
+      - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にし、AUTO は STOP}
+      - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 段差判定が古ければ使わない（配線済みなら AUTO を拒否 / STOP）}
     layer: control
   - id: autonomy_node
     label: autonomy_node
@@ -303,6 +305,20 @@ nodes:
     subscribes: []
     params: []
     layer: sensor
+  - id: cliff_node
+    label: cliff_node
+    file: ai_car_web/cliff_node.py
+    role: 前後バンパーの VL53L1X ×2（I2C 0x30 / 0x31、XSHUT で起動時にアドレス変更）で 45° 前方の床までの距離を測り、段差（床の途切れ）を /cliff_status に 20 Hz で publish。未配線の間（wired false）は I2C / GPIO に触らず「未配線」だけを配信
+    publishes: [/cliff_status]
+    subscribes: []
+    params:
+      - {name: wired, ref: cliff_node.wired, unit: '', desc: 配線済みなら true（false の間はセンサーを読まない）}
+      - {name: cliff_distance_m, ref: cliff_node.cliff_distance_m, unit: m, desc: 測った距離がこれを超えたら段差}
+      - {name: floor_distance_m, ref: cliff_node.floor_distance_m, unit: m, desc: 平らな床までの距離の目安（表示用）}
+      - {name: confirm_count, ref: cliff_node.confirm_count, unit: 回, desc: 連続で超えたら段差と確定}
+      - {name: invalid_is_cliff, ref: cliff_node.invalid_is_cliff, unit: '', desc: 床が見えない（測定無効）も段差とみなす}
+      - {name: timing_budget_ms, ref: cliff_node.timing_budget_ms, unit: ms, desc: 1 回の測定時間（短距離モード）}
+    layer: sensor
   - id: system_monitor_node
     label: system_monitor_node
     file: ai_car_web/system_monitor_node.py
@@ -334,6 +350,7 @@ topics:
   - {name: /scan, type: sensor_msgs/LaserScan, desc: LiDAR 360° スキャン（約 8 Hz）}
   - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（30 Hz）}
   - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（20 Hz）}
+  - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の距離・前進 / 後退の停止（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
@@ -356,6 +373,7 @@ drive_modes:
     - {from: auto, to: manual, trigger: 手動指令（スティック / Web）を検出, condition: manual_override}
     - {from: auto, to: stop, trigger: 自動指令が auto_timeout 途絶 / ゲームパッド切断 / LiDAR 判定途絶, condition: watchdog / guard}
     - {from: manual, to: stop, trigger: 手動指令が manual_timeout 途絶（移動中）, condition: watchdog}
+    - {from: auto, to: stop, trigger: 落下防止センサーが段差を検出 / 配線済みのセンサーの判定が途絶, condition: cliff_guard}
     - {from: any, to: stop, trigger: Web「停止」・赤い停止ボタン（/api/stop）/ BACK / 自動中の B, condition: 常に}
     - {from: stop, to: manual, trigger: Web「手動」/ START 長押し, condition: 常に}
     - {from: stop, to: auto, trigger: Web「自動」/ START 長押し, condition: 進入条件をすべて満たす}
@@ -364,6 +382,7 @@ drive_modes:
     - ゲームパッドが接続中（auto_requires_joy）
     - スティック・手動操作がニュートラル
     - /cmd_vel_auto が生きている（autonomy_node 起動中）
+    - 落下防止センサーが配線済み（wired true）なら、/cliff_status が新鮮（cliff_timeout 以内）で段差・不明でない
   safety:
     - {name: Web 指令タイムアウト, where: dashboard_node, ref: dashboard_node.cmd_timeout, unit: s, desc: 無指令でゼロ速度}
     - {name: 手動 watchdog, where: drive_mode_node, ref: drive_mode_node.manual_timeout, unit: s, desc: MANUAL 中の手動指令途絶で STOP}
@@ -371,6 +390,7 @@ drive_modes:
     - {name: LiDAR 途絶, where: drive_mode_node, ref: drive_mode_node.obstacle_timeout, unit: s, desc: 障害物判定が古ければ AUTO を拒否 / STOP}
     - {name: ゲームパッド切断, where: drive_mode_node, ref: drive_mode_node.joy_timeout, unit: s, desc: AUTO 中の切断で STOP}
     - {name: 障害物最終ガード, where: drive_mode_node / dashboard_node, ref: '', unit: '', desc: stop 判定中はどのモードでも前進を 0 にする。slow 判定では speed_scale で減速}
+    - {name: 段差ガード, where: drive_mode_node, ref: drive_mode_node.cliff_guard, unit: '', desc: 前のセンサーが段差なら前進、後ろなら後退を 0 にする。AUTO は STOP。未配線・判定が古いときは止めない}
     - {name: モード遷移時のゼロ速度, where: drive_mode_node, ref: '', unit: '', desc: 遷移時と起動時に必ず一度ゼロ速度を publish}
     - {name: サーマル制御, where: perception_node, ref: '', unit: '', desc: CPU 70℃ / Hailo 75℃ で推論 40%、78℃ / 85℃ で推論停止（LiDAR 判定は継続）}
     - {name: API トークン認証, where: dashboard_node, ref: '', unit: '', desc: api_token 設定時は POST API に X-API-Token / Bearer が必須}
@@ -397,7 +417,7 @@ autonomy:
 api:
   rest:
     - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
-    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / joy）, auth: false}
+    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / joy）, auth: false}
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーの配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
@@ -418,6 +438,7 @@ status:
     - /odom 未実装のためオドメトリは null
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
     - IMU の搭載向きが imu_link と一致しておらず軸補正が必要
+    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 1/14/3/5/11 前、17/25/3/5/13 後）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装

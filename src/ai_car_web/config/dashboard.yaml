@@ -38,6 +38,7 @@ dashboard_node:
     drive_mode_request_topic: "/drive_mode_request"
     api_token: ""  # 空なら認証なし。設定すると POST /api/* に X-API-Token（または Bearer）ヘッダーが必要。環境変数 AI_CAR_API_TOKEN でも指定可
     autonomy_status_topic: "/autonomy_status"
+    cliff_topic: "/cliff_status"
 
 drive_mode_node:
   ros__parameters:
@@ -58,6 +59,9 @@ drive_mode_node:
     auto_requires_joy: true  # ゲームパッド切断で AUTO → STOP
     manual_override: true    # AUTO 中の手動指令で MANUAL へ復帰
     obstacle_guard: true     # 最終段で stop 判定中の前進を止める
+    cliff_topic: "/cliff_status"
+    cliff_guard: true        # 段差を検出した向き（前 / 後）への移動を止め、AUTO は STOP
+    cliff_timeout: 1.0       # 段差判定がこれより古ければ使わない（配線済みなら AUTO を拒否 / STOP）
 
 autonomy_node:
   ros__parameters:
@@ -155,6 +159,31 @@ imu_node:
     frame_id: "imu_link"
     imu_topic: "/imu/data"
     publish_rate: 20.0
+
+cliff_node:
+  ros__parameters:
+    # 落下防止センサー Dovhmoh VL53L1X ×2（前後バンパー、真下から進行方向へ 45° 前傾）。
+    # 未配線の間は wired: false（I2C / GPIO に触らず「未配線」だけを配信）。配線したら true にする。
+    # 初期アドレス 0x29 は BNO055 と同じなので、XSHUT を 1 台ずつ上げて 0x30 / 0x31 に変える
+    wired: false
+    i2c_bus: 1
+    gpio_chip: ""            # 空なら pinctrl-rp1 を探す
+    default_address: 0x29
+    front_address: 0x30
+    rear_address: 0x31
+    front_xshut_gpio: 17     # pin 11
+    rear_xshut_gpio: 27      # pin 13
+    status_topic: "/cliff_status"
+    publish_rate: 20.0
+    timing_budget_ms: 33     # 短距離モード（〜1.3 m）: 15 / 20 / 33 / 50 / 100 / 200 / 500
+    intermeasurement_ms: 40
+    # 床までの距離の目安（センサーの中心は床から約 67 mm、45° なので測る距離は約 1.41 倍）。表示用
+    floor_distance_m: 0.095
+    # 測った距離がこれを超えたら段差（床が約 4 cm 下がった所）
+    cliff_distance_m: 0.15
+    invalid_is_cliff: true   # 床が見えない（測定無効）も段差とみなす
+    confirm_count: 2         # 連続でこの回数超えたら段差
+    stale_timeout: 0.5       # 測定値がこの秒数来なければ再接続
 
 system_monitor_node:
   ros__parameters:
