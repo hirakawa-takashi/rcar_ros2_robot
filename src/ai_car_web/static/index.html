@@ -1957,6 +1957,8 @@ function initPrint3d() {
       redraw();
     });
     cv.addEventListener('contextmenu', ev => ev.preventDefault());
+    // ホイールを押したときのブラウザの自動スクロールを止め、注視点の移動に使う
+    cv.addEventListener('mousedown', ev => { if (ev.button === 1) ev.preventDefault(); });
     const end = () => { drag = null; };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
@@ -1991,7 +1993,7 @@ function renderPrint3d(a) {
     `<h3>三面図・立体図</h3><div class="note">座標は天板と同じ（前 = +Y = LiDAR・カメラ側、右 = +X = USB 側、上 = +Z）。前後バンパーは印刷の向き（上面が下）で描いています。図をクリックすると大きく表示します。</div><div class="p3dgrid">${cards}</div>` +
     `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${asms.map(v => `<button data-p3d-live="${esc(v.id)}">${esc(v.label || '組み立て図')}</button>`).join('')}${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
     `<button data-p3d-zoom="in" title="拡大">＋</button><button data-p3d-zoom="out" title="縮小">−</button><button data-p3d-reset>向き・位置を戻す</button></div>` +
-    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転（押した所を中心に回ります）、右ドラッグ（または Shift ＋ドラッグ）で注視点の移動、ホイールで拡大・縮小、ダブルクリックで最初の向きと位置に戻ります。${asms.filter(v => v.note).map(v => `「${esc(v.label || '組み立て図')}」は${esc(v.note)}。`).join('')}</div></div>` +
+    `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転（押した所を中心に回ります）、右ドラッグ・ホイールを押したままドラッグ（または Shift ＋ドラッグ）で注視点の移動、ホイールで拡大・縮小、ダブルクリックで最初の向きと位置に戻ります。${asms.filter(v => v.note).map(v => `「${esc(v.label || '組み立て図')}」は${esc(v.note)}。`).join('')}</div></div>` +
     `<h3>印刷設定（目安）</h3>${aboutTable(['項目', '設定'], (p.settings || []).map(x => [esc(x.name), esc(x.value)]))}` +
     `<h3>ネジ・固定具</h3>${aboutTable(['場所', 'ネジ', '穴の形'], (p.screws || []).map(x => [esc(x.place), esc(x.screw), esc(x.hole)]))}` +
     (p.screw_note ? `<div class="note">${esc(p.screw_note)}</div>` : '') +
