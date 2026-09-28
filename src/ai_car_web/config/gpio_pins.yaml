@@ -85,6 +85,60 @@ connections:
     color: 灰
     note: アドレス 0x29（Motor HAT と I2C バス共有）
 
+  # --- 落下防止センサー Dovhmoh VL53L1X ×2（I2C 0x30 前 / 0x31 後）。未配線・配線色は未定（color は空欄）
+  #     初期アドレス 0x29 は BNO055 と同じ。XSHUT を GPIO で 1 台ずつ上げ、cliff_node が起動時に変更する。
+  #     3V3 は IMU（pin 1）・液晶（pin 17）と分岐して使う ---
+  - pins: [1]
+    device: VL53L1X 前
+    signal: VIN 3V3
+    color: ''
+    note: 未配線・配線色未定（IMU と分岐）
+  - pins: [14]
+    device: VL53L1X 前
+    signal: GND
+    color: ''
+    note: 未配線・配線色未定
+  - pins: [3]
+    device: VL53L1X 前
+    signal: I2C SDA
+    color: ''
+    note: 未配線・配線色未定。アドレス 0x30（I2C バス共有）
+  - pins: [5]
+    device: VL53L1X 前
+    signal: I2C SCL
+    color: ''
+    note: 未配線・配線色未定。アドレス 0x30（I2C バス共有）
+  - pins: [11]
+    device: VL53L1X 前
+    signal: XSHUT (GPIO17)
+    color: ''
+    note: 未配線・配線色未定。libgpiod 出力（gpiochip4 pinctrl-rp1）
+  - pins: [17]
+    device: VL53L1X 後
+    signal: VIN 3V3
+    color: ''
+    note: 未配線・配線色未定（液晶と分岐）
+  - pins: [25]
+    device: VL53L1X 後
+    signal: GND
+    color: ''
+    note: 未配線・配線色未定
+  - pins: [3]
+    device: VL53L1X 後
+    signal: I2C SDA
+    color: ''
+    note: 未配線・配線色未定。アドレス 0x31（I2C バス共有）
+  - pins: [5]
+    device: VL53L1X 後
+    signal: I2C SCL
+    color: ''
+    note: 未配線・配線色未定。アドレス 0x31（I2C バス共有）
+  - pins: [13]
+    device: VL53L1X 後
+    signal: XSHUT (GPIO27)
+    color: ''
+    note: 未配線・配線色未定。libgpiod 出力（gpiochip4 pinctrl-rp1）
+
   # --- Raspberry Pi AI HAT+（PCIe 接続。ヘッダーは電源と ID EEPROM のみ使用） ---
   - pins: [27]
     device: AI HAT+

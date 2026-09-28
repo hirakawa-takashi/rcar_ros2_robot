@@ -407,6 +407,16 @@
         <tr><td class="k">加速度 x [m/s²]</td><td class="v" id="i_ax">-</td></tr>
       </table>
     </div>
+
+    <div class="card">
+      <h2>落下防止センサー (/cliff_status)</h2>
+      <table>
+        <tr><td class="k">状態</td><td class="v" id="c_level">-</td></tr>
+        <tr><td class="k">前 [m]</td><td class="v" id="c_front">-</td></tr>
+        <tr><td class="k">後 [m]</td><td class="v" id="c_rear">-</td></tr>
+        <tr><td class="k">しきい値 [m]</td><td class="v" id="c_th">-</td></tr>
+      </table>
+    </div>
   </div>
 
   <div class="card wide">
@@ -894,8 +904,31 @@ function render(d) {
   document.getElementById('i_ax').textContent =
     i ? fmt(i.linear_acceleration_x, 2) : '-';
 
+  renderCliff(d.cliff);
   renderSystem(d.system);
   renderCamera(d.camera);
+}
+
+const CLIFF_BADGE = {
+  unwired: ['', '未配線'], unknown: ['warn', '不明'], floor: ['ok', '床あり'], cliff: ['crit', '段差'],
+};
+function renderCliff(c) {
+  const level = document.getElementById('c_level');
+  const alive = c && c.alive;
+  const [cls, text] = alive ? (CLIFF_BADGE[c.level] || ['', c.level]) : ['', c ? '途絶' : '未受信'];
+  level.innerHTML = `<span class="badge ${cls}">${esc(text)}</span>`;
+  level.title = alive ? (c.reason || '') : '/cliff_status 未受信';
+  for (const side of ['front', 'rear']) {
+    const s = alive && c.sensors ? c.sensors[side] : null;
+    const cell = document.getElementById(side === 'front' ? 'c_front' : 'c_rear');
+    const [scls, stext] = s ? (CLIFF_BADGE[s.level] || ['', s.level]) : ['', ''];
+    cell.innerHTML = s && s.distance_m != null
+      ? `${fmt(s.distance_m, 3)} <span class="badge ${scls}">${esc(stext)}</span>`
+      : (s && s.level !== 'unwired' ? `- <span class="badge ${scls}">${esc(stext)}</span>` : '-');
+    cell.title = s ? `${s.address}（XSHUT GPIO${s.xshut_gpio}）` : '';
+  }
+  document.getElementById('c_th').textContent = alive
+    ? `${fmt(c.cliff_distance_m, 2)}（床 ${fmt(c.floor_distance_m, 3)}）` : '-';
 }
 
 function renderJoy(j) {
@@ -1347,13 +1380,13 @@ function renderNodes(a) {
   const nodes = a.nodes || [], topics = a.topics || [], live = a.live || {};
   const nodeCoords = {
     rplidar: [100, 80], camera: [100, 150], imu_node: [100, 220],
-    system_monitor_node: [100, 290], joy_teleop_node: [100, 400], dashboard_node: [100, 520],
+    system_monitor_node: [100, 290], cliff_node: [100, 345], joy_teleop_node: [100, 400], dashboard_node: [100, 520],
     perception_node: [560, 115], autonomy_node: [560, 300],
     drive_mode_node: [1000, 300], motor_control_node: [1000, 520], lcd_display_node: [1000, 80],
   };
   const topicCoords = {
     '/scan': [330, 80], '/camera/image_raw/compressed': [330, 150], '/imu/data': [330, 220],
-    '/system_status': [330, 290], '/joy_cmd': [330, 400], '/cmd_vel_manual': [330, 520],
+    '/system_status': [330, 290], '/cliff_status': [330, 345], '/joy_cmd': [330, 400], '/cmd_vel_manual': [330, 520],
     '/drive_mode_request': [330, 580], '/obstacle_status': [790, 115], '/cmd_vel_auto': [790, 300],
     '/autonomy_status': [790, 360], '/drive_mode': [790, 460], '/cmd_vel': [1000, 410],
     '/display_state': [1000, 150],

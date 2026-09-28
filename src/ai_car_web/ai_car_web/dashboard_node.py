@@ -126,6 +126,8 @@ class DashboardNode(Node):
         self.declare_parameter('api_token', '')
         # 自律走行の状態（autonomy_node）。空で無効
         self.declare_parameter('autonomy_status_topic', '/autonomy_status')
+        # 落下防止センサー（cliff_node）。空で無効
+        self.declare_parameter('cliff_topic', '/cliff_status')
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
@@ -192,6 +194,9 @@ class DashboardNode(Node):
         autonomy_topic = self.get_parameter('autonomy_status_topic').value
         if autonomy_topic:
             self.create_subscription(String, autonomy_topic, self._autonomy_cb, 10)
+        cliff_topic = self.get_parameter('cliff_topic').value
+        if cliff_topic:
+            self.create_subscription(String, cliff_topic, self._cliff_cb, 10)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -210,6 +215,8 @@ class DashboardNode(Node):
         self._drive_mode_stamp = 0.0
         self._autonomy = None
         self._autonomy_stamp = 0.0
+        self._cliff = None
+        self._cliff_stamp = 0.0
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -313,6 +320,15 @@ class DashboardNode(Node):
             self._autonomy = payload
             self._autonomy_stamp = self.get_clock().now().nanoseconds * 1e-9
 
+    def _cliff_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        with self._lock:
+            self._cliff = payload
+            self._cliff_stamp = self.get_clock().now().nanoseconds * 1e-9
+
     def request_drive_mode(self, mode: str):
         """運転モードの切替を drive_mode_node へ要求する。"""
         mode = mode.strip().lower()
@@ -348,6 +364,16 @@ class DashboardNode(Node):
             return None
         age = now - self._autonomy_stamp
         state = dict(self._autonomy)
+        state['alive'] = age < 3.0
+        state['age_s'] = round(age, 1)
+        return state
+
+    def _cliff_state(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._cliff is None:
+            return None
+        age = now - self._cliff_stamp
+        state = dict(self._cliff)
         state['alive'] = age < 3.0
         state['age_s'] = round(age, 1)
         return state
@@ -507,6 +533,7 @@ class DashboardNode(Node):
                 'camera': self._camera_state(),
                 'drive_mode': self._drive_mode_state(),
                 'autonomy': self._autonomy_state(),
+                'cliff': self._cliff_state(),
                 'joy': {
                     'connected': (self.get_clock().now().nanoseconds * 1e-9
                                   - self._joy_stamp) < self.joy_timeout,
