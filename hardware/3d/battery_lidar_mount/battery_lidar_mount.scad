@@ -654,11 +654,12 @@ cov_skirt_z = 11;         // 前後の壁の下端。バンパー上面（7 mm�
 cov_ch = 6;               // 上面の角の面取り
 cov_edge = 1;             // 手で触る縁（外側の角、下端、充電口）の面取り
 cov_rear = [38.4, 18];    // 後ろの斜面: 後ろの壁の上端の高さ、斜面が上面に届く Y（外側）
-cov_hook_y = [45, 193];   // フックの位置（左右とも）
+cov_hook_y = [30, plate_l - 30];  // フックの位置（左右とも。天板の前後の端から 30 mm）
 cov_hook_w = 12;
 cov_hook_root = 28;       // フックの付け根の高さ（ここから下がたわむ）
 cov_hook_lip = 2;         // 天板の裏にかかる深さ
-cov_stop_y = [8, 100, 170];  // 天板の上面に載せる受け（左右とも）
+// 天板の上面に載せる受け（[左, 右]）。フックの両隣と中央。左の後ろは液晶の台のベース（`wing` Y 18〜80）をよけて 1 か所
+cov_stop_y = [[12, 100, 158, 182], [18, 42, 100, 158, 182]];
 cov_rib_x = [[21, 25], [129, 133]];  // ふたの前後の縁をはさんで前後の位置を決めるリブ（右はカメラの板の横）
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
 cov_cam_w = cam_plate_w + 2;         // カメラの切り欠き（上面から前面まで。カメラは上面より上に出る）
@@ -711,6 +712,9 @@ module cover_chg_profile(d) {
         children();
 }
 
+// 充電口の下の細い帯にあるフックは、たわませる切れ目を入れず固定の爪にする
+function cov_hook_fixed(x, y) = x == 1 && y > cov_chg[0] && y < cov_chg[1];
+
 module cover_hook() {
     // 天板の裏にかかる爪（上面が掛かり面、下面は押し込むと外へ逃げる斜面）と、外へ引く指かけ
     rotate([90, 0, 0]) linear_extrude(cov_hook_w, center = true) {
@@ -740,7 +744,7 @@ module cover() {
             for (x = [0, 1], y = cov_hook_y)
                 translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0]) cover_hook();
             // 天板の上面に載る受け（下は平ら、上は 45° で壁へ）
-            for (x = [0, 1], y = cov_stop_y)
+            for (x = [0, 1], y = cov_stop_y[x])
                 translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0])
                     rotate([90, 0, 0]) linear_extrude(8, center = true)
                         polygon([[-cov_clr - 0.01, 0], [2.5, 0], [2.5, 0.8], [-cov_clr - 0.01, 3.6]]);
@@ -749,7 +753,7 @@ module cover() {
                 translate([r[0], y[0], box_h + 1]) cube([r[1] - r[0], y[1] - y[0], cov_top - box_h - 0.99]);
         }
         // フックのまわりの切れ目（1 mm）
-        for (x = [0, 1], y = cov_hook_y)
+        for (x = [0, 1], y = cov_hook_y) if (!cov_hook_fixed(x, y))
             translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0])
                 for (s = [-1, 1]) translate([cov_ox0 - 3, s > 0 ? cov_hook_w / 2 : -cov_hook_w / 2 - 1, -10])
                     cube([cov_t + 3 + cov_clr + 0.01, 1, 10 + cov_hook_root]);
@@ -791,7 +795,7 @@ if (part == "box") box();
 else if (part == "lid") lid();
 else if (part == "pi_base") pi_base();
 else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]) bumper();
-else if (part == "cover") translate([0, 0, cov_oz]) mirror([0, 0, 1]) cover();
+else if (part == "cover") translate([0, cov_oy0 + cov_oy1, cov_oz]) rotate([180, 0, 0]) cover();
 else if (part == "cover_asm") cover();
 else {
     plate();
