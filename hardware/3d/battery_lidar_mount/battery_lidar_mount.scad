@@ -217,7 +217,7 @@ tof_face_t = 2;
 
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
-lidar_tower_h = 28;     // LiDAR 取付面より下に出ている部分（約 26.5 mm）をかわす高さ
+lidar_tower_h = 48;     // LiDAR 取付面より下に出ている部分（約 26.5 mm）をかわし、ヘッドをカバーの上面（82.4 mm）より上に出す高さ
 lidar_tower_d = 8.5;
 lidar_floor = 4;        // 柱の上端に残す厚さ。LiDAR 底面の M2.5 ねじ穴へ、ふたの裏から柱の中を通したネジで留める
 lidar_motor_front = true; // LiDAR のモーター側（細い側）を前（+Y）に向ける
