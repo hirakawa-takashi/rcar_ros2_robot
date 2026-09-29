@@ -12,15 +12,16 @@ plate_l = 200;
 plate_t = 2;
 cov_in = 0.3;             // カバーの左右の壁の内側（天板の端から外へ）
 cov_side = cov_in + 2.4;  // カバーの左右の壁の外側。壁の下端は天板の下面
-wheel_axle = 56;          // 車軸（天板の端から。実測）
-wheel_d = 80;             // 車輪の直径（仮定。実測して合わせる）
-deck_floor = 70;          // 床から天板の下面まで（実測。車輪が床に着いた状態）
+wheel_axle = 52;          // 車軸（天板の前後の端から）。OSOYOO のシャーシ 1 段目の図面で、モーターの台（37 mm 用）の穴が Y 37 / 67 mm。台の幅 40 mm の中心に軸
+wheel_d = 80.59;          // 車輪の直径（OSOYOO のメカナムホイールの図面）
+wheel_w = 39.1;           // 車輪の幅（同じ図面）
+deck_floor = 70;          // 床から天板の下面まで（実測。車輪が床に着いた状態。図面からの計算では 40.3 + 27 = 67.3 mm）
 wheel_in = 4;             // カバーの左右の壁の外側から車輪の内側の面まで（仮定。実測して合わせる）
 
 // ---- 試験台 ----
 st_h = 80;                // 床から天板の下面（受け面）まで
 st_clr = 1;               // 車体とのすき間
-pad_x = 25;               // 受け面の左右の幅（天板の端から内側へ）
+pad_x = 40;               // 受け面の左右の幅（天板の端から内側へ）。天板の下のモーターの台は Y 32 mm から後ろなので当たらない
 pad_x0 = st_clr - cov_in;  // 受け面の外側の端（カバーの壁の内側から 1 mm）
 pad_y = wheel_axle - wheel_d / 2 - st_clr;  // 受け面の奥行き（天板の端から車輪の手前まで）
 wall_t = 3;               // 位置決めの壁の厚さ
@@ -32,6 +33,10 @@ cell = 32;                // 格子のピッチ（ひし形の穴の対角線 + 
 gus_l = 22;               // 柱の内側の三角の補強の長さ（Y）と高さ（床板の上から）
 gus_t = 6;
 edge = 1;
+// 天板の 4 隅の穴（Ø4.4。上の部品を留めるネジの先・ナット）を受け面にくぼみでよける
+corner_holes = [[11, 11], [plate_w - 11, 11]];
+nut_d = 12;               // くぼみの直径（M4 のナットの角 8.1 mm・ワッシャー Ø9 より大きく）
+nut_h = 12;               // くぼみの深さ（天板の下面から）
 
 z_floor = -plate_t - st_h;
 z_base = z_floor + base_t;
@@ -86,6 +91,13 @@ module base() {
 
 // 後ろの 2 隅（Y が小さい側）
 module corner_posts() {
+    difference() {
+        corner_posts_solid();
+        for (h = corner_holes) translate([h[0], h[1], -plate_t - nut_h]) cylinder(d = nut_d, h = nut_h + 0.01, $fn = 48);
+    }
+}
+
+module corner_posts_solid() {
     for (s = [0, 1]) {
         c = corners()[s];
         // 柱（上面が受け面。天板の外はカバーの壁の下端とバンパーから 1 mm 下げる）
@@ -118,8 +130,8 @@ module car() {
 
 module wheels_ghost() {
     for (y = [wheel_axle, plate_l - wheel_axle], s = [0, 1])
-        color("#222", 0.7) translate([s ? plate_w + cov_side + wheel_in + 18 : -cov_side - wheel_in - 18, y, -plate_t - deck_floor + wheel_d / 2])
-            rotate([0, 90, 0]) cylinder(d = wheel_d, h = 36, center = true);
+        color("#222", 0.7) translate([s ? plate_w + cov_side + wheel_in + wheel_w / 2 : -cov_side - wheel_in - wheel_w / 2, y, -plate_t - deck_floor + wheel_d / 2])
+            rotate([0, 90, 0]) cylinder(d = wheel_d, h = wheel_w, center = true);
 }
 
 if (part == "stand") translate([0, 0, -z_floor]) stand();
