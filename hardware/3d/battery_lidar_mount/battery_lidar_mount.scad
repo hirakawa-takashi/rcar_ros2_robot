@@ -129,9 +129,10 @@ cam_hole_top = [2, 14.5]; // 基板の上端からの距離
 cam_lens_z = 9.46;        // レンズ中心の基板下端からの高さ（上端から 14.4 mm）
 cam_boss_d = 5.5;
 cam_boss_l = 4;
+cam_scr_m = 2.5;          // ボスと板を貫通するネジ（板の裏にナット）
 cam_fpc_gap = 4;          // ふたの上面から基板の下端まで（ケーブルを下から後ろへ曲げる分）
 cam_plate_t = 3;          // カメラを留める板
-cam_plate_w = 28;
+cam_plate_w = 32;         // リブの内側と M2.5 のナット・ネジ頭（Ø5.8）の間を空ける
 cam_rib_l = 12;           // 板の後ろの補強リブの長さ
 cam_cx = 113;             // 右寄せ: フラットケーブルを LiDAR のモーター（ふたの上 1.5 mm まで下がる）と柱の横に通す
 fpc_w = 16;               // カメラ用フラットケーブル（Standard 側の幅）
@@ -369,7 +370,7 @@ module cam_mount() {
 
 module cam_mount_cut() {
     translate([cam_cx - fpc_w / 2 - 1, cam_by - cam_plate_t - 1, lid_t - 0.02]) cube([fpc_w + 2, cam_plate_t + 2, cam_fpc_gap + 3]);
-    for (p = cam_pts()) translate([p[0], cam_by + cam_boss_l, p[1] - box_h]) rotate([-90, 0, 0]) screw_hole(2, 6);
+    for (p = cam_pts()) translate([p[0], cam_by - cam_plate_t, p[1] - box_h]) rotate([-90, 0, 0]) clear_hole(cam_scr_m, cam_plate_t + cam_boss_l);
 }
 
 // フラットケーブルを下に差し込むブリッジ（すき間 1.5 mm）
