@@ -1582,6 +1582,8 @@ function renderAboutTab(id) {
 }
 const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, asm: {}, live: {part: null, az: 0.6, el: 0.5, zoom: 1, pan: [0, 0, 0], view: null}};
 function p3dParts(a) { return ((a && a.print3d) || {}).parts || []; }
+// 印刷しない購入品（車輪・モーターなど）。組み立て図に重ねて表示するだけ
+function p3dRefs(a) { return ((a && a.print3d) || {}).refs || []; }
 function p3dUrl(file) {
   const rev = ((architectureData || {}).print3d || {}).rev;
   return `/print3d/${encodeURIComponent(file)}${rev ? `?v=${rev}` : ''}`;
@@ -1814,7 +1816,8 @@ function p3dEnsureViews(part, mesh) {
   return P3D.views[part.id];
 }
 function p3dPrepareAll() {
-  return Promise.all(p3dParts(architectureData).map(x => p3dLoad(x).then(m => p3dEnsureViews(x, m)).catch(() => null)));
+  return Promise.all([...p3dParts(architectureData).map(x => p3dLoad(x).then(m => p3dEnsureViews(x, m)).catch(() => null)),
+    ...p3dRefs(architectureData).map(x => p3dLoad(x).catch(() => null))]);
 }
 function p3dUpdate(part) {
   const body = document.getElementById('about_body');
@@ -1863,7 +1866,7 @@ function p3dAssembly(a, id) {
   const av = p3dAsmView(a, id);
   if (!av) return null;
   if (P3D.asm[id]) return P3D.asm[id];
-  const parts = p3dParts(a);
+  const parts = [...p3dParts(a), ...p3dRefs(a)];
   const items = av.items || [];
   const src = items.map(it => parts.find(x => x.id === it.part));
   if (src.some(x => !x || !P3D.meshes[x.id])) return null;
@@ -1900,13 +1903,15 @@ function p3dDrawLive() {
   g.fillStyle = '#7f98ba'; g.font = '14px system-ui, sans-serif';
   g.fillText(asm ? `${p3dSize(mesh).map(v => v.toFixed(1)).join(' × ')} mm（組み立てた向き・天板と同じ座標）` : `${p3dSizeText(part.id)} mm（STL の向き）`, 20, 54);
   if (asm) {
-    let x = 20;
+    let x = 20, y = 66;
     g.font = '13px system-ui, sans-serif';
     [...(asm.plate ? [{label: '天板', color: asm.plate.color || '#8fa3b8'}] : []),
-     ...p3dParts(architectureData).filter(p => (asm.items || []).some(it => it.part === p.id))].forEach(p => {
-      g.fillStyle = p.color; g.fillRect(x, 66, 12, 12);
-      g.fillStyle = '#cfe0f2'; g.fillText(p.label, x + 17, 77);
-      x += 30 + g.measureText(p.label).width;
+     ...[...p3dParts(architectureData), ...p3dRefs(architectureData)].filter(p => (asm.items || []).some(it => it.part === p.id))].forEach(p => {
+      const w = 17 + g.measureText(p.label).width;
+      if (x > 20 && x + w > cv.width - 20) { x = 20; y += 20; }
+      g.fillStyle = p.color; g.fillRect(x, y, 12, 12);
+      g.fillStyle = '#cfe0f2'; g.fillText(p.label, x + 17, y + 11);
+      x += 13 + w;
     });
   }
   const ox = 70, oy = cv.height - 60;
@@ -2011,6 +2016,7 @@ function initPrint3d() {
   }
   select(L.part);
   parts.forEach(x => p3dLoad(x).catch(() => null).then(() => { p3dUpdate(x); if (x.id === L.part || p3dAsmView(architectureData, L.part)) redraw(); }));
+  p3dRefs(architectureData).forEach(x => p3dLoad(x).catch(() => null).then(() => { if (p3dAsmView(architectureData, L.part)) redraw(); }));
 }
 function renderPrint3d(a) {
   const p = a.print3d || {};
