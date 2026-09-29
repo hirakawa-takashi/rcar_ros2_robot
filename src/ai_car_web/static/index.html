@@ -372,6 +372,8 @@
       <tr><td class="k">CPU使用率</td><td class="v" id="cpu_pct">-</td></tr>
       <tr><td class="k">クロック [MHz]</td><td class="v" id="cpu_freq">-</td></tr>
       <tr><td class="k">ファン [rpm]</td><td class="v" id="cpu_fan">-</td></tr>
+      <tr><td class="k">メモリ [GB]</td><td class="v" id="mem">-</td></tr>
+      <tr><td class="k">Swap使用率</td><td class="v" id="swap">-</td></tr>
       <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
       <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
       <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
@@ -696,6 +698,12 @@ function renderSystem(s) {
     : `${fan.rpm}${fan.level == null ? '' : ` (${fan.level}/${fan.max_level})`}`;
   setTempBar(document.getElementById('cpu_temp_bar'),
              document.getElementById('cpu_temp'), c.temperature_c);
+  const m = s.memory || {};
+  document.getElementById('mem').textContent = m.total_mb == null
+    ? '-'
+    : `${fmt(m.used_mb / 1024, 1)} / ${fmt(m.total_mb / 1024, 1)} (${fmt(m.percent, 0)}%)`;
+  document.getElementById('swap').textContent =
+    m.swap_percent == null ? '-' : fmt(m.swap_percent, 1) + ' %';
   const cores = document.getElementById('cores');
   cores.innerHTML = (c.per_core || [])
     .map((v, i) => `<div class="core">C${i}<div class="bar"><span style="width:${v}%"></span></div>${fmt(v, 0)}%</div>`)
