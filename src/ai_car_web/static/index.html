@@ -1836,14 +1836,17 @@ function p3dPlace(mesh, item) {
   const t = item.translate || [0, 0, 0];
   const r = (Number(item.rotate_z) || 0) * Math.PI / 180;
   const cs = Math.cos(r), sn = Math.sin(r);
+  const rx = (Number(item.rotate_x) || 0) * Math.PI / 180;
+  const cx = Math.cos(rx), sx = Math.sin(rx);
   const fz = item.flip_z ? -1 : 1;
   const src = mesh.pos, pos = new Float32Array(src.length);
   for (let i = 0; i < src.length; i += 9) {
     for (let k = 0; k < 3; k++) {
       const s = i + (fz < 0 && k ? 3 - k : k) * 3, o = i + k * 3;
-      pos[o] = t[0] + cs * src[s] - sn * src[s + 1];
-      pos[o + 1] = t[1] + sn * src[s] + cs * src[s + 1];
-      pos[o + 2] = t[2] + fz * src[s + 2];
+      const x = src[s], y = cx * src[s + 1] - sx * src[s + 2], z = fz * (sx * src[s + 1] + cx * src[s + 2]);
+      pos[o] = t[0] + cs * x - sn * y;
+      pos[o + 1] = t[1] + sn * x + cs * y;
+      pos[o + 2] = t[2] + z;
     }
   }
   return p3dMesh(pos);
