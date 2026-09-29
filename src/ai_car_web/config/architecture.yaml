@@ -55,6 +55,7 @@ print3d:
   summary:
     - 天板（154 × 200 mm）の上に載せる 5 種類・6 個の部品。底板にはモーターが付いているので使わない
     - 試験台（test_stand）は車体に付けない治具。カバーとバンパーを付けたまま車体を載せ、車輪を浮かせて試す
+    - 組み立て図の車輪・モーター・モーターの台は印刷しない購入品の参考の形（hardware/3d/drivetrain/drivetrain.scad、OSOYOO の図面の寸法）
     - 前側にバッテリー 2 個の箱とふた（LiDAR・カメラ・DROK を取り付け）、後ろ側に Pi 5 の 3 段（高さ 45 mm）と液晶の台（左）・IMU の台（右）、前後に衝撃を逃がすバンパー（VL53L1X 付き）。全体を上面カバーで覆い、左右のフックで天板の端の裏に引っかける（工具不要）
     - 図とダウンロードする STL は、どれも印刷する向き（STL の向き）のまま。寸法は STL から計算した外形（mm）
     - 部品の寸法はデータシートと商品画像から読み取ったもので、実物ではまだ確かめていない
@@ -138,9 +139,22 @@ print3d:
         - 4 隅の柱を厚さ 10 mm の床板でつないだ 1 個の部品（167.4 × 202 × 88 mm）。床板は外周の枠 8 mm と、斜めの格子のリブ 5 mm の中抜き。柱の内側に三角の補強
         - 車輪は直径 80.59 mm・幅 39.1 mm、車軸は天板の前後の端から 52 mm（OSOYOO の図面）。車輪の内側の面（カバーの壁の外側から 4 mm）は仮の値
       mount: 床に置き、車体を上から下ろして左右の壁の間に入れる（前後は摩擦で保持）
+  refs:
+    - id: wheels
+      label: メカナムホイール ×4（購入品）
+      file: wheels.stl
+      color: '#474d57'
+    - id: motors
+      label: 520 モーター ×4（購入品）
+      file: motors.stl
+      color: '#b9c2cc'
+    - id: holders
+      label: モーターの台 ×4（購入品）
+      file: holders.stl
+      color: '#2f3440'
   assembly_views:
     - label: 組み立て図
-      note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 4 種類・5 個の部品を組み立てた位置で表示（バッテリー・Pi・センサーなどの購入品は表示しない）
+      note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 4 種類・5 個の部品を組み立てた位置で表示。天板の下に、車輪・モーター・モーターの台（購入品、OSOYOO の図面の寸法）も参考に表示（バッテリー・Pi・センサーなどほかの購入品は表示しない）
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
         - {part: box}
@@ -148,6 +162,9 @@ print3d:
         - {part: pi_base}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
+        - {part: wheels}
+        - {part: motors}
+        - {part: holders}
     - label: 組み立て図（カバー付き）
       note: 上の組み立て図に上面カバーを付けた状態
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
@@ -157,6 +174,9 @@ print3d:
         - {part: pi_base}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
+        - {part: wheels}
+        - {part: motors}
+        - {part: holders}
         - {part: cover, rotate_x: 180, translate: [0, 205.5, 82.4]}
     - label: 組み立て図（カバー付き・試験台）
       note: カバー付きの組み立て図を試験台に載せた状態（天板の下面が床から 80 mm）
@@ -167,6 +187,9 @@ print3d:
         - {part: pi_base}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
+        - {part: wheels}
+        - {part: motors}
+        - {part: holders}
         - {part: cover, rotate_x: 180, translate: [0, 205.5, 82.4]}
         - {part: test_stand, translate: [0, 0, -82]}
   settings:
