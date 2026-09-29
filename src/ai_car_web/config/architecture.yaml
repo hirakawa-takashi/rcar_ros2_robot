@@ -143,7 +143,7 @@ print3d:
         - {part: pi_base}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
-        - {part: cover, flip_z: true, translate: [0, 0, 62.4]}
+        - {part: cover, rotate_x: 180, translate: [0, 205.5, 82.4]}
   settings:
     - {name: 材料, value: 全部品 PLA で印刷できる（バンパーの板ばねのひずみ約 1.1 %、カバーのフック約 0.9 %。どちらも PLA の降伏ひずみ約 2 % の半分ほど）。PLA は 55〜60 ℃ で柔らかくなるので、夏の車内など熱いところに置かない。カバーを付けて長く動かすときは、Pi の上のラズパイ台とカバーが熱で変形しないか確かめる}
     - {name: ノズル / 積層ピッチ, value: 0.4 mm / 0.2 mm（目安）}
