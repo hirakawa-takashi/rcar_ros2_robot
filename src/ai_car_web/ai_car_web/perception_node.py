@@ -39,6 +39,9 @@ COCO_CLASSES = [
 ]
 
 
+LEVEL_RANK = {'unknown': 0, 'clear': 0, 'slow': 1, 'stop': 2}
+
+
 def _iou(a, b):
     """検出枠または [x_min, y_min, x_max, y_max] 同士の IoU を返す。"""
     box_a = a['box'] if isinstance(a, dict) else a
@@ -138,6 +141,12 @@ class PerceptionNode(Node):
         self.declare_parameter('scan_max_age', 1.0)
         self.declare_parameter('cluster_gap', 0.25)
         self.declare_parameter('danger_distance', 0.3)
+        # 人・動物（living_labels）を見つけたときの早めの減速・停止。
+        # living_guard が false の間は判定を表示するだけで、level / speed_scale は変えない
+        self.declare_parameter('living_guard', False)
+        self.declare_parameter('living_labels', ['人', '犬', '猫', '鳥'])
+        self.declare_parameter('living_slow_distance', 1.5)
+        self.declare_parameter('living_stop_distance', 0.6)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
@@ -222,6 +231,10 @@ class PerceptionNode(Node):
         self.scan_max_age = float(self.get_parameter('scan_max_age').value)
         self.cluster_gap = float(self.get_parameter('cluster_gap').value)
         self.danger_distance = float(self.get_parameter('danger_distance').value)
+        self.living_guard = bool(self.get_parameter('living_guard').value)
+        self.living_labels = set(self.get_parameter('living_labels').value)
+        self.living_slow_distance = float(self.get_parameter('living_slow_distance').value)
+        self.living_stop_distance = float(self.get_parameter('living_stop_distance').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
         self.hailo_temp_warn = float(self.get_parameter('hailo_temp_warn').value)
@@ -248,6 +261,10 @@ class PerceptionNode(Node):
             'scan_max_age': lambda v: setattr(self, 'scan_max_age', float(v)),
             'cluster_gap': lambda v: setattr(self, 'cluster_gap', float(v)),
             'danger_distance': lambda v: setattr(self, 'danger_distance', float(v)),
+            'living_guard': lambda v: setattr(self, 'living_guard', bool(v)),
+            'living_labels': lambda v: setattr(self, 'living_labels', set(v)),
+            'living_slow_distance': lambda v: setattr(self, 'living_slow_distance', float(v)),
+            'living_stop_distance': lambda v: setattr(self, 'living_stop_distance', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
             'model_gops': lambda v: setattr(self, 'model_gops', float(v)),
@@ -490,6 +507,10 @@ class PerceptionNode(Node):
         if det_age is not None and det_age > 3.0:
             detections = []
 
+        living = self._living_assessment(detections)
+        if self.living_guard and LEVEL_RANK[living['level']] > LEVEL_RANK.get(level, 0):
+            level, reason = living['level'], living['reason']
+
         # 前方セクターに写っている物体のみ障害物種別として扱う
         labels = [
             f"{d['label']} {d['distance']:.2f}m" if d['distance'] is not None else d['label']
@@ -510,6 +531,7 @@ class PerceptionNode(Node):
             'speed_scale': 0.0 if level == 'stop' else (0.5 if level == 'slow' else 1.0),
             'detections': detections,
             'front_labels': labels,
+            'living': living,
             'inference_ms': inference_ms,
             'inference_age': round(det_age, 2) if det_age is not None else None,
             'throughput': self._throughput(stamps, inference_ms, now),
@@ -524,6 +546,33 @@ class PerceptionNode(Node):
         msg = String()
         msg.data = json.dumps(payload)
         self.status_pub.publish(msg)
+
+    def _living_assessment(self, detections):
+        """前方に写る人・動物のうち最も近いものから、減速・停止の判定を作る。"""
+        nearest = None
+        for d in detections:
+            if d['label'] not in self.living_labels or d['distance'] is None:
+                continue
+            if not 0.25 <= d['center_x'] <= 0.75:
+                continue
+            if nearest is None or d['distance'] < nearest['distance']:
+                nearest = d
+        level, reason = 'clear', ''
+        if nearest is not None:
+            where = f"{nearest['label']} {nearest['distance']:.2f} m"
+            if nearest['distance'] <= self.living_stop_distance:
+                level, reason = 'stop', f'前方 {where} で停止'
+            elif nearest['distance'] <= self.living_slow_distance:
+                level, reason = 'slow', f'前方 {where} で減速'
+        return {
+            'enabled': self.living_guard,
+            'level': level,
+            'reason': reason,
+            'label': nearest['label'] if nearest else None,
+            'distance': nearest['distance'] if nearest else None,
+            'slow_distance': self.living_slow_distance,
+            'stop_distance': self.living_stop_distance,
+        }
 
     def _throughput(self, stamps, inference_ms, now):
         """実測推論レートから実効スループットを換算する。

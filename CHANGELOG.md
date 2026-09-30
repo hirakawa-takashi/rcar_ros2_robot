@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- 人・動物（`living_labels`: 人・犬・猫・鳥）をカメラの AI 検出（YOLOv8m）で見つけたら、LiDAR より早めに減速・停止する判定を `perception_node` に追加。カメラの前方（画面の中央半分）に写り、LiDAR の同じ方向の距離が `living_slow_distance` 1.5 m 以内なら減速、`living_stop_distance` 0.6 m 以内なら停止。`/obstacle_status` の `living` に判定を出し、ダッシュボードの障害物の欄に「人・動物」の行を追加。`living_guard: true` のときだけ `level`・`speed_scale` に反映する（実機の準備ができるまでは `false` で表示のみ）
 - Raspberry Pi 5 — CPU カードで、コアごとの使用率（C0〜C3）を表の下から、全体の CPU 使用率のバーのすぐ下へ移動
 - 3D プリントタブの組み立て図 3 つ（組み立て図・カバー付き・カバー付き・試験台）に、天板の下の車輪・モーター・モーターの台（購入品、印刷しない）を表示。OSOYOO の図面の寸法で参考の形を作った（`hardware/3d/drivetrain/`、`wheels.stl`・`motors.stl`・`holders.stl`、天板と同じ座標）。`architecture.yaml` の `print3d.refs` に置き、組み立て図だけで使う（部品の一覧・ダウンロードには出さない）。組み立て図の凡例は、はみ出すときに折り返す。`setup.py` で `drivetrain/` の STL・SCAD もインストール
 - Raspberry Pi 5 — CPU カードのファンの下に、メモリ（使用 / 合計 [GB] と使用率）と Swap 使用率を追加（`/system_status` の `memory` を表示）

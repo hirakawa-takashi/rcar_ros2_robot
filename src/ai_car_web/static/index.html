@@ -339,6 +339,7 @@
       <tr><td class="k">最終受信 [s]</td><td class="v" id="cam_age">-</td></tr>
       <tr><td class="k">障害物</td><td class="v" id="o_level">-</td></tr>
       <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
+      <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
       <tr>
@@ -866,6 +867,19 @@ function renderObstacle(o) {
     ? labels[0] + (labels.length > 1 ? ` 他${labels.length - 1}` : '')
     : '-';
   labelCell.title = labels.join(', ') || '-';
+  const lv = o.living;
+  const livingCell = document.getElementById('o_living');
+  if (!lv) {
+    livingCell.textContent = '-';
+    livingCell.title = '-';
+  } else {
+    const mode = lv.enabled ? '' : '（表示のみ）';
+    livingCell.textContent = lv.label == null
+      ? `なし${mode}`
+      : `${lv.label} ${fmt(lv.distance)} m → ${LEVEL_TEXT[lv.level] || lv.level}${mode}`;
+    livingCell.title = `減速 ${fmt(lv.slow_distance)} m / 停止 ${fmt(lv.stop_distance)} m` +
+      (lv.enabled ? '' : '。living_guard が false なので速度制限には使わない');
+  }
   const th = o.thermal || {};
   document.getElementById('o_infer').textContent =
     `${fmt(o.inference_ms, 1)}（${THERMAL_TEXT[th.state] || '-'} ${Math.round((th.inference_scale ?? 1) * 100)}%）`;
