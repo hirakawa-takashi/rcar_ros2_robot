@@ -3,8 +3,9 @@ import platform
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -42,6 +43,7 @@ def generate_launch_description():
     use_drive_mode = LaunchConfiguration('use_drive_mode')
     use_autonomy = LaunchConfiguration('use_autonomy')
     use_floor = LaunchConfiguration('use_floor')
+    use_slam = LaunchConfiguration('use_slam')
 
     try:
         get_package_share_directory('camera_ros')
@@ -82,6 +84,20 @@ def generate_launch_description():
         ),
     ] if lidar_available else []
 
+    try:
+        get_package_share_directory('slam_toolbox')
+        slam_available = True
+    except PackageNotFoundError:
+        slam_available = False
+
+    slam_nodes = [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(
+                get_package_share_directory('ai_car_web'), 'launch', 'slam.launch.py')),
+            condition=IfCondition(use_slam),
+        ),
+    ] if slam_available else []
+
     return LaunchDescription([
         DeclareLaunchArgument('params_file', default_value=default_params,
                               description='ダッシュボードのパラメータファイル'),
@@ -109,6 +125,8 @@ def generate_launch_description():
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
         DeclareLaunchArgument('use_floor', default_value='true',
                               description='カメラで床の上の低い障害物を見つけるノードを起動する'),
+        DeclareLaunchArgument('use_slam', default_value='false',
+                              description='slam_toolbox で地図と自己位置を出す（slam.launch.py）'),
         Node(
             package='ai_car_web',
             executable='dashboard_node',
@@ -212,4 +230,5 @@ def generate_launch_description():
         ),
         *camera_nodes,
         *lidar_nodes,
+        *slam_nodes,
     ])

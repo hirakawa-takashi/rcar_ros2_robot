@@ -39,6 +39,11 @@ dashboard_node:
     api_token: ""  # 空なら認証なし。設定すると POST /api/* に X-API-Token（または Bearer）ヘッダーが必要。環境変数 AI_CAR_API_TOKEN でも指定可
     autonomy_status_topic: "/autonomy_status"
     cliff_topic: "/cliff_status"
+    # SLAM（slam_toolbox、use_slam:=true）の地図・自己位置と、地図の保存先
+    map_topic: "/map"
+    slam_pose_topic: "/pose"
+    slam_save_service: "/slam_toolbox/save_map"
+    map_save_dir: "/home/super/AI-CAR_ws/maps"
 
 drive_mode_node:
   ros__parameters:

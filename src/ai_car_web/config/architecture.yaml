@@ -262,7 +262,7 @@ nodes:
     file: ai_car_web/dashboard_node.py
     role: FastAPI サーバー（別スレッド）+ rclpy ノード。ブラウザと ROS 2 の橋渡し。Web 操作とゲームパッドの指令を同じ経路で /cmd_vel_manual に変換する
     publishes: [/cmd_vel_manual, /drive_mode_request]
-    subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status]
+    subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status, /map, /pose]
     params:
       - {name: max_linear_speed, ref: dashboard_node.max_linear_speed, unit: m/s, desc: 正規化指令 1.0 のときの並進速度}
       - {name: max_angular_speed, ref: dashboard_node.max_angular_speed, unit: rad/s, desc: 正規化指令 1.0 のときの旋回速度}
@@ -395,6 +395,18 @@ nodes:
       - {name: tol_ab, ref: floor_obstacle_node.tol_ab, unit: '', desc: 床の色の許容幅（Lab の a / b）}
       - {name: min_width_m, ref: floor_obstacle_node.min_width_m, unit: m, desc: これより細い物は無視}
     layer: perception
+  - id: slam_toolbox
+    label: slam_toolbox
+    file: launch/slam.launch.py
+    role: 地図と自己位置（online async SLAM）。use_slam:=true のときだけ起動。/odom がまだ無いので odom → base_footprint は固定の TF にして、位置はスキャンの照合だけで出す。robot_state_publisher が URDF から base_link → laser の TF を出す
+    publishes: [/map, /pose, /tf]
+    subscribes: [/scan, /tf]
+    params:
+      - {name: resolution, ref: slam_toolbox.resolution, unit: m, desc: 地図の 1 セルの大きさ}
+      - {name: max_laser_range, ref: slam_toolbox.max_laser_range, unit: m, desc: 地図に使うスキャンの距離}
+      - {name: minimum_travel_distance, ref: slam_toolbox.minimum_travel_distance, unit: m, desc: この距離動いたらスキャンを使う（オドメトリが無い間は 0）}
+      - {name: map_update_interval, ref: slam_toolbox.map_update_interval, unit: s, desc: /map を出す間隔}
+    layer: perception
   - id: system_monitor_node
     label: system_monitor_node
     file: ai_car_web/system_monitor_node.py
@@ -439,6 +451,8 @@ topics:
   - {name: /autonomy_status, type: std_msgs/String (JSON), desc: 自律行動・セクター距離・自動指令}
   - {name: /display_state, type: std_msgs/String, desc: 表示器の 4 文字状態コード}
   - {name: /odom, type: nav_msgs/Odometry, desc: オドメトリ（未実装、現在は publisher なし）}
+  - {name: /map, type: nav_msgs/OccupancyGrid, desc: SLAM の地図（5 cm / セル、2 秒ごと、transient local）}
+  - {name: /pose, type: geometry_msgs/PoseWithCovarianceStamped, desc: 地図の上の自己位置（slam_toolbox）}
 
 drive_modes:
   states:
@@ -512,7 +526,7 @@ api:
 status:
   known_issues:
     - 実機の電源不足（Undervoltage 検出）。公式 27W PD 電源と LiDAR の別系統給電が必要
-    - /odom 未実装のためオドメトリは null
+    - /odom 未実装のためオドメトリは null。SLAM はスキャンの照合だけで位置を出すので、速く動かすと位置を見失う
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
     - IMU の搭載向きが imu_link と一致しておらず軸補正が必要
     - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 1/14/3/5/11 前、17/25/3/5/13 後）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
@@ -520,7 +534,7 @@ status:
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
     - 実配線に合わせた motor_hat.yaml / gpio_pins.yaml の修正
-    - エンコーダー読み取りノード → /odom
+    - エンコーダー読み取りノード → /odom（できたら slam.launch.py を odom_source:=topic、minimum_travel_* を 0.2 に）
     - 実機で自動モードの旋回方向・速度・しきい値を調整
   docs:
     - {name: README.md, desc: セットアップ・実行・各デバイスの導入手順}
