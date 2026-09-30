@@ -215,6 +215,11 @@ perception_node:
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
+    # 人・動物を見つけたら早めに減速・停止する。false の間は判定を表示するだけ（実機の準備ができたら true）
+    living_guard: false
+    living_labels: ["人", "犬", "猫", "鳥"]
+    living_slow_distance: 1.5
+    living_stop_distance: 0.6
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
