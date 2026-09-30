@@ -125,6 +125,7 @@ class PerceptionNode(Node):
         self.declare_parameter('camera_topic', '/camera/image_raw/compressed')
         self.declare_parameter('system_status_topic', '/system_status')
         self.declare_parameter('obstacle_topic', '/obstacle_status')
+        self.declare_parameter('floor_topic', '/floor_obstacle_status')
         self.declare_parameter('front_angle_deg', 60.0)
         self.declare_parameter('stop_distance', 0.35)
         self.declare_parameter('slow_distance', 0.8)
@@ -147,6 +148,14 @@ class PerceptionNode(Node):
         self.declare_parameter('living_labels', ['人', '犬', '猫', '鳥'])
         self.declare_parameter('living_slow_distance', 1.5)
         self.declare_parameter('living_stop_distance', 0.6)
+        # カメラの床の検出（floor_obstacle_node）で見つけた低い障害物の減速・停止。
+        # LiDAR の同じ方向の距離が floor_low_margin 以上遠い（光が上を通る）ものだけを低い物とする。
+        # floor_guard が false の間は判定を表示するだけ
+        self.declare_parameter('floor_guard', False)
+        self.declare_parameter('floor_slow_distance', 0.8)
+        self.declare_parameter('floor_stop_distance', 0.45)
+        self.declare_parameter('floor_low_margin', 0.15)
+        self.declare_parameter('floor_max_age', 1.0)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
@@ -183,6 +192,8 @@ class PerceptionNode(Node):
         self._thermal_state = 'normal'
         self._thermal_scale = 1.0
         self._detector_note = ''
+        self._floor = None
+        self._floor_stamp = 0.0
 
         self.status_pub = self.create_publisher(
             String, self.get_parameter('obstacle_topic').value, 10)
@@ -193,6 +204,8 @@ class PerceptionNode(Node):
             self._camera_cb, sensor_qos)
         self.create_subscription(
             String, self.get_parameter('system_status_topic').value, self._system_cb, 10)
+        self.create_subscription(
+            String, self.get_parameter('floor_topic').value, self._floor_cb, 10)
 
         self._detector = None
         self._detector_lock = threading.Lock()
@@ -235,6 +248,11 @@ class PerceptionNode(Node):
         self.living_labels = set(self.get_parameter('living_labels').value)
         self.living_slow_distance = float(self.get_parameter('living_slow_distance').value)
         self.living_stop_distance = float(self.get_parameter('living_stop_distance').value)
+        self.floor_guard = bool(self.get_parameter('floor_guard').value)
+        self.floor_slow_distance = float(self.get_parameter('floor_slow_distance').value)
+        self.floor_stop_distance = float(self.get_parameter('floor_stop_distance').value)
+        self.floor_low_margin = float(self.get_parameter('floor_low_margin').value)
+        self.floor_max_age = float(self.get_parameter('floor_max_age').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
         self.hailo_temp_warn = float(self.get_parameter('hailo_temp_warn').value)
@@ -265,6 +283,11 @@ class PerceptionNode(Node):
             'living_labels': lambda v: setattr(self, 'living_labels', set(v)),
             'living_slow_distance': lambda v: setattr(self, 'living_slow_distance', float(v)),
             'living_stop_distance': lambda v: setattr(self, 'living_stop_distance', float(v)),
+            'floor_guard': lambda v: setattr(self, 'floor_guard', bool(v)),
+            'floor_slow_distance': lambda v: setattr(self, 'floor_slow_distance', float(v)),
+            'floor_stop_distance': lambda v: setattr(self, 'floor_stop_distance', float(v)),
+            'floor_low_margin': lambda v: setattr(self, 'floor_low_margin', float(v)),
+            'floor_max_age': lambda v: setattr(self, 'floor_max_age', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
             'model_gops': lambda v: setattr(self, 'model_gops', float(v)),
@@ -331,6 +354,16 @@ class PerceptionNode(Node):
         with self._lock:
             self._cpu_temp = cpu
             self._hailo_temp = hailo
+
+    def _floor_cb(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if isinstance(data, dict):
+            with self._lock:
+                self._floor = data
+                self._floor_stamp = time.time()
 
     def _distance_for_box(self, x_min: float, x_max: float):
         """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
@@ -510,6 +543,9 @@ class PerceptionNode(Node):
         living = self._living_assessment(detections)
         if self.living_guard and LEVEL_RANK[living['level']] > LEVEL_RANK.get(level, 0):
             level, reason = living['level'], living['reason']
+        floor = self._floor_assessment(now)
+        if self.floor_guard and LEVEL_RANK[floor['level']] > LEVEL_RANK.get(level, 0):
+            level, reason = floor['level'], floor['reason']
 
         # 前方セクターに写っている物体のみ障害物種別として扱う
         labels = [
@@ -532,6 +568,7 @@ class PerceptionNode(Node):
             'detections': detections,
             'front_labels': labels,
             'living': living,
+            'floor': floor,
             'inference_ms': inference_ms,
             'inference_age': round(det_age, 2) if det_age is not None else None,
             'throughput': self._throughput(stamps, inference_ms, now),
@@ -573,6 +610,49 @@ class PerceptionNode(Node):
             'slow_distance': self.living_slow_distance,
             'stop_distance': self.living_stop_distance,
         }
+
+    def _floor_assessment(self, now):
+        """カメラの床の検出を LiDAR と比べ、低い障害物の減速・停止の判定を作る。"""
+        with self._lock:
+            floor = self._floor
+            age = now - self._floor_stamp if self._floor_stamp else None
+        result = {
+            'enabled': self.floor_guard,
+            'ready': False,
+            'level': 'clear',
+            'reason': '',
+            'distance': None,
+            'lidar_distance': None,
+            'low': False,
+            'box': None,
+            'near_limit_m': None,
+            'slow_distance': self.floor_slow_distance,
+            'stop_distance': self.floor_stop_distance,
+        }
+        if floor is None or age is None or age > self.floor_max_age:
+            result['reason'] = '/floor_obstacle_status 未受信'
+            return result
+        result['ready'] = bool(floor.get('ready'))
+        result['near_limit_m'] = floor.get('near_limit_m')
+        obstacle = floor.get('obstacle')
+        if not obstacle:
+            return result
+        distance = obstacle['distance']
+        lidar = self._distance_for_box(obstacle['x_min'], obstacle['x_max'])
+        low = lidar is None or lidar > distance + self.floor_low_margin
+        result.update({
+            'distance': distance,
+            'lidar_distance': lidar,
+            'low': low,
+            'box': [obstacle['x_min'], obstacle['y_foot'], obstacle['x_max'], 1.0],
+        })
+        if low:
+            where = f'低い障害物 {distance:.2f} m'
+            if distance <= self.floor_stop_distance:
+                result['level'], result['reason'] = 'stop', f'前方 {where} で停止'
+            elif distance <= self.floor_slow_distance:
+                result['level'], result['reason'] = 'slow', f'前方 {where} で減速'
+        return result
 
     def _throughput(self, stamps, inference_ms, now):
         """実測推論レートから実効スループットを換算する。

@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- カメラで床の上の低い障害物（LiDAR の光が上を通る物）を見つける `floor_obstacle_node` を追加。カメラの高さ（`camera_height_m` 0.128 m）と向き（`camera_pitch_deg` 0°）から、画面の行ごとの床までの距離を計算する。通り道（車体の中心 ± 0.15 m、1.5 m 先まで）の中を各列の下から上へ見て、床の色（いちばん近い 0.35〜0.45 m の帯から覚える Lab の色）と違う所が 3 行続いた所を足元とし、幅 3 cm 以上・3 コマ中 2 コマで確定して `/floor_obstacle_status` に 5 Hz で出す。`perception_node` は同じ方向の LiDAR の距離がカメラより `floor_low_margin` 0.15 m 以上遠い（または無い）ときに「低い障害物」とし、0.8 m で減速、0.45 m で停止と判定して `/obstacle_status` の `floor` に出す。`floor_guard: true` のときだけ `level`・`speed_scale` に反映する（既定は `false` で表示のみ）。ダッシュボードの障害物の欄に「低い障害物」の行、カメラ映像に足元の線を表示。`use_floor`（既定 true）
 - 人・動物（`living_labels`: 人・犬・猫・鳥）をカメラの AI 検出（YOLOv8m）で見つけたら、LiDAR より早めに減速・停止する判定を `perception_node` に追加。カメラの前方（画面の中央半分）に写り、LiDAR の同じ方向の距離が `living_slow_distance` 1.5 m 以内なら減速、`living_stop_distance` 0.6 m 以内なら停止。`/obstacle_status` の `living` に判定を出し、ダッシュボードの障害物の欄に「人・動物」の行を追加。`living_guard: true` のときだけ `level`・`speed_scale` に反映する（実機の準備ができるまでは `false` で表示のみ）
 - Raspberry Pi 5 — CPU カードで、コアごとの使用率（C0〜C3）を表の下から、全体の CPU 使用率のバーのすぐ下へ移動
 - 3D プリントタブの組み立て図 3 つ（組み立て図・カバー付き・カバー付き・試験台）に、天板の下の車輪・モーター・モーターの台（購入品、印刷しない）を表示。OSOYOO の図面の寸法で参考の形を作った（`hardware/3d/drivetrain/`、`wheels.stl`・`motors.stl`・`holders.stl`、天板と同じ座標）。`architecture.yaml` の `print3d.refs` に置き、組み立て図だけで使う（部品の一覧・ダウンロードには出さない）。組み立て図の凡例は、はみ出すときに折り返す。`setup.py` で `drivetrain/` の STL・SCAD もインストール

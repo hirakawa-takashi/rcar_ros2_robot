@@ -340,6 +340,7 @@
       <tr><td class="k">障害物</td><td class="v" id="o_level">-</td></tr>
       <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
+      <tr><td class="k">低い障害物</td><td class="v" id="o_floor" title="-">-</td></tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
       <tr>
@@ -880,6 +881,23 @@ function renderObstacle(o) {
     livingCell.title = `減速 ${fmt(lv.slow_distance)} m / 停止 ${fmt(lv.stop_distance)} m` +
       (lv.enabled ? '' : '。living_guard が false なので速度制限には使わない');
   }
+  const fl = o.floor;
+  const floorCell = document.getElementById('o_floor');
+  if (!fl) {
+    floorCell.textContent = '-';
+    floorCell.title = '-';
+  } else {
+    const mode = fl.enabled ? '' : '（表示のみ）';
+    let text;
+    if (!fl.ready) text = fl.reason || '床の色を学習中';
+    else if (fl.distance == null) text = 'なし';
+    else if (fl.low) text = `${fmt(fl.distance)} m → ${LEVEL_TEXT[fl.level] || fl.level}`;
+    else text = `${fmt(fl.distance)} m（LiDAR にも見える）`;
+    floorCell.textContent = text + mode;
+    floorCell.title = `カメラの床の検出。LiDAR ${fmt(fl.lidar_distance)} m。` +
+      `見えるのは ${fmt(fl.near_limit_m)} m 先から。減速 ${fmt(fl.slow_distance)} m / 停止 ${fmt(fl.stop_distance)} m` +
+      (fl.enabled ? '' : '。floor_guard が false なので速度制限には使わない');
+  }
   const th = o.thermal || {};
   document.getElementById('o_infer').textContent =
     `${fmt(o.inference_ms, 1)}（${THERMAL_TEXT[th.state] || '-'} ${Math.round((th.inference_scale ?? 1) * 100)}%）`;
@@ -995,6 +1013,26 @@ function drawDetections(o) {
     ctx.fillRect(x1 * w, ty, tw, 40);
     ctx.fillStyle = '#0e1116';
     ctx.fillText(text, x1 * w + 8, ty + 30);
+  }
+  const fl = o && o.floor;
+  if (fl && fl.box) {
+    const [x1, y1, x2] = fl.box;
+    const color = fl.low ? '#f0a030' : '#8a94a6';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath();
+    ctx.moveTo(x1 * w, y1 * h);
+    ctx.lineTo(x2 * w, y1 * h);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const text = `床 ${fl.distance.toFixed(2)} m`;
+    ctx.font = 'bold 28px sans-serif';
+    const tw = ctx.measureText(text).width + 16;
+    ctx.fillStyle = color;
+    ctx.fillRect(x1 * w, Math.min(h - 36, y1 * h + 4), tw, 36);
+    ctx.fillStyle = '#0e1116';
+    ctx.fillText(text, x1 * w + 8, Math.min(h - 36, y1 * h + 4) + 27);
   }
 }
 
