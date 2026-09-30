@@ -267,7 +267,8 @@ curl -L -o ~/AI-CAR_ws/models/yolov8m.hef \
 ```bash
 sudo apt install -y ros-jazzy-robot-state-publisher ros-jazzy-joint-state-publisher ros-jazzy-xacro
 # SLAM（地図と自己位置、use_slam:=true）を使うとき
-sudo apt install -y ros-jazzy-slam-toolbox
+# 地図の保存（/slam_toolbox/save_map）は nav2_map_server の map_saver_cli を使う
+sudo apt install -y ros-jazzy-slam-toolbox ros-jazzy-nav2-map-server
 sudo apt install -y python3-psutil
 pip3 install fastapi uvicorn
 # WebSocket 配信（未導入なら /api/status の 250ms ポーリングへ自動フォールバック）。
