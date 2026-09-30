@@ -319,7 +319,7 @@ nodes:
     file: ai_car_web/perception_node.py
     role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
-    subscribes: [/scan, /camera/image_raw/compressed, /system_status]
+    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /floor_obstacle_status]
     params:
       - {name: stop_distance, ref: perception_node.stop_distance, unit: m, desc: 停止判定}
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
@@ -327,6 +327,10 @@ nodes:
       - {name: living_guard, ref: perception_node.living_guard, unit: '', desc: 人・動物の検出で減速・停止する（false は表示のみ）}
       - {name: living_slow_distance, ref: perception_node.living_slow_distance, unit: m, desc: 人・動物がこの距離以内で減速}
       - {name: living_stop_distance, ref: perception_node.living_stop_distance, unit: m, desc: 人・動物がこの距離以内で停止}
+      - {name: floor_guard, ref: perception_node.floor_guard, unit: '', desc: カメラで見つけた低い障害物で減速・停止する（false は表示のみ）}
+      - {name: floor_slow_distance, ref: perception_node.floor_slow_distance, unit: m, desc: 低い障害物がこの距離以内で減速}
+      - {name: floor_stop_distance, ref: perception_node.floor_stop_distance, unit: m, desc: 低い障害物がこの距離以内で停止}
+      - {name: floor_low_margin, ref: perception_node.floor_low_margin, unit: m, desc: LiDAR の距離がカメラよりこれ以上遠ければ低い物}
       - {name: inference_rate, ref: perception_node.inference_rate, unit: Hz, desc: 推論レート上限}
       - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
       - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
@@ -375,6 +379,22 @@ nodes:
       - {name: invalid_is_cliff, ref: cliff_node.invalid_is_cliff, unit: '', desc: 床が見えない（測定無効）も段差とみなす}
       - {name: timing_budget_ms, ref: cliff_node.timing_budget_ms, unit: ms, desc: 1 回の測定時間（短距離モード）}
     layer: sensor
+  - id: floor_obstacle_node
+    label: floor_obstacle_node
+    file: ai_car_web/floor_obstacle_node.py
+    role: カメラの画像で床の上の物の足元を探し、足元の行から床までの距離を出して /floor_obstacle_status に 5 Hz で publish。通り道（車幅 + 余裕）の中だけを見て、いちばん近い帯の色を床として覚える。3 コマ中 2 コマで確定
+    publishes: [/floor_obstacle_status]
+    subscribes: [/camera/image_raw/compressed]
+    params:
+      - {name: camera_height_m, ref: floor_obstacle_node.camera_height_m, unit: m, desc: レンズの床からの高さ}
+      - {name: camera_pitch_deg, ref: floor_obstacle_node.camera_pitch_deg, unit: °, desc: カメラの下向きの角度（実機で合わせる）}
+      - {name: corridor_half_width_m, ref: floor_obstacle_node.corridor_half_width_m, unit: m, desc: 通り道の片側の幅}
+      - {name: max_range_m, ref: floor_obstacle_node.max_range_m, unit: m, desc: この距離まで探す}
+      - {name: ref_max_m, ref: floor_obstacle_node.ref_max_m, unit: m, desc: 床の色を覚える帯の奥の端}
+      - {name: tol_l, ref: floor_obstacle_node.tol_l, unit: '', desc: 床の明るさの許容幅（Lab の L）}
+      - {name: tol_ab, ref: floor_obstacle_node.tol_ab, unit: '', desc: 床の色の許容幅（Lab の a / b）}
+      - {name: min_width_m, ref: floor_obstacle_node.min_width_m, unit: m, desc: これより細い物は無視}
+    layer: perception
   - id: system_monitor_node
     label: system_monitor_node
     file: ai_car_web/system_monitor_node.py
@@ -409,6 +429,7 @@ topics:
   - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の距離・前進 / 後退の停止（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
+  - {name: /floor_obstacle_status, type: std_msgs/String (JSON), desc: カメラの床の検出（床の上の物の足元の距離・画面の位置、5 Hz）}
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
   - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（10 Hz、AUTO 以外はゼロ）}
