@@ -471,6 +471,18 @@
     <div class="note" id="au_note">Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。</div>
   </div>
 
+  <div class="card wide">
+    <h2>地図と自己位置（SLAM） <span class="badge" id="sl_state">-</span></h2>
+    <div class="mapwrap"><canvas class="map" id="slam_map" width="480" height="480"></canvas></div>
+    <table>
+      <tr><td class="k">地図 [セル / m]</td><td class="v" id="sl_size">-</td></tr>
+      <tr><td class="k">自己位置 x / y [m] / 向き [°]</td><td class="v" id="sl_pose">-</td></tr>
+      <tr><td class="k">地図の更新</td><td class="v" id="sl_age">-</td></tr>
+      <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <span id="sl_saved"></span></td></tr>
+    </table>
+    <div class="note">slam_toolbox（use_slam:=true で起動）。車輪のオドメトリがまだ無いので、位置は LiDAR のスキャンどうしの照合だけで出す。ゆっくり動かして地図を作る。自律走行にはまだ使わない。</div>
+  </div>
+
 </div>
 
 <!-- 配線カードはプロジェクト説明「ハードウェア構成」タブに移動して表示する -->
@@ -945,9 +957,70 @@ function render(d) {
     i ? fmt(i.linear_acceleration_x, 2) : '-';
 
   renderCliff(d.cliff);
+  renderSlam(d.slam);
   renderSystem(d.system);
   renderCamera(d.camera);
 }
+
+const slamImg = new Image();
+let slamRev = null;
+slamImg.onload = () => drawSlam();
+function renderSlam(sl) {
+  const st = document.getElementById('sl_state');
+  const m = sl && sl.map;
+  const p = sl && sl.pose;
+  if (!sl || (!sl.alive && !m)) {
+    st.className = 'badge'; st.textContent = '未起動';
+  } else {
+    st.className = 'badge ' + (sl.alive ? 'ok' : 'warn');
+    st.textContent = sl.alive ? '地図作成中' : '途絶';
+  }
+  document.getElementById('sl_size').textContent = m
+    ? `${m.width} × ${m.height} / ${fmt(m.width * m.resolution, 1)} × ${fmt(m.height * m.resolution, 1)}（${fmt(m.resolution * 100, 0)} cm）` : '-';
+  document.getElementById('sl_pose').textContent = p
+    ? `${fmt(p.x)} / ${fmt(p.y)} / ${fmt(p.yaw_deg, 1)}` : '-';
+  document.getElementById('sl_age').textContent = sl && sl.map_age != null ? `${fmt(sl.map_age, 1)} s 前` : '-';
+  document.getElementById('sl_save').disabled = !(sl && sl.alive && sl.can_save);
+  const sv = sl && sl.saved;
+  document.getElementById('sl_saved').textContent = sv ? (sv.ok ? `保存: ${sv.name}` : sv.reason) : '';
+  if (m && m.rev !== slamRev) {
+    slamRev = m.rev;
+    slamImg.src = `/api/slam/map.png?rev=${m.rev}`;
+  }
+  drawSlam();
+}
+function drawSlam() {
+  const canvas = document.getElementById('slam_map');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#0e1116';
+  ctx.fillRect(0, 0, W, H);
+  const sl = latestTelemetry.slam;
+  const m = sl && sl.map;
+  if (!m || !slamImg.naturalWidth) return;
+  const s = Math.min(W / m.width, H / m.height);
+  const ox = (W - m.width * s) / 2, oy = (H - m.height * s) / 2;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(slamImg, ox, oy, m.width * s, m.height * s);
+  const p = sl.pose;
+  if (!p) return;
+  const px = ox + (p.x - m.origin_x) / m.resolution * s;
+  const py = oy + (m.height - (p.y - m.origin_y) / m.resolution) * s;
+  const a = -p.yaw_deg * Math.PI / 180;
+  const r = Math.max(8, 0.15 / m.resolution * s);
+  ctx.fillStyle = '#f0a030';
+  ctx.beginPath();
+  ctx.moveTo(px + r * Math.cos(a), py + r * Math.sin(a));
+  ctx.lineTo(px + r * 0.6 * Math.cos(a + 2.4), py + r * 0.6 * Math.sin(a + 2.4));
+  ctx.lineTo(px + r * 0.6 * Math.cos(a - 2.4), py + r * 0.6 * Math.sin(a - 2.4));
+  ctx.closePath();
+  ctx.fill();
+}
+document.getElementById('sl_save').addEventListener('click', () => {
+  apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
+    if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;
+  }).catch(() => {});
+});
 
 const CLIFF_BADGE = {
   unwired: ['', '未配線'], unknown: ['warn', '不明'], floor: ['ok', '床あり'], cliff: ['crit', '段差'],

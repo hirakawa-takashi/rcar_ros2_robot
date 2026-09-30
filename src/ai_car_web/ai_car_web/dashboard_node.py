@@ -10,8 +10,10 @@ import hmac
 import json
 import math
 import os
+import struct
 import threading
 import time
+import zlib
 from collections import deque
 
 import rclpy
@@ -21,8 +23,8 @@ from ament_index_python.packages import get_package_share_directory
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
+from nav_msgs.msg import OccupancyGrid, Odometry
 from pydantic import BaseModel
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
@@ -33,6 +35,11 @@ from ai_car_web.architecture import load_architecture
 from ai_car_web.dev_diary import find_repo, load_dev_diary
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
+
+try:
+    from slam_toolbox.srv import SaveMap
+except ImportError:
+    SaveMap = None
 
 
 MAX_SCAN_POINTS = 720
@@ -70,6 +77,31 @@ def _jpeg_dimensions(data: bytes):
             continue
         i += 2 + int.from_bytes(data[i + 2:i + 4], 'big')
     return None
+
+
+def _occupancy_table():
+    """OccupancyGrid の値（int8 を符号なしで見たもの）→ 灰色の濃さ。不明 205、空き 254、占有 0。"""
+    table = bytearray(256)
+    for u in range(256):
+        table[u] = 205 if u > 100 else 254 - round(u * 254 / 100)
+    return bytes(table)
+
+
+OCCUPANCY_TABLE = _occupancy_table()
+
+
+def occupancy_png(width, height, data):
+    """OccupancyGrid の data を 8 bit グレーの PNG にする（画像の上が地図の +y）。"""
+    pixels = bytes(data).translate(OCCUPANCY_TABLE)
+    rows = b''.join(b'\x00' + pixels[r * width:(r + 1) * width] for r in range(height - 1, -1, -1))
+
+    def chunk(kind, body):
+        return (struct.pack('>I', len(body)) + kind + body
+                + struct.pack('>I', zlib.crc32(kind + body) & 0xFFFFFFFF))
+
+    header = struct.pack('>IIBBBBB', width, height, 8, 0, 0, 0, 0)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header)
+            + chunk(b'IDAT', zlib.compress(rows, 6)) + chunk(b'IEND', b''))
 
 
 def quaternion_to_euler(x, y, z, w):
@@ -128,6 +160,12 @@ class DashboardNode(Node):
         self.declare_parameter('autonomy_status_topic', '/autonomy_status')
         # 落下防止センサー（cliff_node）。空で無効
         self.declare_parameter('cliff_topic', '/cliff_status')
+        # SLAM（slam_toolbox）の地図と自己位置。空で無効
+        self.declare_parameter('map_topic', '/map')
+        self.declare_parameter('slam_pose_topic', '/pose')
+        self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
+        # 地図の保存先（空なら ~/maps）
+        self.declare_parameter('map_save_dir', '')
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
@@ -197,6 +235,22 @@ class DashboardNode(Node):
         cliff_topic = self.get_parameter('cliff_topic').value
         if cliff_topic:
             self.create_subscription(String, cliff_topic, self._cliff_cb, 10)
+        map_topic = self.get_parameter('map_topic').value
+        if map_topic:
+            self.create_subscription(
+                OccupancyGrid, map_topic, self._map_cb,
+                QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE,
+                           durability=QoSDurabilityPolicy.TRANSIENT_LOCAL))
+        slam_pose_topic = self.get_parameter('slam_pose_topic').value
+        if slam_pose_topic:
+            self.create_subscription(
+                PoseWithCovarianceStamped, slam_pose_topic, self._slam_pose_cb, 10)
+        self.map_save_dir = self.get_parameter('map_save_dir').value or os.path.join(
+            os.path.expanduser('~'), 'maps')
+        self.slam_save_client = None
+        if SaveMap is not None:
+            self.slam_save_client = self.create_client(
+                SaveMap, self.get_parameter('slam_save_service').value)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -217,6 +271,12 @@ class DashboardNode(Node):
         self._autonomy_stamp = 0.0
         self._cliff = None
         self._cliff_stamp = 0.0
+        self._map = None
+        self._map_png = None
+        self._map_stamp = 0.0
+        self._slam_pose = None
+        self._slam_pose_stamp = 0.0
+        self._map_saved = None
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -279,6 +339,83 @@ class DashboardNode(Node):
                 'linear_x': round(msg.twist.twist.linear.x, 3),
                 'angular_z': round(msg.twist.twist.angular.z, 3),
             }
+
+    def _map_cb(self, msg: OccupancyGrid):
+        info = msg.info
+        png = occupancy_png(info.width, info.height, msg.data)
+        _, _, yaw = quaternion_to_euler(
+            info.origin.orientation.x, info.origin.orientation.y,
+            info.origin.orientation.z, info.origin.orientation.w)
+        with self._lock:
+            rev = (self._map or {}).get('rev', 0) + 1
+            self._map = {
+                'rev': rev,
+                'width': info.width,
+                'height': info.height,
+                'resolution': round(info.resolution, 4),
+                'origin_x': round(info.origin.position.x, 3),
+                'origin_y': round(info.origin.position.y, 3),
+                'origin_yaw_deg': round(math.degrees(yaw), 2),
+                'frame_id': msg.header.frame_id,
+            }
+            self._map_png = png
+            self._map_stamp = time.time()
+
+    def _slam_pose_cb(self, msg: PoseWithCovarianceStamped):
+        p = msg.pose.pose.position
+        q = msg.pose.pose.orientation
+        _, _, yaw = quaternion_to_euler(q.x, q.y, q.z, q.w)
+        with self._lock:
+            self._slam_pose = {
+                'x': round(p.x, 3),
+                'y': round(p.y, 3),
+                'yaw_deg': round(math.degrees(yaw), 2),
+            }
+            self._slam_pose_stamp = time.time()
+
+    def _slam_state(self):
+        now = time.time()
+        map_age = now - self._map_stamp if self._map_stamp else None
+        pose_age = now - self._slam_pose_stamp if self._slam_pose_stamp else None
+        return {
+            'alive': pose_age is not None and pose_age < 5.0,
+            'map': self._map,
+            'map_age': round(map_age, 1) if map_age is not None else None,
+            'pose': self._slam_pose,
+            'pose_age': round(pose_age, 1) if pose_age is not None else None,
+            'can_save': self.slam_save_client is not None,
+            'saved': self._map_saved,
+        }
+
+    def map_png(self):
+        with self._lock:
+            return self._map_png
+
+    def save_map(self, timeout: float = 10.0):
+        """slam_toolbox の save_map を呼んで、地図を map_save_dir に .pgm / .yaml で保存する。"""
+        if self.slam_save_client is None:
+            return {'ok': False, 'reason': 'slam_toolbox が入っていない'}
+        if not self.slam_save_client.service_is_ready():
+            return {'ok': False, 'reason': 'slam_toolbox が起動していない（use_slam:=true）'}
+        os.makedirs(self.map_save_dir, exist_ok=True)
+        name = os.path.join(self.map_save_dir, time.strftime('map_%Y%m%d_%H%M%S'))
+        request = SaveMap.Request()
+        request.name = String(data=name)
+        done = threading.Event()
+        future = self.slam_save_client.call_async(request)
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(timeout):
+            return {'ok': False, 'reason': '保存の応答がない'}
+        result = future.result()
+        if result is None:
+            ok, reason = False, '保存の応答が空'
+        else:
+            ok = result.result == SaveMap.Response.RESULT_SUCCESS
+            reason = '' if ok else f'保存に失敗（result {result.result}）'
+        saved = {'ok': ok, 'name': name, 'stamp': round(time.time(), 1), 'reason': reason}
+        with self._lock:
+            self._map_saved = saved
+        return saved
 
     def _obstacle_cb(self, msg: String):
         try:
@@ -534,6 +671,7 @@ class DashboardNode(Node):
                 'drive_mode': self._drive_mode_state(),
                 'autonomy': self._autonomy_state(),
                 'cliff': self._cliff_state(),
+                'slam': self._slam_state(),
                 'joy': {
                     'connected': (self.get_clock().now().nanoseconds * 1e-9
                                   - self._joy_stamp) < self.joy_timeout,
@@ -648,6 +786,17 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/drive_mode', dependencies=[Depends(require_token)])
     def set_drive_mode(req: DriveModeRequest):
         return node.request_drive_mode(req.mode)
+
+    @app.get('/api/slam/map.png')
+    def slam_map():
+        png = node.map_png()
+        if png is None:
+            return Response(status_code=503)
+        return Response(content=png, media_type='image/png', headers={'Cache-Control': 'no-store'})
+
+    @app.post('/api/slam/save', dependencies=[Depends(require_token)])
+    def slam_save():
+        return node.save_map()
 
     @app.get('/api/camera/snapshot')
     def snapshot():
