@@ -47,7 +47,7 @@ class AutonomyNode(Node):
         self.declare_parameter('cmd_topic', '/cmd_vel_auto')
         self.declare_parameter('status_topic', '/autonomy_status')
         self.declare_parameter('publish_rate', 20.0)
-        self.declare_parameter('scan_angle_offset_deg', 180.0)
+        self.declare_parameter('scan_angle_offset_deg', 0.0)
         self.declare_parameter('scan_max_age', 1.0)
         # 巡航速度 [m/s]・減速時の速度・旋回速度 [rad/s]
         self.declare_parameter('cruise_speed', 0.15)
