@@ -19,9 +19,8 @@
        base_link の原点は天板の中心（前後・左右）、車軸の高さ。x: 前、y: 左、z: 上 -->
   <xacro:property name="laser_x" value="0.043"/>   <!-- LiDAR の回転中心: 天板の中心から前 43 mm・左 8 mm -->
   <xacro:property name="laser_y" value="0.008"/>
-  <xacro:property name="laser_h" value="0.175"/>
-  <!-- LiDAR の 0° と車体前方（カメラの光軸）のずれ [rad]。slam.launch.py が前方合わせの値を渡す -->
-  <xacro:arg name="laser_yaw" default="0.0"/>   <!-- 光の高さ（床から）。取付面 162 mm + ヘッド内の発光部（推定） -->
+  <xacro:property name="laser_yaw_deg" value="-1.7"/>  <!-- 前方カメラの正面に合わせた LiDAR の向き（dashboard.yaml の scan_angle_offset_deg と同じ） -->
+  <xacro:property name="laser_h" value="0.175"/>   <!-- 光の高さ（床から）。取付面 162 mm + ヘッド内の発光部（推定） -->
   <xacro:property name="camera_x" value="0.096"/>  <!-- カメラのレンズ: LiDAR から前 53 mm・右 44 mm -->
   <xacro:property name="camera_y" value="-0.036"/>
   <xacro:property name="camera_h" value="0.128"/>  <!-- レンズの高さ（床から） -->
@@ -138,7 +137,7 @@
   <joint name="laser_joint" type="fixed">
     <parent link="base_link"/>
     <child link="laser"/>
-    <origin xyz="${laser_x} ${laser_y} ${laser_h - wheel_radius}" rpy="0 0 $(arg laser_yaw)"/>
+    <origin xyz="${laser_x} ${laser_y} ${laser_h - wheel_radius}" rpy="0 0 ${radians(laser_yaw_deg)}"/>
   </joint>
 
   <!-- カメラ: Raspberry Pi Camera Module v3 -->

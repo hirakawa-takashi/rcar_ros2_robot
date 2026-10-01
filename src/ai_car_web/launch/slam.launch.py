@@ -5,7 +5,6 @@ odom_source:=none（既定）のときは odom → base_footprint を固定の T
 dashboard.launch.py の use_slam:=true からも読み込む。
 """
 
-import math
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -17,16 +16,12 @@ from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
-from ai_car_web.lidar_align import DEFAULT_CALIBRATION_FILE, load_offset_deg
-
 
 def generate_launch_description():
     slam_params = LaunchConfiguration('slam_params_file')
     use_rsp = LaunchConfiguration('use_robot_state_publisher')
     xacro_file = os.path.join(
         get_package_share_directory('ai_car_description'), 'urdf', 'ai_car.xacro')
-    # 前方合わせの補正値を base_link → laser の向きにも使う
-    laser_yaw = math.radians(load_offset_deg(DEFAULT_CALIBRATION_FILE) or 0.0)
     slam_launch = os.path.join(
         get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')
 
@@ -49,8 +44,7 @@ def generate_launch_description():
             name='robot_state_publisher',
             output='screen',
             parameters=[{
-                'robot_description': ParameterValue(
-                    Command(['xacro ', xacro_file, f' laser_yaw:={laser_yaw}']), value_type=str),
+                'robot_description': ParameterValue(Command(['xacro ', xacro_file]), value_type=str),
             }],
             condition=IfCondition(use_rsp),
         ),
