@@ -9,6 +9,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from ai_car_web.lidar_align import DEFAULT_CALIBRATION_FILE
+
 
 def _rpicam_env():
     """Raspberry Pi 版 libcamera を優先させる環境変数を返す。
@@ -31,6 +33,9 @@ def generate_launch_description():
         get_package_share_directory('ai_car_web'), 'config', 'dashboard.yaml')
 
     params_file = LaunchConfiguration('params_file')
+    # ダッシュボードの前方合わせで保存した LiDAR の向きの補正（あれば dashboard.yaml を上書き）
+    align_params = [params_file] + (
+        [DEFAULT_CALIBRATION_FILE] if os.path.isfile(DEFAULT_CALIBRATION_FILE) else [])
     use_system_monitor = LaunchConfiguration('use_system_monitor')
     use_camera = LaunchConfiguration('use_camera')
     use_lidar = LaunchConfiguration('use_lidar')
@@ -132,7 +137,7 @@ def generate_launch_description():
             executable='dashboard_node',
             name='dashboard_node',
             output='screen',
-            parameters=[params_file],
+            parameters=align_params,
         ),
         Node(
             package='ai_car_web',
@@ -147,7 +152,7 @@ def generate_launch_description():
             executable='perception_node',
             name='perception_node',
             output='screen',
-            parameters=[params_file],
+            parameters=align_params,
             condition=IfCondition(use_perception),
         ),
         Node(
@@ -213,7 +218,7 @@ def generate_launch_description():
             executable='autonomy_node',
             name='autonomy_node',
             output='screen',
-            parameters=[params_file],
+            parameters=align_params,
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_autonomy),

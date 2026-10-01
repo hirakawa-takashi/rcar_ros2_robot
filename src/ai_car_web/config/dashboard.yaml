@@ -13,8 +13,13 @@ dashboard_node:
     camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
     obstacle_guard: true
-    # LiDAR の取り付け向きの補正。3D マウント（モーター側を前）では補正なし（2026/09 実機で確認）
+    # LiDAR の 0° と車体前方（カメラの光軸）のずれ。ダッシュボードの「カメラの正面で前方を合わせる」で
+    # 測った値を ~/.config/ai_car/lidar_calibration.yaml に保存し、起動時にこの値を上書きする
+    # （perception_node・autonomy_node も同じ）。ファイルが無いときだけ 0.0 を使う
     scan_angle_offset_deg: 0.0
+    # 前方合わせで使う、LiDAR の回転中心から見たカメラのレンズの位置 [m]（perception_node と同じ値）
+    camera_offset_x_m: 0.053
+    camera_offset_y_m: -0.044
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
