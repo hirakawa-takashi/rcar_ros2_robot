@@ -359,10 +359,7 @@
       <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
       <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
       <tr><td class="k">表示範囲 [m]</td><td class="v" id="s_scale">-</td></tr>
-      <tr><td class="k">前方の補正 [°]</td><td class="v" id="s_offset">-</td></tr>
-      <tr><td class="k">前方合わせ</td><td class="v"><button id="s_align">カメラの正面で前方を合わせる</button> <span id="s_aligned"></span></td></tr>
     </table>
-    <div class="note">カメラの画面の真ん中、0.3〜1.0 m の所に目印（箱など）を 1 つ置き、ほかの物を目印より 15 cm 以上遠ざけてから押すと、目印の方向が「前方」になります。</div>
   </div>
 
   <div class="card">
@@ -767,6 +764,7 @@ function scanBands(danger, stopD, slowD) {
   ];
 }
 
+const SCAN_RANGE_M = 3;  // LiDAR 点群の表示範囲 [m]（固定）
 function drawScanMap(scan, danger, frontHalfRad, stopD, slowD) {
   const canvas = document.getElementById('scan_map');
   const ctx = canvas.getContext('2d');
@@ -775,10 +773,9 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD) {
   ctx.clearRect(0, 0, size, size);
 
   const points = (scan && scan.points) || [];
-  const maxRange = points.reduce((m, [x, y]) => Math.max(m, Math.hypot(x, y)), 0);
-  const range = Math.max(1, Math.ceil(maxRange));
+  const range = SCAN_RANGE_M;
   const scale = (size / 2 - 10) / range;
-  document.getElementById('s_scale').textContent = points.length ? range : '-';
+  document.getElementById('s_scale').textContent = range;
 
   ctx.strokeStyle = 'rgba(53, 214, 255, 0.22)';
   ctx.lineWidth = 1;
@@ -822,6 +819,7 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD) {
   const bands = scanBands(danger, stopD, slowD);
   for (const [x, y] of points) {
     const dist = Math.hypot(x, y);
+    if (dist > range) continue;
     const band = bands.find(b => dist <= b.max);
     // 前方セクター内の近距離点は一段大きく描いて強調する
     const front = band.max !== Infinity && Math.abs(Math.atan2(y, x)) <= frontHalfRad;
@@ -938,9 +936,6 @@ function render(d) {
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
-  const la = d.lidar_align;
-  document.getElementById('s_offset').textContent = la ? fmt(la.offset_deg, 1) : '-';
-  if (la && la.last) document.getElementById('s_aligned').textContent = alignText(la.last);
   const danger = (d.obstacle && d.obstacle.danger_distance) || 0.3;
   const frontHalf = (((d.obstacle && d.obstacle.front_angle_deg) || 60) / 2) * Math.PI / 180;
   const ap = (d.autonomy && d.autonomy.params) || {};
@@ -1022,16 +1017,6 @@ function drawSlam() {
   ctx.closePath();
   ctx.fill();
 }
-function alignText(j) {
-  if (!j.ok) return `失敗: ${j.reason}`;
-  const miss = j.not_applied && j.not_applied.length ? `（未反映: ${j.not_applied.join(', ')}）` : '';
-  return `${fmt(j.previous_deg, 1)}° → ${fmt(j.offset_deg, 1)}°（目印 ${fmt(j.target_distance)} m）${miss}`;
-}
-document.getElementById('s_align').addEventListener('click', () => {
-  apiPost('/api/lidar/align').then(r => r && r.json()).then(j => {
-    if (j && 'ok' in j) document.getElementById('s_aligned').textContent = alignText(j);
-  }).catch(() => {});
-});
 document.getElementById('sl_save').addEventListener('click', () => {
   apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;

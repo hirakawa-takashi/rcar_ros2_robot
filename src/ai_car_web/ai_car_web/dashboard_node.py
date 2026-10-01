@@ -26,8 +26,6 @@ from fastapi.staticfiles import StaticFiles
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry
 from pydantic import BaseModel
-from rcl_interfaces.srv import SetParameters
-from rclpy.parameter import Parameter
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
@@ -36,9 +34,6 @@ from std_msgs.msg import String
 from ai_car_web.architecture import load_architecture
 from ai_car_web.dev_diary import find_repo, load_dev_diary
 from ai_car_web.gpio_pinout import build_pinout
-from ai_car_web.lidar_align import (ALIGN_NODES, DEFAULT_CALIBRATION_FILE,
-                                    circular_median_deg, offset_for_target, pick_target,
-                                    save_offset_deg, scan_clusters, wrap)
 from ai_car_web.motor_hat import load_motor_hat
 
 try:
@@ -149,10 +144,6 @@ class DashboardNode(Node):
         # LiDAR 点群をブラウザに送るときの上限点数（間引き）
         self.declare_parameter('scan_max_points', MAX_SCAN_POINTS)
         self.declare_parameter('scan_angle_offset_deg', 0.0)
-        # 前方合わせ: LiDAR の回転中心から見たカメラの位置（x 前・y 左）と、結果の保存先
-        self.declare_parameter('camera_offset_x_m', 0.053)
-        self.declare_parameter('camera_offset_y_m', -0.044)
-        self.declare_parameter('lidar_calibration_file', '')
         self.declare_parameter('gpio_config', '')
         self.declare_parameter('motor_hat_config', '')
         self.declare_parameter('architecture_config', '')
@@ -200,14 +191,6 @@ class DashboardNode(Node):
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
-        self.camera_offset_x = float(self.get_parameter('camera_offset_x_m').value)
-        self.camera_offset_y = float(self.get_parameter('camera_offset_y_m').value)
-        self.lidar_calibration_file = (
-            self.get_parameter('lidar_calibration_file').value
-            or DEFAULT_CALIBRATION_FILE)
-        self.align_clients = {
-            name: self.create_client(SetParameters, f'/{name}/set_parameters')
-            for name in ALIGN_NODES if name != self.get_name()}
 
         sensor_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -300,8 +283,6 @@ class DashboardNode(Node):
         self._frame_bytes = 0
         self._frame_size = None
         self._frame_times = deque(maxlen=60)
-        self._raw_scans = deque(maxlen=10)
-        self._lidar_align = None
 
         self.create_timer(0.1, self._watchdog_cb)
         if not self.api_token:
@@ -313,8 +294,6 @@ class DashboardNode(Node):
     # --- サブスクライバ ---
     def _scan_cb(self, msg: LaserScan):
         ranges = [r for r in msg.ranges if math.isfinite(r) and r > msg.range_min]
-        self._raw_scans.append((time.time(), list(msg.ranges), msg.angle_min,
-                                msg.angle_increment, msg.range_min, msg.range_max))
         step = max(1, len(msg.ranges) // self.scan_max_points)
         points = []
         for i in range(0, len(msg.ranges), step):
@@ -437,76 +416,6 @@ class DashboardNode(Node):
         with self._lock:
             self._map_saved = saved
         return saved
-
-    def align_lidar(self, timeout: float = 3.0):
-        """カメラの画面の真ん中に置いた目印で、LiDAR の前方をカメラの向きに合わせる。
-
-        直近 2 秒のスキャンごとに、いちばん近い物を目印として補正値を出し、
-        真ん中の値を 3 つのノードに入れて lidar_calibration_file に保存する。
-        """
-        now = time.time()
-        scans = [s for s in list(self._raw_scans) if now - s[0] < 2.0]
-        if len(scans) < 3:
-            return self._set_align_result({'ok': False, 'reason': 'LiDAR のスキャンが来ていない'})
-        offsets, dists, why = [], [], ''
-        for _, ranges, amin, inc, rmin, rmax in scans:
-            target, why_one = pick_target(scan_clusters(ranges, amin, inc, rmin, rmax))
-            if target is None:
-                why = why_one
-                continue
-            off = offset_for_target(target[0], target[1], 0.0,
-                                    self.camera_offset_x, self.camera_offset_y)
-            if off is not None:
-                offsets.append(off)
-                dists.append(target[1])
-        if len(offsets) <= len(scans) // 2:
-            return self._set_align_result({'ok': False, 'reason': why or '目印が見つからない'})
-        new_deg = circular_median_deg(offsets)
-        spread = max(abs(math.degrees(wrap(o - math.radians(new_deg)))) for o in offsets)
-        if spread > 5.0:
-            return self._set_align_result({
-                'ok': False, 'reason': f'目印の向きが {spread:.1f}° ばらつく（動いている物がある）'})
-        previous_deg = math.degrees(self.scan_angle_offset)
-        self.scan_angle_offset = math.radians(new_deg)
-        self.set_parameters([Parameter('scan_angle_offset_deg', Parameter.Type.DOUBLE, new_deg)])
-        applied, not_applied = [self.get_name()], []
-        for name, client in self.align_clients.items():
-            if self._set_remote_offset(client, new_deg, timeout):
-                applied.append(name)
-            else:
-                not_applied.append(name)
-        save_offset_deg(self.lidar_calibration_file, new_deg)
-        self.get_logger().info(
-            f'LiDAR の前方をカメラに合わせました: {previous_deg:.1f}° → {new_deg:.1f}°')
-        return self._set_align_result({
-            'ok': True,
-            'offset_deg': round(new_deg, 1),
-            'previous_deg': round(previous_deg, 1),
-            'target_distance': round(sorted(dists)[len(dists) // 2], 2),
-            'applied': applied,
-            'not_applied': not_applied,
-            'file': self.lidar_calibration_file,
-        })
-
-    def _set_remote_offset(self, client, offset_deg, timeout):
-        if not client.service_is_ready():
-            return False
-        request = SetParameters.Request()
-        request.parameters = [Parameter(
-            'scan_angle_offset_deg', Parameter.Type.DOUBLE, offset_deg).to_parameter_msg()]
-        done = threading.Event()
-        future = client.call_async(request)
-        future.add_done_callback(lambda _: done.set())
-        if not done.wait(timeout):
-            return False
-        result = future.result()
-        return bool(result and result.results and result.results[0].successful)
-
-    def _set_align_result(self, result):
-        result['stamp'] = round(time.time(), 1)
-        with self._lock:
-            self._lidar_align = result
-        return result
 
     def _obstacle_cb(self, msg: String):
         try:
@@ -754,10 +663,6 @@ class DashboardNode(Node):
                     'angular_z': round(self._last_cmd.angular.z, 3),
                 },
                 'scan': self._scan,
-                'lidar_align': {
-                    'offset_deg': round(math.degrees(self.scan_angle_offset), 1),
-                    'last': self._lidar_align,
-                },
                 'imu': self._imu,
                 'odom': self._odom,
                 'system': self._system,
@@ -892,10 +797,6 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/slam/save', dependencies=[Depends(require_token)])
     def slam_save():
         return node.save_map()
-
-    @app.post('/api/lidar/align', dependencies=[Depends(require_token)])
-    def lidar_align():
-        return node.align_lidar()
 
     @app.get('/api/camera/snapshot')
     def snapshot():
