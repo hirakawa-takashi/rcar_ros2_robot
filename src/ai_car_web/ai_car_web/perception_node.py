@@ -42,6 +42,24 @@ COCO_CLASSES = [
 LEVEL_RANK = {'unknown': 0, 'clear': 0, 'slow': 1, 'stop': 2}
 
 
+def image_x_to_bearing(x, hfov):
+    """画像の横位置（0 = 左端、1 = 右端）を、カメラから見た方位角 [rad]（左が正）にする（ピンホール）。"""
+    return math.atan((0.5 - x) * 2.0 * math.tan(hfov / 2.0))
+
+
+def scan_point_in_camera(r, angle, offset_x, offset_y):
+    """LiDAR の点（距離 r、方位 angle）を、カメラから見た方位角と前方の距離にする。
+
+    offset_x / offset_y は LiDAR の回転中心から見たカメラのレンズの位置（x: 前、y: 左）。
+    カメラより後ろの点は None。
+    """
+    cx = r * math.cos(angle) - offset_x
+    cy = r * math.sin(angle) - offset_y
+    if cx <= 0.0:
+        return None
+    return math.atan2(cy, cx), cx
+
+
 def _iou(a, b):
     """検出枠または [x_min, y_min, x_max, y_max] 同士の IoU を返す。"""
     box_a = a['box'] if isinstance(a, dict) else a
@@ -319,11 +337,9 @@ class PerceptionNode(Node):
                 continue
             angle = self._normalize(
                 msg.angle_min + i * msg.angle_increment + self.scan_angle_offset)
-            # カメラから見た方位（カメラの前方の点だけ）。距離は LiDAR からの値のまま
-            cx = r * math.cos(angle) - self.camera_offset_x
-            cy = r * math.sin(angle) - self.camera_offset_y
-            if cx > 0.0:
-                bearings.append((math.atan2(cy, cx), r))
+            point = scan_point_in_camera(r, angle, self.camera_offset_x, self.camera_offset_y)
+            if point is not None:
+                bearings.append(point)
             if abs(angle) <= half:
                 front.append(r)
                 if angle > half / 3.0:
@@ -369,15 +385,14 @@ class PerceptionNode(Node):
         """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
 
         画像左端が +HFOV/2、右端が -HFOV/2（ROS の左旋回正）に対応する。
-        LiDAR の点はカメラの位置（camera_offset_x_m / _y_m）から見た方位で照合する。
+        LiDAR の点はカメラの位置（camera_offset_x_m / _y_m）に移し、カメラから見た
+        方位で照合する。返す距離はカメラのレンズから前方への距離で、
+        floor_obstacle_node の床までの距離と同じ基準。
         方位窓内の点は距離でクラスタリングし、最も手前のまとまった面の
         代表距離（中央値）を返す。単発の外れ点で極端に近い値にならない。
         """
-        half = self.camera_hfov / 2.0
-        angle_max = (0.5 - x_min) * self.camera_hfov
-        angle_min = (0.5 - x_max) * self.camera_hfov
-        angle_min = max(-half, angle_min)
-        angle_max = min(half, angle_max)
+        angle_max = image_x_to_bearing(x_min, self.camera_hfov)
+        angle_min = image_x_to_bearing(x_max, self.camera_hfov)
         with self._lock:
             bearings = self._scan_bearings
             scan_stamp = self._scan_stamp
