@@ -24,6 +24,7 @@ import time
 
 import rclpy
 from geometry_msgs.msg import Twist
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -78,6 +79,7 @@ class AutonomyNode(Node):
         self.clear_d = float(g('clear_distance').value)
         self.backoff_d = float(g('backoff_distance').value)
         self.min_turn = float(g('min_turn_sec').value)
+        self.add_on_set_parameters_callback(self._on_set_parameters)
 
         self._lock = threading.Lock()
         self._mode = None
@@ -103,6 +105,13 @@ class AutonomyNode(Node):
         rate = float(g('publish_rate').value)
         self.create_timer(1.0 / max(rate, 1.0), self._timer_cb)
         self.create_timer(0.2, self._status_cb)
+
+    def _on_set_parameters(self, params):
+        """ダッシュボードの前方合わせで LiDAR の向きの補正を実行中に変える。"""
+        for param in params:
+            if param.name == 'scan_angle_offset_deg':
+                self.offset = math.radians(float(param.value))
+        return SetParametersResult(successful=True)
 
     # --- 入力 ---
     def _scan_cb(self, msg: LaserScan):
