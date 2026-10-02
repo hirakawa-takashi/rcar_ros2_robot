@@ -219,10 +219,10 @@ perception_node:
     # Camera Module 3 に戻すときは 66.0
     camera_hfov_deg: 120.0
     scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
-    # LiDAR の回転中心から見たカメラのレンズの位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（右 44 mm、前 53 mm）。
-    # LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
-    camera_offset_x_m: 0.053
-    camera_offset_y_m: -0.044
+    # LiDAR の回転中心から見たカメラのレンズ（使っている左目）の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（左 30 mm、前 60 mm。
+    # 前はレンズの先、レンズの長さ 12 mm は仮）。LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
+    camera_offset_x_m: 0.060
+    camera_offset_y_m: 0.030
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
@@ -254,15 +254,15 @@ floor_obstacle_node:
     camera_topic: "/camera/image_raw/compressed"
     status_topic: "/floor_obstacle_status"
     rate: 5.0
-    # カメラのレンズの床からの高さと下向きの角度。実機で紙を 0.4 / 0.6 / 1.0 m に置いて合わせる
-    camera_height_m: 0.128
+    # カメラのレンズの床からの高さ（3D マウントの CAD 値）と下向きの角度。実機で紙を 0.4 / 0.6 / 1.0 m に置いて合わせる
+    camera_height_m: 0.125
     camera_pitch_deg: 0.0
     # 2 眼カメラ（ELP、片目 16:9）の視野角。仮の値（縦は横 120° からピンホールで計算）。実測して直す。
     # Camera Module 3（IMX708 16:9）に戻すときは 66.0 / 40.1
     camera_hfov_deg: 120.0
     camera_vfov_deg: 88.6
-    # 車体の中心はカメラの 36 mm 左（cam_cx 113 mm / 天板の中心 77 mm）。片側 0.15 m は車輪の外側 + 余裕
-    corridor_center_y_m: 0.036
+    # 車体の中心はカメラ（左目、X 39 mm）の 38 mm 右（天板の中心 77 mm）。片側 0.15 m は車輪の外側 + 余裕
+    corridor_center_y_m: -0.038
     corridor_half_width_m: 0.15
     max_range_m: 1.5
     # 床の色を覚える、いちばん近い帯（カメラから 0.35〜0.45 m）
