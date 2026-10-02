@@ -6,7 +6,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import AndSubstitution, EqualsSubstitution, LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -33,6 +33,7 @@ def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
     use_system_monitor = LaunchConfiguration('use_system_monitor')
     use_camera = LaunchConfiguration('use_camera')
+    camera_type = LaunchConfiguration('camera_type')
     use_lidar = LaunchConfiguration('use_lidar')
     use_perception = LaunchConfiguration('use_perception')
     use_joy = LaunchConfiguration('use_joy')
@@ -61,7 +62,8 @@ def generate_launch_description():
             additional_env=_rpicam_env(),
             respawn=True,
             respawn_delay=5.0,
-            condition=IfCondition(use_camera),
+            condition=IfCondition(AndSubstitution(
+                use_camera, EqualsSubstitution(camera_type, 'picam'))),
         ),
     ] if camera_available else []
 
@@ -104,7 +106,10 @@ def generate_launch_description():
         DeclareLaunchArgument('use_system_monitor', default_value='true',
                               description='システム監視ノードを起動する'),
         DeclareLaunchArgument('use_camera', default_value='true',
-                              description='camera_ros のカメラノードを起動する'),
+                              description='カメラノードを起動する'),
+        DeclareLaunchArgument('camera_type', default_value='stereo',
+                              description='stereo: USB 2 眼カメラ（stereo_camera_node）/ '
+                                          'picam: Camera Module 3（camera_ros）'),
         DeclareLaunchArgument('use_lidar', default_value='true',
                               description='rplidar_ros の LiDAR ノードを起動する'),
         DeclareLaunchArgument('use_perception', default_value='true',
@@ -227,6 +232,17 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_floor),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='stereo_camera_node',
+            name='stereo_camera_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=5.0,
+            condition=IfCondition(AndSubstitution(
+                use_camera, EqualsSubstitution(camera_type, 'stereo'))),
         ),
         *camera_nodes,
         *lidar_nodes,

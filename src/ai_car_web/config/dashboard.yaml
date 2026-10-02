@@ -215,7 +215,9 @@ perception_node:
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
-    camera_hfov_deg: 66.0
+    # 2 眼カメラ（ELP、片目 1280x720 → 960x540）の横の画角。仮の値（広角レンズでゆがみがあるので実測して直す）。
+    # Camera Module 3 に戻すときは 66.0
+    camera_hfov_deg: 120.0
     scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
     # LiDAR の回転中心から見たカメラのレンズの位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（右 44 mm、前 53 mm）。
     # LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
@@ -255,9 +257,10 @@ floor_obstacle_node:
     # カメラのレンズの床からの高さと下向きの角度。実機で紙を 0.4 / 0.6 / 1.0 m に置いて合わせる
     camera_height_m: 0.128
     camera_pitch_deg: 0.0
-    # Camera Module 3（IMX708 16:9）の視野角
-    camera_hfov_deg: 66.0
-    camera_vfov_deg: 40.1
+    # 2 眼カメラ（ELP、片目 16:9）の視野角。仮の値（縦は横 120° からピンホールで計算）。実測して直す。
+    # Camera Module 3（IMX708 16:9）に戻すときは 66.0 / 40.1
+    camera_hfov_deg: 120.0
+    camera_vfov_deg: 88.6
     # 車体の中心はカメラの 36 mm 左（cam_cx 113 mm / 天板の中心 77 mm）。片側 0.15 m は車輪の外側 + 余裕
     corridor_center_y_m: 0.036
     corridor_half_width_m: 0.15
@@ -283,6 +286,24 @@ rplidar:
     frame_id: "laser"
     angle_compensate: true
 
+# USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo（既定）で起動
+stereo_camera_node:
+  ros__parameters:
+    device: "/dev/v4l/by-id/usb-3D_USB_Camera_3D_USB_Camera_01.00.00-video-index0"
+    # 左右を横に並べた MJPG（片目 1280x720）。30fps だと JPEG の展開と作り直しで CPU 約 108%、15fps で約 52%
+    width: 2560
+    height: 720
+    fps: 15.0
+    # カメラを上下逆さまに付けているので 180° 回す（左右の画像も入れ替わる）
+    rotate_180: true
+    eye: "left"
+    output_width: 960
+    output_height: 540
+    jpeg_quality: 80
+    image_topic: "/camera/image_raw/compressed"
+    frame_id: "camera_link"
+
+# Camera Module 3（camera_ros）。camera_type:=picam のときだけ使う
 camera:
   ros__parameters:
     format: "RGB888"
