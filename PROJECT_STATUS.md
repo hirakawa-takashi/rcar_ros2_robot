@@ -33,7 +33,7 @@
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は 3 m で固定、3 m より遠い点は描かない）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`
-  - カメラノード: `camera_ros`（libcamera）を `dashboard.launch.py` の `use_camera` で起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
+  - カメラノード: `dashboard.launch.py` の `use_camera` で起動。`camera_type:=stereo`（既定）は USB 2 眼カメラの `stereo_camera_node`、`camera_type:=picam` は `camera_ros`（libcamera）。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
   - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像は AI HAT+（Hailo-8, `yolov8m.hef`）でレターボックス推論し、元画像座標へ復元した検出枠を複数フレーム（履歴3中2回）で確認して物体名を補助情報として付与。結果は `/obstacle_status`（JSON, 5Hz）
   - 検出物体の距離: 画像の横位置を `camera_hfov_deg`（66°）で方位角に変換し、LiDAR の同方位の距離を採用（LiDAR の点は、LiDAR の中心から見たカメラの位置 `camera_offset_x_m` 0.053 / `camera_offset_y_m` −0.044（前 53 mm・右 44 mm）に移し、カメラから見た方位で照合する。距離はカメラのレンズから前方への距離）。カメラ映像に検出枠（`danger_distance` 0.3m 以内は赤、それ以外は緑）と距離を重畳し、LiDAR 点群マップでは前方 ±30°（`front_angle_deg` 60°）内かつ 0.3m 以内の点を赤点で表示。点群マップには前方／後方／左／右のラベルを表示（上＝前方）。方位角範囲内の点は距離でクラスタリングし（`cluster_gap` 0.25m）、最も手前のまとまりの中央値を採用する。スキャンが `scan_max_age`（1秒）より古い場合は距離を出さない。LiDAR の取り付け向きは `scan_angle_offset_deg` で補正する。画面の「前方」は前方カメラの正面とし、カメラの画面の真ん中に置いたボトルが LiDAR で右 4°・0.47 m に見えたことから −1.7° とした（2026/10 実測。`dashboard_node`・`perception_node`・`autonomy_node` と URDF の `laser` の向きで同じ値）
   - 人・動物の早めの減速・停止: カメラの前方（画面の中央半分）に写った人・犬・猫・鳥（`living_labels`）の LiDAR 距離が 1.5 m（`living_slow_distance`）以内で減速、0.6 m（`living_stop_distance`）以内で停止と判定し、`/obstacle_status` の `living` に出す。`living_guard: true` のときだけ LiDAR の判定より厳しい方を `level`・`speed_scale` に使う（既定は false で表示のみ）
@@ -108,6 +108,7 @@
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 
 ## カメラ仕様（実測）
+- 2026/10 から前方カメラは USB の 2 眼カメラ（ELP 3D USB Camera、`stereo_camera_node`、`camera_type:=stereo`）。上下逆さまに付けているので 180° 回して左目を 960×540・15fps で配信。MJPG のモード: 3840×1080 / 2560×720 / 1600×600 / 1280×480 / 640×240（各 5〜60fps）。USB 2.0（480M）で認識。CPU 約 52%（15fps）。電源は取り込み中 4.94〜5.0V・1.32A、`get_throttled=0x0`。画角（仮 120°）と取り付け位置は未実測。下の Camera Module 3 の値は `camera_type:=picam` のとき
 - 解像度: 960x540 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約42〜53KB
 - ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`、`FrameDurationLimits` [33333, 33333]、実測 30.04Hz）
 - ダッシュボード MJPEG: 30fps（`camera_stream_rate`）
