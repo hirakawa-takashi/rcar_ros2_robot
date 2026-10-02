@@ -8,6 +8,7 @@ dustynv/nanoowl コンテナの中で動かす（jetson-owl.service を参照）
 """
 
 import argparse
+import http.client
 import io
 import json
 import os
@@ -125,7 +126,7 @@ def main():
             if last_error:
                 print('AI-CAR との通信が戻りました', flush=True)
                 last_error = ''
-        except (urllib.error.URLError, OSError, ValueError) as exc:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as exc:
             if str(exc) != last_error:
                 print(f'AI-CAR と通信できません: {exc}', flush=True)
                 last_error = str(exc)
