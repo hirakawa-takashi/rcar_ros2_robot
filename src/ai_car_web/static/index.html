@@ -766,7 +766,79 @@ function scanBands(danger, stopD, slowD) {
 }
 
 const SCAN_RANGE_M = 3;  // LiDAR 点群の表示範囲 [m]（固定）
-function drawScanMap(scan, danger, frontHalfRad, stopD, slowD) {
+// カメラの見える範囲（扇形）と、カメラで見つけた物の位置・名前を LiDAR の図に重ねる。
+// 物の位置は画面の横位置から出した方向と、perception_node が LiDAR で付けた距離（カメラから前方の距離）
+function drawCameraView(ctx, cx, cy, scale, range, o) {
+  if (!o || o.camera_hfov_deg == null) return;
+  const half = o.camera_hfov_deg / 2 * Math.PI / 180;
+  const ox = o.camera_offset_x_m || 0, oy = o.camera_offset_y_m || 0;
+  const toPx = (x, y) => [cx - y * scale, cy - x * scale];
+  const [px, py] = toPx(ox, oy);
+  const reach = range - ox;
+  const [lx, ly] = toPx(ox + reach, oy + reach * Math.tan(half));
+  const [rx, ry] = toPx(ox + reach, oy - reach * Math.tan(half));
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(px, py); ctx.lineTo(lx, ly); ctx.lineTo(rx, ry); ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(lx, ly); ctx.lineTo(px, py); ctx.lineTo(rx, ry);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`カメラ ${Math.round(o.camera_hfov_deg)}°`, lx + 4, ly + 14);
+
+  const tanHalf = Math.tan(half);
+  const items = [];
+  const jt = o.jetson;
+  for (const d of (jt && jt.alive && jt.detections) || []) items.push([d, '#3fb8f0']);
+  const danger = o.danger_distance || 0.3;
+  for (const d of o.detections || []) {
+    items.push([d, d.distance != null && d.distance <= danger ? '#e04b4b' : '#5cb85c']);
+  }
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textBaseline = 'middle';
+  const placed = [];
+  for (const [d, color] of items) {
+    const cxImg = d.center_x ?? (d.box[0] + d.box[2]) / 2;
+    const t = (0.5 - cxImg) * 2 * tanHalf;
+    if (d.distance == null) {
+      const [ex, ey] = toPx(ox + reach, oy + reach * t);
+      ctx.strokeStyle = color;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.setLineDash([]);
+      continue;
+    }
+    if (d.distance > reach) continue;
+    const [qx, qy] = toPx(ox + d.distance, oy + d.distance * t);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(qx, qy, 5, 0, Math.PI * 2); ctx.fill();
+    const text = `${d.label} ${d.distance.toFixed(2)}m`;
+    const tw = ctx.measureText(text).width + 8;
+    const tx = Math.min(ctx.canvas.width - tw - 2, Math.max(2, qx + 8));
+    let ty = qy;
+    while (placed.some(([x, y, w]) => tx < x + w && x < tx + tw && Math.abs(ty - y) < 20)) ty += 20;
+    placed.push([tx, ty, tw]);
+    if (ty !== qy) {
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(tx, ty); ctx.stroke();
+    }
+    ctx.fillRect(tx, ty - 9, tw, 18);
+    ctx.fillStyle = '#0e1116';
+    ctx.fillText(text, tx + 4, ty);
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
   const canvas = document.getElementById('scan_map');
   const ctx = canvas.getContext('2d');
   const size = canvas.width;
@@ -828,6 +900,8 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD) {
     ctx.fillStyle = band.color;
     ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
   }
+
+  drawCameraView(ctx, cx, cy, scale, range, obstacle);
 
   // 凡例（左下）
   ctx.font = '10px sans-serif';
@@ -956,7 +1030,7 @@ function render(d) {
   const ap = (d.autonomy && d.autonomy.params) || {};
   const stopD = Math.max(danger, ap.stop_distance || 0.35);
   const slowD = Math.max(stopD, ap.slow_distance || 0.8);
-  drawScanMap(s, danger, frontHalf, stopD, slowD);
+  drawScanMap(s, danger, frontHalf, stopD, slowD, d.obstacle);
   renderObstacle(d.obstacle);
   renderJoy(d.joy);
   renderDriveMode(d.drive_mode);
