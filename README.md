@@ -106,7 +106,7 @@ sudo usermod -aG spi,gpio super   # グループが無ければ udev で /dev/sp
 # 再ログイン、またはサービスを再起動
 ```
 
-`dashboard.launch.py` の `use_lcd_display`（既定 `true`）で起動する。旧 TM1637 は
+`dashboard.launch.py` の `use_lcd_display:=true` で起動する（2026/10 に液晶を外したので既定は `false`）。旧 TM1637 は
 `use_seg_display`（既定 `false`）で切り替えるが、GPIO23/24 を共用するため同時起動はしない。
 表示が上下反転・鏡像の場合は `dashboard.yaml` の `lcd_display_node.rotation` を 90 / 180 / 270 に変更する。
 

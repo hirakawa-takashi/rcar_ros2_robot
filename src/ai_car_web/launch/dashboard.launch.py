@@ -118,8 +118,9 @@ def generate_launch_description():
                               description='ゲームパッド（F710）手動操作ノードを起動する'),
         DeclareLaunchArgument('use_seg_display', default_value='false',
                               description='TM1637 7セグ表示ノードを起動する（旧表示器。LCD と GPIO23/24 を共用するため同時起動不可）'),
-        DeclareLaunchArgument('use_lcd_display', default_value='true',
-                              description='ZJY-IPS130-V2.0（ST7789）液晶表示ノードを起動する'),
+        DeclareLaunchArgument('use_lcd_display', default_value='false',
+                              description='ZJY-IPS130-V2.0（ST7789）液晶表示ノードを起動する'
+                                          '（液晶を外したので既定は false）'),
         DeclareLaunchArgument('use_imu', default_value='true',
                               description='BNO055 IMU ノードを起動する'),
         DeclareLaunchArgument('use_cliff', default_value='true',

@@ -77,6 +77,7 @@
 - ダッシュボード: 運転モードバッジ・3 ボタン（`GET/POST /api/drive_mode`）と自律走行カードを追加。7 セグに `AUto` / `StoP` を追加
 
 ### Changed
+- 液晶（ZJY-IPS130-V2.0）を取り外したので、`dashboard.launch.py` の `use_lcd_display` の既定を `false` にした。液晶を戻すときは `use_lcd_display:=true`。IMU（GY-BNO055）は付けたまま
 - `autonomy_node` の `scan_angle_offset_deg` の既定値を 180° → 0° にした（dashboard_node・perception_node の既定値とそろえる。dashboard.yaml を読まずに起動したときも前後が逆にならない）
 - LiDAR の向きの補正 `scan_angle_offset_deg` を 180° → 0° にした（dashboard_node・autonomy_node・perception_node）。3D マウントでモーター側を前に向けたため、以前の取り付け（前が車体の後ろ向き）の 180° 補正で、点群の表示と前方の判定が前後逆になっていた（実機で確認）
 - 試験台の車輪と車軸の寸法を、部品リストの製品（OSOYOO FlexiRover 520 モーター版）の図面の値にした。車輪の直径 80 → 80.59 mm（幅 39.1 mm）、車軸は天板の前後の端から 56 → 52 mm（シャーシ 1 段目の図面のモーターの台の穴 Y 37 / 67 mm）。受け面の奥行き（車輪の手前 1 mm まで）は 15 → 10.7 mm に縮むので、左右の幅を 25 → 40 mm に広げた（天板の下のモーターの台は Y 32 mm から）。受け面の天板の 4 隅の穴（Ø4.4）の下に Ø12 × 深さ 12 mm のくぼみを付け、上の部品を留めるネジの先・ナットをよける。`test_stand.stl` と画像を更新

@@ -19,7 +19,7 @@ overview:
     - {state: done, text: 障害物判定（LiDAR + Hailo-8 物体検出）とサーマル制御}
     - {state: done, text: F710 ゲームパッド手動操作}
     - {state: done, text: 運転モード管理（手動 / 自動 / 停止）と Level 1 自律走行}
-    - {state: done, text: ST7789 液晶の状態表示器}
+    - {state: done, text: ST7789 液晶の状態表示器（2026/10 に取り外し。use_lcd_display:=true で再び使える）}
     - {state: todo, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
     - {state: todo, text: エンコーダー読み取り・オドメトリ（/odom）}
     - {state: todo, text: SLAM（slam_toolbox）}
@@ -43,7 +43,7 @@ hardware:
     - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
     - {id: camera, label: 2 眼カメラ（ELP 3D USB Camera）, sub: 片目 1280×720 → 960×540 15fps（上下逆さまに取付）, bus: USB 2.0, power: 5V, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
-    - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
+    - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶（取り外し済み）, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線・配線色未定）, power: 3V3, jump: gpio, side: bottom}
     - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
@@ -430,7 +430,7 @@ nodes:
   - id: lcd_display_node
     label: lcd_display_node
     file: ai_car_web/lcd_display_node.py
-    role: ST7789 液晶に状態（待機 / 手動 / 自動 / 停止 / 障害物停止 / 減速 / 低電圧）と運転モード・前方距離・電圧・CPU 温度・IP を描画。従来の 4 文字コードを /display_state に publish
+    role: use_lcd_display:=true のときだけ起動（既定 false、液晶は取り外し済み）。ST7789 液晶に状態（待機 / 手動 / 自動 / 停止 / 障害物停止 / 減速 / 低電圧）と運転モード・前方距離・電圧・CPU 温度・IP を描画。従来の 4 文字コードを /display_state に publish
     publishes: [/display_state]
     subscribes: [/system_status, /obstacle_status, /joy_cmd, /cmd_vel, /drive_mode, /autonomy_status]
     params:
