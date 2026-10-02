@@ -19,7 +19,6 @@ overview:
     - {state: done, text: 障害物判定（LiDAR + Hailo-8 物体検出）とサーマル制御}
     - {state: done, text: F710 ゲームパッド手動操作}
     - {state: done, text: 運転モード管理（手動 / 自動 / 停止）と Level 1 自律走行}
-    - {state: done, text: ST7789 液晶の状態表示器（2026/10 に取り外し。use_lcd_display:=true で再び使える）}
     - {state: todo, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
     - {state: todo, text: エンコーダー読み取り・オドメトリ（/odom）}
     - {state: todo, text: SLAM（slam_toolbox）}
@@ -31,8 +30,52 @@ overview:
     - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8m）}
     - {name: OpenCV (V4L2), role: USB 2 眼カメラ取り込み（stereo_camera_node）}
     - {name: libcamera (rpicam), role: カメラ v3 取り込み（camera_type:=picam のとき）}
-    - {name: spidev / libgpiod / Pillow, role: ST7789 液晶描画}
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
+
+system:
+  summary:
+    - AI-CAR（Raspberry Pi 5）・Jetson Orin Nano Super・M5 スタックちゃんの 3 台を、家の Wi-Fi と Tailscale でつなぐ。クラウドを使わず、家の中で動かす
+    - AI-CAR は走る・測る・止まるを受け持つ。安全の判定（LiDAR・AI HAT+ の YOLO・段差）は AI-CAR の中だけで行い、ほかの機械が止まっても安全に止まる
+    - Jetson は重い AI（言葉で物を探す NanoOWL、これから会話の AI）を受け持つ。結果は表示と命令だけで、AI-CAR の安全の判定は変えない
+    - M5 スタックちゃんは顔・耳・口（画面・マイク・スピーカー・首振り）。考えるのは Jetson で行う（準備中）
+  network: 家の Wi-Fi と Tailscale（AI-CAR 100.70.35.31、Jetson 100.111.231.54）。AI-CAR のダッシュボードは 8080 番
+  devices:
+    - id: ai_car
+      label: AI-CAR
+      sub: Raspberry Pi 5 8GB / ROS 2 Jazzy
+      state: done
+      items:
+        - LiDAR（A1M8）で障害物までの距離
+        - 2 眼カメラ（960×540・15 fps）
+        - AI HAT+ の YOLOv8m（人・動物など 80 種類）
+        - 運転モード・自律走行・安全ガード
+        - ダッシュボード（8080 番）
+    - id: jetson
+      label: Jetson Orin Nano Super
+      sub: JetPack 6.2 / メモリ 8GB / 25W
+      state: done
+      items:
+        - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service、稼働中）
+        - Ollama（llama3.2:3b）は入れてある（まだつないでいない）
+        - これから：音声認識・会話・音声合成
+    - id: stackchan
+      label: M5 スタックちゃん
+      sub: M5Stack CoreS3（準備中）
+      state: planned
+      items:
+        - 画面の顔・マイク・スピーカー
+        - 首振り（左右・上下のサーボ）
+        - カメラ（GC0308 640×480）
+    - {id: browser, label: ブラウザ（PC・スマホ）, sub: ダッシュボード・手動操作, state: done}
+    - {id: person, label: 家の人, sub: 声で話しかける, state: planned}
+  links:
+    - {from: ai_car, to: jetson, short: 画像, desc: カメラの画像（JPEG 960×540）。Jetson が 1 秒に 5 回取りに行く, via: 'GET /api/camera/snapshot', state: done}
+    - {from: jetson, to: ai_car, short: 名前・位置, desc: 見つけた物の名前・信頼度・画面の位置。AI-CAR が LiDAR の距離を付けて表示する（速度には使わない）, via: 'POST /api/jetson/detections（API トークン）', state: done}
+    - {from: jetson, to: ai_car, short: 命令（予定）, desc: 声の命令（「前に進んで」「止まって」）を速度の指令にする。AI-CAR の安全ガードはそのまま効く, via: 'POST /api/cmd_vel・/api/stop（API トークン）', state: planned}
+    - {from: stackchan, to: jetson, short: 声・映像（予定）, desc: マイクの声とカメラの映像, via: WebSocket（xiaozhi-esp32-server）, state: planned}
+    - {from: jetson, to: stackchan, short: 返事（予定）, desc: 返事の声・顔の表情・首の向き, via: WebSocket（xiaozhi-esp32-server）, state: planned}
+    - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
+    - {from: person, to: stackchan, short: 話す, desc: 声で話しかけ、返事を聞く, via: 声, state: planned, both: true}
 
 hardware:
   center: {id: pi5, label: Raspberry Pi 5, sub: 8GB / Ubuntu 24.04 / ROS 2 Jazzy}
@@ -43,7 +86,6 @@ hardware:
     - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
     - {id: camera, label: 2 眼カメラ（ELP 3D USB Camera）, sub: 片目 1280×720 → 960×540 15fps（上下逆さまに取付）, bus: USB 2.0, power: 5V, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
-    - {id: lcd, label: ディスプレイ（ZJY-IPS130-V2.0）, sub: ST7789 240×240 IPS 液晶（取り外し済み）, bus: SPI0 + GPIO23/24/25（BLK/RES/DC）, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線・配線色未定）, power: 3V3, jump: gpio, side: bottom}
     - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
@@ -441,15 +483,6 @@ nodes:
     subscribes: []
     params: []
     layer: sensor
-  - id: lcd_display_node
-    label: lcd_display_node
-    file: ai_car_web/lcd_display_node.py
-    role: use_lcd_display:=true のときだけ起動（既定 false、液晶は取り外し済み）。ST7789 液晶に状態（待機 / 手動 / 自動 / 停止 / 障害物停止 / 減速 / 低電圧）と運転モード・前方距離・電圧・CPU 温度・IP を描画。従来の 4 文字コードを /display_state に publish
-    publishes: [/display_state]
-    subscribes: [/system_status, /obstacle_status, /joy_cmd, /cmd_vel, /drive_mode, /autonomy_status]
-    params:
-      - {name: rotation, ref: lcd_display_node.rotation, unit: 度, desc: 画面の向き（反時計回り）}
-    layer: ui
   - id: motor_control_node
     label: motor_control_node（未実装）
     file: ''
@@ -476,7 +509,6 @@ topics:
   - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz・transient local）}
   - {name: /cmd_vel, type: geometry_msgs/Twist, desc: 最終速度指令（drive_mode_node のみが publish）}
   - {name: /autonomy_status, type: std_msgs/String (JSON), desc: 自律行動・セクター距離・自動指令}
-  - {name: /display_state, type: std_msgs/String, desc: 表示器の 4 文字状態コード}
   - {name: /odom, type: nav_msgs/Odometry, desc: オドメトリ（未実装、現在は publisher なし）}
   - {name: /map, type: nav_msgs/OccupancyGrid, desc: SLAM の地図（5 cm / セル、2 秒ごと、transient local）}
   - {name: /pose, type: geometry_msgs/PoseWithCovarianceStamped, desc: 地図の上の自己位置（slam_toolbox）}
@@ -530,7 +562,7 @@ autonomy:
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
     - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 60 mm・左 30 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
-    - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（減速 speed_scale）、液晶表示
+    - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（減速 speed_scale）
 
 api:
   rest:

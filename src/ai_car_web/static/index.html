@@ -735,7 +735,7 @@ function renderSystem(s) {
 
   const h = s.hailo || {};
   const state = !h.enabled ? '<span class="badge">無効</span>'
-    : h.driver_ready ? '<span class="badge ok">稼働中</span>'
+    : h.driver_ready ? '<span class="badge ok" style="white-space:nowrap">稼働中</span>'
     : h.detected ? '<span class="badge warn">ドライバ未導入</span>'
     : '<span class="badge warn">未検出</span>';
   document.getElementById('h_state').innerHTML = state;
@@ -1490,7 +1490,7 @@ loadMotorHat();
 setInterval(loadMotorHat, 30000);
 
 const ABOUT_TABS = [
-  ['overview', '概要'], ['hardware', 'ハードウェア構成'], ['print3d', '3D プリント'], ['software', 'ソフトウェア構成'],
+  ['overview', '概要'], ['system', 'システム構成'], ['hardware', 'ハードウェア構成'], ['print3d', '3D プリント'], ['software', 'ソフトウェア構成'],
   ['modes', '運転モードと安全機構'], ['autonomy', '知覚と自律走行'],
   ['api', 'Web API'], ['status', '開発状況'],
 ];
@@ -1535,6 +1535,83 @@ function renderOverview(a) {
     `<h3>マイルストーン</h3><ul>${milestones}</ul><h3>技術スタック</h3>` +
     aboutTable(['名称', '役割'], (o.stack || []).map(x => [esc(x.name), esc(x.role)]));
 }
+function renderSystem(a) {
+  const s = a.system || {}, devices = s.devices || [], links = s.links || [];
+  const big = {w: 290, h: 215}, small = {w: 230, h: 58};
+  const layout = {
+    ai_car: [190, 320, big], jetson: [600, 320, big], stackchan: [1010, 320, big],
+    browser: [190, 70, small], person: [1010, 70, small],
+  };
+  const doneColor = '#35d6ff', planColor = '#f0b429';
+  const byId = Object.fromEntries(devices.map(d => [d.id, d]));
+  const num = i => String.fromCharCode(0x2460 + i);
+  const pairs = {};
+  links.forEach(l => { const k = [l.from, l.to].sort().join('|'); (pairs[k] = pairs[k] || []).push(l); });
+  let svg = `<svg class="aboutsvg" viewBox="0 0 1200 450"><defs>` +
+    [['sys-done', doneColor], ['sys-plan', planColor]].map(([id, c]) =>
+      `<marker id="${id}" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto-start-reverse"><path d="M0,0 L10,4 L0,8 z" fill="${c}"/></marker>`).join('') +
+    '</defs>';
+  links.forEach((l, i) => {
+    const A = layout[l.from], B = layout[l.to];
+    if (!A || !B || !byId[l.from] || !byId[l.to]) return;
+    const group = pairs[[l.from, l.to].sort().join('|')], k = group.indexOf(l), n = group.length;
+    const done = l.state === 'done', color = done ? doneColor : planColor, marker = done ? 'sys-done' : 'sys-plan';
+    let x1, y1, x2, y2;
+    if (Math.abs(B[0] - A[0]) >= Math.abs(B[1] - A[1])) {
+      const y = (A[1] + B[1]) / 2 + (k - (n - 1) / 2) * 56, dir = Math.sign(B[0] - A[0]);
+      [x1, y1, x2, y2] = [A[0] + dir * A[2].w / 2, y, B[0] - dir * B[2].w / 2, y];
+    } else {
+      const x = (A[0] + B[0]) / 2 + (k - (n - 1) / 2) * 70, dir = Math.sign(B[1] - A[1]);
+      [x1, y1, x2, y2] = [x, A[1] + dir * A[2].h / 2, x, B[1] - dir * B[2].h / 2];
+    }
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, label = `${num(i)} ${l.short || ''}`;
+    const w = [...label].reduce((t, c) => t + (c.charCodeAt(0) > 0xff ? 12 : 6.5), 0) + 12;
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${done ? 3 : 2}"` +
+      `${done ? '' : ' stroke-dasharray="7 5"'} marker-end="url(#${marker})"${l.both ? ` marker-start="url(#${marker})"` : ''}/>` +
+      `<rect x="${mx - w / 2}" y="${my - 21}" width="${w}" height="18" rx="3" fill="#11161d" opacity=".95"/>` +
+      `<text x="${mx}" y="${my - 8}" fill="${color}" text-anchor="middle" font-size="12">${esc(label)}</text>`;
+  });
+  devices.forEach(d => {
+    const L = layout[d.id]; if (!L) return;
+    const [x, y, size] = L, planned = d.state !== 'done';
+    const left = x - size.w / 2, top = y - size.h / 2;
+    svg += `<rect x="${left}" y="${top}" width="${size.w}" height="${size.h}" rx="12" fill="${size === big ? '#1d3b63' : '#1e232b'}"` +
+      ` stroke="${planned ? planColor : '#64b5f6'}" stroke-width="2"${planned ? ' stroke-dasharray="8 5"' : ''}/>`;
+    if (size === big) {
+      svg += `<text x="${x}" y="${top + 30}" fill="#e8eaed" text-anchor="middle" font-size="18" font-weight="bold">${esc(d.label)}</text>` +
+        `<text x="${x}" y="${top + 52}" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(d.sub || '')}</text>`;
+      let ty = top + 80;
+      (d.items || []).forEach(item => {
+        const lines = [''];
+        let width = 0;
+        [...String(item)].forEach(c => {
+          const cw = c.charCodeAt(0) > 0xff ? 12 : 6.8;
+          if (width + cw > size.w - 44) { lines.push(''); width = 0; }
+          lines[lines.length - 1] += c;
+          width += cw;
+        });
+        lines.forEach((line, j) => {
+          svg += `<text x="${left + 16}" y="${ty}" fill="#dbe4ef" font-size="12">${j ? '　' : '・'}${esc(line)}</text>`;
+          ty += 17;
+        });
+        ty += 3;
+      });
+    } else {
+      svg += `<text x="${x}" y="${y - 3}" fill="#e8eaed" text-anchor="middle" font-size="14" font-weight="bold">${esc(d.label)}</text>` +
+        `<text x="${x}" y="${y + 16}" fill="#9fb0c7" text-anchor="middle" font-size="11">${esc(d.sub || '')}</text>`;
+    }
+  });
+  svg += '</svg>';
+  const stateLabel = st => st === 'done' ? '<span class="badge ok" style="white-space:nowrap">稼働中</span>' : '<span class="badge" style="white-space:nowrap">予定</span>';
+  const name = id => esc(byId[id]?.label || id);
+  const linkRows = links.map((l, i) => [num(i), `${name(l.from)} ${l.both ? '⇄' : '→'} ${name(l.to)}`, esc(l.desc || ''), esc(l.via || ''), stateLabel(l.state)]);
+  const deviceRows = devices.filter(d => (d.items || []).length).map(d => [esc(d.label), esc(d.sub || ''), aboutList(d.items), stateLabel(d.state)]);
+  return `<h3>システム構成図</h3>${aboutList(s.summary)}${svg}` +
+    `<div class="powerlegend"><span><i style="background:${doneColor}"></i>稼働中</span><span><i style="background:${planColor}"></i>予定（点線）</span></div>` +
+    (s.network ? `<p><b>ネットワーク:</b> ${esc(s.network)}</p>` : '') +
+    `<h3>やりとり</h3>${aboutTable(['番号', '向き', '内容', '通信', '状態'], linkRows)}` +
+    `<h3>機械ごとの役割</h3>${aboutTable(['機械', '仕様', '役割', '状態'], deviceRows)}`;
+}
 function powerColor(power) {
   return power?.startsWith('12V') ? '#e04b4b' : power?.startsWith('5V') ? '#f08b36' :
     power?.startsWith('3V3') ? '#b4d455' : '#687383';
@@ -1545,7 +1622,7 @@ function renderHardware(a) {
     ai_hat: [300, 100], battery_pi: [800, 95], battery_motor: [1060, 95],
     lidar: [90, 110], camera: [90, 280], gamepad: [90, 450],
     motor_hat: [1050, 200], motors: [1050, 360],
-    imu: [340, 460], lcd: [860, 460], tof: [600, 480], drok: [520, 95],
+    imu: [340, 460], tof: [600, 480], drok: [520, 95],
   };
   const box = (d, x, y) => {
     const textWidth = t => [...String(t || '')].reduce((n, c) => n + (c.charCodeAt(0) > 0xff ? 13 : 7.5), 0);
@@ -1562,8 +1639,8 @@ function renderHardware(a) {
       (label ? `<rect x="${lx - width / 2}" y="${ly - 10}" width="${width}" height="18" rx="3" fill="#11161d" opacity=".94"/><text x="${lx}" y="${ly + 3}" fill="#dbe4ef" text-anchor="middle" font-size="11">${esc(label)}</text>` : '');
   };
   const busLabel = id => ({
-    ai_hat: 'PCIe / GPIO', lidar: 'USB', camera: 'CSI',
-    gamepad: 'USB', imu: 'I2C', lcd: 'SPI / GPIO', motor_hat: 'I2C 0x60', tof: 'I2C', drok: 'USB 5V',
+    ai_hat: 'PCIe / GPIO', lidar: 'USB', camera: 'USB',
+    gamepad: 'USB', imu: 'I2C', motor_hat: 'I2C 0x60', tof: 'I2C', drok: 'USB 5V',
   }[id] || '');
   let svg = '<svg class="aboutsvg" viewBox="0 0 1200 560"><defs><filter id="hwshadow"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".5"/></filter></defs>';
   devices.forEach(d => {
@@ -1621,14 +1698,13 @@ function renderNodes(a) {
     rplidar: [100, 80], camera: [100, 150], imu_node: [100, 220],
     system_monitor_node: [100, 290], cliff_node: [100, 345], joy_teleop_node: [100, 400], dashboard_node: [100, 520],
     perception_node: [560, 115], autonomy_node: [560, 300],
-    drive_mode_node: [1000, 300], motor_control_node: [1000, 520], lcd_display_node: [1000, 80],
+    drive_mode_node: [1000, 300], motor_control_node: [1000, 520],
   };
   const topicCoords = {
     '/scan': [330, 80], '/camera/image_raw/compressed': [330, 150], '/imu/data': [330, 220],
     '/system_status': [330, 290], '/cliff_status': [330, 345], '/joy_cmd': [330, 400], '/cmd_vel_manual': [330, 520],
     '/drive_mode_request': [330, 580], '/obstacle_status': [790, 115], '/cmd_vel_auto': [790, 300],
     '/autonomy_status': [790, 360], '/drive_mode': [790, 460], '/cmd_vel': [1000, 410],
-    '/display_state': [1000, 150],
   };
   const includedNodes = nodes.filter(n => nodeCoords[n.id]);
   const includedTopics = topics.filter(t => topicCoords[t.name]);
@@ -2281,7 +2357,7 @@ function renderPrint3d(a) {
     `<h3>組み立て手順</h3>${steps}<h3>組み立て図・配線経路</h3><div class="p3dgallery">${gallery}</div>` +
     `<h3>実物で確かめていないこと</h3>${aboutList(p.unverified)}`;
 }
-const ABOUT_RENDERS = {overview: renderOverview, hardware: renderHardware, print3d: renderPrint3d, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
+const ABOUT_RENDERS = {overview: renderOverview, system: renderSystem, hardware: renderHardware, print3d: renderPrint3d, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
 function wiringCardsHtml() {
   return ['gpio_svg', 'motor_svg'].map(id => document.getElementById(id)?.closest('.card')?.outerHTML || '').join('');
 }
