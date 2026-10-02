@@ -108,6 +108,7 @@
 - `ros2 launch ai_car_description view_robot.launch.py`: 起動成功（`/robot_description`・`/joint_states`・`/tf` 発行を確認）
 
 ## カメラ仕様（実測）
+- 3D プリント部品（PR #80、未印刷）: Pi 5 は台の左に寄せ（基板の中心 X 47 mm）、カバーの左の穴から電源ボタンを押せる。右の USB / LAN 側はカバーの壁まで約 61 mm あき、ストレートの USB プラグも入る。印刷後に、ボタンの位置が穴に合うかとプラグが当たらないかを確かめる
 - 2026/10 から前方カメラは USB の 2 眼カメラ（ELP 3D USB Camera、`stereo_camera_node`、`camera_type:=stereo`）。上下逆さまに付けているので 180° 回して左目を 960×540・15fps で配信。MJPG のモード: 3840×1080 / 2560×720 / 1600×600 / 1280×480 / 640×240（各 5〜60fps）。USB 2.0（480M）で認識。CPU 約 52%（15fps）。電源は取り込み中 4.94〜5.0V・1.32A、`get_throttled=0x0`。画角（仮 120°）と取り付け位置は未実測。下の Camera Module 3 の値は `camera_type:=picam` のとき
 - 解像度: 960x540 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約42〜53KB
 - ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`、`FrameDurationLimits` [33333, 33333]、実測 30.04Hz）

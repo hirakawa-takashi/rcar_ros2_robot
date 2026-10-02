@@ -143,12 +143,14 @@ tie_h = 2;
 
 // ---- ラズパイ台（Raspberry Pi 5、天板の後ろ側）----
 pi_mount_holes = [[11, 11], [143, 11], [9, 90], [145, 90]];
-pi_cx = 79;               // 基板中心
+pi_cx = 47;               // 基板中心。電源ボタンの短辺（-X）をカバーの左の壁に寄せ、USB / LAN 側（+X）を広く空ける
 pi_cy = 50;
 pi_board = [85, 56];
 pi_hole_dx = 58;
 pi_hole_dy = 49;
-pi_hole_off = 3.5;        // GPIO 側の短辺からの距離（USB / LAN は +X 側）
+pi_hole_off = 3.5;        // 電源ボタン側の短辺からの距離（USB / LAN は +X 側）
+pi_btn_y = [0, 18];       // 仮: 電源ボタンを探す範囲（-X の短辺に沿って、USB-C の長辺（-Y）から）。カバーの左の壁の穴になる
+pi_btn_z = [-2, 9];       // 仮: 穴の高さ（Pi の基板の下面から）
 pi_so_hole_d = 6.2;       // 幅 5 mm の M2.5 六角支柱を差し込む丸い穴（六角の角と角の間 5.77 mm + 0.43 mm）
 pi_so_in = 5;             // 支柱を差し込む深さ
 pi_so_l = 5;              // 支柱の長さ（Pi の基板の下に出ている部分。仮の値で、Pi の高さの図とカバーの確認だけに使う）
@@ -605,15 +607,15 @@ cov_skirt_z = 11;         // 前後の壁の下端。バンパー上面（7 mm�
 cov_ch = 6;               // 上面の角の面取り
 cov_edge = 1;             // 手で触る縁（外側の角、下端、充電口）の面取り
 cov_rear = [38.4, 18];    // 後ろの斜面: 後ろの壁の上端の高さ、斜面が上面に届く Y（外側）
-cov_hook_y = [30, plate_l - 30];  // フックの位置（左右とも。天板の前後の端から 30 mm）
+cov_hook_y = [54, plate_l - 30];  // フックの位置（左右とも。後ろは Pi の電源ボタンの穴をよけて天板の後ろの端から 54 mm、前は前の端から 30 mm）
 cov_hook_w = 12;
 cov_hook_root = 28;       // フックの付け根の高さ（ここから下がたわむ）
 cov_hook_lip = 2;         // 天板の裏にかかる深さ
 // 天板の上面に載せる受け（[左, 右]）。フックの両隣と中央
-cov_stop_y = [[18, 42, 100, 158, 182], [18, 42, 100, 158, 182]];
+cov_stop_y = [[42, 66, 100, 158, 182], [42, 66, 100, 158, 182]];
 cov_rib_x = [[21, 25], [129, 133]];  // ふたの前後の縁をはさんで前後の位置を決めるリブ
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
-cov_vent = [42, 112, 28, 72];        // Pi の上の六角の通気口の範囲
+cov_vent = [9, 79, 28, 72];          // Pi の上の六角の通気口の範囲
 
 cov_ox0 = -cov_clr - cov_t;
 cov_ox1 = plate_w + cov_clr + cov_t;
@@ -737,6 +739,11 @@ module cover() {
             y = cov_vent[2] + j * 5.2;
             if (x <= cov_vent[1] && y <= cov_vent[3]) translate([x, y, cov_top - 1]) cylinder(r = 2.4, h = cov_t + 2, $fn = 6);
         }
+        // Pi の電源ボタン（左の壁）
+        let (y0 = pi_cy - pi_board[1] / 2 + pi_btn_y[0], y1 = pi_cy - pi_board[1] / 2 + pi_btn_y[1],
+             z0 = pi_z + pi_btn_z[0], z1 = pi_z + pi_btn_z[1], r = 3)
+            hull() for (y = [y0 + r, y1 - r], z = [z0 + r, z1 - r])
+                translate([cov_ox0 - 2, y, z]) rotate([0, 90, 0]) cylinder(r = r, h = cov_t + cov_clr + 2.5);
         // 文字
         translate([140, 150, cov_oz - 0.8]) rotate([0, 0, 90]) linear_extrude(1)
             text("AI-CAR", size = 9, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
@@ -772,7 +779,8 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x - end_fill, in_y, in_z]
      lidar_top_z = box_h + lid_t + lidar_tower_h,
      scam_board_xz = [scam_ends[0], scam_ends[1], scam_z0, scam_z1], scam_holes = scam_holes, scam_lens_center = [scam_cx, scam_tip_y, scam_lens_zc],
      scam_board_y = [scam_back_y, scam_front], scam_mnt_x = scam_mnt_x, scam_mnt_y = [scam_mnt_y0, scam_mnt_y0 + scam_mnt_t], scam_ear_top_z = scam_ear_top,
-     cov_scam_slots = [cov_scam_slot(-scam_baseline / 2), cov_scam_slot(scam_baseline / 2)], cov_front_outer_y = cov_oy1, pi_holes = pi_pts,
+     cov_scam_slots = [cov_scam_slot(-scam_baseline / 2), cov_scam_slot(scam_baseline / 2)], cov_front_outer_y = cov_oy1, pi_holes = pi_pts, pi_board_x = [pi_cx - pi_board[0] / 2, pi_cx + pi_board[0] / 2],
+     pi_btn_hole_yz = [pi_cy - pi_board[1] / 2 + pi_btn_y[0], pi_cy - pi_board[1] / 2 + pi_btn_y[1], pi_z + pi_btn_z[0], pi_z + pi_btn_z[1]], cov_inner_x = [-cov_clr, plate_w + cov_clr],
      pi_stack_top_z = pi_z + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
