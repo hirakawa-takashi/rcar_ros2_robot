@@ -635,6 +635,8 @@ class PerceptionNode(Node):
             'danger_distance': self.danger_distance,
             'front_angle_deg': round(math.degrees(self.front_angle), 1),
             'camera_hfov_deg': round(math.degrees(self.camera_hfov), 1),
+            'camera_offset_x_m': self.camera_offset_x,
+            'camera_offset_y_m': self.camera_offset_y,
             'speed_scale': 0.0 if level == 'stop' else (0.5 if level == 'slow' else 1.0),
             'detections': detections,
             'front_labels': labels,
