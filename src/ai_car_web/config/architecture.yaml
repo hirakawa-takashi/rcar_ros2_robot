@@ -261,7 +261,7 @@ nodes:
     label: dashboard_node
     file: ai_car_web/dashboard_node.py
     role: FastAPI サーバー（別スレッド）+ rclpy ノード。ブラウザと ROS 2 の橋渡し。Web 操作とゲームパッドの指令を同じ経路で /cmd_vel_manual に変換する
-    publishes: [/cmd_vel_manual, /drive_mode_request]
+    publishes: [/cmd_vel_manual, /drive_mode_request, /jetson_detections]
     subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status, /map, /pose]
     params:
       - {name: max_linear_speed, ref: dashboard_node.max_linear_speed, unit: m/s, desc: 正規化指令 1.0 のときの並進速度}
@@ -319,7 +319,7 @@ nodes:
     file: ai_car_web/perception_node.py
     role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
-    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /floor_obstacle_status]
+    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /floor_obstacle_status, /jetson_detections]
     params:
       - {name: stop_distance, ref: perception_node.stop_distance, unit: m, desc: 停止判定}
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
@@ -442,6 +442,7 @@ topics:
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
   - {name: /floor_obstacle_status, type: std_msgs/String (JSON), desc: カメラの床の検出（床の上の物の足元の距離・画面の位置、5 Hz）}
+  - {name: /jetson_detections, type: std_msgs/String (JSON), desc: Jetson（NanoOWL）の物体検出（名前・信頼度・画面の位置）。POST /api/jetson/detections から dashboard_node が流す。表示のみ}
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
   - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（10 Hz、AUTO 以外はゼロ）}

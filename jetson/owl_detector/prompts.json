@@ -1,0 +1,6 @@
+[
+  {"prompt": "a cardboard box", "label": "段ボール箱"},
+  {"prompt": "a plastic bag", "label": "袋"},
+  {"prompt": "a window", "label": ""},
+  {"prompt": "a curtain", "label": ""}
+]

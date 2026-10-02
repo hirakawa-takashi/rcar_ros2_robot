@@ -59,6 +59,23 @@ class DriveModeRequest(BaseModel):
     mode: str
 
 
+class JetsonDetection(BaseModel):
+    """Jetson の物体検出 1 件。box は画像に対する正規化座標 [x_min, y_min, x_max, y_max]。"""
+
+    label: str
+    prompt: str = ''
+    score: float
+    box: list[float]
+
+
+class JetsonDetectionsRequest(BaseModel):
+    """Jetson（NanoOWL など）から受け取るカメラ画像 1 枚分の検出結果。"""
+
+    detections: list[JetsonDetection] = []
+    model: str = ''
+    inference_ms: float | None = None
+
+
 def _jpeg_dimensions(data: bytes):
     """JPEG のフレームヘッダ（SOFn）から (幅, 高さ) を読む。取れなければ None。"""
     i = 2
@@ -166,6 +183,8 @@ class DashboardNode(Node):
         self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
         # 地図の保存先（空なら ~/maps）
         self.declare_parameter('map_save_dir', '')
+        # Jetson から POST /api/jetson/detections で受けた検出を流すトピック。空で無効
+        self.declare_parameter('jetson_detections_topic', '/jetson_detections')
 
         self.host = self.get_parameter('host').value
         self.port = int(self.get_parameter('port').value)
@@ -202,6 +221,9 @@ class DashboardNode(Node):
         self.cmd_vel_pub = self.create_publisher(
             Twist, self.get_parameter('cmd_vel_topic').value, 10)
         self.status_pub = self.create_publisher(String, '~/status', 10)
+        jetson_topic = self.get_parameter('jetson_detections_topic').value
+        self.jetson_pub = (self.create_publisher(String, jetson_topic, 10)
+                           if jetson_topic else None)
 
         self.create_subscription(
             LaserScan, self.get_parameter('scan_topic').value, self._scan_cb, sensor_qos)
@@ -599,6 +621,33 @@ class DashboardNode(Node):
             self.publish_cmd_vel(msg.linear.x, msg.linear.y, msg.angular.z)
 
     # --- 速度指令 ---
+    def publish_jetson_detections(self, req: JetsonDetectionsRequest):
+        """Jetson の検出結果を整えて jetson_detections_topic へ publish する。"""
+        if self.jetson_pub is None:
+            raise HTTPException(status_code=503, detail='jetson_detections_topic が無効です')
+        detections = []
+        for d in req.detections[:20]:
+            if len(d.box) != 4:
+                continue
+            x_min, y_min, x_max, y_max = (max(0.0, min(1.0, float(v))) for v in d.box)
+            if x_max <= x_min or y_max <= y_min:
+                continue
+            detections.append({
+                'label': d.label[:32],
+                'prompt': d.prompt[:64],
+                'score': round(float(d.score), 3),
+                'box': [round(x_min, 3), round(y_min, 3), round(x_max, 3), round(y_max, 3)],
+            })
+        msg = String()
+        msg.data = json.dumps({
+            'stamp': round(time.time(), 3),
+            'model': req.model[:64],
+            'inference_ms': req.inference_ms,
+            'detections': detections,
+        })
+        self.jetson_pub.publish(msg)
+        return {'ok': True, 'count': len(detections)}
+
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
         """正規化済み (-1.0〜1.0) の指令値を最大速度にスケールして publish する。"""
         twist = Twist()
@@ -778,6 +827,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/stop', dependencies=[Depends(require_token)])
     def stop():
         return node.stop()
+
+    @app.post('/api/jetson/detections', dependencies=[Depends(require_token)])
+    def jetson_detections(req: JetsonDetectionsRequest):
+        return node.publish_jetson_detections(req)
 
     @app.get('/api/drive_mode')
     def drive_mode():

@@ -144,6 +144,9 @@ class PerceptionNode(Node):
         self.declare_parameter('system_status_topic', '/system_status')
         self.declare_parameter('obstacle_topic', '/obstacle_status')
         self.declare_parameter('floor_topic', '/floor_obstacle_status')
+        # Jetson（NanoOWL）の物体検出。LiDAR の距離を付けて表示するだけで、level / speed_scale は変えない
+        self.declare_parameter('jetson_topic', '/jetson_detections')
+        self.declare_parameter('jetson_max_age', 2.0)
         self.declare_parameter('front_angle_deg', 60.0)
         self.declare_parameter('stop_distance', 0.35)
         self.declare_parameter('slow_distance', 0.8)
@@ -212,6 +215,8 @@ class PerceptionNode(Node):
         self._detector_note = ''
         self._floor = None
         self._floor_stamp = 0.0
+        self._jetson = None
+        self._jetson_stamp = 0.0
 
         self.status_pub = self.create_publisher(
             String, self.get_parameter('obstacle_topic').value, 10)
@@ -224,6 +229,9 @@ class PerceptionNode(Node):
             String, self.get_parameter('system_status_topic').value, self._system_cb, 10)
         self.create_subscription(
             String, self.get_parameter('floor_topic').value, self._floor_cb, 10)
+        jetson_topic = self.get_parameter('jetson_topic').value
+        if jetson_topic:
+            self.create_subscription(String, jetson_topic, self._jetson_cb, 10)
 
         self._detector = None
         self._detector_lock = threading.Lock()
@@ -271,6 +279,7 @@ class PerceptionNode(Node):
         self.floor_stop_distance = float(self.get_parameter('floor_stop_distance').value)
         self.floor_low_margin = float(self.get_parameter('floor_low_margin').value)
         self.floor_max_age = float(self.get_parameter('floor_max_age').value)
+        self.jetson_max_age = float(self.get_parameter('jetson_max_age').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
         self.hailo_temp_warn = float(self.get_parameter('hailo_temp_warn').value)
@@ -306,6 +315,7 @@ class PerceptionNode(Node):
             'floor_stop_distance': lambda v: setattr(self, 'floor_stop_distance', float(v)),
             'floor_low_margin': lambda v: setattr(self, 'floor_low_margin', float(v)),
             'floor_max_age': lambda v: setattr(self, 'floor_max_age', float(v)),
+            'jetson_max_age': lambda v: setattr(self, 'jetson_max_age', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
             'model_gops': lambda v: setattr(self, 'model_gops', float(v)),
@@ -380,6 +390,52 @@ class PerceptionNode(Node):
             with self._lock:
                 self._floor = data
                 self._floor_stamp = time.time()
+
+    def _jetson_cb(self, msg: String):
+        """Jetson の検出に、同じ方向の LiDAR の距離を付けて保持する。"""
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, dict):
+            return
+        detections = []
+        for d in data.get('detections') or []:
+            try:
+                x_min, y_min, x_max, y_max = (float(v) for v in d['box'])
+                label = str(d['label'])
+                score = float(d['score'])
+            except (KeyError, TypeError, ValueError):
+                continue
+            distance = self._distance_for_box(x_min, x_max)
+            detections.append({
+                'label': label,
+                'prompt': str(d.get('prompt', '')),
+                'score': round(score, 3),
+                'box': [round(x_min, 3), round(y_min, 3), round(x_max, 3), round(y_max, 3)],
+                'center_x': round((x_min + x_max) / 2.0, 3),
+                'distance': distance,
+            })
+        with self._lock:
+            self._jetson = {
+                'model': data.get('model', ''),
+                'inference_ms': data.get('inference_ms'),
+                'detections': detections,
+            }
+            self._jetson_stamp = time.time()
+
+    def _jetson_assessment(self, now):
+        with self._lock:
+            jetson = self._jetson
+            age = now - self._jetson_stamp if self._jetson_stamp else None
+        alive = jetson is not None and age is not None and age <= self.jetson_max_age
+        return {
+            'alive': alive,
+            'age': round(age, 2) if age is not None else None,
+            'model': jetson['model'] if jetson else '',
+            'inference_ms': jetson['inference_ms'] if jetson else None,
+            'detections': jetson['detections'] if alive else [],
+        }
 
     def _distance_for_box(self, x_min: float, x_max: float):
         """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
@@ -584,6 +640,7 @@ class PerceptionNode(Node):
             'front_labels': labels,
             'living': living,
             'floor': floor,
+            'jetson': self._jetson_assessment(now),
             'inference_ms': inference_ms,
             'inference_age': round(det_age, 2) if det_age is not None else None,
             'throughput': self._throughput(stamps, inference_ms, now),

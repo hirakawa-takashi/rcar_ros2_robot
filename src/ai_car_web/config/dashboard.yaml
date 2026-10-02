@@ -45,6 +45,8 @@ dashboard_node:
     slam_pose_topic: "/pose"
     slam_save_service: "/slam_toolbox/save_map"
     map_save_dir: "/home/super/AI-CAR_ws/maps"
+    # Jetson（jetson/owl_detector）から POST /api/jetson/detections で受けた物体検出を流すトピック
+    jetson_detections_topic: "/jetson_detections"
 
 drive_mode_node:
   ros__parameters:
@@ -222,6 +224,9 @@ perception_node:
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
+    # Jetson（jetson/owl_detector の NanoOWL）の物体検出。LiDAR の距離を付けて表示するだけ（速度は変えない）
+    jetson_topic: "/jetson_detections"
+    jetson_max_age: 2.0
     # 人・動物を見つけたら早めに減速・停止する。false の間は判定を表示するだけ（実機の準備ができたら true）
     living_guard: false
     living_labels: ["人", "犬", "猫", "鳥"]
