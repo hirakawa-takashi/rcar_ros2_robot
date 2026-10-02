@@ -21,9 +21,9 @@
   <xacro:property name="laser_y" value="0.008"/>
   <xacro:property name="laser_yaw_deg" value="-1.7"/>  <!-- 前方カメラの正面に合わせた LiDAR の向き（dashboard.yaml の scan_angle_offset_deg と同じ） -->
   <xacro:property name="laser_h" value="0.175"/>   <!-- 光の高さ（床から）。取付面 162 mm + ヘッド内の発光部（推定） -->
-  <xacro:property name="camera_x" value="0.103"/>  <!-- 2 眼カメラの左目のレンズの先: LiDAR から前 60 mm・左 30 mm -->
+  <xacro:property name="camera_x" value="0.122"/>  <!-- 2 眼カメラの左目のレンズの先: LiDAR から前 79 mm・左 30 mm -->
   <xacro:property name="camera_y" value="0.038"/>
-  <xacro:property name="camera_h" value="0.125"/>  <!-- レンズの高さ（床から） -->
+  <xacro:property name="camera_h" value="0.112"/>  <!-- レンズの高さ（床から） -->
   <xacro:property name="imu_x" value="0.045"/>     <!-- IMU の基板の中心: ふたの上、LiDAR のヘッドの下（天板の中心から前 45 mm・右 13 mm） -->
   <xacro:property name="imu_y" value="-0.013"/>
   <xacro:property name="imu_h" value="0.140"/>     <!-- 基板の高さ（床から） -->

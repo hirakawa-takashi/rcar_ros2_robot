@@ -82,7 +82,7 @@ print3d:
       orient: 板を下
       holds:
         - RPLIDAR A1M8（柱 4 本、ふたの裏から M2.5 × 8 ×4）
-        - USB 2 眼カメラ（基板 80 × 17 mm、前端・LiDAR のモーターの下。基板の左右の端 3 mm を受けと押さえ（cam_cap）ではさむ。ねじ穴は使わない）
+        - 2 眼カメラの板（cam_mount）を留める前端の柱 2 本（M3 の下穴）
         - 加速度センサー（GY-BNO055、12 × 20 mm、ピン下向き。LiDAR のヘッドの下、右寄り。四方を壁で囲んだ高さ 25 mm の台の受けに両面テープ）
         - カメラの USB ケーブル（ふたの上の結束バンド用ブリッジ 2 か所）
         - 上のバッテリーの残量表示の窓（15 × 14 mm）
@@ -99,13 +99,16 @@ print3d:
         - Raspberry Pi 5 + AI HAT+ + Motor HAT（3 段 45 mm、M2.5 ×4）
         - 後ろ左の腕の底に、モーター取付ネジのくぼみ（29 × 29 × 3.5 mm）
       mount: 天板の後ろ側 4 穴に、今のネジより 3 mm 長いネジで留める
-    - id: cam_cap
-      label: 2 眼カメラの押さえ（左右 2 個）
-      file: cam_cap.stl
+    - id: cam_mount
+      label: 2 眼カメラの板
+      file: cam_mount.stl
       qty: 1
       color: '#f4f4f4'
       material: PLA / PETG
-      orient: 板を下（STL の向きのまま。左右 2 個が 1 つのファイルに入っている）
+      orient: 裏を下（STL の向きのまま）
+      holds:
+        - USB 2 眼カメラ（基板 80 × 17 mm、USB 端子を上。四隅の穴に前から M2 × 6 ×4）
+      mount: 裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 ×2
       holds:
         - 2 眼カメラの基板の上の端を、左右の端 3 mm だけ前から押さえる
       mount: ふたの前端のカメラの受けの上に M3 × 10 mm ×2（左右 1 本ずつ）
@@ -164,13 +167,13 @@ print3d:
       color: '#2f3440'
   assembly_views:
     - label: 組み立て図
-      note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 4 種類・5 個の部品を組み立てた位置で表示。天板の下に、車輪・モーター・モーターの台（購入品、OSOYOO の図面の寸法）も参考に表示（バッテリー・Pi・センサーなどほかの購入品は表示しない）
+      note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 5 種類・6 個の部品を組み立てた位置で表示。天板の下に、車輪・モーター・モーターの台（購入品、OSOYOO の図面の寸法）も参考に表示（バッテリー・Pi・センサーなどほかの購入品は表示しない）
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
         - {part: box}
         - {part: lid, translate: [0, 0, 38.4]}
         - {part: pi_base}
-        - {part: cam_cap, rotate_x: 180, translate: [0, 376.4, 64.6]}
+        - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
         - {part: wheels}
@@ -183,7 +186,7 @@ print3d:
         - {part: box}
         - {part: lid, translate: [0, 0, 38.4]}
         - {part: pi_base}
-        - {part: cam_cap, rotate_x: 180, translate: [0, 376.4, 64.6]}
+        - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
         - {part: wheels}
@@ -197,7 +200,7 @@ print3d:
         - {part: box}
         - {part: lid, translate: [0, 0, 38.4]}
         - {part: pi_base}
-        - {part: cam_cap, rotate_x: 180, translate: [0, 376.4, 64.6]}
+        - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
         - {part: wheels}
@@ -228,7 +231,7 @@ print3d:
     - LiDAR をふたの柱に載せ、ふたの裏から M2.5 × 8 mm のネジ 4 本で留める（ふたを箱に付ける前に行う）
     - DROK を部品面を Pi 側に向けて箱の後ろの棚に立て、中央のリブの穴に結束バンドを通して締める（ふたを付ける前のほうが通しやすい）
     - ふたを M3 × 12 mm のネジ 4 本で箱のボスに留める
-    - 2 眼カメラを上下逆さま（ソフトで 180° 回す）で、ふたの前端の左右の受けの間に上から入れ、基板の左右の端を後ろの受けと下の前の縁の間に落とし込む。上から押さえ（cam_cap）を M3 × 10 mm で左右 1 本ずつ留める。USB ケーブルは基板の裏から下ろし、ふたの上の結束バンド用ブリッジ（前の右、後ろ端の中央）で LiDAR の線と一緒に留めて Pi の USB へ
+    - 2 眼カメラを USB 端子を上にして、板（cam_mount）の支柱に前から M2 × 6 mm で 4 本留める。板の裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 mm で留める。L 字の USB-C プラグを上から差して後ろへ曲げ、ケーブルを LiDAR の前の柱の間からふたの上の結束バンド用ブリッジ（前の右、後ろ端の中央）で LiDAR の線と一緒に留めて Pi の USB へ。dashboard.yaml の rotate_180 を false にする
     - Pi 5 に付けた M2.5 の六角支柱 4 本をラズパイ台のボスの丸い穴に 5 mm 差し込み、台の裏から M2.5 × 6 mm のネジで留める（台を天板に付ける前に行う）。ラズパイ台を天板の後ろ側 4 穴に長いネジで留める
     - IMU はピン下向き・ピンヘッダーの長辺を右にして、ジャンパー線を差したまま、ピンヘッダーの列を台の右の外に出して右から斜めに入れ、左（-X）の縁を奥の壁の出っ張りの下に差し込んでから 3 辺の段に載せる（右の縁が浮く場合はテープかホットボンドで留める）。台はふたの上、LiDAR のヘッドの下にあるので、LiDAR を付ける前に入れると楽
     - VL53L1X をバンパーの受けに入れ、バンパーを前後に重ねて共締めする
