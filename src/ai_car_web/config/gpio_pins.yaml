@@ -87,7 +87,7 @@ connections:
 
   # --- 落下防止センサー Dovhmoh VL53L1X ×2（I2C 0x30 前 / 0x31 後）。未配線・配線色は未定（color は空欄）
   #     初期アドレス 0x29 は BNO055 と同じ。XSHUT を GPIO で 1 台ずつ上げ、cliff_node が起動時に変更する。
-  #     3V3 は IMU（pin 1）・液晶（pin 17）と分岐して使う ---
+  #     前の 3V3（pin 1）は IMU と分岐して使う ---
   - pins: [1]
     device: VL53L1X 前
     signal: VIN 3V3
@@ -117,7 +117,7 @@ connections:
     device: VL53L1X 後
     signal: VIN 3V3
     color: ''
-    note: 未配線・配線色未定（液晶と分岐）
+    note: 未配線・配線色未定
   - pins: [25]
     device: VL53L1X 後
     signal: GND
@@ -148,37 +148,3 @@ connections:
     device: AI HAT+
     signal: ID_SC (HAT EEPROM)
     color: PIN
-
-  # --- ZJY-IPS130-V2.0 1.3インチ 240x240 IPS 液晶（ST7789、SPI0、7 ピン CS なし）
-  #     旧 TM1637 7セグ（pin 17/20/16/18）を置き換え ---
-  - pins: [17]
-    device: ZJY-IPS130 液晶
-    signal: VCC 3V3
-    color: 赤
-  - pins: [20]
-    device: ZJY-IPS130 液晶
-    signal: GND
-    color: 黒
-  - pins: [23]
-    device: ZJY-IPS130 液晶
-    signal: SCL (GPIO11 SPI0 SCLK)
-    color: 橙
-  - pins: [19]
-    device: ZJY-IPS130 液晶
-    signal: SDA (GPIO10 SPI0 MOSI)
-    color: 黄
-  - pins: [18]
-    device: ZJY-IPS130 液晶
-    signal: RES (GPIO24)
-    color: 緑
-    note: libgpiod 出力（gpiochip4 pinctrl-rp1）
-  - pins: [22]
-    device: ZJY-IPS130 液晶
-    signal: DC (GPIO25)
-    color: 青
-    note: libgpiod 出力（gpiochip4 pinctrl-rp1）
-  - pins: [16]
-    device: ZJY-IPS130 液晶
-    signal: BLK (GPIO23)
-    color: 紫
-    note: バックライト。libgpiod 出力（gpiochip4 pinctrl-rp1）

@@ -83,33 +83,6 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 - AI HAT+ の電力は取得できない。`hailortcli measure-power` は `HAILO_UNSUPPORTED_OPCODE`（ボードに電流監視 DVM 非搭載）、`query_health_stats()` / `query_performance_stats()` は HAILO8 アーキテクチャ非対応。`hatctl` は Raspberry Pi OS / 他ベンダ向けで Ubuntu には存在せず、Hailo 専用の hwmon デバイスも無い。PMIC にも HAT 専用レールはなく（AI HAT+ は PCIe コネクタの 5V から給電）、単体の消費電力を測るには INA219/INA3221 などの外付け I2C 電流センサを配線に挿入する必要がある。
 - ダッシュボードの AI HAT+ カードは温度（横バーグラフ）・状態・デバイス情報（アーキテクチャ / FW / ドライバ / PCIe アドレス）を表示する（NPU 使用率と消費電力は表示しない）。
 
-## ZJY-IPS130-V2.0 液晶（ST7789）のセットアップ
-
-`lcd_display_node` は 1.3 インチ 240×240 IPS 液晶（ST7789、SPI、7 ピン CS なし）に
-運転モード・障害物状態・前方距離・入力電圧・CPU 温度・ゲームパッド接続・IP アドレスを描画し、
-`/display_state`（`std_msgs/String`）へ 7 セグと同じ状態コードを publish する。
-
-| ZJY-IPS130 | Raspberry Pi 5 |
-|------------|----------------|
-| VCC | 17（3V3） |
-| GND | 20（GND） |
-| SCL | 23（GPIO11 SPI0 SCLK） |
-| SDA | 19（GPIO10 SPI0 MOSI） |
-| RES | 18（GPIO24） |
-| DC | 22（GPIO25） |
-| BLK | 16（GPIO23） |
-
-```bash
-# /boot/firmware/config.txt に dtparam=spi=on があること（/dev/spidev0.0）
-sudo apt install python3-libgpiod python3-spidev python3-pil fonts-ipafont-gothic
-sudo usermod -aG spi,gpio super   # グループが無ければ udev で /dev/spidev0.0 を 0666 に
-# 再ログイン、またはサービスを再起動
-```
-
-`dashboard.launch.py` の `use_lcd_display:=true` で起動する（2026/10 に液晶を外したので既定は `false`）。旧 TM1637 は
-`use_seg_display`（既定 `false`）で切り替えるが、GPIO23/24 を共用するため同時起動はしない。
-表示が上下反転・鏡像の場合は `dashboard.yaml` の `lcd_display_node.rotation` を 90 / 180 / 270 に変更する。
-
 ## TM1637 4桁7セグメントLED のセットアップ（旧表示器）
 
 `seg_display_node` は TM1637 モジュールを bit-bang 駆動し、`/display_state`
@@ -171,7 +144,7 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 
 | 信号 | 前（0x30） | 後（0x31） |
 | --- | --- | --- |
-| VIN 3V3 | pin 1（IMU と分岐） | pin 17（液晶と分岐） |
+| VIN 3V3 | pin 1（IMU と分岐） | pin 17 |
 | GND | pin 14 | pin 25 |
 | SDA / SCL | pin 3 / 5（I2C バス 1 共有） | pin 3 / 5 |
 | XSHUT | pin 11（GPIO17） | pin 13（GPIO27） |
@@ -279,7 +252,7 @@ pip3 install --user --break-system-packages "websockets>=13"
 映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 960` /
 `height: 540` / `jpeg_quality: 80`（`FrameDurationLimits` により約 30fps。以前の 1280×720 は camera_node の CPU が約 50% になるため縮小）、`dashboard_node.camera_stream_rate: 30.0`、
 `perception_node.inference_rate: 15.0`、`dashboard_node.telemetry_rate: 10.0`、`dashboard_node.scan_max_points: 720`、
-`autonomy_node.publish_rate: 10.0`、`joy_teleop_node.publish_rate: 10.0`、`imu_node.publish_rate: 20.0`、`lcd_display_node.update_rate: 2.0` に設定している。
+`autonomy_node.publish_rate: 10.0`、`joy_teleop_node.publish_rate: 10.0`、`imu_node.publish_rate: 20.0` に設定している。
 帯域や CPU が厳しい場合は解像度か `jpeg_quality` を下げる。
 
 ## ドキュメント
