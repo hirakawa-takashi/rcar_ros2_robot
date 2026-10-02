@@ -1,0 +1,20 @@
+[Unit]
+Description=AI-CAR camera object detection with NanoOWL (Jetson)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/jetson-owl.env
+ExecStartPre=-/usr/bin/docker rm -f jetson-owl
+ExecStart=/usr/bin/docker run --rm --name jetson-owl --runtime nvidia --network host \
+  -e AI_CAR_URL -e AI_CAR_API_TOKEN \
+  -v /home/jetson/owl_detector:/owl_detector:ro \
+  -v /home/jetson/owl/hf:/root/.cache/huggingface \
+  dustynv/nanoowl:r36.3.0 python3 -u /owl_detector/owl_detector.py
+ExecStop=/usr/bin/docker stop -t 5 jetson-owl
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

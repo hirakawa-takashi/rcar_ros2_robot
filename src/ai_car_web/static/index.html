@@ -340,6 +340,7 @@
       <tr><td class="k">障害物</td><td class="v" id="o_level">-</td></tr>
       <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
+      <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
       <tr><td class="k">低い障害物</td><td class="v" id="o_floor" title="-">-</td></tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
@@ -894,6 +895,20 @@ function renderObstacle(o) {
     livingCell.title = `減速 ${fmt(lv.slow_distance)} m / 停止 ${fmt(lv.stop_distance)} m` +
       (lv.enabled ? '' : '。living_guard が false なので速度制限には使わない');
   }
+  const jt = o.jetson;
+  const jetsonCell = document.getElementById('o_jetson');
+  if (!jt || !jt.alive) {
+    jetsonCell.textContent = '未接続';
+    jetsonCell.title = jt && jt.age != null ? `最後の受信から ${fmt(jt.age, 1)} s` : '/jetson_detections 未受信';
+  } else {
+    const items = (jt.detections || []).map((d) =>
+      d.distance != null ? `${d.label} ${fmt(d.distance)} m` : `${d.label} 距離不明`);
+    jetsonCell.textContent = items.length
+      ? items[0] + (items.length > 1 ? ` 他${items.length - 1}` : '')
+      : 'なし';
+    jetsonCell.title = `${items.join(', ') || 'なし'}（${jt.model || 'Jetson'}、` +
+      `${fmt(jt.inference_ms, 1)} ms、表示のみ）`;
+  }
   const fl = o.floor;
   const floorCell = document.getElementById('o_floor');
   if (!fl) {
@@ -1065,7 +1080,7 @@ function renderJoy(j) {
   el.textContent = j.active ? '操作中' : '接続中';
 }
 
-// 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑）。
+// 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑。Jetson の検出は水色）。
 function drawDetections(o) {
   const canvas = document.getElementById('cam_overlay');
   const ctx = canvas.getContext('2d');
@@ -1084,6 +1099,22 @@ function drawDetections(o) {
     const tw = ctx.measureText(text).width + 16;
     const ty = Math.max(0, y1 * h - 40);
     ctx.fillStyle = near ? '#e04b4b' : '#5cb85c';
+    ctx.fillRect(x1 * w, ty, tw, 40);
+    ctx.fillStyle = '#0e1116';
+    ctx.fillText(text, x1 * w + 8, ty + 30);
+  }
+  const jt = o && o.jetson;
+  for (const d of (jt && jt.alive && jt.detections) || []) {
+    const [x1, y1, x2, y2] = d.box;
+    ctx.strokeStyle = '#3fb8f0';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
+    const text = d.distance != null
+      ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
+    ctx.font = 'bold 32px sans-serif';
+    const tw = ctx.measureText(text).width + 16;
+    const ty = Math.min(h - 40, Math.max(0, y1 * h));
+    ctx.fillStyle = '#3fb8f0';
     ctx.fillRect(x1 * w, ty, tw, 40);
     ctx.fillStyle = '#0e1116';
     ctx.fillText(text, x1 * w + 8, ty + 30);
