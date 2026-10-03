@@ -1535,7 +1535,7 @@ function renderOverview(a) {
     `<h3>マイルストーン</h3><ul>${milestones}</ul><h3>技術スタック</h3>` +
     aboutTable(['名称', '役割'], (o.stack || []).map(x => [esc(x.name), esc(x.role)]));
 }
-function renderSystem(a) {
+function renderSystemDiagram(a) {
   const s = a.system || {}, devices = s.devices || [], links = s.links || [];
   const big = {w: 290, h: 215}, small = {w: 230, h: 58};
   const layout = {
@@ -2357,7 +2357,7 @@ function renderPrint3d(a) {
     `<h3>組み立て手順</h3>${steps}<h3>組み立て図・配線経路</h3><div class="p3dgallery">${gallery}</div>` +
     `<h3>実物で確かめていないこと</h3>${aboutList(p.unverified)}`;
 }
-const ABOUT_RENDERS = {overview: renderOverview, system: renderSystem, hardware: renderHardware, print3d: renderPrint3d, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
+const ABOUT_RENDERS = {overview: renderOverview, system: renderSystemDiagram, hardware: renderHardware, print3d: renderPrint3d, software: renderNodes, modes: renderDrive, autonomy: renderAboutAutonomy, api: renderApi, status: renderStatus};
 function wiringCardsHtml() {
   return ['gpio_svg', 'motor_svg'].map(id => document.getElementById(id)?.closest('.card')?.outerHTML || '').join('');
 }
