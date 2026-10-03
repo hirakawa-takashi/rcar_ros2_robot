@@ -36,7 +36,7 @@ system:
   summary:
     - AI-CAR（Raspberry Pi 5）・Jetson Orin Nano Super・M5 スタックちゃんの 3 台を、家の Wi-Fi と Tailscale でつなぐ。クラウドを使わず、家の中で動かす
     - AI-CAR は走る・測る・止まるを受け持つ。安全の判定（LiDAR・AI HAT+ の YOLO・段差）は AI-CAR の中だけで行い、ほかの機械が止まっても安全に止まる
-    - Jetson は重い AI（言葉で物を探す NanoOWL、これから会話の AI）を受け持つ。結果は表示と命令だけで、AI-CAR の安全の判定は変えない
+    - Jetson は重い AI（声→文字・会話・文字→声、言葉で物を探す NanoOWL）を受け持つ。結果は表示と命令だけで、AI-CAR の安全の判定は変えない
     - M5 スタックちゃんは顔・耳・口（画面・マイク・スピーカー・首振り）。考えるのは Jetson で行う（準備中）
   network: 家の Wi-Fi と Tailscale（AI-CAR 100.70.35.31、Jetson 100.111.231.54）。AI-CAR のダッシュボードは 8080 番
   devices:
@@ -55,9 +55,10 @@ system:
       sub: JetPack 6.2 / メモリ 8GB / 25W
       state: done
       items:
-        - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service、稼働中）
-        - Ollama（llama3.2:3b）は入れてある（まだつないでいない）
-        - これから：音声認識・会話・音声合成
+        - 声→文字（whisper-server、whisper.cpp small・GPU）・会話（Ollama の qwen2.5:3b）・文字→声（Kokoro・GPU）。まだ AI-CAR・スタックちゃんにはつないでいない
+        - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
+        - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 5 秒ごとに AI-CAR へ送る（jetson-status.service）
+        - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
     - id: stackchan
       label: M5 スタックちゃん
       sub: M5Stack CoreS3（準備中）
@@ -74,6 +75,7 @@ system:
     - {from: jetson, to: ai_car, short: 命令（予定）, desc: 声の命令（「前に進んで」「止まって」）を速度の指令にする。AI-CAR の安全ガードはそのまま効く, via: 'POST /api/cmd_vel・/api/stop（API トークン）', state: planned}
     - {from: stackchan, to: jetson, short: 声・映像（予定）, desc: マイクの声とカメラの映像, via: WebSocket（xiaozhi-esp32-server）, state: planned}
     - {from: jetson, to: stackchan, short: 返事（予定）, desc: 返事の声・顔の表情・首の向き, via: WebSocket（xiaozhi-esp32-server）, state: planned}
+    - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（15 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
     - {from: person, to: stackchan, short: 話す, desc: 声で話しかけ、返事を聞く, via: 声, state: planned, both: true}
 
@@ -567,7 +569,7 @@ autonomy:
 api:
   rest:
     - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
-    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / joy）, auth: false}
+    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam / jetson_host / joy）, auth: false}
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーの配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
@@ -577,6 +579,8 @@ api:
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
     - {method: POST, path: /api/stop, desc: 全モード停止（ゼロ速度 + stop モード要求）, auth: true}
     - {method: POST, path: /api/drive_mode, desc: 'モード切替 {mode: manual|auto|stop}', auth: true}
+    - {method: POST, path: /api/jetson/detections, desc: Jetson（NanoOWL）の物体検出 → /jetson_detections, auth: true}
+    - {method: POST, path: /api/jetson/status, desc: Jetson の状態（温度・メモリ・電力・AI の部品・更新）。/api/status の jetson_host に出す, auth: true}
     - {method: GET, path: /api/camera/snapshot, desc: JPEG 1 枚, auth: false}
     - {method: GET, path: /api/camera/stream, desc: MJPEG ストリーム, auth: false}
     - {method: WS, path: /ws, desc: テレメトリ配信（telemetry_rate Hz）。未導入環境は /api/status ポーリングにフォールバック, auth: false}

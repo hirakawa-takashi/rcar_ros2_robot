@@ -76,6 +76,41 @@ class JetsonDetectionsRequest(BaseModel):
     inference_ms: float | None = None
 
 
+class JetsonStatusRequest(BaseModel):
+    """Jetson（jetson/status_reporter）から受け取る温度・使用率・メモリ・電力・AI の部品・更新の状況。"""
+
+    hostname: str = ''
+    os: str = ''
+    l4t: str = ''
+    power_mode: str = ''
+    uptime_s: float | None = None
+    cpu_percent: float | None = None
+    cpu_freq_mhz: float | None = None
+    gpu_percent: float | None = None
+    gpu_freq_mhz: float | None = None
+    temperatures_c: dict[str, float] = {}
+    mem_total_mb: float | None = None
+    mem_used_mb: float | None = None
+    mem_available_mb: float | None = None
+    swap_total_mb: float | None = None
+    swap_used_mb: float | None = None
+    input_volt: float | None = None
+    power_w: float | None = None
+    fan_percent: float | None = None
+    fan_rpm: float | None = None
+    disk_total_gb: float | None = None
+    disk_used_gb: float | None = None
+    services: dict[str, bool] = {}
+    llm_models: list[str] = []
+    updates_pending: int | None = None
+    security_pending: int | None = None
+    reboot_required: bool | None = None
+    last_upgrade: float | None = None
+
+
+JETSON_STATUS_TIMEOUT = 15.0
+
+
 def _jpeg_dimensions(data: bytes):
     """JPEG のフレームヘッダ（SOFn）から (幅, 高さ) を読む。取れなければ None。"""
     i = 2
@@ -293,6 +328,8 @@ class DashboardNode(Node):
         self._autonomy_stamp = 0.0
         self._cliff = None
         self._cliff_stamp = 0.0
+        self._jetson_host = None
+        self._jetson_host_stamp = 0.0
         self._map = None
         self._map_png = None
         self._map_stamp = 0.0
@@ -648,6 +685,30 @@ class DashboardNode(Node):
         self.jetson_pub.publish(msg)
         return {'ok': True, 'count': len(detections)}
 
+    def update_jetson_status(self, req: JetsonStatusRequest):
+        """Jetson の状態を、文字の長さと項目の数を絞ってから覚える。"""
+        status = req.model_dump()
+        for key in ('hostname', 'os', 'l4t', 'power_mode'):
+            status[key] = status[key][:64]
+        status['temperatures_c'] = {k[:16]: round(v, 1)
+                                    for k, v in list(req.temperatures_c.items())[:8]}
+        status['services'] = {k[:16]: v for k, v in list(req.services.items())[:8]}
+        status['llm_models'] = [m[:64] for m in req.llm_models[:4]]
+        with self._lock:
+            self._jetson_host = status
+            self._jetson_host_stamp = self.get_clock().now().nanoseconds * 1e-9
+        return {'ok': True}
+
+    def _jetson_host_state(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._jetson_host is None:
+            return None
+        age = now - self._jetson_host_stamp
+        state = dict(self._jetson_host)
+        state['alive'] = age < JETSON_STATUS_TIMEOUT
+        state['age_s'] = round(age, 1)
+        return state
+
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
         """正規化済み (-1.0〜1.0) の指令値を最大速度にスケールして publish する。"""
         twist = Twist()
@@ -721,6 +782,7 @@ class DashboardNode(Node):
                 'autonomy': self._autonomy_state(),
                 'cliff': self._cliff_state(),
                 'slam': self._slam_state(),
+                'jetson_host': self._jetson_host_state(),
                 'joy': {
                     'connected': (self.get_clock().now().nanoseconds * 1e-9
                                   - self._joy_stamp) < self.joy_timeout,
@@ -831,6 +893,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/jetson/detections', dependencies=[Depends(require_token)])
     def jetson_detections(req: JetsonDetectionsRequest):
         return node.publish_jetson_detections(req)
+
+    @app.post('/api/jetson/status', dependencies=[Depends(require_token)])
+    def jetson_status(req: JetsonStatusRequest):
+        return node.update_jetson_status(req)
 
     @app.get('/api/drive_mode')
     def drive_mode():
