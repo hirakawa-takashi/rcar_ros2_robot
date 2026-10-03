@@ -243,6 +243,8 @@
     box-shadow: 0 3px 0 #0a1425, 0 6px 14px rgba(0, 0, 0, .4); transition: transform .08s, box-shadow .08s, filter .15s;
   }
   button:hover { filter: brightness(1.12); }
+  button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
+  button.reboot:disabled { opacity: .4; }
   button:active { background: #16284a; transform: translateY(2px); box-shadow: 0 1px 0 #0a1425, 0 2px 6px rgba(0, 0, 0, .4); }
   button.joy-on { background: linear-gradient(180deg, #1e7a56, #145a3f); border-color: var(--ok); box-shadow: 0 3px 0 #0a1425, 0 0 12px rgba(53, 227, 154, .35); }
   button.stop { background: linear-gradient(180deg, #8a2534, #5c1622); border-color: var(--crit);
@@ -387,6 +389,8 @@
       <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
       <tr><td class="k">電源状態</td><td class="v" id="pwr_state">-</td></tr>
       <tr><td class="k">PD対応（5A）</td><td class="v" id="pwr_pd">-</td></tr>
+      <tr><td class="k">IP アドレス</td><td class="v wrap" id="pi_ips">-</td></tr>
+      <tr><td class="k">再起動</td><td class="v"><button class="reboot" id="pi_reboot_btn">ラズパイを再起動</button> <span id="pi_reboot_msg"></span></td></tr>
     </table>
   </div>
 
@@ -547,6 +551,8 @@
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
           <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
+          <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
+          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
         </table>
       </div>
     </div>
@@ -770,8 +776,33 @@ function renderThrottled(t) {
     : '<span class="badge ok">正常</span>';
 }
 
+function ipLabel(iface) {
+  if (iface.startsWith('tailscale')) return 'Tailscale';
+  if (iface.startsWith('wl')) return 'Wi-Fi';
+  if (iface.startsWith('eth') || iface.startsWith('en')) return '有線';
+  return iface;
+}
+function renderIps(el, ips) {
+  const order = ip => (ip.iface || '').startsWith('tailscale') ? 0 : 1;
+  el.innerHTML = ips && ips.length
+    ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `${esc(ip.addr)}（${esc(ipLabel(ip.iface || ''))}）`).join('<br>') : '-';
+}
+function rebootButton(btnId, msgId, name, path) {
+  document.getElementById(btnId).addEventListener('click', () => {
+    if (!confirm(`${name}を再起動しますか？\n戻るまで 1〜2 分かかります。`)) return;
+    const msg = document.getElementById(msgId);
+    msg.textContent = '送っています…';
+    apiPost(path).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+      msg.textContent = ok ? '再起動します（1〜2 分）' : (j.detail || '送れませんでした');
+    }).catch(() => { msg.textContent = '送れませんでした'; });
+  });
+}
+rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot');
+rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot');
+
 function renderSystem(s) {
   if (!s) return;
+  renderIps(document.getElementById('pi_ips'), s.ips);
   const c = s.cpu || {};
   document.getElementById('cpu_pct').textContent = fmt(c.percent, 1) + ' %';
   setBar(document.getElementById('cpu_bar'), c.percent);
@@ -1145,6 +1176,8 @@ function renderJetsonHost(j) {
   byId('jt_disk').textContent = v.disk_total_gb == null ? '-' : `${fmt(v.disk_used_gb, 0)} / ${fmt(v.disk_total_gb, 0)}`;
   byId('jt_l4t').textContent = v.l4t || '-';
   byId('jt_l4t').title = v.os || '';
+  renderIps(byId('jt_ips'), v.ips);
+  byId('jt_reboot_btn').disabled = !alive;
 }
 
 function render(d) {

@@ -1,0 +1,2 @@
+# ダッシュボードの「再起動」ボタン用: ai-car-dashboard.service（ユーザー super）がパスワードなしで再起動だけできる
+super ALL=(root) NOPASSWD: /usr/bin/systemctl reboot
