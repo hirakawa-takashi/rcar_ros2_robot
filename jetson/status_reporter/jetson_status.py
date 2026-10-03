@@ -18,6 +18,8 @@ import urllib.request
 
 GPU_DIR = '/sys/devices/platform/bus@0/17000000.gpu'
 THERMAL_NAMES = {'cpu-thermal': 'cpu', 'gpu-thermal': 'gpu', 'tj-thermal': 'tj'}
+IP_SKIP = ('lo', 'docker', 'br-', 'veth', 'l4tbr')
+REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 SERVICES = {'whisper': 'whisper-server', 'ollama': 'ollama', 'nanoowl': 'jetson-owl'}
 
 
@@ -172,7 +174,7 @@ class SlowFacts:
             time.sleep(self.interval)
 
     def refresh(self):
-        facts = {'power_mode': self._power_mode()}
+        facts = {'power_mode': self._power_mode(), 'can_reboot': can_reboot()}
         facts['updates_pending'], facts['security_pending'] = self._apt_check()
         with self.lock:
             self.facts = facts
@@ -201,6 +203,41 @@ class SlowFacts:
     def get(self):
         with self.lock:
             return dict(self.facts)
+
+
+def ip_addresses():
+    """IPv4 アドレスを [{'iface': ..., 'addr': ...}] で返す（lo・Docker・USB の l4tbr0 は除く）。"""
+    try:
+        out = subprocess.run(['ip', '-4', '-o', 'addr', 'show'], capture_output=True,
+                             text=True, timeout=3, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    ips = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[2] == 'inet' and not parts[1].startswith(IP_SKIP):
+            ips.append({'iface': parts[1], 'addr': parts[3].split('/')[0]})
+    return ips
+
+
+_ips_cache = {'stamp': 0.0, 'ips': []}
+
+
+def ip_addresses_cached(max_age=30.0):
+    now = time.monotonic()
+    if not _ips_cache['stamp'] or now - _ips_cache['stamp'] >= max_age:
+        _ips_cache['ips'] = ip_addresses()
+        _ips_cache['stamp'] = now
+    return _ips_cache['ips']
+
+
+def can_reboot():
+    """sudoers（jetson-reboot.sudoers）でパスワードなしに再起動できるか。"""
+    try:
+        return subprocess.run(['sudo', '-n', '-l', *REBOOT_CMD[2:]], capture_output=True,
+                              timeout=5, check=False).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def last_upgrade():
@@ -242,11 +279,19 @@ def collect(prev_cpu, slow):
         'services': services(),
         'reboot_required': os.path.exists('/var/run/reboot-required'),
         'last_upgrade': last_upgrade(),
+        'ips': ip_addresses_cached(),
     }
     status.update(memory())
     status.update(ollama_models())
     status.update(slow.get())
     return status, (total, idle)
+
+
+def wants_reboot(reply):
+    try:
+        return json.loads(reply).get('reboot') is True
+    except (ValueError, AttributeError):
+        return False
 
 
 def main():
@@ -279,11 +324,14 @@ def main():
             headers={'Content-Type': 'application/json', 'X-API-Token': token})
         try:
             with urllib.request.urlopen(req, timeout=3.0) as res:
-                res.read()
+                reply = res.read()
             if failing:
                 print('送れるようになりました', flush=True)
             failing = False
-        except (urllib.error.URLError, OSError) as e:
+            if wants_reboot(reply):
+                print('ダッシュボードから再起動を頼まれたので再起動します', flush=True)
+                subprocess.run(REBOOT_CMD, timeout=30, check=False)
+        except (urllib.error.URLError, OSError, subprocess.TimeoutExpired) as e:
             if not failing:
                 print(f'送れません: {e}', file=sys.stderr, flush=True)
             failing = True

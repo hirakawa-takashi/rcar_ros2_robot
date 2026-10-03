@@ -11,6 +11,7 @@ import json
 import math
 import os
 import struct
+import subprocess
 import threading
 import time
 import zlib
@@ -108,9 +109,13 @@ class JetsonStatusRequest(BaseModel):
     security_pending: int | None = None
     reboot_required: bool | None = None
     last_upgrade: float | None = None
+    ips: list[dict[str, str]] = []
+    can_reboot: bool | None = None
 
 
 JETSON_STATUS_TIMEOUT = 5.0
+JETSON_REBOOT_WINDOW = 10.0
+REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 
 
 def _jpeg_dimensions(data: bytes):
@@ -332,6 +337,7 @@ class DashboardNode(Node):
         self._cliff_stamp = 0.0
         self._jetson_host = None
         self._jetson_host_stamp = 0.0
+        self._jetson_reboot_at = None
         self._map = None
         self._map_png = None
         self._map_stamp = 0.0
@@ -696,9 +702,58 @@ class DashboardNode(Node):
                                     for k, v in list(req.temperatures_c.items())[:8]}
         status['services'] = {k[:16]: v for k, v in list(req.services.items())[:8]}
         status['llm_models'] = [m[:64] for m in req.llm_models[:4]]
+        status['ips'] = [{'iface': str(ip.get('iface', ''))[:16], 'addr': str(ip.get('addr', ''))[:64]}
+                         for ip in req.ips[:8]]
+        now = self.get_clock().now().nanoseconds * 1e-9
         with self._lock:
             self._jetson_host = status
-            self._jetson_host_stamp = self.get_clock().now().nanoseconds * 1e-9
+            self._jetson_host_stamp = now
+            reboot = (self._jetson_reboot_at is not None
+                      and now - self._jetson_reboot_at < JETSON_REBOOT_WINDOW)
+            self._jetson_reboot_at = None
+        if reboot:
+            self.get_logger().warn('Jetson に再起動を伝えました')
+        return {'ok': True, 'reboot': reboot}
+
+    def request_jetson_reboot(self):
+        """次に Jetson から状態が届いたときの返事で、再起動を頼む。"""
+        with self._lock:
+            state = self._jetson_host_state()
+            if not state or not state['alive']:
+                raise HTTPException(status_code=409, detail='Jetson が未接続です')
+            if not state.get('can_reboot'):
+                raise HTTPException(
+                    status_code=503,
+                    detail='Jetson に jetson-reboot.sudoers が入っていません')
+            self._jetson_reboot_at = self.get_clock().now().nanoseconds * 1e-9
+        self.get_logger().warn('ダッシュボードから Jetson の再起動を受け付けました')
+        return {'ok': True}
+
+    def _moving(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        with self._lock:
+            web = self._cmd_active and (abs(self._last_cmd.linear.x) > 0.0
+                                        or abs(self._last_cmd.linear.y) > 0.0
+                                        or abs(self._last_cmd.angular.z) > 0.0)
+            mode = self._drive_mode if now - self._drive_mode_stamp < 3.0 else None
+            return web or self._joy_moving or bool(mode and mode.get('mode') == 'auto')
+
+    def reboot_pi(self):
+        """止まっているときだけ、ラズパイを再起動する（2 秒後。返事を先に返す）。"""
+        if self._moving():
+            raise HTTPException(status_code=409, detail='走行中は再起動できません（先に止めてください）')
+        try:
+            allowed = subprocess.run(['sudo', '-n', '-l', *REBOOT_CMD[2:]], capture_output=True,
+                                     timeout=5, check=False).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            allowed = False
+        if not allowed:
+            raise HTTPException(status_code=503,
+                                detail='ラズパイに ai-car-reboot.sudoers が入っていません')
+        self.stop()
+        self.get_logger().warn('ダッシュボードからラズパイの再起動を受け付けました（2 秒後）')
+        threading.Timer(2.0, subprocess.run, args=(REBOOT_CMD,),
+                        kwargs={'timeout': 30, 'check': False}).start()
         return {'ok': True}
 
     def _jetson_host_state(self):
@@ -709,6 +764,7 @@ class DashboardNode(Node):
         state = dict(self._jetson_host)
         state['alive'] = age < JETSON_STATUS_TIMEOUT
         state['age_s'] = round(age, 1)
+        state['reboot_pending'] = self._jetson_reboot_at is not None
         return state
 
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
@@ -899,6 +955,14 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/jetson/status', dependencies=[Depends(require_token)])
     def jetson_status(req: JetsonStatusRequest):
         return node.update_jetson_status(req)
+
+    @app.post('/api/jetson/reboot', dependencies=[Depends(require_token)])
+    def jetson_reboot():
+        return node.request_jetson_reboot()
+
+    @app.post('/api/system/reboot', dependencies=[Depends(require_token)])
+    def system_reboot():
+        return node.reboot_pi()
 
     @app.get('/api/drive_mode')
     def drive_mode():

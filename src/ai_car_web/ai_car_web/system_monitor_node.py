@@ -98,6 +98,20 @@ def _run(cmd, timeout=3.0):
     return result.stdout.strip()
 
 
+_IP_SKIP = ('lo', 'docker', 'br-', 'veth', 'l4tbr')
+
+
+def _ip_addresses():
+    """IPv4 アドレスを [{'iface': 'wlan0', 'addr': '192.168.11.18'}, ...] で返す（lo・Docker は除く）。"""
+    out = _run(['ip', '-4', '-o', 'addr', 'show'])
+    ips = []
+    for line in (out or '').splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[2] == 'inet' and not parts[1].startswith(_IP_SKIP):
+            ips.append({'iface': parts[1], 'addr': parts[3].split('/')[0]})
+    return ips
+
+
 class SystemMonitorNode(Node):
     """システム情報収集ノード。"""
 
@@ -121,6 +135,8 @@ class SystemMonitorNode(Node):
 
         psutil.cpu_percent(percpu=True)  # 初回呼び出しで計測を開始する
         self._hailo_static = self._detect_hailo()
+        self._ips = []
+        self._ips_stamp = 0.0
         self.create_timer(1.0 / max(rate, 0.1), self._publish_cb)
 
     # --- CPU / メモリ ---
@@ -325,7 +341,14 @@ class SystemMonitorNode(Node):
             info['temperature_c'] = _hailo_temperature()
         return info
 
+    def _ips_cached(self, now):
+        if now - self._ips_stamp >= 30.0:
+            self._ips = _ip_addresses()
+            self._ips_stamp = now
+        return self._ips
+
     def _publish_cb(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
         payload = {
             'stamp': round(self.get_clock().now().nanoseconds * 1e-9, 3),
             'uptime_s': int(psutil.boot_time() and
@@ -334,6 +357,7 @@ class SystemMonitorNode(Node):
             'memory': self._memory(),
             'power': self._power(),
             'hailo': self._hailo(),
+            'ips': self._ips_cached(now),
         }
         msg = String()
         msg.data = json.dumps(payload)

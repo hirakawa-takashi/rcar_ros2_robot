@@ -1,0 +1,2 @@
+# ダッシュボードの「再起動」ボタン用: jetson-status.service（ユーザー jetson）がパスワードなしで再起動だけできる
+jetson ALL=(root) NOPASSWD: /usr/bin/systemctl reboot
