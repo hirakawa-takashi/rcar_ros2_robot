@@ -115,6 +115,7 @@ class JetsonStatusRequest(BaseModel):
 
 JETSON_STATUS_TIMEOUT = 5.0
 JETSON_REBOOT_WINDOW = 10.0
+PI_REBOOT_DELAY = 10.0
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 
 
@@ -739,7 +740,7 @@ class DashboardNode(Node):
             return web or self._joy_moving or bool(mode and mode.get('mode') == 'auto')
 
     def reboot_pi(self):
-        """止まっているときだけ、ラズパイを再起動する（2 秒後。返事を先に返す）。"""
+        """止まっているときだけ、ラズパイを再起動する（10 秒後。返事を先に返す）。"""
         if self._moving():
             raise HTTPException(status_code=409, detail='走行中は再起動できません（先に止めてください）')
         try:
@@ -751,13 +752,13 @@ class DashboardNode(Node):
             raise HTTPException(status_code=503,
                                 detail='ラズパイに ai-car-reboot.sudoers が入っていません')
         self.stop()
-        self.get_logger().warn('ダッシュボードからラズパイの再起動を受け付けました（2 秒後）')
+        self.get_logger().warn(f'ダッシュボードからラズパイの再起動を受け付けました（{PI_REBOOT_DELAY:.0f} 秒後）')
         threading.Thread(target=self._reboot_pi_later, daemon=True).start()
         return {'ok': True}
 
     def _reboot_pi_later(self):
-        """2 秒待ち、Jetson への再起動の頼みが残っていれば伝え終わるまで待ってから再起動する。"""
-        time.sleep(2.0)
+        """10 秒待ち（そのあいだも Jetson の再起動を受け付ける）、Jetson への再起動の頼みが残っていれば伝え終わるまで待ってから再起動する。"""
+        time.sleep(PI_REBOOT_DELAY)
         deadline = time.monotonic() + JETSON_REBOOT_WINDOW
         waited = False
         while time.monotonic() < deadline:

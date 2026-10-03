@@ -9,6 +9,7 @@
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
+- ラズパイの再起動は、押してから 2 秒後ではなく 10 秒後にした。そのあいだに Jetson の再起動ボタンを押しても受け付け、Jetson に伝えてからラズパイを再起動する。前はラズパイ → Jetson の順に押すと、Jetson に伝わらなかった
 - ダッシュボードの「Jetson」カードを、いちばん下から「Raspberry Pi 5 — CPU」の右へ移した（幅 2 列、中は 2 × 2）。ラズパイと Jetson の状態を同時に見られる。AI HAT+・IMU・落下防止センサーは、その右へ
 - ラズパイの再起動は、Jetson への再起動の頼みが残っていれば、伝え終わるまで（最長 10 秒）待ってから再起動する。前は 2 秒後に再起動したので、ラズパイと Jetson を続けて押すと Jetson に伝わらなかった
 - Jetson の状態を送る間隔を 5 秒から 1 秒にした（`jetson_status.py --interval` の既定）。「未接続」になるまでも 15 秒から 5 秒にした（`JETSON_STATUS_TIMEOUT`）。Jetson で 1 回集めるのに CPU 約 0.011 秒なので、1 秒ごとでも CPU 1 コアの約 1 %
