@@ -10,6 +10,7 @@
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
+- ダッシュボード: 「ラズパイを更新」「Jetson を更新」のあいだ、「更新中」の横に進み具合（例: 「更新中 45 %」）を出す。更新スクリプトが `apt-get install -o APT::Status-Fd=3` の `dlstatus`（ダウンロード、0〜30 %）と `pmstatus`（インストール、30〜100 %）を `/run/ai-car-upgrade.progress`・`/run/jetson-upgrade.progress` に書き、`system_monitor_node`・`jetson_status.py` が `upgrade_percent`・`upgrade_phase` として送る。`apt-get update` のあいだは「更新の準備中」。いまダウンロードかインストールかは、印にマウスを当てると出る
 - ダッシュボード: Jetson カードと同じように、カメラ・LiDAR・Raspberry Pi 5 — CPU・AI HAT+・IMU・落下防止センサーのカードのタイトルの横にも、つながっているかの印（接続中 / 途絶 / 未受信。カメラは映像なし、AI HAT+ は未検出・ドライバ未導入・無効、落下防止センサーは未配線・未接続も）を出す。LiDAR・IMU は 2 秒、`/system_status` は 3 秒届かないと途絶（`renderLinks`）
 - 3D 部品（ふた `lid.stl`）: 2 眼カメラの板を留めるふたの前端の柱 2 本の M3 の穴を貫通にした。板の上の M2 のネジ 2 本の後ろに、M2 ナットの六角のくぼみ（二面幅 4.4 mm、深さ 2.5 mm）とネジの先の Ø2.4 の穴を開けた。IMU の台を LiDAR の後ろの柱 2 本の間（`imu_c` [90, 145] → [65, 122.3]）へ移して -90° 回し、ピンヘッダーの開いた側を Pi 側（後ろ）に向けた。ふたの後ろ端の結束バンドの受け（LiDAR とカメラの USB）は X 69 → 86 mm へずらした
 - Jetson カードの「セキュリティ更新」の「全部」の数から、NVIDIA の部品（自動でもボタンでも更新しない、今は 48 個）を除いた

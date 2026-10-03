@@ -115,6 +115,8 @@ class JetsonStatusRequest(BaseModel):
     can_upgrade: bool | None = None
     upgrade_running: bool | None = None
     upgrade_result: str = ''
+    upgrade_percent: int | None = None
+    upgrade_phase: str = ''
 
 
 JETSON_STATUS_TIMEOUT = 5.0
@@ -703,7 +705,7 @@ class DashboardNode(Node):
     def update_jetson_status(self, req: JetsonStatusRequest):
         """Jetson の状態を、文字の長さと項目の数を絞ってから覚える。"""
         status = req.model_dump()
-        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result'):
+        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result', 'upgrade_phase'):
             status[key] = status[key][:64]
         status['temperatures_c'] = {k[:16]: round(v, 1)
                                     for k, v in list(req.temperatures_c.items())[:8]}

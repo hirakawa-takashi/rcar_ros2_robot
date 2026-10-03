@@ -116,6 +116,7 @@ def _ip_addresses():
 
 UPGRADE_UNIT = 'ai-car-upgrade.service'
 UPGRADE_SUDO = '/usr/bin/systemctl start --no-block ' + UPGRADE_UNIT
+UPGRADE_PROGRESS = '/run/ai-car-upgrade.progress'
 
 
 def _can_sudo(cmd):
@@ -135,6 +136,16 @@ def _apt_check():
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
 
+def _upgrade_progress(path):
+    """更新スクリプトが書く「<0〜100> <prepare|download|install>」を読む。"""
+    try:
+        with open(path, encoding='utf-8') as f:
+            percent, phase = f.read().split()
+        return {'upgrade_percent': max(0, min(100, int(percent))), 'upgrade_phase': phase}
+    except (OSError, ValueError):
+        return {'upgrade_percent': None, 'upgrade_phase': ''}
+
+
 def _upgrade_state():
     """ボタンの更新（ai-car-upgrade.service）が動いているかと、前回の結果（一度も動いていなければ空）。"""
     out = _run(['systemctl', 'show', UPGRADE_UNIT, '-p', 'ActiveState', '-p', 'Result',
@@ -144,8 +155,11 @@ def _upgrade_state():
     props = dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
     running = props.get('ActiveState') in ('activating', 'active', 'deactivating')
     started = props.get('ExecMainStartTimestampMonotonic', '0') not in ('', '0')
-    return {'upgrade_running': running,
-            'upgrade_result': props.get('Result', '') if started and not running else ''}
+    state = {'upgrade_running': running,
+             'upgrade_result': props.get('Result', '') if started and not running else ''}
+    state.update(_upgrade_progress(UPGRADE_PROGRESS) if running
+                 else {'upgrade_percent': None, 'upgrade_phase': ''})
+    return state
 
 
 class _UpdateFacts:

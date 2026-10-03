@@ -22,6 +22,7 @@ IP_SKIP = ('lo', 'docker', 'br-', 'veth', 'l4tbr')
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 UPGRADE_UNIT = 'jetson-upgrade.service'
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', UPGRADE_UNIT]
+UPGRADE_PROGRESS = '/run/jetson-upgrade.progress'
 HOLD_PREFIXES = ('nvidia-', 'cuda-', 'libcudnn', 'libnvinfer', 'tensorrt')
 SERVICES = {'whisper': 'whisper-server', 'ollama': 'ollama', 'nanoowl': 'jetson-owl'}
 
@@ -271,6 +272,16 @@ def last_upgrade():
         return None
 
 
+def upgrade_progress(path):
+    """更新スクリプトが書く「<0〜100> <prepare|download|install>」を読む。"""
+    try:
+        with open(path, encoding='utf-8') as f:
+            percent, phase = f.read().split()
+        return {'upgrade_percent': max(0, min(100, int(percent))), 'upgrade_phase': phase}
+    except (OSError, ValueError):
+        return {'upgrade_percent': None, 'upgrade_phase': ''}
+
+
 def upgrade_state():
     """ボタンの更新（jetson-upgrade.service）が動いているかと、前回の結果（一度も動いていなければ空）。"""
     try:
@@ -282,8 +293,11 @@ def upgrade_state():
     props = dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
     running = props.get('ActiveState') in ('activating', 'active', 'deactivating')
     started = props.get('ExecMainStartTimestampMonotonic', '0') not in ('', '0')
-    return {'upgrade_running': running,
-            'upgrade_result': props.get('Result', '') if started and not running else ''}
+    state = {'upgrade_running': running,
+             'upgrade_result': props.get('Result', '') if started and not running else ''}
+    state.update(upgrade_progress(UPGRADE_PROGRESS) if running
+                 else {'upgrade_percent': None, 'upgrade_phase': ''})
+    return state
 
 
 def collect(prev_cpu, slow):

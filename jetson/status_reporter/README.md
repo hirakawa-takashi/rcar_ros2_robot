@@ -53,7 +53,7 @@ sudo install -m 440 ~/status_reporter/jetson-reboot.sudoers /etc/sudoers.d/jetso
 押すと、AI-CAR は次の返事に `"upgrade": true` を入れ、`jetson_status.py` が `sudo -n systemctl start --no-block jetson-upgrade.service` を実行します。
 `jetson-upgrade.sh`（root）は `apt-get update` のあと、NVIDIA の部品を除いて `apt-get install --only-upgrade` します。
 先に試しに動かして（`apt-get -s`）、NVIDIA の部品が変わるか、消える部品があるときは、更新せずに失敗にします。
-動いているあいだはカードに「更新中」、終わると「前回は成功」か「前回は失敗」と出ます。記録は `journalctl -u jetson-upgrade` で見られます。
+動いているあいだはカードに「更新中 45 %」のように進み具合が出ます（`jetson-upgrade.sh` が `/run/jetson-upgrade.progress` に書く。ダウンロードが 0〜30 %、インストールが 30〜100 %）。終わると「前回は成功」か「前回は失敗」と出ます。記録は `journalctl -u jetson-upgrade` で見られます。
 ```bash
 sudo install -m 755 ~/status_reporter/jetson-upgrade.sh /usr/local/sbin/jetson-upgrade
 sudo cp ~/status_reporter/jetson-upgrade.service /etc/systemd/system/
