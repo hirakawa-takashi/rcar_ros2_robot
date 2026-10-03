@@ -6,13 +6,14 @@ AI-CAR の走行には何も送りません。
 ```
 Bose のマイク → PipeWire（bluez_input、HFP の CVSD）→ voice_chat.py（音の大きさで話の区切りを見つける）
   → whisper-server :8178（声→文字）→ Ollama :11434 qwen2.5:3b（返事、1 文ずつ）
-  → Kokoro :8880 jf_alpha（文字→声）→ PipeWire（bluez_output）→ Bose のスピーカー
+  → Kokoro :8880 jf_alpha（文字→声）→ sox pitch +300（約 3 半音高く、かわいく）→ PipeWire（bluez_output）→ Bose のスピーカー
 ```
 
 - 話し終わって 0.8 秒静かになったら、話の終わりとする。0.4 秒より短い音は捨てる
 - 返事は 1 文できるごとに声にして出す（最初の文から先に話しはじめる）
 - 返事を話しているあいだはマイクの音を捨てる（自分の声を聞いて答えないように）
 - 前の 3 往復を覚えて話す（`--turns`）
+- 声は Kokoro の `jf_alpha` を `--pitch 300`（セント）高くしたもの。jf_nezumi・jf_tebukuro・jf_gongitsune と聞き比べて選んだ。高くするのにかかる時間は 1 文 約 0.04 秒
 - 実機（2026/10）: 「こんにちは。今日は何をしましょうか?」→ 聞き取り 0.60 秒、返事の声が出るまで 1.32 秒
 
 ## 気をつけること

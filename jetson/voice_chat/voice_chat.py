@@ -93,12 +93,16 @@ def llm_sentences(model, messages):
         yield buf.strip()
 
 
-def tts(text, voice):
+def tts(text, voice, pitch=0):
     body = json.dumps({'model': 'kokoro', 'input': text, 'voice': voice, 'response_format': 'wav',
                        'lang_code': 'j', 'speed': 1.0}).encode()
     req = urllib.request.Request(KOKORO_URL, body, {'Content-Type': 'application/json'})
     with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read()
+        wav = r.read()
+    if not pitch:
+        return wav
+    return subprocess.run(['sox', '-t', 'wav', '-', '-t', 'wav', '-', 'pitch', str(pitch)],
+                          input=wav, capture_output=True, check=True).stdout
 
 
 class Mic(threading.Thread):
@@ -167,7 +171,7 @@ def respond(text, history, args, sink):
         try:
             for s in llm_sentences(args.model, messages):
                 reply.append(s)
-                audio.put((s, tts(s, args.voice), time.time() - t0))
+                audio.put((s, tts(s, args.voice, args.pitch), time.time() - t0))
         except Exception as e:  # noqa: BLE001 - 返事の途中のエラーでも会話を続ける
             log(f'返事のエラー: {e}')
         audio.put(None)
@@ -191,6 +195,7 @@ def main():
                    help='マイクを使う形（mSBC はこの Jetson ではマイクが無音になる）')
     p.add_argument('--model', default='qwen2.5:3b')
     p.add_argument('--voice', default='jf_alpha')
+    p.add_argument('--pitch', type=int, default=300, help='声の高さを上げる量（セント、100 で半音。0 でそのまま）')
     p.add_argument('--min-level', type=float, default=150.0, help='声とみなす音の大きさの下限（16 bit の RMS）')
     p.add_argument('--ratio', type=float, default=4.0, help='まわりの音の何倍で声とみなすか')
     p.add_argument('--end-silence', type=float, default=0.8, help='この秒数静かなら話し終わり')
