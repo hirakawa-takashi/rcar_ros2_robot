@@ -550,7 +550,7 @@
         </table>
       </div>
     </div>
-    <div class="note">Jetson の jetson-status.service が 5 秒ごとに送る（15 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
+    <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
   </div>
 
 </div>
@@ -1084,7 +1084,7 @@ function renderObstacle(o) {
 
 let latestTelemetry = {};
 
-// Jetson（jetson/status_reporter）が 5 秒ごとに送る状態。15 秒以上届かないと未接続
+// Jetson（jetson/status_reporter）が 1 秒ごとに送る状態。5 秒以上届かないと未接続
 function renderJetsonHost(j) {
   const byId = id => document.getElementById(id);
   const badge = (cls, text) => `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;

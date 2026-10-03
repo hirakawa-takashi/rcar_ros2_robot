@@ -110,7 +110,7 @@ class JetsonStatusRequest(BaseModel):
     last_upgrade: float | None = None
 
 
-JETSON_STATUS_TIMEOUT = 15.0
+JETSON_STATUS_TIMEOUT = 5.0
 
 
 def _jpeg_dimensions(data: bytes):

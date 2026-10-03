@@ -57,7 +57,7 @@ system:
       items:
         - 声→文字（whisper-server、whisper.cpp small・GPU）・会話（Ollama の qwen2.5:3b）・文字→声（Kokoro・GPU）。まだ AI-CAR・スタックちゃんにはつないでいない
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
-        - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 5 秒ごとに AI-CAR へ送る（jetson-status.service）
+        - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 1 秒ごとに AI-CAR へ送る（jetson-status.service）
         - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
     - id: stackchan
       label: M5 スタックちゃん
@@ -75,7 +75,7 @@ system:
     - {from: jetson, to: ai_car, short: 命令（予定）, desc: 声の命令（「前に進んで」「止まって」）を速度の指令にする。AI-CAR の安全ガードはそのまま効く, via: 'POST /api/cmd_vel・/api/stop（API トークン）', state: planned}
     - {from: stackchan, to: jetson, short: 声・映像（予定）, desc: マイクの声とカメラの映像, via: WebSocket（xiaozhi-esp32-server）, state: planned}
     - {from: jetson, to: stackchan, short: 返事（予定）, desc: 返事の声・顔の表情・首の向き, via: WebSocket（xiaozhi-esp32-server）, state: planned}
-    - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（15 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
+    - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（5 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
     - {from: person, to: stackchan, short: 話す, desc: 声で話しかけ、返事を聞く, via: 声, state: planned, both: true}
 
