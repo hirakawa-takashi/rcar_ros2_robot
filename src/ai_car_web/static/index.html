@@ -394,7 +394,7 @@
       <tr><td class="k">セキュリティ更新</td><td class="v" id="pi_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
       <tr><td class="k">再起動</td><td class="v" id="pi_reboot_req">-</td></tr>
       <tr><td class="k">最後の自動更新</td><td class="v" id="pi_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
-      <tr><td class="k">更新する</td><td class="v"><span id="pi_upgrade_state"></span> <button class="reboot" id="pi_upgrade_btn" title="ROS 2 も含めて更新する。走行中は押せない">ラズパイを更新</button> <span id="pi_upgrade_msg"></span></td></tr>
+      <tr><td class="k">更新する</td><td class="v wrap"><span id="pi_upgrade_state"></span> <button class="reboot" id="pi_upgrade_btn" title="ROS 2 も含めて更新する。走行中は押せない">ラズパイを更新</button> <span id="pi_upgrade_msg"></span></td></tr>
       <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="pi_reboot_btn">ラズパイを再起動</button> <span id="pi_reboot_msg"></span></td></tr>
     </table>
   </div>
@@ -455,7 +455,7 @@
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
           <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
           <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
-          <tr><td class="k">更新する</td><td class="v"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
+          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
           <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
@@ -833,12 +833,18 @@ function upgradeTime(t) {
   const pad = n => String(n).padStart(2, '0');
   return d ? `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '-';
 }
+const UPGRADE_PHASES = {prepare: '準備中', download: 'ダウンロード中', install: 'インストール中'};
+function upgradeProgress(u) {
+  const text = u.upgrade_phase === 'prepare' ? '更新の準備中'
+    : u.upgrade_percent == null ? '更新中' : `更新中 ${u.upgrade_percent} %`;
+  return `<span class="badge warn" title="${UPGRADE_PHASES[u.upgrade_phase] || ''}（ダウンロード 0〜30 %、インストール 30〜100 %）">${text}</span>`;
+}
 function renderUpdates(u, prefix) {
   const byId = id => document.getElementById(prefix + id);
   byId('security').innerHTML = u.security_pending == null ? '-'
     : `${u.security_pending ? badge('warn', `${u.security_pending} 件`) : badge('ok', '0 件')}` +
       (u.updates_pending == null ? '' : `（全部 ${u.updates_pending}）`);
-  byId('upgrade_state').innerHTML = u.upgrade_running ? badge('warn', '更新中')
+  byId('upgrade_state').innerHTML = u.upgrade_running ? upgradeProgress(u)
     : u.upgrade_result === 'success' ? badge('ok', '前回は成功')
     : u.upgrade_result ? badge('crit', '前回は失敗') : '';
   if (u.upgrade_running) byId('upgrade_msg').textContent = '';
