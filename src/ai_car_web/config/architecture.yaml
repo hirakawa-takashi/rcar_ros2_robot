@@ -582,7 +582,7 @@ api:
     - {method: POST, path: /api/jetson/detections, desc: Jetson（NanoOWL）の物体検出 → /jetson_detections, auth: true}
     - {method: POST, path: /api/jetson/status, desc: Jetson の状態（温度・メモリ・電力・AI の部品・更新・IP アドレス）。/api/status の jetson_host に出す。返事の reboot が true なら Jetson は再起動する, auth: true}
     - {method: POST, path: /api/jetson/reboot, desc: Jetson の再起動を頼む（次に状態が届いたときの返事で伝える。未接続なら 409）, auth: true}
-    - {method: POST, path: /api/system/reboot, desc: ラズパイを 2 秒後に再起動する（止めてから。Jetson への再起動の頼みが残っていれば伝え終わるまで最長 10 秒待つ。走行中・自動運転中は 409）, auth: true}
+    - {method: POST, path: /api/system/reboot, desc: ラズパイを 10 秒後に再起動する（止めてから。そのあいだも Jetson の再起動を受け付け、頼みが残っていれば伝え終わるまで最長 10 秒待つ。走行中・自動運転中は 409）, auth: true}
     - {method: GET, path: /api/camera/snapshot, desc: JPEG 1 枚, auth: false}
     - {method: GET, path: /api/camera/stream, desc: MJPEG ストリーム, auth: false}
     - {method: WS, path: /ws, desc: テレメトリ配信（telemetry_rate Hz）。未導入環境は /api/status ポーリングにフォールバック, auth: false}
