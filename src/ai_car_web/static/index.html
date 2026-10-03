@@ -62,6 +62,8 @@
   .map { width: 100%; aspect-ratio: 1 / 1; background: #11161d; border-radius: 6px;
          display: block; margin-bottom: 8px; }
   .card.full { grid-column: 1 / -1; }
+  .jcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
               border-radius: 8px; margin-bottom: 10px; }
   .gpio_legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px;
@@ -482,6 +484,73 @@
       <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <span id="sl_saved"></span></td></tr>
     </table>
     <div class="note">slam_toolbox（use_slam:=true で起動）。車輪のオドメトリがまだ無いので、位置は LiDAR のスキャンどうしの照合だけで出す。ゆっくり動かして地図を作る。自律走行にはまだ使わない。</div>
+  </div>
+
+  <div class="card full">
+    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span></h2>
+    <div class="jcols">
+      <div>
+        <h3>温度・使用率</h3>
+        <div class="barrow">
+          <span class="k">CPU 温度</span>
+          <span class="bar"><span id="jt_cpu_temp_bar"></span></span>
+          <span class="v" id="jt_cpu_temp">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">GPU 温度</span>
+          <span class="bar"><span id="jt_gpu_temp_bar"></span></span>
+          <span class="v" id="jt_gpu_temp">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">CPU 使用</span>
+          <span class="bar"><span id="jt_cpu_bar"></span></span>
+          <span class="v" id="jt_cpu">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">GPU 使用</span>
+          <span class="bar"><span id="jt_gpu_bar"></span></span>
+          <span class="v" id="jt_gpu">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">メモリ</span>
+          <span class="bar"><span id="jt_mem_bar"></span></span>
+          <span class="v" id="jt_mem_pct">-</span>
+        </div>
+      </div>
+      <div>
+        <h3>メモリ・電源</h3>
+        <table>
+          <tr><td class="k">メモリ [GB]</td><td class="v" id="jt_mem">-</td></tr>
+          <tr><td class="k">空き [GB]</td><td class="v" id="jt_mem_avail">-</td></tr>
+          <tr><td class="k">スワップ [GB]</td><td class="v" id="jt_swap">-</td></tr>
+          <tr><td class="k">消費電力 [W]</td><td class="v" id="jt_power">-</td></tr>
+          <tr><td class="k">電源モード</td><td class="v" id="jt_mode">-</td></tr>
+          <tr><td class="k">ファン</td><td class="v" id="jt_fan">-</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>AI の部品</h3>
+        <table>
+          <tr><td class="k">声→文字</td><td class="v" id="jt_svc_whisper" title="whisper-server（whisper.cpp small、GPU）">-</td></tr>
+          <tr><td class="k">会話の AI</td><td class="v" id="jt_svc_ollama" title="Ollama">-</td></tr>
+          <tr><td class="k">文字→声</td><td class="v" id="jt_svc_kokoro" title="Kokoro（GPU、Docker）">-</td></tr>
+          <tr><td class="k">物体検出</td><td class="v" id="jt_svc_nanoowl" title="NanoOWL（jetson-owl.service）">-</td></tr>
+          <tr><td class="k">読み込み中</td><td class="v" id="jt_models">-</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>更新・システム</h3>
+        <table>
+          <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
+          <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
+          <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
+          <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
+          <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
+          <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="note">Jetson の jetson-status.service が 5 秒ごとに送る（15 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
   </div>
 
 </div>
@@ -1015,6 +1084,65 @@ function renderObstacle(o) {
 
 let latestTelemetry = {};
 
+// Jetson（jetson/status_reporter）が 5 秒ごとに送る状態。15 秒以上届かないと未接続
+function renderJetsonHost(j) {
+  const byId = id => document.getElementById(id);
+  const badge = (cls, text) => `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;
+  const alive = !!(j && j.alive);
+  byId('jt_state').className = 'badge' + (alive ? ' ok' : j ? ' warn' : '');
+  byId('jt_state').textContent = alive ? '接続中' : '未接続';
+  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : '/api/jetson/status 未受信';
+  const v = alive ? j : {};
+  const t = v.temperatures_c || {};
+  setTempBar(byId('jt_cpu_temp_bar'), byId('jt_cpu_temp'), t.cpu);
+  setTempBar(byId('jt_gpu_temp_bar'), byId('jt_gpu_temp'), t.gpu);
+  setBar(byId('jt_cpu_bar'), v.cpu_percent);
+  byId('jt_cpu').textContent = v.cpu_percent == null ? '-' : fmt(v.cpu_percent, 0) + ' %';
+  byId('jt_cpu').title = v.cpu_freq_mhz == null ? '' : `${fmt(v.cpu_freq_mhz, 0)} MHz`;
+  setBar(byId('jt_gpu_bar'), v.gpu_percent);
+  byId('jt_gpu').textContent = v.gpu_percent == null ? '-' : fmt(v.gpu_percent, 0) + ' %';
+  byId('jt_gpu').title = v.gpu_freq_mhz == null ? '' : `${fmt(v.gpu_freq_mhz, 0)} MHz`;
+  const memPct = v.mem_total_mb ? 100 * v.mem_used_mb / v.mem_total_mb : null;
+  setBar(byId('jt_mem_bar'), memPct);
+  byId('jt_mem_pct').textContent = memPct == null ? '-' : fmt(memPct, 0) + ' %';
+  const gb = mb => mb == null ? '-' : fmt(mb / 1024, 1);
+  byId('jt_mem').textContent = v.mem_total_mb == null ? '-' : `${gb(v.mem_used_mb)} / ${gb(v.mem_total_mb)}`;
+  byId('jt_mem_avail').innerHTML = v.mem_available_mb == null ? '-'
+    : v.mem_available_mb < 500 ? badge('warn', gb(v.mem_available_mb)) : gb(v.mem_available_mb);
+  byId('jt_swap').textContent = v.swap_total_mb == null ? '-' : `${gb(v.swap_used_mb)} / ${gb(v.swap_total_mb)}`;
+  byId('jt_power').textContent = fmt(v.power_w, 1);
+  byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
+  byId('jt_mode').textContent = v.power_mode || '-';
+  byId('jt_fan').textContent = v.fan_percent == null ? '-'
+    : `${fmt(v.fan_percent, 0)} %${v.fan_rpm == null ? '' : `（${v.fan_rpm} rpm）`}`;
+
+  const svc = v.services || {};
+  const svcBadge = (key, offCls) => svc[key] == null ? '-'
+    : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
+  byId('jt_svc_whisper').innerHTML = svcBadge('whisper', 'warn');
+  byId('jt_svc_ollama').innerHTML = svcBadge('ollama', 'warn');
+  byId('jt_svc_kokoro').innerHTML = svcBadge('kokoro', 'warn');
+  byId('jt_svc_nanoowl').innerHTML = svcBadge('nanoowl', '');
+  byId('jt_models').textContent = alive ? ((v.llm_models || []).join(', ') || 'なし') : '-';
+
+  byId('jt_security').innerHTML = v.security_pending == null ? '-'
+    : `${v.security_pending ? badge('warn', `${v.security_pending} 件`) : badge('ok', '0 件')}` +
+      (v.updates_pending == null ? '' : `（全部 ${v.updates_pending}）`);
+  byId('jt_reboot').innerHTML = v.reboot_required == null ? '-'
+    : v.reboot_required ? badge('warn', '必要') : badge('ok', 'いらない');
+  const lu = v.last_upgrade ? new Date(v.last_upgrade * 1000) : null;
+  const pad = n => String(n).padStart(2, '0');
+  byId('jt_last_upgrade').textContent = lu
+    ? `${lu.getMonth() + 1}/${lu.getDate()} ${pad(lu.getHours())}:${pad(lu.getMinutes())}` : '-';
+  const up = v.uptime_s;
+  byId('jt_uptime').textContent = up == null ? '-'
+    : up >= 86400 ? `${Math.floor(up / 86400)} 日 ${Math.floor(up % 86400 / 3600)} 時間`
+    : `${Math.floor(up / 3600)} 時間 ${Math.floor(up % 3600 / 60)} 分`;
+  byId('jt_disk').textContent = v.disk_total_gb == null ? '-' : `${fmt(v.disk_used_gb, 0)} / ${fmt(v.disk_total_gb, 0)}`;
+  byId('jt_l4t').textContent = v.l4t || '-';
+  byId('jt_l4t').title = v.os || '';
+}
+
 function render(d) {
   latestTelemetry = d || {};
   if (!d.auth_required) {
@@ -1049,6 +1177,7 @@ function render(d) {
   renderCliff(d.cliff);
   renderSlam(d.slam);
   renderSystem(d.system);
+  renderJetsonHost(d.jetson_host);
   renderCamera(d.camera);
 }
 

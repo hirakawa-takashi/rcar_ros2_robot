@@ -1,0 +1,14 @@
+[Unit]
+Description=Send Jetson status (temperature, memory, GPU, power, AI services, updates) to the AI-CAR dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=jetson
+EnvironmentFile=/etc/jetson-status.env
+ExecStart=/usr/bin/python3 -u /home/jetson/status_reporter/jetson_status.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
