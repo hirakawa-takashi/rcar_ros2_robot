@@ -14,7 +14,7 @@ Jetson  /proc・/sys・systemctl・HTTP（whisper 8178 / Ollama 11434 / Kokoro 8
 ## 送るもの
 - 温度（CPU・GPU・Tj）、CPU / GPU の使用率とクロック、ファン
 - メモリ・スワップ・ディスク、ボード全体の入力電圧と消費電力（INA3221 の `VDD_IN`）、電源モード（`nvpmodel -q`）
-- AI の部品が動いているか: `whisper-server`（声→文字）、`ollama`（会話の AI、読み込み中のモデル）、
+- AI の部品が動いているか: `whisper-server`（声→文字）、`ollama`（会話の AI、読み込み中のモデルと、その大きさ・GPU に載っている量）、
   Kokoro（文字→声、Docker）、`jetson-owl`（NanoOWL の物体検出）
 - 更新: 残りの更新とセキュリティ更新の数（`apt-check`、重いので 1 時間に 1 回）、再起動が必要か、
   最後に自動更新（unattended-upgrades）が動いた時刻
