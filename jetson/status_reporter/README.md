@@ -16,13 +16,15 @@ Jetson  /proc・/sys・systemctl・HTTP（whisper 8178 / Ollama 11434 / Kokoro 8
 - メモリ・スワップ・ディスク、ボード全体の入力電圧と消費電力（INA3221 の `VDD_IN`）、電源モード（`nvpmodel -q`）
 - AI の部品が動いているか: `whisper-server`（声→文字）、`ollama`（会話の AI、読み込み中のモデルと、その大きさ・GPU に載っている量）、
   Kokoro（文字→声、Docker）、`jetson-owl`（NanoOWL の物体検出）
-- 更新: 残りの更新とセキュリティ更新の数（`apt-check`、重いので 1 時間に 1 回）、再起動が必要か、
-  最後に自動更新（unattended-upgrades）が動いた時刻
+- 更新: 残りの更新とセキュリティ更新の数（`apt-check`、重いので 1 時間に 1 回と、ボタンの更新のあと）、再起動が必要か、
+  最後に自動更新（unattended-upgrades）が動いた時刻。残りの更新の数には、NVIDIA の部品（JetPack: `nvidia-`・`cuda-`・
+  `libcudnn`・`libnvinfer`・`tensorrt`）を入れない（その数は `updates_held`）。ボタンの更新が動いているかと、前回の結果
 - IP アドレス（Tailscale・Wi-Fi など。lo・Docker・USB の `l4tbr0` は出さない。30 秒ごとに調べる）、再起動ボタンが使えるか（`sudo -n -l`）
 
 ## ファイル
 - `jetson_status.py`: 本体。標準ライブラリだけで動く（Jetson の `/usr/bin/python3`）
 - `jetson-status.service`: Jetson の systemd サービス（ユーザー `jetson` で動かす）
+- `jetson-upgrade.sh`・`jetson-upgrade.service`・`jetson-upgrade.sudoers`: ダッシュボードの「Jetson を更新」ボタン用
 
 ## 入れ方（Jetson、JetPack 6.2 / L4T 36.4.3 で確認）
 ```bash
@@ -45,6 +47,21 @@ sudo visudo -cf ~/status_reporter/jetson-reboot.sudoers
 sudo install -m 440 ~/status_reporter/jetson-reboot.sudoers /etc/sudoers.d/jetson-reboot
 ```
 入っていないときはボタンを押しても「jetson-reboot.sudoers が入っていません」と出て、再起動しません。
+
+## ダッシュボードの「Jetson を更新」ボタン
+自動の更新（unattended-upgrades）はセキュリティ更新だけを入れます。ほかの更新は、ボタンを押したときだけ入れます。
+押すと、AI-CAR は次の返事に `"upgrade": true` を入れ、`jetson_status.py` が `sudo -n systemctl start --no-block jetson-upgrade.service` を実行します。
+`jetson-upgrade.sh`（root）は `apt-get update` のあと、NVIDIA の部品を除いて `apt-get install --only-upgrade` します。
+先に試しに動かして（`apt-get -s`）、NVIDIA の部品が変わるか、消える部品があるときは、更新せずに失敗にします。
+動いているあいだはカードに「更新中」、終わると「前回は成功」か「前回は失敗」と出ます。記録は `journalctl -u jetson-upgrade` で見られます。
+```bash
+sudo install -m 755 ~/status_reporter/jetson-upgrade.sh /usr/local/sbin/jetson-upgrade
+sudo cp ~/status_reporter/jetson-upgrade.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo visudo -cf ~/status_reporter/jetson-upgrade.sudoers
+sudo install -m 440 ~/status_reporter/jetson-upgrade.sudoers /etc/sudoers.d/jetson-upgrade
+sudo systemctl restart jetson-status.service
+```
 
 1 回だけ集めて表示するとき（AI-CAR には送らない）:
 ```bash
