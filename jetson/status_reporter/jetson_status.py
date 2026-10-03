@@ -139,13 +139,20 @@ def services():
 
 
 def ollama_models():
+    """読み込み中のモデルの名前と、大きさ・GPU に載っている量の合計 [MB]（Ollama の /api/ps）。"""
+    empty = {'llm_models': [], 'llm_size_mb': None, 'llm_vram_mb': None}
     ok, body = http_ok('http://127.0.0.1:11434/api/ps')
     if not ok:
-        return []
+        return empty
     try:
-        return [str(m.get('name', '')) for m in json.loads(body).get('models', [])][:4]
-    except (ValueError, AttributeError):
-        return []
+        models = json.loads(body).get('models', [])[:4]
+        return {
+            'llm_models': [str(m.get('name', '')) for m in models],
+            'llm_size_mb': round(sum(int(m.get('size', 0)) for m in models) / 2**20),
+            'llm_vram_mb': round(sum(int(m.get('size_vram', 0)) for m in models) / 2**20),
+        }
+    except (ValueError, TypeError, AttributeError):
+        return empty
 
 
 class SlowFacts:
@@ -233,11 +240,11 @@ def collect(prev_cpu, slow):
         'disk_total_gb': round(disk.f_blocks * disk.f_frsize / 1e9, 1),
         'disk_used_gb': round((disk.f_blocks - disk.f_bfree) * disk.f_frsize / 1e9, 1),
         'services': services(),
-        'llm_models': ollama_models(),
         'reboot_required': os.path.exists('/var/run/reboot-required'),
         'last_upgrade': last_upgrade(),
     }
     status.update(memory())
+    status.update(ollama_models())
     status.update(slow.get())
     return status, (total, idle)
 

@@ -532,10 +532,11 @@
         <h3>AI の部品</h3>
         <table>
           <tr><td class="k">声→文字</td><td class="v" id="jt_svc_whisper" title="whisper-server（whisper.cpp small、GPU）">-</td></tr>
-          <tr><td class="k">会話の AI</td><td class="v" id="jt_svc_ollama" title="Ollama">-</td></tr>
+          <tr><td class="k">会話の AI</td><td class="v" id="jt_svc_ollama" title="Ollama（状態 / 読み込み中のモデル）">-</td></tr>
+          <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
+          <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
           <tr><td class="k">文字→声</td><td class="v" id="jt_svc_kokoro" title="Kokoro（GPU、Docker）">-</td></tr>
           <tr><td class="k">物体検出</td><td class="v" id="jt_svc_nanoowl" title="NanoOWL（jetson-owl.service）">-</td></tr>
-          <tr><td class="k">読み込み中</td><td class="v" id="jt_models">-</td></tr>
         </table>
       </div>
       <div>
@@ -1120,10 +1121,18 @@ function renderJetsonHost(j) {
   const svcBadge = (key, offCls) => svc[key] == null ? '-'
     : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
   byId('jt_svc_whisper').innerHTML = svcBadge('whisper', 'warn');
-  byId('jt_svc_ollama').innerHTML = svcBadge('ollama', 'warn');
+  const models = v.llm_models || [];
+  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-' : svcBadge('ollama', 'warn') +
+    (svc.ollama ? ` / ${models.length ? models.join(', ') : '未読み込み'}` : '');
+  const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
+  const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
+  const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
+  byId('jt_llm_split').innerHTML = gpuPct == null ? '-'
+    : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
+  const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
+  byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
   byId('jt_svc_kokoro').innerHTML = svcBadge('kokoro', 'warn');
   byId('jt_svc_nanoowl').innerHTML = svcBadge('nanoowl', '');
-  byId('jt_models').textContent = alive ? ((v.llm_models || []).join(', ') || 'なし') : '-';
 
   byId('jt_security').innerHTML = v.security_pending == null ? '-'
     : `${v.security_pending ? badge('warn', `${v.security_pending} 件`) : badge('ok', '0 件')}` +

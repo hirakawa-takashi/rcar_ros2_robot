@@ -102,6 +102,8 @@ class JetsonStatusRequest(BaseModel):
     disk_used_gb: float | None = None
     services: dict[str, bool] = {}
     llm_models: list[str] = []
+    llm_size_mb: float | None = None
+    llm_vram_mb: float | None = None
     updates_pending: int | None = None
     security_pending: int | None = None
     reboot_required: bool | None = None
