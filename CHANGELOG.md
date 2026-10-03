@@ -9,6 +9,7 @@
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
+- Jetson カードの「セキュリティ更新」の「全部」の数から、NVIDIA の部品（自動でもボタンでも更新しない、今は 48 個）を除いた
 - ラズパイの再起動は、押してから 2 秒後ではなく 10 秒後にした。そのあいだに Jetson の再起動ボタンを押しても受け付け、Jetson に伝えてからラズパイを再起動する。前はラズパイ → Jetson の順に押すと、Jetson に伝わらなかった
 - ダッシュボードの「Jetson」カードを、いちばん下から「Raspberry Pi 5 — CPU」の右へ移した（幅 2 列、中は 2 × 2）。ラズパイと Jetson の状態を同時に見られる。AI HAT+・IMU・落下防止センサーは、その右へ
 - ラズパイの再起動は、Jetson への再起動の頼みが残っていれば、伝え終わるまで（最長 10 秒）待ってから再起動する。前は 2 秒後に再起動したので、ラズパイと Jetson を続けて押すと Jetson に伝わらなかった
@@ -19,6 +20,7 @@
 - 2 眼カメラを 3D の板（`cam_mount`）に USB 端子を上にして付け替えたので、`stereo_camera_node` の `rotate_180` を true → false にした（ノードの既定も false）
 
 ### Added
+- ダッシュボードの Jetson カードに「Jetson を更新」ボタンを追加した。押したときだけ、NVIDIA の部品（JetPack）以外を更新する（`jetson/status_reporter/jetson-upgrade.sh`・`jetson-upgrade.service`・`jetson-upgrade.sudoers`）。更新中は「更新中」、終わると「前回は成功 / 失敗」と出る
 - ダッシュボードの「Raspberry Pi 5 — CPU」と「Jetson」のカードに、IP アドレス（Tailscale・Wi-Fi など。lo・Docker は出さない）と「再起動」ボタンを付けた。押すと確認の画面が出る。ラズパイは `POST /api/system/reboot`（走行中・自動運転中は 409 で断り、止めてから 2 秒後に `sudo -n systemctl reboot`）、Jetson は `POST /api/jetson/reboot`（次に状態が届いたときの返事に `reboot: true` を入れ、`jetson_status.py` が再起動する）。どちらも API トークンが必要。パスワードなしで `systemctl reboot` だけを許す sudoers（`systemd/ai-car-reboot.sudoers`、`jetson/status_reporter/jetson-reboot.sudoers`）が要る。IP は `system_monitor_node` の `/system_status` の `ips`、`jetson_status.py` の `ips`（30 秒ごとに調べる）
 - ダッシュボードに「Jetson Orin Nano Super — AI 担当」カードを追加。Jetson の新しい `jetson/status_reporter/jetson_status.py`（`jetson-status.service`、標準ライブラリだけ）が 5 秒ごとに温度（CPU・GPU）、CPU / GPU の使用率、メモリ・スワップ・ディスク、消費電力（INA3221 の `VDD_IN`）・電源モード・ファン、AI の部品（声→文字 whisper-server・会話の AI Ollama と読み込み中のモデル・文字→声 Kokoro・物体検出 NanoOWL）が動いているか、セキュリティ更新の残り（`apt-check`、1 時間に 1 回）・再起動が必要か・最後の自動更新の時刻を `POST /api/jetson/status`（API トークンが必要）へ送る。`dashboard_node` は最新の 1 件を覚えて `/api/status`・`/ws` の `jetson_host` に出し、15 秒届かないと「未接続」にする。表示だけで、速度や安全の判定には使わない。「システム構成」タブにも「状態」のやりとりを足し、Jetson の説明を今の状態（声の AI が稼働中、NanoOWL は停止中）に直した
 - プロジェクト説明に「システム構成」タブを追加。AI-CAR（Raspberry Pi 5）・Jetson Orin Nano Super・M5 スタックちゃん・ブラウザ・家の人のつながりを図にし、やりとり（① カメラの画像 `GET /api/camera/snapshot` ② 物の名前・位置 `POST /api/jetson/detections` は稼働中、③ 声の命令 `POST /api/cmd_vel`・`/api/stop`、④⑤ スタックちゃんと Jetson の声・映像・返事は予定で点線）と機械ごとの役割を表にした。内容は `architecture.yaml` の `system`

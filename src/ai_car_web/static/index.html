@@ -451,6 +451,7 @@
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
           <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
           <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
+          <tr><td class="k">更新する</td><td class="v"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
           <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
@@ -801,6 +802,15 @@ function rebootButton(btnId, msgId, name, path, when) {
 }
 rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot', '10 秒後に');
 rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
+document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
+  const n = latestTelemetry.jetson_host?.updates_pending;
+  if (!confirm(`Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
+  const msg = document.getElementById('jt_upgrade_msg');
+  msg.textContent = '送っています…';
+  apiPost('/api/jetson/upgrade').then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+    msg.textContent = ok ? '頼みました' : (j.detail || '送れませんでした');
+  }).catch(() => { msg.textContent = '送れませんでした'; });
+});
 
 function renderSystem(s) {
   if (!s) return;
@@ -1165,6 +1175,13 @@ function renderJetsonHost(j) {
   byId('jt_security').innerHTML = v.security_pending == null ? '-'
     : `${v.security_pending ? badge('warn', `${v.security_pending} 件`) : badge('ok', '0 件')}` +
       (v.updates_pending == null ? '' : `（全部 ${v.updates_pending}）`);
+  byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +
+    (v.updates_held == null ? '' : `。「全部」に NVIDIA の部品（JetPack、${v.updates_held} 個）は入れない`);
+  byId('jt_upgrade_state').innerHTML = v.upgrade_running ? badge('warn', '更新中')
+    : v.upgrade_result === 'success' ? badge('ok', '前回は成功')
+    : v.upgrade_result ? badge('crit', '前回は失敗') : '';
+  if (v.upgrade_running) byId('jt_upgrade_msg').textContent = '';
+  byId('jt_upgrade_btn').disabled = !alive || !v.can_upgrade || !!v.upgrade_running || !!v.upgrade_pending;
   byId('jt_reboot').innerHTML = v.reboot_required == null ? '-'
     : v.reboot_required ? badge('warn', '必要') : badge('ok', 'いらない');
   const lu = v.last_upgrade ? new Date(v.last_upgrade * 1000) : null;

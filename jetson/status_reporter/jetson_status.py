@@ -20,6 +20,9 @@ GPU_DIR = '/sys/devices/platform/bus@0/17000000.gpu'
 THERMAL_NAMES = {'cpu-thermal': 'cpu', 'gpu-thermal': 'gpu', 'tj-thermal': 'tj'}
 IP_SKIP = ('lo', 'docker', 'br-', 'veth', 'l4tbr')
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
+UPGRADE_UNIT = 'jetson-upgrade.service'
+UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', UPGRADE_UNIT]
+HOLD_PREFIXES = ('nvidia-', 'cuda-', 'libcudnn', 'libnvinfer', 'tensorrt')
 SERVICES = {'whisper': 'whisper-server', 'ollama': 'ollama', 'nanoowl': 'jetson-owl'}
 
 
@@ -158,12 +161,13 @@ def ollama_models():
 
 
 class SlowFacts:
-    """apt-check と nvpmodel は遅い（apt-check は約 10 秒）ので、別スレッドで 1 時間ごとに調べる。"""
+    """apt-check と nvpmodel は遅い（apt-check は約 10 秒）ので、別スレッドで 1 時間ごと（と更新のあと）に調べる。"""
 
     def __init__(self, interval):
         self.interval = interval
         self.lock = threading.Lock()
         self.facts = {}
+        self.wake = threading.Event()
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True).start()
@@ -171,11 +175,17 @@ class SlowFacts:
     def _loop(self):
         while True:
             self.refresh()
-            time.sleep(self.interval)
+            self.wake.wait(self.interval)
+            self.wake.clear()
 
     def refresh(self):
-        facts = {'power_mode': self._power_mode(), 'can_reboot': can_reboot()}
-        facts['updates_pending'], facts['security_pending'] = self._apt_check()
+        facts = {'power_mode': self._power_mode(), 'can_reboot': can_sudo(REBOOT_CMD),
+                 'can_upgrade': can_sudo(UPGRADE_CMD)}
+        updates, facts['security_pending'] = self._apt_check()
+        held = self._held_count()
+        facts['updates_held'] = held
+        facts['updates_pending'] = (updates - held if updates is not None and held is not None
+                                    else updates)
         with self.lock:
             self.facts = facts
 
@@ -199,6 +209,18 @@ class SlowFacts:
             return None, None
         m = re.search(r'(\d+);(\d+)', out)
         return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+
+    @staticmethod
+    def _held_count():
+        """更新できる部品のうち、NVIDIA の部品（JetPack。自動でも手動のボタンでも変えない）の数。"""
+        try:
+            out = subprocess.run(['nice', '-n', '19', 'apt', 'list', '--upgradable'],
+                                 capture_output=True, text=True, timeout=120,
+                                 check=False).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        names = [line.split('/', 1)[0] for line in out.splitlines() if '/' in line]
+        return sum(name.startswith(HOLD_PREFIXES) for name in names)
 
     def get(self):
         with self.lock:
@@ -231,13 +253,15 @@ def ip_addresses_cached(max_age=30.0):
     return _ips_cache['ips']
 
 
-def can_reboot():
-    """sudoers（jetson-reboot.sudoers）でパスワードなしに再起動できるか。"""
+def can_sudo(cmd):
+    """sudoers（jetson-reboot.sudoers・jetson-upgrade.sudoers）でパスワードなしに cmd を実行できるか。"""
     try:
-        return subprocess.run(['sudo', '-n', '-l', *REBOOT_CMD[2:]], capture_output=True,
-                              timeout=5, check=False).returncode == 0
+        out = subprocess.run(['sudo', '-n', '-l'], capture_output=True, text=True,
+                             timeout=5, check=False).stdout
     except (OSError, subprocess.TimeoutExpired):
         return False
+    want = ' '.join(cmd[2:])
+    return any('NOPASSWD:' in line and line.rstrip().endswith(want) for line in out.splitlines())
 
 
 def last_upgrade():
@@ -245,6 +269,21 @@ def last_upgrade():
         return round(os.path.getmtime('/var/lib/apt/periodic/unattended-upgrades-stamp'))
     except OSError:
         return None
+
+
+def upgrade_state():
+    """ボタンの更新（jetson-upgrade.service）が動いているかと、前回の結果（一度も動いていなければ空）。"""
+    try:
+        out = subprocess.run(['systemctl', 'show', UPGRADE_UNIT, '-p', 'ActiveState', '-p', 'Result',
+                              '-p', 'ExecMainStartTimestampMonotonic'],
+                             capture_output=True, text=True, timeout=3, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return {'upgrade_running': None, 'upgrade_result': ''}
+    props = dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
+    running = props.get('ActiveState') in ('activating', 'active', 'deactivating')
+    started = props.get('ExecMainStartTimestampMonotonic', '0') not in ('', '0')
+    return {'upgrade_running': running,
+            'upgrade_result': props.get('Result', '') if started and not running else ''}
 
 
 def collect(prev_cpu, slow):
@@ -283,13 +322,14 @@ def collect(prev_cpu, slow):
     }
     status.update(memory())
     status.update(ollama_models())
+    status.update(upgrade_state())
     status.update(slow.get())
     return status, (total, idle)
 
 
-def wants_reboot(reply):
+def reply_flag(reply, key):
     try:
-        return json.loads(reply).get('reboot') is True
+        return json.loads(reply).get(key) is True
     except (ValueError, AttributeError):
         return False
 
@@ -316,9 +356,13 @@ def main():
     slow.start()
     print(f'Jetson の状態を送ります → {url}', flush=True)
     failing = False
+    upgrading = False
     while True:
         time.sleep(args.interval)
         status, prev_cpu = collect(prev_cpu, slow)
+        if upgrading and status['upgrade_running'] is False:
+            slow.wake.set()
+        upgrading = bool(status['upgrade_running'])
         req = urllib.request.Request(
             url, data=json.dumps(status).encode('utf-8'), method='POST',
             headers={'Content-Type': 'application/json', 'X-API-Token': token})
@@ -328,7 +372,10 @@ def main():
             if failing:
                 print('送れるようになりました', flush=True)
             failing = False
-            if wants_reboot(reply):
+            if reply_flag(reply, 'upgrade'):
+                print('ダッシュボードから更新を頼まれたので jetson-upgrade.service を始めます', flush=True)
+                subprocess.run(UPGRADE_CMD, timeout=30, check=False)
+            if reply_flag(reply, 'reboot'):
                 print('ダッシュボードから再起動を頼まれたので再起動します', flush=True)
                 subprocess.run(REBOOT_CMD, timeout=30, check=False)
         except (urllib.error.URLError, OSError, subprocess.TimeoutExpired) as e:
