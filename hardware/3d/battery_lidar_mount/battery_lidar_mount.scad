@@ -164,13 +164,14 @@ pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
           [pi_cx - pi_board[0] / 2 + pi_hole_off + dx, pi_cy - pi_hole_dy / 2 + dy]];
 
 // ---- IMU（GY-BNO055）: ふたの上、LiDAR のヘッドの下（右寄り）----
-imu_board = [12, 20];     // 長辺を前後方向に置く。ピンヘッダーは +X 側の長辺
-imu_c = [90, 145];        // ふたの上。LiDAR の USB 変換基板（X 72 より左）とカメラの USB ケーブル（X 77）の右、柱と残量表示の窓（X 107 から）をよける
+imu_board = [12, 20];     // 台の座標で長辺を Y、ピンヘッダーは +X 側の長辺
+imu_c = [65, 122.3];      // ふたの上、LiDAR のヘッドの下の後ろ寄り（後ろの柱 2 本の間）。前の壁の外側が Y 130.2
+imu_rot = -90;            // 台を Z まわりに回す角度。-90 で長辺が左右、ピンヘッダーの開いた側が後ろ（Pi 側）
 imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向きで、ジャンパー線のコネクターを下に収める
 imu_wall = 1.6;
 imu_ledge = 1;            // 基板の縁を下から受ける幅（ピンヘッダーのない 3 辺）
 imu_hdr = 2.56;           // 基板の下のピンヘッダーの列（+X 側の長辺に沿って全長）の幅。台はこの分を受けずに外へ出す
-imu_lip = 3;              // 奥の長辺（Pi 側、-X）の壁から内側へ出して、基板の縁を上から押さえる出っ張りの幅
+imu_lip = 3;              // 閉じた長辺（台の座標で -X、組み立てでは前）の壁から内側へ出して、基板の縁を上から押さえる出っ張りの幅
 imu_lip_t = 3;            // 出っ張りの厚さ
 
 
@@ -243,6 +244,9 @@ scam_ear_x = [scam_mnt_x[0], scam_mnt_x[1] - scam_ear_w];  // 耳の左端
 scam_ear_top = scam_z1 + 9;
 scam_ear_scr_z = scam_z1 + 5;               // 耳の M3 の高さ（支柱の M2 の頭とネジの頭が重ならない）
 scam_tie = [77, 166];                       // カメラの USB ケーブルを留める結束バンドの受け（LiDAR の USB 変換基板の右）
+rear_tie = [86, box_y0 + 7];                // LiDAR とカメラの USB ケーブルを留める受け（ふたの後ろ端、IMU の台と後ろ右の柱の間）
+scam_nut_af = 4.4;                          // M2 ナット（二面幅 4 mm、厚さ 1.6 mm）を入れる六角のくぼみの二面幅
+scam_nut_d = 2.5;                           // くぼみの深さ（柱の前の面から）
 
 module rrect(x0, y0, x1, y1, r, h) {
     hull() for (x = [x0 + r, x1 - r], y = [y0 + r, y1 - r])
@@ -346,8 +350,8 @@ module lid() {
             scam_lid_posts();
             translate([scam_tie[0], scam_tie[1], lid_t - 0.01]) tie_mount();
             imu_holder(lid_t);
-            // LiDAR のハーネスと USB ケーブルの固定（ヘッドの柱の間、ふたの後ろ端）
-            translate([lidar_cx, box_y0 + 7, lid_t - 0.01]) rotate([0, 0, 90]) tie_mount();
+            // LiDAR のハーネスと USB ケーブルの固定（ふたの後ろ端）
+            translate([rear_tie[0], rear_tie[1], lid_t - 0.01]) rotate([0, 0, 90]) tie_mount();
         }
         for (p = boss_pts) translate([p[0], p[1], 0]) clear_hole(3, lid_t);
         for (p = lidar_holes_rel) {
@@ -369,7 +373,12 @@ module scam_lid_posts() {
 
 module scam_lid_post_cut() {
     for (x = scam_ear_x) translate([x + scam_ear_w / 2, scam_mnt_y0, scam_ear_scr_z - box_h]) rotate([-90, 0, 0])
-        screw_hole(3, scam_lpost_d - 0.5);
+        screw_hole(3, scam_lpost_d + 1);
+    // 板の上の M2 の後ろ（ナットとネジの先）の逃げ
+    for (h = scam_holes) if (h[1] > box_h + lid_t) translate([h[0], scam_mnt_y0, h[1] - box_h]) rotate([-90, 0, 0]) {
+        translate([0, 0, -scam_nut_d]) rotate([0, 0, 30]) cylinder(d = scam_nut_af / cos(30), h = scam_nut_d + 0.01, $fn = 6);
+        translate([0, 0, -scam_lpost_d - 1]) cylinder(d = clear_d(2), h = scam_lpost_d + 2);
+    }
 }
 
 // 2 眼カメラの板（組み立ての座標）。基板は前から M2 × 6 mm を 4 本、板は耳を M3 × 8 mm で 2 本
@@ -424,13 +433,13 @@ module imu_holder(z0) {
     oy = iy + 2 * imu_wall;
     h = imu_lift + 1.6 + 0.3 + 1.2;
     // ピンヘッダーのある +X 側は壁なしで開け、ピンヘッダーの列の幅だけ台を短くして基板をはみ出させ、ジャンパー線を差したまま上から入れて縁の受けに載せる
-    translate([imu_c[0], imu_c[1], z0 - 0.01]) difference() {
+    translate([imu_c[0], imu_c[1], z0 - 0.01]) rotate([0, 0, imu_rot]) difference() {
         translate([-ox / 2, -oy / 2, 0]) cube([ox / 2 + imu_board[0] / 2 - imu_hdr, oy, h]);
         translate([-ix / 2, -iy / 2, imu_lift]) cube([ix + 5, iy, h]);
         translate([-ix / 2 + imu_ledge, -iy / 2 + imu_ledge, 0.01]) cube([ix + 5, iy - 2 * imu_ledge, h + 1]);
     }
     // 奥の長辺の出っ張り: 基板は +X 側から斜めに差し込み、-X 側の縁をこの下に入れてから段に載せる
-    translate([imu_c[0] - ox / 2, imu_c[1] - oy / 2, z0 + imu_lift + 1.6 + 0.3]) cube([imu_wall + imu_lip, oy, imu_lip_t]);
+    translate([imu_c[0], imu_c[1], z0]) rotate([0, 0, imu_rot]) translate([-ox / 2, -oy / 2, imu_lift + 1.6 + 0.3]) cube([imu_wall + imu_lip, oy, imu_lip_t]);
 }
 
 function tof_c() = [plate_w / 2, plate_l + tof_dy];
@@ -503,8 +512,10 @@ module pi_ghost() {
 
 module sensor_ghost() {
     z = box_h + lid_t;
-    color("purple") translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, z + imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
-    color("black") translate([imu_c[0] + imu_board[0] / 2 - imu_hdr, imu_c[1] - imu_board[1] / 2, z + imu_lift - 14]) cube([imu_hdr, imu_board[1], 14]);
+    translate([imu_c[0], imu_c[1], z]) rotate([0, 0, imu_rot]) {
+        color("purple") translate([-imu_board[0] / 2, -imu_board[1] / 2, imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
+        color("black") translate([imu_board[0] / 2 - imu_hdr, -imu_board[1] / 2, imu_lift - 14]) cube([imu_hdr, imu_board[1], 14]);
+    }
 }
 
 module camera_ghost() {
@@ -566,10 +577,10 @@ module cable_ghost() {
     pz = pi_z + 1.6;
     // 2 眼カメラの USB（基板の裏 → ふたの上を後ろへ → LiDAR の線と一緒に Pi の USB へ）
     color("white") path([[scam_cx, scam_front + 3.5, scam_z1 + 9], [scam_cx, scam_mnt_y0 - 4, scam_z1 + 7], [scam_tie[0], scam_mnt_y0 - 16, lt + 3], [scam_tie[0], scam_tie[1], lt + 4.5],
-                         [scam_tie[0], box_y0 + 14, lt + 4], [lidar_cx + 4, box_y0 + 7, lt + 4], [lidar_cx + 30, box_y0 - 6, lt + 2],
+                         [rear_tie[0] - 2, box_y0 + 22, lt + 4], [rear_tie[0] - 1, rear_tie[1], lt + 4], [lidar_cx + 30, box_y0 - 6, lt + 2],
                          [pi_cx + pi_board[0] / 2 + 12, pi_cy - 2, pz + 12], [pi_cx + pi_board[0] / 2 + 2, pi_cy - 3, pz + 6]], 4);
     // LiDAR（USB 変換基板）→ Pi の USB
-    color("silver") path([[lidar_cx - 6, box_y0 + 20, lt + 3], [lidar_cx - 2, box_y0 + 7, lt + 4], [lidar_cx + 30, box_y0 - 6, lt],
+    color("silver") path([[lidar_cx - 6, box_y0 + 22, lt + 3], [rear_tie[0] - 3, box_y0 + 22, lt + 3], [rear_tie[0] + 1, rear_tie[1], lt + 4], [lidar_cx + 30, box_y0 - 6, lt],
                           [pi_cx + pi_board[0] / 2 + 12, pi_cy + 20, pz + 12], [pi_cx + pi_board[0] / 2 + 2, pi_cy + 19, pz + 12]], 3.5);
     // バッテリー（PD 12V）→ DROK の入力（左端）
     color("red") path([[box_x0 + box_x + 3, box_cy - 10, floor_t + 8], [box_x0 + box_x + 3, box_y0 - 12, flange_t + 3],
@@ -583,9 +594,9 @@ module cable_ghost() {
     // IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
     hy = pi_cy + pi_board[1] / 2 - 3.5;
     ht = pi_z + pi_stack_h + 4;
-    // IMU: ピンヘッダー（下向き）→ 台の右の開いた側 → ふたの上を後ろへ → ふたの後ろ端から Pi の前の GPIO へ
-    color("purple") path([[imu_c[0] + imu_board[0] / 2 - 1.3, imu_c[1], lt + imu_lift - 14], [imu_c[0] + imu_board[0] / 2 + 4, imu_c[1], lt + 3],
-                          [imu_c[0] + imu_board[0] / 2 + 4, box_y0 + 4, lt + 3], [imu_c[0] + 6, box_y0 - 4, ht + 2],
+    // IMU: ピンヘッダー（下向き）→ 台の後ろの開いた側 → ふたの後ろ端から Pi の前の GPIO へ
+    color("purple") path([[imu_c[0], imu_c[1] - imu_board[0] / 2 + 1.3, lt + imu_lift - 14], [imu_c[0], box_y0 + 3, lt + 4],
+                          [imu_c[0] - 4, box_y0 - 4, ht + 2],
                           [pi_cx + 20, hy + 2, ht], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
         path([[plate_w / 2, plate_l + tof_dy - 20, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 168, flange_t + 5],
