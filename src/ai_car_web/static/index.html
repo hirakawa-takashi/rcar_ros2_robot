@@ -331,7 +331,7 @@
 
 <div class="grid">
   <div class="card wide">
-    <h2>カメラ (/camera/image_raw/compressed)</h2>
+    <h2>カメラ (/camera/image_raw/compressed) <span class="badge" id="cam_link">-</span></h2>
     <div class="camwrap">
       <img class="cam" id="cam" alt="camera">
       <canvas class="cam_overlay" id="cam_overlay" width="640" height="480"></canvas>
@@ -360,7 +360,7 @@
   </div>
 
   <div class="card wide">
-    <h2>LiDAR (/scan)</h2>
+    <h2>LiDAR (/scan) <span class="badge" id="s_link">-</span></h2>
     <div class="mapwrap"><canvas class="map" id="scan_map" width="480" height="480"></canvas></div>
     <table>
       <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
@@ -371,7 +371,7 @@
   </div>
 
   <div class="card">
-    <h2>Raspberry Pi 5 — CPU</h2>
+    <h2>Raspberry Pi 5 — CPU <span class="badge" id="pi_link">-</span></h2>
     <div class="barrow">
       <span class="k">温度</span>
       <span class="bar"><span id="cpu_temp_bar"></span></span>
@@ -469,7 +469,7 @@
 
   <div class="stack">
     <div class="card">
-      <h2>AI HAT+ — Hailo-8 NPU</h2>
+      <h2>AI HAT+ — Hailo-8 NPU <span class="badge" id="h_link">-</span></h2>
       <div class="barrow">
         <span class="k">温度</span>
         <span class="bar"><span id="h_temp_bar"></span></span>
@@ -484,7 +484,7 @@
     </div>
 
     <div class="card">
-      <h2>IMU (/imu/data)</h2>
+      <h2>IMU (/imu/data) <span class="badge" id="i_link">-</span></h2>
       <table>
         <tr><td class="k">roll [deg]</td><td class="v" id="i_roll">-</td></tr>
         <tr><td class="k">pitch [deg]</td><td class="v" id="i_pitch">-</td></tr>
@@ -495,7 +495,7 @@
     </div>
 
     <div class="card">
-      <h2>落下防止センサー (/cliff_status)</h2>
+      <h2>落下防止センサー (/cliff_status) <span class="badge" id="c_link">-</span></h2>
       <table>
         <tr><td class="k">状態</td><td class="v" id="c_level">-</td></tr>
         <tr><td class="k">前 [m]</td><td class="v" id="c_front">-</td></tr>
@@ -1226,6 +1226,41 @@ function renderJetsonHost(j) {
   byId('jt_reboot_btn').disabled = !alive;
 }
 
+function setLink(id, cls, text, title) {
+  const el = document.getElementById(id);
+  el.className = 'badge' + (cls ? ' ' + cls : '');
+  el.textContent = text;
+  el.title = title || '';
+}
+
+function topicLink(id, msg, now, timeout, topic) {
+  const age = msg && msg.stamp && now ? now - msg.stamp : null;
+  if (age == null) setLink(id, '', '未受信', `${topic} 未受信`);
+  else if (age > timeout) setLink(id, 'warn', '途絶', `最後の受信から ${fmt(age, 1)} s`);
+  else setLink(id, 'ok', '接続中', `最後の受信から ${fmt(Math.max(age, 0), 1)} s`);
+}
+
+function renderLinks(d) {
+  const cam = d.camera;
+  if (!cam) setLink('cam_link', '', '未受信', '');
+  else if (cam.available) setLink('cam_link', 'ok', '接続中', `最後の受信から ${fmt(cam.age_s, 1)} s`);
+  else setLink('cam_link', 'warn', '映像なし', `${cam.topic} を待機中`);
+  topicLink('s_link', d.scan, d.stamp, 2.0, '/scan');
+  topicLink('i_link', d.imu, d.stamp, 2.0, '/imu/data');
+  topicLink('pi_link', d.system, d.stamp, 3.0, '/system_status');
+  const h = (d.system || {}).hailo;
+  if (!h) setLink('h_link', '', '未受信', '/system_status 未受信');
+  else if (!h.enabled) setLink('h_link', '', '無効', '');
+  else if (h.driver_ready) setLink('h_link', 'ok', '接続中', h.device_node || '');
+  else setLink('h_link', 'warn', h.detected ? 'ドライバ未導入' : '未検出', h.pci || '');
+  const c = d.cliff;
+  if (!c) setLink('c_link', '', '未受信', '/cliff_status 未受信');
+  else if (!c.alive) setLink('c_link', 'warn', '途絶', `最後の受信から ${fmt(c.age_s, 1)} s`);
+  else if (!c.wired) setLink('c_link', '', '未配線', c.reason || '');
+  else if (c.connected) setLink('c_link', 'ok', '接続中', '');
+  else setLink('c_link', 'warn', '未接続', c.reason || '');
+}
+
 function render(d) {
   latestTelemetry = d || {};
   if (!d.auth_required) {
@@ -1262,6 +1297,7 @@ function render(d) {
   renderSystem(d.system);
   renderJetsonHost(d.jetson_host);
   renderCamera(d.camera);
+  renderLinks(d);
 }
 
 const slamImg = new Image();
