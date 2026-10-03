@@ -18,6 +18,7 @@ Jetson  /proc・/sys・systemctl・HTTP（whisper 8178 / Ollama 11434 / Kokoro 8
   Kokoro（文字→声、Docker）、`jetson-owl`（NanoOWL の物体検出）
 - 更新: 残りの更新とセキュリティ更新の数（`apt-check`、重いので 1 時間に 1 回）、再起動が必要か、
   最後に自動更新（unattended-upgrades）が動いた時刻
+- IP アドレス（Tailscale・Wi-Fi など。lo・Docker・USB の `l4tbr0` は出さない。30 秒ごとに調べる）、再起動ボタンが使えるか（`sudo -n -l`）
 
 ## ファイル
 - `jetson_status.py`: 本体。標準ライブラリだけで動く（Jetson の `/usr/bin/python3`）
@@ -35,6 +36,15 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now jetson-status.service
 journalctl -u jetson-status -f
 ```
+
+## ダッシュボードの「再起動」ボタン
+Jetson カードの「Jetson を再起動」を押すと、AI-CAR は次に状態が届いたときの返事に `"reboot": true` を入れます。
+`jetson_status.py` はそれを見て `sudo -n systemctl reboot` を実行します。パスワードなしで再起動だけを許す設定が要ります:
+```bash
+sudo visudo -cf ~/status_reporter/jetson-reboot.sudoers
+sudo install -m 440 ~/status_reporter/jetson-reboot.sudoers /etc/sudoers.d/jetson-reboot
+```
+入っていないときはボタンを押しても「jetson-reboot.sudoers が入っていません」と出て、再起動しません。
 
 1 回だけ集めて表示するとき（AI-CAR には送らない）:
 ```bash

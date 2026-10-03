@@ -41,7 +41,8 @@
   - システム構成（プロジェクト説明の「システム構成」タブ、`architecture.yaml` の `system`）: AI-CAR・Jetson Orin Nano Super・M5 スタックちゃんの役割とやりとり（① 画像 ② 名前・位置は稼働中、声の命令・スタックちゃんとの声と映像は予定）を図と表で出す
   - 液晶（ZJY-IPS130-V2.0、ST7789）は 2026/10 に取り外し、`lcd_display_node`・launch の `use_lcd_display`・`dashboard.yaml` の設定・`gpio_pins.yaml` の配線（pin 16/17/18/19/20/22/23）を消した。旧 TM1637 の `seg_display_node` は残っている（既定では起動しない）
   - Jetson の物体検出（表示のみ）: Jetson Orin Nano Super の `jetson/owl_detector`（NanoOWL、`jetson-owl.service`）が AI-CAR のカメラ画像から `prompts.json` の物（段ボール箱・袋など）を探し、`POST /api/jetson/detections` → `/jetson_detections` → `perception_node` が LiDAR の距離を付けて `/obstacle_status` の `jetson` に出す。2 秒以上届かないと「未接続」。速度制限には使わない。LiDAR の図にもカメラの見える範囲（66° の扇形）と物の名前・距離を重ねる
-  - Jetson の状態（表示のみ）: Jetson の `jetson/status_reporter`（`jetson-status.service`）が 1 秒ごとに温度・CPU / GPU の使用率・メモリ・スワップ・消費電力・AI の部品（whisper-server・Ollama・Kokoro。会話の AI はモデル名と GPU / CPU で動く割合も）・セキュリティ更新の残り・再起動が必要かを `POST /api/jetson/status` へ送り、ダッシュボードの「Jetson Orin Nano Super — AI 担当」カードに出す。5 秒以上届かないと「未接続」。速度や安全の判定には使わない。NanoOWL は 2026/10 からメモリを空けるため止めている（電源モード・ファン・NanoOWL の値も送るが、カードには出さない）
+  - Jetson の状態（表示のみ）: Jetson の `jetson/status_reporter`（`jetson-status.service`）が 1 秒ごとに温度・CPU / GPU の使用率・メモリ・スワップ・消費電力・AI の部品（whisper-server・Ollama・Kokoro。会話の AI はモデル名と GPU / CPU で動く割合も）・セキュリティ更新の残り・再起動が必要か・IP アドレスを `POST /api/jetson/status` へ送り、ダッシュボードの「Jetson Orin Nano Super — AI 担当」カードに出す。5 秒以上届かないと「未接続」。速度や安全の判定には使わない。NanoOWL は 2026/10 からメモリを空けるため止めている（電源モード・ファン・NanoOWL の値も送るが、カードには出さない）
+  - 再起動ボタン: ラズパイと Jetson のカードの「再起動」ボタン（確認の画面あり、API トークンが必要）。ラズパイは走行中・自動運転中は断る。Jetson は次の状態の返事で伝え、`jetson_status.py` が再起動する。どちらも `systemctl reboot` だけをパスワードなしで許す sudoers が要る
   - SLAM（地図と自己位置）: `use_slam:=true` で `slam_toolbox` を起動し、ダッシュボードの「地図と自己位置（SLAM）」に地図と自己位置を出す。地図は `~/AI-CAR_ws/maps` に保存できる。車輪のオドメトリが無いので位置はスキャンの照合だけで出す（ゆっくり動かす）。既定は起動しない。自律走行にはまだ使わない
   - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
   - 画面（`static/index.html`）: 手動操作カードは LiDAR カードの直下（4 列固定グリッド、幅 2 列分）に配置。メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
@@ -52,7 +53,7 @@
   - 自動起動: `systemd/ai-car-dashboard.service`（`install_service.sh` で登録、`Restart=always`、USB デバイス待ちで起動を10秒遅延）。カメラ / LiDAR ノードは launch 側で `respawn`
   - 自動起動: `systemd/ai-car-dashboard.service`（`install_service.sh` で登録、`Restart=always`、USB デバイス待ちで起動を10秒遅延）。カメラ / LiDAR / IMU ノードは launch 側で `respawn`
   - `system_monitor_node`: Raspberry Pi 5 / AI HAT+ の状態監視（読み取りのみ）
-    - Publish: `/system_status`（std_msgs/String, JSON、1Hz）
+    - Publish: `/system_status`（std_msgs/String, JSON、1Hz。IP アドレス `ips` は 30 秒ごとに調べる）
     - 取得内容: CPU使用率（全体・コア別）・クロック・温度・ロードアベレージ、メモリ/Swap/ディスク、PMIC レール別電圧・電流・電力、スロットリング状態、Hailo-8 検出状態
     - パラメータ: `publish_rate` / `topic` / `enable_pmic` / `enable_hailo`
     - 依存: `psutil`、`vcgencmd`、`lspci`、`hailortcli`（あれば利用）
