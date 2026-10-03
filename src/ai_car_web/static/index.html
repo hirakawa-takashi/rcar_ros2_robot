@@ -26,6 +26,8 @@
   td { padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   td.k { color: #9fb0c7; width: 42%; }
   td.v { text-align: right; font-variant-numeric: tabular-nums; }
+  td.v.wrap { white-space: normal; overflow-wrap: anywhere; }
+  td.v.wrap .badge { white-space: nowrap; }
   .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   button { background: #2a3340; color: #e8eaed; border: 1px solid #3a4657;
            border-radius: 6px; padding: 14px 0; font-size: 15px; cursor: pointer; }
@@ -524,19 +526,16 @@
           <tr><td class="k">空き [GB]</td><td class="v" id="jt_mem_avail">-</td></tr>
           <tr><td class="k">スワップ [GB]</td><td class="v" id="jt_swap">-</td></tr>
           <tr><td class="k">消費電力 [W]</td><td class="v" id="jt_power">-</td></tr>
-          <tr><td class="k">電源モード</td><td class="v" id="jt_mode">-</td></tr>
-          <tr><td class="k">ファン</td><td class="v" id="jt_fan">-</td></tr>
         </table>
       </div>
       <div>
         <h3>AI の部品</h3>
         <table>
           <tr><td class="k">声→文字</td><td class="v" id="jt_svc_whisper" title="whisper-server（whisper.cpp small、GPU）">-</td></tr>
-          <tr><td class="k">会話の AI</td><td class="v" id="jt_svc_ollama" title="Ollama（状態 / 読み込み中のモデル）">-</td></tr>
+          <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
           <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
           <tr><td class="k">文字→声</td><td class="v" id="jt_svc_kokoro" title="Kokoro（GPU、Docker）">-</td></tr>
-          <tr><td class="k">物体検出</td><td class="v" id="jt_svc_nanoowl" title="NanoOWL（jetson-owl.service）">-</td></tr>
         </table>
       </div>
       <div>
@@ -1113,17 +1112,14 @@ function renderJetsonHost(j) {
   byId('jt_swap').textContent = v.swap_total_mb == null ? '-' : `${gb(v.swap_used_mb)} / ${gb(v.swap_total_mb)}`;
   byId('jt_power').textContent = fmt(v.power_w, 1);
   byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
-  byId('jt_mode').textContent = v.power_mode || '-';
-  byId('jt_fan').textContent = v.fan_percent == null ? '-'
-    : `${fmt(v.fan_percent, 0)} %${v.fan_rpm == null ? '' : `（${v.fan_rpm} rpm）`}`;
 
   const svc = v.services || {};
   const svcBadge = (key, offCls) => svc[key] == null ? '-'
     : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
   byId('jt_svc_whisper').innerHTML = svcBadge('whisper', 'warn');
   const models = v.llm_models || [];
-  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-' : svcBadge('ollama', 'warn') +
-    (svc.ollama ? ` / ${models.length ? models.join(', ') : 'なし'}` : '');
+  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-'
+    : (svc.ollama ? `${esc(models.length ? models.join(', ') : 'なし')} / ` : '') + svcBadge('ollama', 'warn');
   const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
   const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
   const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
@@ -1132,7 +1128,6 @@ function renderJetsonHost(j) {
   const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
   byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
   byId('jt_svc_kokoro').innerHTML = svcBadge('kokoro', 'warn');
-  byId('jt_svc_nanoowl').innerHTML = svcBadge('nanoowl', '');
 
   byId('jt_security').innerHTML = v.security_pending == null ? '-'
     : `${v.security_pending ? badge('warn', `${v.security_pending} 件`) : badge('ok', '0 件')}` +
