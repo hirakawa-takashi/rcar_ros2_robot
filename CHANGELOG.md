@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Fixed
+- ダッシュボードの IP アドレスで「（Wi-Fi）」が「Wi-」と「Fi）」の 2 行に分かれることがあったので、アドレスと名前の間だけで折り返すようにした
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
