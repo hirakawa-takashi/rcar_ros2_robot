@@ -1,6 +1,6 @@
 """Jetson の状態（温度・使用率・メモリ・電力・AI の部品・更新）を AI-CAR へ送る。
 
-5 秒ごとに /proc・/sys と、声の AI（whisper-server・Ollama・Kokoro）の HTTP を見て、
+1 秒ごとに /proc・/sys と、声の AI（whisper-server・Ollama・Kokoro）の HTTP を見て、
 POST /api/jetson/status へ送る。セキュリティ更新の数（apt-check）は重いので 1 時間に 1 回だけ調べる。
 標準ライブラリだけで動く（jetson-status.service を参照）。
 """
@@ -253,7 +253,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--car-url',
                         default=os.environ.get('AI_CAR_URL', 'http://100.70.35.31:8080'))
-    parser.add_argument('--interval', type=float, default=5.0, help='送る間隔 [秒]')
+    parser.add_argument('--interval', type=float, default=1.0, help='送る間隔 [秒]')
     parser.add_argument('--slow-interval', type=float, default=3600.0,
                         help='セキュリティ更新の数を調べる間隔 [秒]')
     parser.add_argument('--once', action='store_true', help='1 回だけ集めて表示する（送らない）')
