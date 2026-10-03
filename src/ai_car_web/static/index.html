@@ -27,7 +27,7 @@
   td.k { color: #9fb0c7; width: 42%; }
   td.v { text-align: right; font-variant-numeric: tabular-nums; }
   td.v.wrap { white-space: normal; overflow-wrap: anywhere; }
-  td.v.wrap .badge { white-space: nowrap; }
+  td.v.wrap .badge, td.v.wrap .nw { white-space: nowrap; }
   .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   button { background: #2a3340; color: #e8eaed; border: 1px solid #3a4657;
            border-radius: 6px; padding: 14px 0; font-size: 15px; cursor: pointer; }
@@ -788,7 +788,7 @@ function ipLabel(iface) {
 function renderIps(el, ips) {
   const order = ip => (ip.iface || '').startsWith('tailscale') ? 0 : 1;
   el.innerHTML = ips && ips.length
-    ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `${esc(ip.addr)}（${esc(ipLabel(ip.iface || ''))}）`).join('<br>') : '-';
+    ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
