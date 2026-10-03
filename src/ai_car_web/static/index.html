@@ -27,7 +27,7 @@
   td.k { color: #9fb0c7; width: 42%; }
   td.v { text-align: right; font-variant-numeric: tabular-nums; }
   td.v.wrap { white-space: normal; overflow-wrap: anywhere; }
-  td.v.wrap .badge { white-space: nowrap; }
+  td.v.wrap .badge, td.v.wrap .nw { white-space: nowrap; }
   .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   button { background: #2a3340; color: #e8eaed; border: 1px solid #3a4657;
            border-radius: 6px; padding: 14px 0; font-size: 15px; cursor: pointer; }
@@ -391,7 +391,11 @@
       <tr><td class="k">電源状態</td><td class="v" id="pwr_state">-</td></tr>
       <tr><td class="k">PD対応（5A）</td><td class="v" id="pwr_pd">-</td></tr>
       <tr><td class="k">IP アドレス</td><td class="v wrap" id="pi_ips">-</td></tr>
-      <tr><td class="k">再起動</td><td class="v"><button class="reboot" id="pi_reboot_btn">ラズパイを再起動</button> <span id="pi_reboot_msg"></span></td></tr>
+      <tr><td class="k">セキュリティ更新</td><td class="v" id="pi_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
+      <tr><td class="k">再起動</td><td class="v" id="pi_reboot_req">-</td></tr>
+      <tr><td class="k">最後の自動更新</td><td class="v" id="pi_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
+      <tr><td class="k">更新する</td><td class="v"><span id="pi_upgrade_state"></span> <button class="reboot" id="pi_upgrade_btn" title="ROS 2 も含めて更新する。走行中は押せない">ラズパイを更新</button> <span id="pi_upgrade_msg"></span></td></tr>
+      <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="pi_reboot_btn">ラズパイを再起動</button> <span id="pi_reboot_msg"></span></td></tr>
     </table>
   </div>
 
@@ -451,6 +455,7 @@
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
           <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
           <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
+          <tr><td class="k">更新する</td><td class="v"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
           <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
@@ -787,7 +792,7 @@ function ipLabel(iface) {
 function renderIps(el, ips) {
   const order = ip => (ip.iface || '').startsWith('tailscale') ? 0 : 1;
   el.innerHTML = ips && ips.length
-    ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `${esc(ip.addr)}（${esc(ipLabel(ip.iface || ''))}）`).join('<br>') : '-';
+    ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
@@ -801,10 +806,53 @@ function rebootButton(btnId, msgId, name, path, when) {
 }
 rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot', '10 秒後に');
 rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
+document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
+  const n = latestTelemetry.system?.updates?.updates_pending;
+  if (!confirm(`ラズパイを更新しますか？（ROS 2 も含めて ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだは走らせないでください。`)) return;
+  const msg = document.getElementById('pi_upgrade_msg');
+  msg.textContent = '送っています…';
+  apiPost('/api/system/upgrade').then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+    msg.textContent = ok ? '始めました' : (j.detail || '送れませんでした');
+  }).catch(() => { msg.textContent = '送れませんでした'; });
+});
+document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
+  const n = latestTelemetry.jetson_host?.updates_pending;
+  if (!confirm(`Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
+  const msg = document.getElementById('jt_upgrade_msg');
+  msg.textContent = '送っています…';
+  apiPost('/api/jetson/upgrade').then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+    msg.textContent = ok ? '頼みました' : (j.detail || '送れませんでした');
+  }).catch(() => { msg.textContent = '送れませんでした'; });
+});
+
+function badge(cls, text) {
+  return `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;
+}
+function upgradeTime(t) {
+  const d = t ? new Date(t * 1000) : null;
+  const pad = n => String(n).padStart(2, '0');
+  return d ? `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '-';
+}
+function renderUpdates(u, prefix) {
+  const byId = id => document.getElementById(prefix + id);
+  byId('security').innerHTML = u.security_pending == null ? '-'
+    : `${u.security_pending ? badge('warn', `${u.security_pending} 件`) : badge('ok', '0 件')}` +
+      (u.updates_pending == null ? '' : `（全部 ${u.updates_pending}）`);
+  byId('upgrade_state').innerHTML = u.upgrade_running ? badge('warn', '更新中')
+    : u.upgrade_result === 'success' ? badge('ok', '前回は成功')
+    : u.upgrade_result ? badge('crit', '前回は失敗') : '';
+  if (u.upgrade_running) byId('upgrade_msg').textContent = '';
+  byId('last_upgrade').textContent = upgradeTime(u.last_upgrade);
+}
 
 function renderSystem(s) {
   if (!s) return;
   renderIps(document.getElementById('pi_ips'), s.ips);
+  const u = s.updates || {};
+  renderUpdates(u, 'pi_');
+  document.getElementById('pi_reboot_req').innerHTML = u.reboot_required == null ? '-'
+    : u.reboot_required ? badge('warn', '必要') : badge('ok', 'いらない');
+  document.getElementById('pi_upgrade_btn').disabled = !u.can_upgrade || !!u.upgrade_running;
   const c = s.cpu || {};
   document.getElementById('cpu_pct').textContent = fmt(c.percent, 1) + ' %';
   setBar(document.getElementById('cpu_bar'), c.percent);
@@ -1120,7 +1168,6 @@ let latestTelemetry = {};
 // Jetson（jetson/status_reporter）が 1 秒ごとに送る状態。5 秒以上届かないと未接続
 function renderJetsonHost(j) {
   const byId = id => document.getElementById(id);
-  const badge = (cls, text) => `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;
   const alive = !!(j && j.alive);
   byId('jt_state').className = 'badge' + (alive ? ' ok' : j ? ' warn' : '');
   byId('jt_state').textContent = alive ? '接続中' : '未接続';
@@ -1162,15 +1209,12 @@ function renderJetsonHost(j) {
   byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
   byId('jt_svc_kokoro').innerHTML = svcBadge('kokoro', 'warn');
 
-  byId('jt_security').innerHTML = v.security_pending == null ? '-'
-    : `${v.security_pending ? badge('warn', `${v.security_pending} 件`) : badge('ok', '0 件')}` +
-      (v.updates_pending == null ? '' : `（全部 ${v.updates_pending}）`);
+  renderUpdates(v, 'jt_');
+  byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +
+    (v.updates_held == null ? '' : `。「全部」に NVIDIA の部品（JetPack、${v.updates_held} 個）は入れない`);
+  byId('jt_upgrade_btn').disabled = !alive || !v.can_upgrade || !!v.upgrade_running || !!v.upgrade_pending;
   byId('jt_reboot').innerHTML = v.reboot_required == null ? '-'
     : v.reboot_required ? badge('warn', '必要') : badge('ok', 'いらない');
-  const lu = v.last_upgrade ? new Date(v.last_upgrade * 1000) : null;
-  const pad = n => String(n).padStart(2, '0');
-  byId('jt_last_upgrade').textContent = lu
-    ? `${lu.getMonth() + 1}/${lu.getDate()} ${pad(lu.getHours())}:${pad(lu.getMinutes())}` : '-';
   const up = v.uptime_s;
   byId('jt_uptime').textContent = up == null ? '-'
     : up >= 86400 ? `${Math.floor(up / 86400)} 日 ${Math.floor(up % 86400 / 3600)} 時間`

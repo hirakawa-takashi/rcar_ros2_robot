@@ -1,7 +1,7 @@
 """Raspberry Pi 5 と AI HAT+ (Hailo-8) の状態を収集して publish するノード。
 
 CPU使用率・温度・メモリ・電源（PMIC ADC）・スロットリング状態と、
-AI HAT+ の検出状況およびランタイム情報を JSON 文字列として
+AI HAT+ の検出状況およびランタイム情報と、ソフトの更新の状況を JSON 文字列として
 `/system_status` (std_msgs/String) に配信する。
 """
 
@@ -12,6 +12,8 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import time
 
 import psutil
 import rclpy
@@ -112,6 +114,72 @@ def _ip_addresses():
     return ips
 
 
+UPGRADE_UNIT = 'ai-car-upgrade.service'
+UPGRADE_SUDO = '/usr/bin/systemctl start --no-block ' + UPGRADE_UNIT
+
+
+def _can_sudo(cmd):
+    """sudoers（ai-car-upgrade.sudoers）でパスワードなしに cmd を実行できるか。"""
+    out = _run(['sudo', '-n', '-l'], timeout=5.0) or ''
+    return any('NOPASSWD:' in line and line.rstrip().endswith(cmd) for line in out.splitlines())
+
+
+def _apt_check():
+    """(更新できる数, そのうちのセキュリティ更新の数)。apt-check は結果を stderr に出す。"""
+    try:
+        out = subprocess.run(['nice', '-n', '19', '/usr/lib/update-notifier/apt-check'],
+                             capture_output=True, text=True, timeout=120, check=False).stderr
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    m = re.search(r'(\d+);(\d+)', out)
+    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+
+
+def _upgrade_state():
+    """ボタンの更新（ai-car-upgrade.service）が動いているかと、前回の結果（一度も動いていなければ空）。"""
+    out = _run(['systemctl', 'show', UPGRADE_UNIT, '-p', 'ActiveState', '-p', 'Result',
+                '-p', 'ExecMainStartTimestampMonotonic'])
+    if out is None:
+        return {'upgrade_running': None, 'upgrade_result': ''}
+    props = dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
+    running = props.get('ActiveState') in ('activating', 'active', 'deactivating')
+    started = props.get('ExecMainStartTimestampMonotonic', '0') not in ('', '0')
+    return {'upgrade_running': running,
+            'upgrade_result': props.get('Result', '') if started and not running else ''}
+
+
+class _UpdateFacts:
+    """apt-check は約 3 秒かかるので、別スレッドで 1 時間ごと（とボタンの更新のあと）に調べる。"""
+
+    def __init__(self, interval):
+        self.interval = interval
+        self.lock = threading.Lock()
+        self.facts = {}
+        self.wake = threading.Event()
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        while True:
+            pending, security = _apt_check()
+            facts = {'updates_pending': pending, 'security_pending': security,
+                     'can_upgrade': _can_sudo(UPGRADE_SUDO)}
+            with self.lock:
+                self.facts = facts
+            self.wake.wait(self.interval)
+            self.wake.clear()
+
+    def get(self):
+        with self.lock:
+            return dict(self.facts)
+
+
+def _last_upgrade():
+    try:
+        return round(os.path.getmtime('/var/lib/apt/periodic/unattended-upgrades-stamp'))
+    except OSError:
+        return None
+
+
 class SystemMonitorNode(Node):
     """システム情報収集ノード。"""
 
@@ -122,6 +190,7 @@ class SystemMonitorNode(Node):
         self.declare_parameter('topic', '/system_status')
         self.declare_parameter('enable_pmic', True)
         self.declare_parameter('enable_hailo', True)
+        self.declare_parameter('update_check_interval', 3600.0)
 
         rate = float(self.get_parameter('publish_rate').value)
         self.enable_pmic = bool(self.get_parameter('enable_pmic').value)
@@ -137,6 +206,9 @@ class SystemMonitorNode(Node):
         self._hailo_static = self._detect_hailo()
         self._ips = []
         self._ips_stamp = 0.0
+        self._update_facts = _UpdateFacts(float(self.get_parameter('update_check_interval').value))
+        self._upgrade = {'upgrade_running': None, 'upgrade_result': ''}
+        self._upgrade_stamp = 0.0
         self.create_timer(1.0 / max(rate, 0.1), self._publish_cb)
 
     # --- CPU / メモリ ---
@@ -347,6 +419,20 @@ class SystemMonitorNode(Node):
             self._ips_stamp = now
         return self._ips
 
+    def _updates(self):
+        now = time.monotonic()
+        if now - self._upgrade_stamp >= 2.0:
+            was_running = self._upgrade.get('upgrade_running')
+            self._upgrade = _upgrade_state()
+            self._upgrade_stamp = now
+            if was_running and self._upgrade['upgrade_running'] is False:
+                self._update_facts.wake.set()
+        facts = self._update_facts.get()
+        facts.update(self._upgrade)
+        facts['reboot_required'] = os.path.exists('/var/run/reboot-required')
+        facts['last_upgrade'] = _last_upgrade()
+        return facts
+
     def _publish_cb(self):
         now = self.get_clock().now().nanoseconds * 1e-9
         payload = {
@@ -358,6 +444,7 @@ class SystemMonitorNode(Node):
             'power': self._power(),
             'hailo': self._hailo(),
             'ips': self._ips_cached(now),
+            'updates': self._updates(),
         }
         msg = String()
         msg.data = json.dumps(payload)

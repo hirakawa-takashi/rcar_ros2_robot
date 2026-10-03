@@ -175,6 +175,7 @@ system_monitor_node:
     topic: "/system_status"
     enable_pmic: true
     enable_hailo: true
+    update_check_interval: 3600.0   # セキュリティ更新の数（apt-check）を調べる間隔 [秒]
 
 perception_node:
   ros__parameters:

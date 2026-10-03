@@ -106,17 +106,22 @@ class JetsonStatusRequest(BaseModel):
     llm_size_mb: float | None = None
     llm_vram_mb: float | None = None
     updates_pending: int | None = None
+    updates_held: int | None = None
     security_pending: int | None = None
     reboot_required: bool | None = None
     last_upgrade: float | None = None
     ips: list[dict[str, str]] = []
     can_reboot: bool | None = None
+    can_upgrade: bool | None = None
+    upgrade_running: bool | None = None
+    upgrade_result: str = ''
 
 
 JETSON_STATUS_TIMEOUT = 5.0
 JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
+UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
 
 
 def _jpeg_dimensions(data: bytes):
@@ -339,6 +344,7 @@ class DashboardNode(Node):
         self._jetson_host = None
         self._jetson_host_stamp = 0.0
         self._jetson_reboot_at = None
+        self._jetson_upgrade_at = None
         self._map = None
         self._map_png = None
         self._map_stamp = 0.0
@@ -697,7 +703,7 @@ class DashboardNode(Node):
     def update_jetson_status(self, req: JetsonStatusRequest):
         """Jetson の状態を、文字の長さと項目の数を絞ってから覚える。"""
         status = req.model_dump()
-        for key in ('hostname', 'os', 'l4t', 'power_mode'):
+        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result'):
             status[key] = status[key][:64]
         status['temperatures_c'] = {k[:16]: round(v, 1)
                                     for k, v in list(req.temperatures_c.items())[:8]}
@@ -712,9 +718,30 @@ class DashboardNode(Node):
             reboot = (self._jetson_reboot_at is not None
                       and now - self._jetson_reboot_at < JETSON_REBOOT_WINDOW)
             self._jetson_reboot_at = None
+            upgrade = (self._jetson_upgrade_at is not None
+                       and now - self._jetson_upgrade_at < JETSON_REBOOT_WINDOW)
+            self._jetson_upgrade_at = None
         if reboot:
             self.get_logger().warn('Jetson に再起動を伝えました')
-        return {'ok': True, 'reboot': reboot}
+        if upgrade:
+            self.get_logger().info('Jetson に更新を伝えました')
+        return {'ok': True, 'reboot': reboot, 'upgrade': upgrade}
+
+    def request_jetson_upgrade(self):
+        """次に Jetson から状態が届いたときの返事で、更新（NVIDIA の部品以外）を頼む。"""
+        with self._lock:
+            state = self._jetson_host_state()
+            if not state or not state['alive']:
+                raise HTTPException(status_code=409, detail='Jetson が未接続です')
+            if not state.get('can_upgrade'):
+                raise HTTPException(
+                    status_code=503,
+                    detail='Jetson に jetson-upgrade.sudoers が入っていません')
+            if state.get('upgrade_running'):
+                raise HTTPException(status_code=409, detail='Jetson は更新中です')
+            self._jetson_upgrade_at = self.get_clock().now().nanoseconds * 1e-9
+        self.get_logger().info('ダッシュボードから Jetson の更新を受け付けました')
+        return {'ok': True}
 
     def request_jetson_reboot(self):
         """次に Jetson から状態が届いたときの返事で、再起動を頼む。"""
@@ -756,6 +783,27 @@ class DashboardNode(Node):
         threading.Thread(target=self._reboot_pi_later, daemon=True).start()
         return {'ok': True}
 
+    def upgrade_pi(self):
+        """止まっているときだけ、ラズパイの更新（ai-car-upgrade.service）を始める。"""
+        if self._moving():
+            raise HTTPException(status_code=409, detail='走行中は更新できません（先に止めてください）')
+        with self._lock:
+            updates = (self._system or {}).get('updates') or {}
+        if not updates.get('can_upgrade'):
+            raise HTTPException(status_code=503,
+                                detail='ラズパイに ai-car-upgrade.sudoers が入っていません')
+        if updates.get('upgrade_running'):
+            raise HTTPException(status_code=409, detail='ラズパイは更新中です')
+        try:
+            ok = subprocess.run(UPGRADE_CMD, capture_output=True, timeout=30,
+                                check=False).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            ok = False
+        if not ok:
+            raise HTTPException(status_code=500, detail='更新を始められませんでした')
+        self.get_logger().info('ダッシュボードからラズパイの更新を始めました')
+        return {'ok': True}
+
     def _reboot_pi_later(self):
         """10 秒待ち（そのあいだも Jetson の再起動を受け付ける）、Jetson への再起動の頼みが残っていれば伝え終わるまで待ってから再起動する。"""
         time.sleep(PI_REBOOT_DELAY)
@@ -781,6 +829,7 @@ class DashboardNode(Node):
         state['alive'] = age < JETSON_STATUS_TIMEOUT
         state['age_s'] = round(age, 1)
         state['reboot_pending'] = self._jetson_reboot_at is not None
+        state['upgrade_pending'] = self._jetson_upgrade_at is not None
         return state
 
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
@@ -976,9 +1025,17 @@ def create_app(node: DashboardNode) -> FastAPI:
     def jetson_reboot():
         return node.request_jetson_reboot()
 
+    @app.post('/api/jetson/upgrade', dependencies=[Depends(require_token)])
+    def jetson_upgrade():
+        return node.request_jetson_upgrade()
+
     @app.post('/api/system/reboot', dependencies=[Depends(require_token)])
     def system_reboot():
         return node.reboot_pi()
+
+    @app.post('/api/system/upgrade', dependencies=[Depends(require_token)])
+    def system_upgrade():
+        return node.upgrade_pi()
 
     @app.get('/api/drive_mode')
     def drive_mode():

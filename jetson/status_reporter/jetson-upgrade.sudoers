@@ -1,0 +1,2 @@
+# ダッシュボードの「Jetson を更新」用: jetson-status.service（ユーザー jetson）がパスワードなしで jetson-upgrade.service を始めることだけできる
+jetson ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block jetson-upgrade.service

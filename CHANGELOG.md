@@ -6,9 +6,12 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Fixed
+- ダッシュボードの IP アドレスで「（Wi-Fi）」が「Wi-」と「Fi）」の 2 行に分かれることがあったので、アドレスと名前の間だけで折り返すようにした
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
+- 3D 部品（ふた `lid.stl`）: 2 眼カメラの板を留めるふたの前端の柱 2 本の M3 の穴を貫通にした。板の上の M2 のネジ 2 本の後ろに、M2 ナットの六角のくぼみ（二面幅 4.4 mm、深さ 2.5 mm）とネジの先の Ø2.4 の穴を開けた。IMU の台を LiDAR の後ろの柱 2 本の間（`imu_c` [90, 145] → [65, 122.3]）へ移して -90° 回し、ピンヘッダーの開いた側を Pi 側（後ろ）に向けた。ふたの後ろ端の結束バンドの受け（LiDAR とカメラの USB）は X 69 → 86 mm へずらした
+- Jetson カードの「セキュリティ更新」の「全部」の数から、NVIDIA の部品（自動でもボタンでも更新しない、今は 48 個）を除いた
 - ラズパイの再起動は、押してから 2 秒後ではなく 10 秒後にした。そのあいだに Jetson の再起動ボタンを押しても受け付け、Jetson に伝えてからラズパイを再起動する。前はラズパイ → Jetson の順に押すと、Jetson に伝わらなかった
 - ダッシュボードの「Jetson」カードを、いちばん下から「Raspberry Pi 5 — CPU」の右へ移した（幅 2 列、中は 2 × 2）。ラズパイと Jetson の状態を同時に見られる。AI HAT+・IMU・落下防止センサーは、その右へ
 - ラズパイの再起動は、Jetson への再起動の頼みが残っていれば、伝え終わるまで（最長 10 秒）待ってから再起動する。前は 2 秒後に再起動したので、ラズパイと Jetson を続けて押すと Jetson に伝わらなかった
@@ -19,6 +22,8 @@
 - 2 眼カメラを 3D の板（`cam_mount`）に USB 端子を上にして付け替えたので、`stereo_camera_node` の `rotate_180` を true → false にした（ノードの既定も false）
 
 ### Added
+- ダッシュボードの「Raspberry Pi 5 — CPU」カードに、Jetson と同じ更新の行（「セキュリティ更新」「再起動」「最後の自動更新」）と「ラズパイを更新」ボタンを追加した。`system_monitor_node` が `apt-check` で 1 時間に 1 回（とボタンの更新のあと）数を調べ、`/system_status` の `updates` で送る。ボタンは `POST /api/system/upgrade`（走行中・自動運転中は断る）で `ai-car-upgrade.service`（`systemd/ai-car-upgrade.sh`、ROS 2 も含めて更新、消える部品があるときはやめる）を始める。sudo は `systemd/ai-car-upgrade.sudoers` でこのサービスを始めることだけ許す。自動のセキュリティ更新（unattended-upgrades、Ubuntu の既定、自動の再起動なし）は前から動いている
+- ダッシュボードの Jetson カードに「Jetson を更新」ボタンを追加した。押したときだけ、NVIDIA の部品（JetPack）以外を更新する（`jetson/status_reporter/jetson-upgrade.sh`・`jetson-upgrade.service`・`jetson-upgrade.sudoers`）。更新中は「更新中」、終わると「前回は成功 / 失敗」と出る
 - ダッシュボードの「Raspberry Pi 5 — CPU」と「Jetson」のカードに、IP アドレス（Tailscale・Wi-Fi など。lo・Docker は出さない）と「再起動」ボタンを付けた。押すと確認の画面が出る。ラズパイは `POST /api/system/reboot`（走行中・自動運転中は 409 で断り、止めてから 2 秒後に `sudo -n systemctl reboot`）、Jetson は `POST /api/jetson/reboot`（次に状態が届いたときの返事に `reboot: true` を入れ、`jetson_status.py` が再起動する）。どちらも API トークンが必要。パスワードなしで `systemctl reboot` だけを許す sudoers（`systemd/ai-car-reboot.sudoers`、`jetson/status_reporter/jetson-reboot.sudoers`）が要る。IP は `system_monitor_node` の `/system_status` の `ips`、`jetson_status.py` の `ips`（30 秒ごとに調べる）
 - Jetson で Bluetooth のスピーカー＆マイク（Bose SoundLink Mini II）を使って会話の AI と声で話す `jetson/voice_chat/voice_chat.py`（`voice-chat.service`）を追加。マイクの音の大きさで話の区切りを見つけ、whisper-server（声→文字）→ Ollama `qwen2.5:3b`（返事を 1 文ずつ）→ Kokoro（文字→声）→ スピーカーの順に流す。返事を話しているあいだはマイクの音を捨てる。マイクは HFP の CVSD（mSBC は無音になる）。実機で聞き取り 0.60 秒、返事の声が出るまで 1.32 秒。AI-CAR の走行には何も送らない
 - ダッシュボードに「Jetson Orin Nano Super — AI 担当」カードを追加。Jetson の新しい `jetson/status_reporter/jetson_status.py`（`jetson-status.service`、標準ライブラリだけ）が 5 秒ごとに温度（CPU・GPU）、CPU / GPU の使用率、メモリ・スワップ・ディスク、消費電力（INA3221 の `VDD_IN`）・電源モード・ファン、AI の部品（声→文字 whisper-server・会話の AI Ollama と読み込み中のモデル・文字→声 Kokoro・物体検出 NanoOWL）が動いているか、セキュリティ更新の残り（`apt-check`、1 時間に 1 回）・再起動が必要か・最後の自動更新の時刻を `POST /api/jetson/status`（API トークンが必要）へ送る。`dashboard_node` は最新の 1 件を覚えて `/api/status`・`/ws` の `jetson_host` に出し、15 秒届かないと「未接続」にする。表示だけで、速度や安全の判定には使わない。「システム構成」タブにも「状態」のやりとりを足し、Jetson の説明を今の状態（声の AI が稼働中、NanoOWL は停止中）に直した

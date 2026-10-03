@@ -1,0 +1,11 @@
+[Unit]
+Description=Upgrade Jetson packages except NVIDIA JetPack (started from the AI-CAR dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jetson-upgrade
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=3600
