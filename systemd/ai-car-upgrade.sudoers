@@ -1,0 +1,2 @@
+# ダッシュボードの「ラズパイを更新」用: ai-car-dashboard.service（ユーザー super）がパスワードなしで ai-car-upgrade.service を始めることだけできる
+super ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block ai-car-upgrade.service

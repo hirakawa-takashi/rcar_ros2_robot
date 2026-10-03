@@ -121,6 +121,7 @@ JETSON_STATUS_TIMEOUT = 5.0
 JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
+UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
 
 
 def _jpeg_dimensions(data: bytes):
@@ -782,6 +783,27 @@ class DashboardNode(Node):
         threading.Thread(target=self._reboot_pi_later, daemon=True).start()
         return {'ok': True}
 
+    def upgrade_pi(self):
+        """止まっているときだけ、ラズパイの更新（ai-car-upgrade.service）を始める。"""
+        if self._moving():
+            raise HTTPException(status_code=409, detail='走行中は更新できません（先に止めてください）')
+        with self._lock:
+            updates = (self._system or {}).get('updates') or {}
+        if not updates.get('can_upgrade'):
+            raise HTTPException(status_code=503,
+                                detail='ラズパイに ai-car-upgrade.sudoers が入っていません')
+        if updates.get('upgrade_running'):
+            raise HTTPException(status_code=409, detail='ラズパイは更新中です')
+        try:
+            ok = subprocess.run(UPGRADE_CMD, capture_output=True, timeout=30,
+                                check=False).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            ok = False
+        if not ok:
+            raise HTTPException(status_code=500, detail='更新を始められませんでした')
+        self.get_logger().info('ダッシュボードからラズパイの更新を始めました')
+        return {'ok': True}
+
     def _reboot_pi_later(self):
         """10 秒待ち（そのあいだも Jetson の再起動を受け付ける）、Jetson への再起動の頼みが残っていれば伝え終わるまで待ってから再起動する。"""
         time.sleep(PI_REBOOT_DELAY)
@@ -1010,6 +1032,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/system/reboot', dependencies=[Depends(require_token)])
     def system_reboot():
         return node.reboot_pi()
+
+    @app.post('/api/system/upgrade', dependencies=[Depends(require_token)])
+    def system_upgrade():
+        return node.upgrade_pi()
 
     @app.get('/api/drive_mode')
     def drive_mode():
