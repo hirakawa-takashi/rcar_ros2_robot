@@ -1,7 +1,7 @@
 # Jetson の状態を AI-CAR のダッシュボードに出す
 
 Jetson Orin Nano Super の温度・使用率・メモリ・電力・AI の部品（声の AI・物体検出）・
-セキュリティ更新の状況を、5 秒ごとに AI-CAR へ送ります。ダッシュボードの
+セキュリティ更新の状況を、1 秒ごとに AI-CAR へ送ります。ダッシュボードの
 「Jetson Orin Nano Super」カードに出ます。
 
 ```
@@ -9,7 +9,7 @@ Jetson  /proc・/sys・systemctl・HTTP（whisper 8178 / Ollama 11434 / Kokoro 8
         → POST /api/jetson/status（API トークン）→ AI-CAR の dashboard_node → /api/status の jetson_host
 ```
 
-15 秒以上届かないと、カードは「未接続」になります。表示だけで、AI-CAR の速度には使いません。
+5 秒以上届かないと、カードは「未接続」になります。表示だけで、AI-CAR の速度には使いません。
 
 ## 送るもの
 - 温度（CPU・GPU・Tj）、CPU / GPU の使用率とクロック、ファン
