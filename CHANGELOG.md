@@ -9,6 +9,8 @@
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
+- ダッシュボードの「Jetson」カードを、いちばん下から「Raspberry Pi 5 — CPU」の右へ移した（幅 2 列、中は 2 × 2）。ラズパイと Jetson の状態を同時に見られる。AI HAT+・IMU・落下防止センサーは、その右へ
+- ラズパイの再起動は、Jetson への再起動の頼みが残っていれば、伝え終わるまで（最長 10 秒）待ってから再起動する。前は 2 秒後に再起動したので、ラズパイと Jetson を続けて押すと Jetson に伝わらなかった
 - Jetson の状態を送る間隔を 5 秒から 1 秒にした（`jetson_status.py --interval` の既定）。「未接続」になるまでも 15 秒から 5 秒にした（`JETSON_STATUS_TIMEOUT`）。Jetson で 1 回集めるのに CPU 約 0.011 秒なので、1 秒ごとでも CPU 1 コアの約 1 %
 - ダッシュボードの Jetson カードから「電源モード」「ファン」「物体検出」（NanoOWL、止めている）の行を消した。「会話の AI」を「qwen2.5:3b / 稼働中」（読み込み中のモデル / 状態）の順にし、セルが狭いときはモデル名を省略せずに折り返す（`td.v.wrap`）。Jetson から送る値はそのまま
 - Jetson の会話の AI（`qwen2.5:3b`）を、いつもメモリに読み込んだままにした（`jetson/ollama/`: `voice.conf` に `OLLAMA_KEEP_ALIVE=-1`、電源を入れたときに読み込む `ollama-preload.service`）。5 分使わないと外れて、ダッシュボードの「会話の AI」にモデル名が出なかった。外れているときの表示は「稼働中 / なし」（短くして、文字が切れないようにした）

@@ -17,7 +17,7 @@
           gap: 16px; }
   .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
   .card.wide { grid-column: span 2; }
-  /* 4 列固定: カメラ / LiDAR を上段、CPU / AI HAT+ / 手動操作を下段に揃える */
+  /* 4 列固定: カメラ / LiDAR を上段、ラズパイ / Jetson / AI HAT+ を 2 段目に揃える */
   @media (min-width: 900px) { .grid { grid-template-columns: repeat(4, 1fr); } }
   @media (max-width: 620px) { .card.wide { grid-column: auto; } }
   .stack { display: grid; gap: 16px; grid-template-rows: auto 1fr; }
@@ -65,6 +65,7 @@
          display: block; margin-bottom: 8px; }
   .card.full { grid-column: 1 / -1; }
   .jcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  @media (min-width: 900px) { .card.wide .jcols { grid-template-columns: repeat(2, 1fr); } }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
               border-radius: 8px; margin-bottom: 10px; }
@@ -394,6 +395,73 @@
     </table>
   </div>
 
+  <div class="card wide">
+    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span></h2>
+    <div class="jcols">
+      <div>
+        <h3>温度・使用率</h3>
+        <div class="barrow">
+          <span class="k">CPU 温度</span>
+          <span class="bar"><span id="jt_cpu_temp_bar"></span></span>
+          <span class="v" id="jt_cpu_temp">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">GPU 温度</span>
+          <span class="bar"><span id="jt_gpu_temp_bar"></span></span>
+          <span class="v" id="jt_gpu_temp">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">CPU 使用</span>
+          <span class="bar"><span id="jt_cpu_bar"></span></span>
+          <span class="v" id="jt_cpu">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">GPU 使用</span>
+          <span class="bar"><span id="jt_gpu_bar"></span></span>
+          <span class="v" id="jt_gpu">-</span>
+        </div>
+        <div class="barrow">
+          <span class="k">メモリ</span>
+          <span class="bar"><span id="jt_mem_bar"></span></span>
+          <span class="v" id="jt_mem_pct">-</span>
+        </div>
+      </div>
+      <div>
+        <h3>メモリ・電源</h3>
+        <table>
+          <tr><td class="k">メモリ [GB]</td><td class="v" id="jt_mem">-</td></tr>
+          <tr><td class="k">空き [GB]</td><td class="v" id="jt_mem_avail">-</td></tr>
+          <tr><td class="k">スワップ [GB]</td><td class="v" id="jt_swap">-</td></tr>
+          <tr><td class="k">消費電力 [W]</td><td class="v" id="jt_power">-</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>AI の部品</h3>
+        <table>
+          <tr><td class="k">声→文字</td><td class="v" id="jt_svc_whisper" title="whisper-server（whisper.cpp small、GPU）">-</td></tr>
+          <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
+          <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
+          <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
+          <tr><td class="k">文字→声</td><td class="v" id="jt_svc_kokoro" title="Kokoro（GPU、Docker）">-</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>更新・システム</h3>
+        <table>
+          <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
+          <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
+          <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
+          <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
+          <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
+          <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
+          <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
+          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
+  </div>
+
   <div class="stack">
     <div class="card">
       <h2>AI HAT+ — Hailo-8 NPU</h2>
@@ -492,72 +560,6 @@
     <div class="note">slam_toolbox（use_slam:=true で起動）。車輪のオドメトリがまだ無いので、位置は LiDAR のスキャンどうしの照合だけで出す。ゆっくり動かして地図を作る。自律走行にはまだ使わない。</div>
   </div>
 
-  <div class="card full">
-    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span></h2>
-    <div class="jcols">
-      <div>
-        <h3>温度・使用率</h3>
-        <div class="barrow">
-          <span class="k">CPU 温度</span>
-          <span class="bar"><span id="jt_cpu_temp_bar"></span></span>
-          <span class="v" id="jt_cpu_temp">-</span>
-        </div>
-        <div class="barrow">
-          <span class="k">GPU 温度</span>
-          <span class="bar"><span id="jt_gpu_temp_bar"></span></span>
-          <span class="v" id="jt_gpu_temp">-</span>
-        </div>
-        <div class="barrow">
-          <span class="k">CPU 使用</span>
-          <span class="bar"><span id="jt_cpu_bar"></span></span>
-          <span class="v" id="jt_cpu">-</span>
-        </div>
-        <div class="barrow">
-          <span class="k">GPU 使用</span>
-          <span class="bar"><span id="jt_gpu_bar"></span></span>
-          <span class="v" id="jt_gpu">-</span>
-        </div>
-        <div class="barrow">
-          <span class="k">メモリ</span>
-          <span class="bar"><span id="jt_mem_bar"></span></span>
-          <span class="v" id="jt_mem_pct">-</span>
-        </div>
-      </div>
-      <div>
-        <h3>メモリ・電源</h3>
-        <table>
-          <tr><td class="k">メモリ [GB]</td><td class="v" id="jt_mem">-</td></tr>
-          <tr><td class="k">空き [GB]</td><td class="v" id="jt_mem_avail">-</td></tr>
-          <tr><td class="k">スワップ [GB]</td><td class="v" id="jt_swap">-</td></tr>
-          <tr><td class="k">消費電力 [W]</td><td class="v" id="jt_power">-</td></tr>
-        </table>
-      </div>
-      <div>
-        <h3>AI の部品</h3>
-        <table>
-          <tr><td class="k">声→文字</td><td class="v" id="jt_svc_whisper" title="whisper-server（whisper.cpp small、GPU）">-</td></tr>
-          <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
-          <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
-          <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
-          <tr><td class="k">文字→声</td><td class="v" id="jt_svc_kokoro" title="Kokoro（GPU、Docker）">-</td></tr>
-        </table>
-      </div>
-      <div>
-        <h3>更新・システム</h3>
-        <table>
-          <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
-          <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
-          <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
-          <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
-          <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
-          <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
-          <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
-          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
-        </table>
-      </div>
-    </div>
-    <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
-  </div>
 
 </div>
 

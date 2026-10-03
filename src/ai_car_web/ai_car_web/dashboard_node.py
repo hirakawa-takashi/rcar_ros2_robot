@@ -752,9 +752,24 @@ class DashboardNode(Node):
                                 detail='ラズパイに ai-car-reboot.sudoers が入っていません')
         self.stop()
         self.get_logger().warn('ダッシュボードからラズパイの再起動を受け付けました（2 秒後）')
-        threading.Timer(2.0, subprocess.run, args=(REBOOT_CMD,),
-                        kwargs={'timeout': 30, 'check': False}).start()
+        threading.Thread(target=self._reboot_pi_later, daemon=True).start()
         return {'ok': True}
+
+    def _reboot_pi_later(self):
+        """2 秒待ち、Jetson への再起動の頼みが残っていれば伝え終わるまで待ってから再起動する。"""
+        time.sleep(2.0)
+        deadline = time.monotonic() + JETSON_REBOOT_WINDOW
+        waited = False
+        while time.monotonic() < deadline:
+            with self._lock:
+                pending = self._jetson_reboot_at is not None
+            if not pending:
+                break
+            waited = True
+            time.sleep(0.2)
+        if waited:
+            time.sleep(1.0)
+        subprocess.run(REBOOT_CMD, timeout=30, check=False)
 
     def _jetson_host_state(self):
         now = self.get_clock().now().nanoseconds * 1e-9
