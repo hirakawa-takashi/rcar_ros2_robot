@@ -1123,7 +1123,7 @@ function renderJetsonHost(j) {
   byId('jt_svc_whisper').innerHTML = svcBadge('whisper', 'warn');
   const models = v.llm_models || [];
   byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-' : svcBadge('ollama', 'warn') +
-    (svc.ollama ? ` / ${models.length ? models.join(', ') : '未読み込み'}` : '');
+    (svc.ollama ? ` / ${models.length ? models.join(', ') : 'なし'}` : '');
   const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
   const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
   const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;

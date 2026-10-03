@@ -1,0 +1,12 @@
+[Unit]
+Description=Load the voice LLM (qwen2.5:3b) into Ollama at boot and keep it resident
+After=ollama.service
+Requires=ollama.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for i in $(seq 90); do curl -sf -o /dev/null http://127.0.0.1:11434/api/generate -d "{\\"model\\":\\"qwen2.5:3b\\",\\"keep_alive\\":-1}" && exit 0; sleep 2; done; exit 1'
+
+[Install]
+WantedBy=multi-user.target

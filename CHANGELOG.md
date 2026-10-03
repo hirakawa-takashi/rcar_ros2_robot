@@ -9,6 +9,7 @@
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
+- Jetson の会話の AI（`qwen2.5:3b`）を、いつもメモリに読み込んだままにした（`jetson/ollama/`: `voice.conf` に `OLLAMA_KEEP_ALIVE=-1`、電源を入れたときに読み込む `ollama-preload.service`）。5 分使わないと外れて、ダッシュボードの「会話の AI」にモデル名が出なかった。外れているときの表示は「稼働中 / なし」（短くして、文字が切れないようにした）
 - ダッシュボードの Jetson カードの「会話の AI」を「稼働中 / qwen2.5:3b」（状態 / 読み込み中のモデル）の 1 行にし、その下に「GPU / CPU」（GPU と CPU で動く割合、`ollama ps` の PROCESSOR と同じ）と「GPU / 全体」（GPU に載っている量 / モデルの大きさ、GB）を足した。`jetson_status.py` は Ollama の `/api/ps` の `size`・`size_vram` の合計を `llm_size_mb`・`llm_vram_mb` で送る。GPU が 90 % 未満のときは黄色（CPU で動く分だけ返事が遅くなる）。「読み込み中」の行はなくした
 - 2 眼カメラを 3D の板（`cam_mount`）に USB 端子を上にして付け替えたので、`stereo_camera_node` の `rotate_180` を true → false にした（ノードの既定も false）
 
