@@ -1,0 +1,14 @@
+[Unit]
+Description=Voice chat on Jetson with a Bluetooth speaker and mic (whisper-server -> Ollama -> Kokoro)
+After=bluetooth.service whisper-server.service ollama-preload.service user@1000.service
+Wants=bluetooth.service
+
+[Service]
+User=jetson
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/python3 -u /home/jetson/voice_chat/voice_chat.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
