@@ -270,8 +270,8 @@ stereo_camera_node:
     width: 2560
     height: 720
     fps: 15.0
-    # カメラを上下逆さまに付けているので 180° 回す（左右の画像も入れ替わる）。3D の板（cam_mount）に USB 端子を上にして付けたら false
-    rotate_180: true
+    # 3D の板（cam_mount）に USB 端子を上にして付けているので回さない。上下逆さまに付けたときは true（左右の画像も入れ替わる）
+    rotate_180: false
     eye: "left"
     output_width: 960
     output_height: 540

@@ -5,6 +5,9 @@
 ### Known Issues
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
+### Changed
+- 2 眼カメラを 3D の板（`cam_mount`）に USB 端子を上にして付け替えたので、`stereo_camera_node` の `rotate_180` を true → false にした（ノードの既定も false）
+
 ### Added
 - プロジェクト説明に「システム構成」タブを追加。AI-CAR（Raspberry Pi 5）・Jetson Orin Nano Super・M5 スタックちゃん・ブラウザ・家の人のつながりを図にし、やりとり（① カメラの画像 `GET /api/camera/snapshot` ② 物の名前・位置 `POST /api/jetson/detections` は稼働中、③ 声の命令 `POST /api/cmd_vel`・`/api/stop`、④⑤ スタックちゃんと Jetson の声・映像・返事は予定で点線）と機械ごとの役割を表にした。内容は `architecture.yaml` の `system`
 - ラズパイ台の Pi 5 を左へ 32 mm 寄せた（`pi_cx` 79 → 47 mm）。カバーの左の壁に電源ボタンを押す穴（18 × 11 mm、Y 22〜40 mm）をあけ、カバーを付けたまま指先か細い棒で押せるようにした。右の USB / LAN の口からカバーの右の壁まで約 29 → 61 mm に広がり、ストレートの USB プラグも入る。穴をよけるため、カバーの後ろのフックを Y 30 → 54 mm、受けを Y 18 / 42 → 42 / 66 mm に移し、通気口も Pi に合わせて左へ移した。`pi_base.stl`・`cover.stl` を作り直した（ボタンの位置は図面に寸法がないので広めに見込み、実物では未確認）
