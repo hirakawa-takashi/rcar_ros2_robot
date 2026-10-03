@@ -789,18 +789,18 @@ function renderIps(el, ips) {
   el.innerHTML = ips && ips.length
     ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `${esc(ip.addr)}（${esc(ipLabel(ip.iface || ''))}）`).join('<br>') : '-';
 }
-function rebootButton(btnId, msgId, name, path) {
+function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
-    if (!confirm(`${name}を再起動しますか？\n戻るまで 1〜2 分かかります。`)) return;
+    if (!confirm(`${name}を再起動しますか？\n${when ? when + '再起動します。' : ''}戻るまで 1〜2 分かかります。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
     apiPost(path).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
-      msg.textContent = ok ? '再起動します（1〜2 分）' : (j.detail || '送れませんでした');
+      msg.textContent = ok ? `${when}再起動します（1〜2 分）` : (j.detail || '送れませんでした');
     }).catch(() => { msg.textContent = '送れませんでした'; });
   });
 }
-rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot');
-rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot');
+rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot', '10 秒後に');
+rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
 
 function renderSystem(s) {
   if (!s) return;
