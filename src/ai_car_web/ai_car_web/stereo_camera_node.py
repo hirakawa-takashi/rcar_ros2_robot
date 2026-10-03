@@ -39,7 +39,7 @@ class StereoCameraNode(Node):
         self.declare_parameter('width', 2560)
         self.declare_parameter('height', 720)
         self.declare_parameter('fps', 30.0)
-        self.declare_parameter('rotate_180', True)
+        self.declare_parameter('rotate_180', False)
         self.declare_parameter('eye', 'left')
         self.declare_parameter('output_width', 960)
         self.declare_parameter('output_height', 540)
