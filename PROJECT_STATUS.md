@@ -45,6 +45,7 @@
   - Jetson の更新ボタン: Jetson カードの「Jetson を更新」（確認の画面あり、API トークンが必要）。次の状態の返事で伝え、`jetson-upgrade.service`（`jetson-upgrade.sh`）が NVIDIA の部品（JetPack）以外を更新する。試しに動かして NVIDIA の部品が変わるか消える部品があるときはやめる。「全部」の数も NVIDIA の部品を除いた数
   - 再起動ボタン: ラズパイと Jetson のカードの「再起動」ボタン（確認の画面あり、API トークンが必要）。ラズパイは走行中・自動運転中は断り、押してから 10 秒後に再起動する（そのあいだに押した Jetson の再起動も受け付け、伝え終わってから再起動する）。Jetson は次の状態の返事で伝え、`jetson_status.py` が再起動する。どちらも `systemctl reboot` だけをパスワードなしで許す sudoers が要る
   - Jetson の声の会話: Jetson の `jetson/voice_chat`（`voice-chat.service`）が Bluetooth のスピーカー＆マイク（Bose SoundLink Mini II、HFP の CVSD）で聞き、whisper-server → Ollama `qwen2.5:3b` → Kokoro で答える（話し終わってから返事の声まで約 2 秒）。呼びかけの言葉はまだなく、聞こえた声にはいつも答える。AI-CAR の走行には何も送らない
+  - つながりの印: カメラ・LiDAR・Raspberry Pi 5 — CPU・AI HAT+・IMU・落下防止センサー・Jetson のカードのタイトルの横に「接続中」などを出す（LiDAR・IMU は 2 秒、`/system_status` は 3 秒、Jetson は 5 秒届かないと途絶 / 未接続）
   - ラズパイの更新: 「Raspberry Pi 5 — CPU」カードに「セキュリティ更新」（`apt-check`、1 時間に 1 回とボタンの更新のあと）「再起動」（必要 / いらない）「最後の自動更新」と「ラズパイを更新」ボタン（確認の画面あり、API トークンが必要、走行中・自動運転中は断る）。ボタンは `ai-car-upgrade.service`（`systemd/ai-car-upgrade.sh`、ROS 2 も含めて更新、消える部品があるときはやめる）を始める。自動のセキュリティ更新は Ubuntu の unattended-upgrades（自動の再起動なし）
   - SLAM（地図と自己位置）: `use_slam:=true` で `slam_toolbox` を起動し、ダッシュボードの「地図と自己位置（SLAM）」に地図と自己位置を出す。地図は `~/AI-CAR_ws/maps` に保存できる。車輪のオドメトリが無いので位置はスキャンの照合だけで出す（ゆっくり動かす）。既定は起動しない。自律走行にはまだ使わない
   - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
