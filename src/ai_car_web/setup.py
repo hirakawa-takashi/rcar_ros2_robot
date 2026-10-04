@@ -50,6 +50,7 @@ setup(
             'stereo_camera_node = ai_car_web.stereo_camera_node:main',
             'stereo_calibrate = ai_car_web.stereo_calib:main',
             'stereo_depth_node = ai_car_web.stereo_depth_node:main',
+            'lidar_watchdog_node = ai_car_web.lidar_watchdog_node:main',
         ],
     },
 )

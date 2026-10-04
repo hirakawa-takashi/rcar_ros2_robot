@@ -1522,7 +1522,8 @@ function render(d) {
   const ap = (d.autonomy && d.autonomy.params) || {};
   const stopD = Math.max(danger, ap.stop_distance || 0.35);
   const slowD = Math.max(stopD, ap.slow_distance || 0.8);
-  drawScanMap(s, danger, frontHalf, stopD, slowD, d.obstacle);
+  const scanFresh = s && s.stamp && d.stamp && d.stamp - s.stamp <= 2.0;
+  drawScanMap(scanFresh ? s : null, danger, frontHalf, stopD, slowD, d.obstacle);
   renderObstacle(d.obstacle);
   renderJoy(d.joy);
   renderDriveMode(d.drive_mode);

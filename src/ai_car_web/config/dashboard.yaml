@@ -240,6 +240,15 @@ rplidar:
     frame_id: "laser"
     angle_compensate: true
 
+# /scan が scan_timeout 秒来ないと rplidar を止め、launch の respawn（5 秒後）で起動し直す。
+# USB が抜けて差し直されたとき、rplidar_ros は古いポートを握ったまま /scan を出さなくなるため
+lidar_watchdog_node:
+  ros__parameters:
+    scan_timeout: 3.0
+    startup_grace: 20.0
+    kill_wait: 3.0
+    process_pattern: "rplidar_ros/rplidar_composition"
+
 # USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo（既定）で起動
 stereo_camera_node:
   ros__parameters:
