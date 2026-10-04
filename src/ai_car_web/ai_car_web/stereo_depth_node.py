@@ -124,10 +124,12 @@ def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_ran
 
 
 def near_obstacles(forward, left, height, mask, near_range, min_points, max_count,
-                   camera_height=0.0):
+                   min_width=0.0, camera_height=0.0):
     """mask のうち near_range より近い点を、画像の上でつながっているまとまりごとに分ける。
 
-    すき間 2 画素くらいはつなぐ。min_points 点より少ないまとまりは捨て、近い順に max_count 個まで。
+    すき間 2 画素くらいはつなぐ。min_points 点より少ないまとまりと、横幅（左右の 5〜95 %）が
+    min_width より細いまとまり（窓わくの細い線などの、左右の目のまちがった対応）は捨て、
+    近い順に max_count 個まで。
     """
     near = (mask & (forward <= near_range)).astype(np.uint8)
     if int(near.sum()) < min_points:
@@ -137,8 +139,14 @@ def near_obstacles(forward, left, height, mask, near_range, min_points, max_coun
     found = []
     for k in range(1, n):
         part = (labels == k) & (near > 0)
-        if int(part.sum()) >= min_points:
-            found.append(describe_obstacle(forward, left, height, part, camera_height))
+        if int(part.sum()) < min_points:
+            continue
+        lo, hi = np.percentile(left[part], [5, 95])
+        if hi - lo < min_width:
+            continue
+        obj = describe_obstacle(forward, left, height, part, camera_height)
+        obj['width_m'] = round(float(hi - lo), 3)
+        found.append(obj)
     found.sort(key=lambda o: o['distance_m'])
     return found[:max_count]
 
@@ -210,6 +218,7 @@ class StereoDepthNode(Node):
         self.declare_parameter('min_points', 40)
         self.declare_parameter('near_objects_range_m', 0.6)
         self.declare_parameter('near_objects_max', 5)
+        self.declare_parameter('near_objects_min_width_m', 0.02)
         self.declare_parameter('display_near_m', 0.2)
         self.declare_parameter('display_far_m', 3.0)
         self.declare_parameter('jpeg_quality', 70)
@@ -235,6 +244,7 @@ class StereoDepthNode(Node):
         self.min_points = int(g('min_points').value)
         self.objects_range = float(g('near_objects_range_m').value)
         self.objects_max = max(1, int(g('near_objects_max').value))
+        self.objects_min_width = float(g('near_objects_min_width_m').value)
         self.near_m = float(g('display_near_m').value)
         self.far_m = float(g('display_far_m').value)
         self.jpeg_params = [cv2.IMWRITE_JPEG_QUALITY, int(g('jpeg_quality').value)]
@@ -340,7 +350,8 @@ class StereoDepthNode(Node):
             forward, lateral, height, valid, self.center_y, self.half_width, self.max_range,
             self.min_height, self.max_height, self.min_points, self.camera_height)
         objects = near_obstacles(forward, lateral, height, mask, self.objects_range,
-                                 self.min_points, self.objects_max, self.camera_height)
+                                 self.min_points, self.objects_max, self.objects_min_width,
+                                 self.camera_height)
         floor = (valid & (forward > 0.1) & (forward <= self.max_range)
                  & (np.abs(lateral - self.center_y) <= self.half_width)
                  & (np.abs(height) < self.min_height))

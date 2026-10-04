@@ -295,6 +295,8 @@ stereo_depth_node:
     # 0.6 m より近い物は、画像の上でつながりごとに分けて全部（5 個まで）映像に枠を出す
     near_objects_range_m: 0.6
     near_objects_max: 5
+    # 横幅 2 cm より細いまとまりは出さない（窓わくの細い線を 0.19 m の物とまちがえた）
+    near_objects_min_width_m: 0.02
     min_points: 40
     # 距離の色の画像: 0.2 m が赤、3 m より遠いと青
     display_near_m: 0.2

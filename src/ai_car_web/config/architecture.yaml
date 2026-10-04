@@ -466,6 +466,7 @@ nodes:
       - {name: min_height_m, ref: stereo_depth_node.min_height_m, unit: m, desc: 床よりこれだけ高い点を物とみなす}
       - {name: near_objects_range_m, ref: stereo_depth_node.near_objects_range_m, unit: m, desc: これより近い物は 1 個ずつ分けて全部の枠を出す}
       - {name: near_objects_max, ref: stereo_depth_node.near_objects_max, unit: 個, desc: 分けて出す物の数の上限（近い順）}
+      - {name: near_objects_min_width_m, ref: stereo_depth_node.near_objects_min_width_m, unit: m, desc: これより細い物は、まちがった対応として出さない}
     layer: perception
   - id: slam_toolbox
     label: slam_toolbox
