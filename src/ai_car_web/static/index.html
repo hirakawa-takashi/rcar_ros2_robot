@@ -1518,6 +1518,7 @@ function renderLinks(d) {
 
 function render(d) {
   latestTelemetry = d || {};
+  lastTelemetryAt = Date.now();
   if (!d.auth_required) {
     document.getElementById('auth_note').textContent = '認証なし（api_token 未設定）';
   }
@@ -3035,6 +3036,11 @@ document.getElementById('diary').addEventListener('click', ev => { if (ev.target
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeDiary(); });
 
 let pollTimer = null;
+let liveWs = null;
+let wsEverOpened = false;
+let lastTelemetryAt = 0;
+const TELEMETRY_STALE_MS = 3000;
+const PI_LINK_IDS = ['cam_link', 's_link', 'i_link', 'pi_link', 'h_link', 'c_link', 'sc_state'];
 
 function setConn(on, text) {
   document.getElementById('dot').classList.toggle('on', on);
@@ -3047,7 +3053,10 @@ function startPolling() {
   pollTimer = setInterval(() => {
     fetch('/api/status')
       .then(r => r.json())
-      .then(render)
+      .then(d => {
+        setConn(true, 'ポーリング接続（WebSocket未使用）');
+        render(d);
+      })
       .catch(() => setConn(false, '切断（再接続します）'));
   }, 250);
 }
@@ -3055,15 +3064,17 @@ function startPolling() {
 function connect() {
   let opened = false;
   const ws = new WebSocket(`ws://${location.host}/ws`);
+  liveWs = ws;
   ws.onopen = () => {
-    opened = true;
+    opened = wsEverOpened = true;
     clearInterval(pollTimer);
     pollTimer = null;
     setConn(true, '接続中');
   };
   ws.onmessage = ev => render(JSON.parse(ev.data));
   ws.onclose = () => {
-    if (opened) {
+    if (liveWs !== ws) return;
+    if (opened || wsEverOpened) {
       setConn(false, '切断（再接続します）');
       setTimeout(connect, 2000);
     } else {
@@ -3072,6 +3083,26 @@ function connect() {
     }
   };
 }
+function markTelemetryStale() {
+  const title = `ラズパイから ${fmt((Date.now() - lastTelemetryAt) / 1000, 0)} 秒届いていません`;
+  for (const id of PI_LINK_IDS) setLink(id, 'crit', '未接続', title);
+  document.getElementById('cam_state').innerHTML = '<span class="badge crit">未接続</span>';
+  setLink('jt_state', '', '不明', 'Jetson の状態はラズパイを通して届くため、今はわかりません');
+  setConn(false, 'ラズパイとつながっていません（再接続します）');
+}
+
+setInterval(() => {
+  if (!lastTelemetryAt || Date.now() - lastTelemetryAt < TELEMETRY_STALE_MS) return;
+  markTelemetryStale();
+  // 電源が急に切れると WebSocket の close が来ないことがあるので、こちらから張り直す
+  if (liveWs && liveWs.readyState === WebSocket.OPEN) {
+    const dead = liveWs;
+    liveWs = null;
+    dead.close();
+    connect();
+  }
+}, 1000);
+
 connect();
 </script>
 </body>
