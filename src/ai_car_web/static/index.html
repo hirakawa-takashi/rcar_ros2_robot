@@ -494,12 +494,17 @@
         <span class="bar"><span id="h_temp_bar"></span></span>
         <span class="v" id="h_temp">-</span>
       </div>
+      <div class="barrow">
+        <span class="k">負荷率</span>
+        <span class="bar"><span id="h_load_bar"></span></span>
+        <span class="v" id="h_load">-</span>
+      </div>
       <table>
         <tr><td class="k">状態</td><td class="v" id="h_state">-</td></tr>
         <tr><td class="k">fps 現在/連続</td><td class="v" id="h_fps">-</td></tr>
         <tr><td class="k">TOPS 現在/連続</td><td class="v" id="h_tops" title="モデル演算量×推論レートによる推定値">-</td></tr>
       </table>
-      <div class="cores" id="h_info"></div>
+      <div class="cores" id="h_info" style="grid-template-columns: repeat(3, 1fr)"></div>
     </div>
 
     <div class="card">
@@ -938,7 +943,6 @@ function renderSystem(s) {
     ['デバイス', h.device_architecture || (h.pci ? 'Hailo-8' : '-')],
     ['FW', h.firmware_version ? h.firmware_version.split(' ')[0] : '-'],
     ['ドライバ', h.driver_version || '-'],
-    ['PCIe', h.pci_address ? h.pci_address.replace(/^0000:/, '') : '-'],
   ];
   document.getElementById('h_info').innerHTML = info
     .map(([k, v]) => `<div class="core">${k}<div class="val">${v}</div></div>`)
@@ -1256,6 +1260,12 @@ function renderObstacle(o) {
     ? '-' : `${fmt(tp.fps, 1)} / ${fmt(tp.max_fps, 0)}`;
   document.getElementById('h_tops').textContent = tp.max_tops == null
     ? '-' : `${fmt(tp.now_tops, 2)} / ${fmt(tp.max_tops, 2)}`;
+  // 負荷率 = 1 秒のうち推論している時間の割合（fps × 1 回の推論時間）
+  const load = tp.fps == null || !tp.max_fps ? null : tp.fps / tp.max_fps * 100;
+  setBar(document.getElementById('h_load_bar'), load);
+  document.getElementById('h_load').textContent = load == null ? '-' : `${fmt(load, 0)} %`;
+  document.getElementById('h_load').title = load == null ? ''
+    : `1 秒のうち推論している時間の割合（${fmt(tp.fps, 1)} 回 × ${fmt(1000 / tp.max_fps, 1)} ms）`;
   document.getElementById('h_tops').title = tp.peak_tops == null ? ''
     : `モデル ${tp.model_gops} GOP × 推論レートの推定値。公称 ${tp.peak_tops} TOPS に対し連続実行時で ${fmt((tp.utilization || 0) * 100, 1)} %`;
 }
