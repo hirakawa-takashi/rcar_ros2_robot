@@ -140,17 +140,17 @@ def checked_nearest(nearest, objects, forward, left, height, mask, near_range, m
 
 
 def near_obstacles(forward, left, height, mask, near_range, min_points, max_count,
-                   min_width=0.0, camera_height=0.0):
+                   min_width=0.0, camera_height=0.0, close_px=5):
     """mask のうち near_range より近い点を、画像の上でつながっているまとまりごとに分ける。
 
-    すき間 2 画素くらいはつなぐ。min_points 点より少ないまとまりと、横幅（左右の 5〜95 %）が
+    すき間 close_px // 2 画素くらいはつなぐ。min_points 点より少ないまとまりと、横幅（左右の 5〜95 %）が
     min_width より細いまとまり（窓わくの細い線などの、左右の目のまちがった対応）は捨て、
     近い順に max_count 個まで。
     """
     near = (mask & (forward <= near_range)).astype(np.uint8)
     if int(near.sum()) < min_points:
         return []
-    joined = cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    joined = cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((close_px, close_px), np.uint8))
     n, labels = cv2.connectedComponents(joined, connectivity=8)
     found = []
     for k in range(1, n):
@@ -219,10 +219,10 @@ class StereoDepthNode(Node):
         self.declare_parameter('grid_max_range_m', 4.0)
         self.declare_parameter('grid_min_points', 6)
         self.declare_parameter('calib_file', os.path.join(DEFAULT_DIR, 'stereo_calib.yaml'))
-        self.declare_parameter('num_disparities', 128)
-        self.declare_parameter('block_size', 5)
+        self.declare_parameter('num_disparities', 64)
+        self.declare_parameter('block_size', 3)
         self.declare_parameter('uniqueness_ratio', 10)
-        self.declare_parameter('speckle_window', 100)
+        self.declare_parameter('speckle_window', 25)
         self.declare_parameter('speckle_range', 2)
         self.declare_parameter('camera_height_m', 0.112)
         self.declare_parameter('camera_pitch_deg', 0.0)
@@ -231,7 +231,7 @@ class StereoDepthNode(Node):
         self.declare_parameter('max_range_m', 2.0)
         self.declare_parameter('min_height_m', 0.02)
         self.declare_parameter('max_height_m', 0.6)
-        self.declare_parameter('min_points', 40)
+        self.declare_parameter('min_points', 10)
         self.declare_parameter('near_objects_range_m', 0.6)
         self.declare_parameter('near_objects_max', 5)
         self.declare_parameter('near_objects_min_width_m', 0.02)
@@ -365,9 +365,10 @@ class StereoDepthNode(Node):
         nearest, mask = nearest_obstacle(
             forward, lateral, height, valid, self.center_y, self.half_width, self.max_range,
             self.min_height, self.max_height, self.min_points, self.camera_height)
+        px_scale = half / 640.0
         objects = near_obstacles(forward, lateral, height, mask, self.objects_range,
                                  self.min_points, self.objects_max, self.objects_min_width,
-                                 self.camera_height)
+                                 self.camera_height, max(3, round(5 * px_scale) | 1))
         nearest = checked_nearest(nearest, objects, forward, lateral, height, mask,
                                   self.objects_range, self.min_points, self.camera_height)
         floor = (valid & (forward > 0.1) & (forward <= self.max_range)
@@ -380,7 +381,7 @@ class StereoDepthNode(Node):
                 'rows': self.grid_rows,
                 'cm': depth_grid(pts, forward, valid, self._k1, self._calib['D1'], size,
                                  self.grid_cols, self.grid_rows, self.grid_max_range,
-                                 self.grid_min_points),
+                                 self.grid_min_points, max(1, round(4 * px_scale))),
                 'stamp': round(time.time(), 3),
             })
             self.grid_pub.publish(grid)

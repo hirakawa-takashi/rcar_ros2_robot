@@ -64,7 +64,7 @@ class StereoCameraNode(Node):
         # 距離の計算用の左右の白黒（stereo_depth_node が受けているときだけ出す）
         self.declare_parameter('pair_topic', '/stereo/pair_gray')
         self.declare_parameter('pair_rate', 3.0)
-        self.declare_parameter('pair_scale', 0.5)
+        self.declare_parameter('pair_scale', 0.25)
         g = self.get_parameter
         self.device = g('device').value
         self.width = int(g('width').value)

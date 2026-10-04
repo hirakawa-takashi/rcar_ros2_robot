@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- 2 眼の距離の計算を軽くする: `stereo_camera_node` の `pair_scale` を 0.5 → 0.25（片目 640×360 → 320×180）、`stereo_depth_node` の視差を 128 → 64 px（近いほうは同じ約 0.10 m から）、`block_size` 5 → 3、`speckle_window` 100 → 25、`min_points` 40 → 10（同じ広さ）。つながりの穴うめとマスの点の間隔は画像の幅に合わせる。起動の約 5 分後に Pi の CPU の空きが約 6 % になり、SGBM が 1 回 約 300 ms・CPU コア約 1.4 個ぶんだった。320×180 では 1 回 約 25 ms、いちばん近い物の距離はほぼ同じ（1.52〜1.56 m）
 - Jetson: Yahboom のケースの横の OLED（SSD1306 128×32、I2C 7 番 0x3C）に、大きな文字の 2 行で CPU・GPU の負荷率と温度 → メモリ・SSD → IP アドレスを 3 秒ごとに切り替えて出す `jetson/oled_panel`（`jetson-oled.service`）。ケースの RGB の光（0x0E）は、AI の負荷（GPU の負荷率の 5 秒平均）で呼吸の色と速さを変える（10 % より下 青・40 % より下 緑・70 % より下 黄・それ以上 赤）。CPU が 70 °C 以上でも赤。JetPack をそのまま入れ直したので、Yahboom のイメージの OLED のプログラムがなく、何も出ていなかった
 - `lidar_watchdog_node`: `/scan` が 3 秒来ないと `rplidar_composition` に SIGTERM（3 秒で終わらなければ SIGKILL）を送り、launch の respawn（5 秒後）で起動し直させる。起動直後と起動し直した後は 15 秒待つ。LiDAR の USB（CP2102）が起動の約 1 分後に一度切れて ttyUSB0 → ttyUSB1 でつながり直したとき、rplidar は古いポートを握ったまま `/scan` を出さず、CPU を約 66 % 使い続けていた（`use_lidar` で一緒に起動）
 - 2 眼の低い障害物で走る速さを変える: dashboard.yaml の `stereo_guard` を true にする。LiDAR（床から約 17.5 cm の線）に写らない低い物が 2 眼で 0.8 m 以内なら減速、0.45 m 以内なら停止。まちがって止まらないように、0.6 m より近い所の「いちばん近い物」（`nearest`）は、`objects` に残ったまとまり（40 点以上・横幅 2 cm 以上）から選ぶ（窓わくの細い線を 0.19 m の物とまちがえたことがある）
