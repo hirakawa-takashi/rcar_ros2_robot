@@ -88,7 +88,7 @@ def to_vehicle(pts, camera_height, pitch):
 
 
 def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_range,
-                     min_height, max_height, min_points):
+                     min_height, max_height, min_points, camera_height=0.0):
     """通り道の中で床より高い点のうち、いちばん近いまとまり。なければ (None, mask)。"""
     mask = (valid & (forward > 0.1) & (forward <= max_range)
             & (np.abs(left - center_y) <= half_width)
@@ -101,6 +101,7 @@ def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_ran
     close = mask & (forward <= near + 0.05)
     cols = np.nonzero(close)[1]
     bearing = np.degrees(np.arctan2(left[close], forward[close]))
+    elevation = np.degrees(np.arctan2(camera_height - height[close], forward[close]))
     return {
         'distance_m': round(near, 3),
         'lateral_m': round(float(np.median(left[close])), 3),
@@ -109,6 +110,8 @@ def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_ran
         'x_max': round(float(cols.max() + 1) / forward.shape[1], 3),
         'bearing_min_deg': round(float(bearing.min()), 1),
         'bearing_max_deg': round(float(bearing.max()), 1),
+        'depression_min_deg': round(float(elevation.min()), 1),
+        'depression_max_deg': round(float(elevation.max()), 1),
         'points': count,
     }, mask
 
@@ -131,7 +134,7 @@ class StereoDepthNode(Node):
         self.declare_parameter('status_topic', '/stereo/depth_status')
         self.declare_parameter('image_topic', '/stereo/depth/compressed')
         self.declare_parameter('calib_file', os.path.join(DEFAULT_DIR, 'stereo_calib.yaml'))
-        self.declare_parameter('num_disparities', 64)
+        self.declare_parameter('num_disparities', 96)
         self.declare_parameter('block_size', 5)
         self.declare_parameter('uniqueness_ratio', 10)
         self.declare_parameter('speckle_window', 100)
@@ -262,7 +265,7 @@ class StereoDepthNode(Node):
         forward, lateral, height = to_vehicle(pts, self.camera_height, self.pitch)
         nearest, mask = nearest_obstacle(
             forward, lateral, height, valid, self.center_y, self.half_width, self.max_range,
-            self.min_height, self.max_height, self.min_points)
+            self.min_height, self.max_height, self.min_points, self.camera_height)
         floor = (valid & (forward > 0.1) & (forward <= self.max_range)
                  & (np.abs(lateral - self.center_y) <= self.half_width)
                  & (np.abs(height) < self.min_height))

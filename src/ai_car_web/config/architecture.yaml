@@ -457,7 +457,7 @@ nodes:
   - id: stereo_depth_node
     label: stereo_depth_node
     file: ai_car_web/stereo_depth_node.py
-    role: 2 眼カメラの左右（/stereo/pair_gray）を stereo_calib.yaml で平行にそろえ、SGBM（視差 0〜64 px）で距離にする。カメラの高さ・向きで床からの高さを出し、通り道の中で床より 4〜60 cm 高い点のいちばん近い距離を /stereo/depth_status に、距離の色の画像を /stereo/depth/compressed に出す。perception_node が LiDAR と比べて低い障害物の判定を作る（stereo_guard が false の間は表示だけ）。use_stereo_depth（既定 true）と camera_type:=stereo のとき起動
+    role: 2 眼カメラの左右（/stereo/pair_gray）を stereo_calib.yaml で平行にそろえ、SGBM（視差 0〜96 px、約 0.14 m から）で距離にする。カメラの高さ・向きで床からの高さを出し、通り道の中で床より 4〜60 cm 高い点のいちばん近い距離を /stereo/depth_status に、距離の色の画像を /stereo/depth/compressed に出す。perception_node が LiDAR と比べて低い障害物の判定を作る（stereo_guard が false の間は表示だけ）。use_stereo_depth（既定 true）と camera_type:=stereo のとき起動
     publishes: [/stereo/depth_status, /stereo/depth/compressed]
     subscribes: [/stereo/pair_gray]
     params:
