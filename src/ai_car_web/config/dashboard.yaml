@@ -216,9 +216,10 @@ perception_node:
     living_labels: ["人", "犬", "猫", "鳥"]
     living_slow_distance: 1.5
     living_stop_distance: 0.6
-    # 2 眼カメラの距離（stereo_depth_node）で見つけた低い障害物。false の間は判定を表示するだけ
+    # 2 眼カメラの距離（stereo_depth_node）で見つけた低い障害物（LiDAR の線より低い物）で減速・停止する。
+    # false にすると判定を表示するだけ。画面の左はし（約 42° より左）は 2 眼で測れない
     stereo_topic: "/stereo/depth_status"
-    stereo_guard: false
+    stereo_guard: true
     stereo_slow_distance: 0.8
     stereo_stop_distance: 0.45
     stereo_low_margin: 0.15

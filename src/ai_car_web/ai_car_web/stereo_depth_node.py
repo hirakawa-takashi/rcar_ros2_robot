@@ -123,6 +123,22 @@ def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_ran
     return describe_obstacle(forward, left, height, mask, camera_height), mask
 
 
+def checked_nearest(nearest, objects, forward, left, height, mask, near_range, min_points,
+                    camera_height=0.0):
+    """near_range より近い所では、near_obstacles で残ったまとまりだけを「いちばん近い物」にする。
+
+    残らなかった（小さい・細いまとまりだけ）ときは、near_range より遠い点の中から選び直す。
+    """
+    if nearest is None or nearest['distance_m'] > near_range:
+        return nearest
+    if objects:
+        return objects[0]
+    far = mask & (forward > near_range)
+    if int(far.sum()) < min_points:
+        return None
+    return describe_obstacle(forward, left, height, far, camera_height)
+
+
 def near_obstacles(forward, left, height, mask, near_range, min_points, max_count,
                    min_width=0.0, camera_height=0.0):
     """mask のうち near_range より近い点を、画像の上でつながっているまとまりごとに分ける。
@@ -352,6 +368,8 @@ class StereoDepthNode(Node):
         objects = near_obstacles(forward, lateral, height, mask, self.objects_range,
                                  self.min_points, self.objects_max, self.objects_min_width,
                                  self.camera_height)
+        nearest = checked_nearest(nearest, objects, forward, lateral, height, mask,
+                                  self.objects_range, self.min_points, self.camera_height)
         floor = (valid & (forward > 0.1) & (forward <= self.max_range)
                  & (np.abs(lateral - self.center_y) <= self.half_width)
                  & (np.abs(height) < self.min_height))

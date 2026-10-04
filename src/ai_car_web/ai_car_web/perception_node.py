@@ -178,7 +178,7 @@ class PerceptionNode(Node):
         self.declare_parameter('living_stop_distance', 0.6)
         # 2 眼カメラの距離（stereo_depth_node）で見つけた通り道の中の物。
         # LiDAR の同じ方向の距離が stereo_low_margin 以上遠い（光が上を通る）ものだけを低い物とする。
-        # stereo_guard が false の間は判定を表示するだけ
+        # stereo_guard が false の間は判定を表示するだけ（dashboard.yaml は true）
         self.declare_parameter('stereo_topic', '/stereo/depth_status')
         self.declare_parameter('stereo_guard', False)
         self.declare_parameter('stereo_slow_distance', 0.8)
