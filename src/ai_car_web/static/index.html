@@ -319,6 +319,7 @@
 <div class="headrow">
   <h1>AI-CAR ダッシュボード</h1>
   <div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
+  <span id="power_alert" class="badge" style="display:none"></span>
   <span id="developer" class="developer"></span>
   <button id="about_btn" class="aboutbtn">プロジェクト説明</button>
   <button id="diary_btn" class="aboutbtn diarybtn">開発日記</button>
@@ -865,6 +866,28 @@ function setLoadBar(bar, label, percent, digits = 0) {
   label.textContent = `${fmt(percent, digits)} %`;
 }
 
+// ラズパイの電池の電圧低下は LiDAR などが急に止まる原因になるので、いちばん上に出す
+function renderPowerAlert(p) {
+  const el = document.getElementById('power_alert');
+  const uv = p && p.under_voltage;
+  const occurred = !!(p && p.throttled && p.throttled.under_voltage_occurred);
+  if (!uv || !(uv.now || uv.count > 0 || occurred)) {
+    el.style.display = 'none';
+    return;
+  }
+  if (uv.now) {
+    el.className = 'badge crit';
+    el.textContent = 'ラズパイの電池の電圧が下がっています（充電・交換してください）';
+  } else {
+    const t = uv.last ? new Date(uv.last * 1000) : null;
+    const last = t ? `、最後 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
+    const count = uv.count > 0 ? ` ${uv.count} 回${last}` : '';
+    el.className = 'badge warn';
+    el.textContent = `ラズパイの電池の電圧が下がりました（起動後${count}）。電池の残りを見てください`;
+  }
+  el.style.display = '';
+}
+
 // 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
 function renderThrottled(t) {
   const state = document.getElementById('pwr_state');
@@ -1006,6 +1029,7 @@ function renderSystem(s) {
   document.getElementById('pwr_pd').textContent =
     pd === true ? '〇' : pd === false ? '×' : '-';
   renderThrottled(p && p.throttled);
+  renderPowerAlert(p);
 
   const h = s.hailo || {};
   const state = !h.enabled ? '<span class="badge">無効</span>'

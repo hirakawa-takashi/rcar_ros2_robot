@@ -242,12 +242,18 @@ rplidar:
 
 # /scan が scan_timeout 秒来ないと rplidar を止め、launch の respawn（5 秒後）で起動し直す。
 # USB が抜けて差し直されたとき、rplidar_ros は古いポートを握ったまま /scan を出さなくなるため
+# usb_reset_after 回起動し直しても /scan が戻らなければ、rplidar を止めた後に LiDAR の USB をつなぎ直す
+# （電池の電圧が下がった後、CP2102 が返事をしなくなり、起動し直しを 33 分で 81 回しても戻らなかった）。
+# systemd/99-ai-car-lidar-usb.rules で dialout に /dev/bus/usb の書き込みを許す。0 でつなぎ直さない
 lidar_watchdog_node:
   ros__parameters:
     scan_timeout: 3.0
     startup_grace: 15.0
     kill_wait: 3.0
     process_pattern: "rplidar_ros/rplidar_composition"
+    usb_reset_after: 2
+    usb_vendor_id: "10c4"
+    usb_product_id: "ea60"
 
 # USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo（既定）で起動
 stereo_camera_node:

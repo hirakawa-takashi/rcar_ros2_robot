@@ -19,6 +19,9 @@ sudo install -m 755 "$DIR/ai-car-upgrade.sh" /usr/local/sbin/ai-car-upgrade
 sudo install -m 644 "$DIR/ai-car-upgrade.service" /etc/systemd/system/ai-car-upgrade.service
 sudo visudo -cf "$DIR/ai-car-upgrade.sudoers"
 sudo install -m 440 "$DIR/ai-car-upgrade.sudoers" /etc/sudoers.d/ai-car-upgrade
+# lidar_watchdog_node が LiDAR の USB をつなぎ直せるようにする
+sudo install -m 644 "$DIR/99-ai-car-lidar-usb.rules" /etc/udev/rules.d/99-ai-car-lidar-usb.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=usb
 sudo systemctl daemon-reload
 sudo systemctl enable --now ai-car-dashboard.service
 systemctl status ai-car-dashboard.service --no-pager
