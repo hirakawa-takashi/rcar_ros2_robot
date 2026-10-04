@@ -809,11 +809,15 @@ class PerceptionNode(Node):
         return result
 
     def _stereo_object(self, obj):
-        """2 眼の物 1 個の距離・同じ向きの LiDAR の距離・低い物か・映像の上の枠。"""
+        """2 眼の物 1 個の距離・横の位置・横幅・同じ向きの LiDAR の距離・低い物か・映像の上の枠。"""
         distance = obj['distance_m']
-        lidar = self._distance_for_bearings(
-            math.radians(obj['bearing_min_deg']), math.radians(obj['bearing_max_deg']))
-        item = {'distance': distance, 'lidar_distance': lidar,
+        b_min, b_max = (math.radians(obj[k]) for k in ('bearing_min_deg', 'bearing_max_deg'))
+        lidar = self._distance_for_bearings(b_min, b_max)
+        width = obj.get('width_m')
+        if width is None:
+            width = round(distance * (math.tan(b_max) - math.tan(b_min)), 3)
+        item = {'distance': distance, 'lateral': obj.get('lateral_m'), 'width': width,
+                'lidar_distance': lidar,
                 'low': lidar is None or lidar > distance + self.stereo_low_margin}
         if obj.get('depression_min_deg') is not None:
             # 前方カメラの映像（960x540）の上の位置。ピンホールとして縦の画角は横から出す

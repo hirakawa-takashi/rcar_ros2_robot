@@ -1056,9 +1056,10 @@ function drawCar(ctx, cx, cy, scale) {
   ctx.beginPath(); ctx.arc(0, 0, c.lidarHead, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.restore();
 }
-// カメラの見える範囲（扇形）と、カメラで見つけた物の位置・名前を LiDAR の図に重ねる。
+// カメラの見える範囲（扇形）と、カメラで見つけた物の位置を LiDAR の図に点で重ねる。
+// 2 眼の物は、色を距離（LiDAR の点と同じ距離帯）、点の直径を横幅の 2 倍（小さい物も見えるように）にする。
 // 物の位置は画面の横位置から出した方向と、perception_node が LiDAR で付けた距離（カメラから前方の距離）
-function drawCameraView(ctx, cx, cy, scale, range, o) {
+function drawCameraView(ctx, cx, cy, scale, range, o, bands) {
   if (!o || o.camera_hfov_deg == null) return;
   const half = o.camera_hfov_deg / 2 * Math.PI / 180;
   const ox = o.camera_offset_x_m || 0, oy = o.camera_offset_y_m || 0;
@@ -1092,9 +1093,6 @@ function drawCameraView(ctx, cx, cy, scale, range, o) {
   for (const d of o.detections || []) {
     items.push([d, d.distance != null && d.distance <= danger ? '#e04b4b' : '#5cb85c']);
   }
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textBaseline = 'middle';
-  const placed = [];
   for (const [d, color] of items) {
     const cxImg = d.center_x ?? (d.box[0] + d.box[2]) / 2;
     const t = (0.5 - cxImg) * 2 * tanHalf;
@@ -1110,19 +1108,18 @@ function drawCameraView(ctx, cx, cy, scale, range, o) {
     const [qx, qy] = toPx(ox + d.distance, oy + d.distance * t);
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(qx, qy, 5, 0, Math.PI * 2); ctx.fill();
-    const text = `${d.label} ${d.distance.toFixed(2)}m`;
-    const tw = ctx.measureText(text).width + 8;
-    const tx = Math.min(ctx.canvas.width - tw - 2, Math.max(2, qx + 8));
-    let ty = qy;
-    while (placed.some(([x, y, w]) => tx < x + w && x < tx + tw && Math.abs(ty - y) < 20)) ty += 20;
-    placed.push([tx, ty, tw]);
-    if (ty !== qy) {
-      ctx.strokeStyle = color;
-      ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(tx, ty); ctx.stroke();
-    }
-    ctx.fillRect(tx, ty - 9, tw, 18);
-    ctx.fillStyle = '#0e1116';
-    ctx.fillText(text, tx + 4, ty);
+  }
+
+  const st = o.stereo;
+  const stItems = st ? (st.objects && st.objects.length ? st.objects : [st]) : [];
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  for (const it of stItems) {
+    if (it.distance == null || it.lateral == null || it.distance > reach) continue;
+    const [qx, qy] = toPx(ox + it.distance, oy + it.lateral);
+    const r = Math.max(2.5, (it.width || 0) * scale);
+    ctx.fillStyle = bands.find(b => it.distance <= b.max).color;
+    ctx.beginPath(); ctx.arc(qx, qy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
@@ -1193,7 +1190,7 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
     ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
   }
 
-  drawCameraView(ctx, cx, cy, scale, range, obstacle);
+  drawCameraView(ctx, cx, cy, scale, range, obstacle, bands);
 
   // 凡例（左下）
   ctx.font = '10px sans-serif';
@@ -1206,6 +1203,12 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
     ctx.fillStyle = '#9fb0c7';
     ctx.fillText(b.label, 16, ly);
   });
+  const sy = size - 8 - bands.length * 14;
+  ctx.fillStyle = '#9fb0c7';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(9, sy, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillText('2眼の物（色＝距離、大きさ＝横幅）', 16, sy);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
 
