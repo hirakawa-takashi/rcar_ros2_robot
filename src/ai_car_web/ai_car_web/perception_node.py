@@ -10,6 +10,7 @@ CPU / AI HAT+ の温度に応じて推論レートを自動的に落とす（サ
 
 import json
 import math
+import statistics
 import threading
 import time
 from collections import deque
@@ -222,6 +223,7 @@ class PerceptionNode(Node):
         self._detection_stamp = 0.0
         self._inference_ms = None
         self._inference_times = deque(maxlen=30)
+        self._inference_ms_recent = deque(maxlen=30)
         self._thermal_state = 'normal'
         self._thermal_scale = 1.0
         self._detector_note = ''
@@ -621,6 +623,7 @@ class PerceptionNode(Node):
                 self._detection_stamp = time.time()
                 self._inference_ms = round(elapsed_ms, 1)
                 self._inference_times.append(self._detection_stamp)
+                self._inference_ms_recent.append(elapsed_ms)
         except Exception as exc:  # noqa: BLE001 - 推論失敗でノードを落とさない
             self._detector_note = f'推論エラー: {exc}'
             self.get_logger().warning(self._detector_note)
@@ -681,6 +684,7 @@ class PerceptionNode(Node):
             hailo_temp = self._hailo_temp
             inference_ms = self._inference_ms
             stamps = list(self._inference_times)
+            recent_ms = list(self._inference_ms_recent)
 
         scan_valid = front is not None and scan_age is not None and scan_age < 1.5
         if not scan_valid:
@@ -729,7 +733,7 @@ class PerceptionNode(Node):
             'jetson': self._jetson_assessment(now),
             'inference_ms': inference_ms,
             'inference_age': round(det_age, 2) if det_age is not None else None,
-            'throughput': self._throughput(stamps, inference_ms, now),
+            'throughput': self._throughput(stamps, recent_ms, now),
             'thermal': {
                 'state': thermal_state,
                 'inference_scale': thermal_scale,
@@ -829,7 +833,7 @@ class PerceptionNode(Node):
             item['box'] = [round(x1, 3), round(y1, 3), round(x2, 3), round(y2, 3)]
         return item
 
-    def _throughput(self, stamps, inference_ms, now):
+    def _throughput(self, stamps, recent_ms, now):
         """実測推論レートから実効スループットを換算する。
 
         `now_tops` は実際に回しているレートでの演算量、`max_tops` は同じ推論を
@@ -842,6 +846,8 @@ class PerceptionNode(Node):
             span = recent[-1] - recent[0]
             if span > 0:
                 fps = (len(recent) - 1) / span
+        # 1 回の推論時間は CPU の混み具合で 30〜100 ms とばらつくので、最近 30 回の中央値を使う
+        inference_ms = statistics.median(recent_ms) if recent_ms else None
         max_fps = 1000.0 / inference_ms if inference_ms else None
         gops = self.model_gops
         now_tops = fps * gops / 1000.0 if fps else None
