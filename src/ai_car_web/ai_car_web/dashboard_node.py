@@ -31,6 +31,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 from ai_car_web.architecture import load_architecture
 from ai_car_web.dev_diary import find_repo, load_dev_diary
@@ -231,6 +232,8 @@ class DashboardNode(Node):
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('slam_pose_topic', '/pose')
         self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
+        # 2 眼カメラのキャリブレーション用の撮影（stereo_camera_node）
+        self.declare_parameter('calib_capture_service', '/stereo_camera_node/capture_calib')
         # 地図の保存先（空なら ~/maps）
         self.declare_parameter('map_save_dir', '')
         # Jetson から POST /api/jetson/detections で受けた検出を流すトピック。空で無効
@@ -323,6 +326,8 @@ class DashboardNode(Node):
         if SaveMap is not None:
             self.slam_save_client = self.create_client(
                 SaveMap, self.get_parameter('slam_save_service').value)
+        self.calib_capture_client = self.create_client(
+            Trigger, self.get_parameter('calib_capture_service').value)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -492,6 +497,23 @@ class DashboardNode(Node):
         with self._lock:
             self._map_saved = saved
         return saved
+
+    def capture_calib(self, timeout: float = 10.0):
+        """stereo_camera_node に、キャリブレーション用の左右の画像を 1 組撮らせる。"""
+        if not self.calib_capture_client.service_is_ready():
+            return {'ok': False, 'reason': '2 眼カメラのノードが起動していない'}
+        done = threading.Event()
+        future = self.calib_capture_client.call_async(Trigger.Request())
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(timeout):
+            return {'ok': False, 'reason': '撮影の応答がない'}
+        result = future.result()
+        if result is None:
+            return {'ok': False, 'reason': '撮影の応答が空'}
+        try:
+            return json.loads(result.message)
+        except json.JSONDecodeError:
+            return {'ok': result.success, 'reason': result.message}
 
     def _obstacle_cb(self, msg: String):
         try:
@@ -1057,6 +1079,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/slam/save', dependencies=[Depends(require_token)])
     def slam_save():
         return node.save_map()
+
+    @app.post('/api/camera/calib_capture', dependencies=[Depends(require_token)])
+    def calib_capture():
+        return node.capture_calib()
 
     @app.get('/api/camera/snapshot')
     def snapshot():

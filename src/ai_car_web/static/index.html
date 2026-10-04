@@ -355,6 +355,12 @@
         <td class="k">推論 [ms]</td>
         <td class="v" id="o_infer" title="括弧内は AI HAT+ のサーマル状態と推論レート係数">-</td>
       </tr>
+      <tr>
+        <td class="k">キャリブレーション</td>
+        <td class="v wrap" title="市松模様をカメラに向けて押す。左右とも見つかった組だけ保存（20 組が目安）">
+          <button id="cal_capture">撮影</button> <span id="cal_result"></span>
+        </td>
+      </tr>
     </table>
     <div class="note" id="cam_note"></div>
   </div>
@@ -1364,6 +1370,19 @@ document.getElementById('sl_save').addEventListener('click', () => {
   apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;
   }).catch(() => {});
+});
+
+document.getElementById('cal_capture').addEventListener('click', () => {
+  const btn = document.getElementById('cal_capture');
+  const out = document.getElementById('cal_result');
+  btn.disabled = true;
+  out.textContent = '確かめ中…';
+  apiPost('/api/camera/calib_capture').then(r => r && r.json()).then(j => {
+    if (!j) { out.textContent = ''; return; }
+    out.innerHTML = j.ok
+      ? badge('ok', `保存 ${esc(j.count)} 組目`) + ' <span class="nw">20 組が目安</span>'
+      : badge('warn', esc(j.reason || '失敗')) + (j.count != null ? ` <span class="nw">保存済み ${esc(j.count)} 組</span>` : '');
+  }).catch(() => { out.textContent = ''; }).finally(() => { btn.disabled = false; });
 });
 
 const CLIFF_BADGE = {

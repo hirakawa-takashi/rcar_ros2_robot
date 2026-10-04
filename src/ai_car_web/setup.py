@@ -49,6 +49,7 @@ setup(
             'autonomy_node = ai_car_web.autonomy_node:main',
             'floor_obstacle_node = ai_car_web.floor_obstacle_node:main',
             'stereo_camera_node = ai_car_web.stereo_camera_node:main',
+            'stereo_calibrate = ai_car_web.stereo_calib:main',
         ],
     },
 )

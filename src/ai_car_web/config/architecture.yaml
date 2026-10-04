@@ -412,7 +412,7 @@ nodes:
   - id: stereo_camera_node
     label: stereo_camera_node
     file: ai_car_web/stereo_camera_node.py
-    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、180° 回して左目を 960×540・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）
+    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、180° 回して左目を 960×540・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば左右の画像を calib_dir に保存する（キャリブレーション用）
     publishes: [/camera/image_raw/compressed]
     subscribes: []
     params:
