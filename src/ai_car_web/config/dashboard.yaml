@@ -265,10 +265,11 @@ stereo_camera_node:
     jpeg_quality: 80
     image_topic: "/camera/image_raw/compressed"
     frame_id: "camera_link"
-    # 距離の計算用に、左右を半分（片目 640x360）の白黒にして横に並べて出す。stereo_depth_node が受けているときだけ
+    # 距離の計算用に、左右を 4 分の 1（片目 320x180）の白黒にして横に並べて出す。stereo_depth_node が受けているときだけ
+    # （片目 640x360・視差 128 px だと SGBM が 1 回 約 300 ms・CPU コア 約 1.4 個ぶんで、Pi の空きが 約 6 % になった）
     pair_topic: "/stereo/pair_gray"
     pair_rate: 3.0
-    pair_scale: 0.5
+    pair_scale: 0.25
 
 # 2 眼カメラの左右の画像から距離を出す（表示だけ。走る・止まるの判断には使わない）
 stereo_depth_node:
@@ -276,7 +277,8 @@ stereo_depth_node:
     pair_topic: "/stereo/pair_gray"
     status_topic: "/stereo/depth_status"
     image_topic: "/stereo/depth/compressed"
-    # 物の枠の距離用: 左目の画像を 32x18 のマスに分け、マスごとの前方の距離（中央値、4 m まで、4 画素おきの点が 6 点以上）
+    # 物の枠の距離用: 左目の画像を 32x18 のマスに分け、マスごとの前方の距離（中央値、4 m まで、6 点以上）
+    # 点は片目 640 幅のとき 4 画素おき（320 幅なら 2 画素おき）
     grid_topic: "/stereo/depth_grid"
     grid_cols: 32
     grid_rows: 18
@@ -284,13 +286,13 @@ stereo_depth_node:
     grid_min_points: 6
     # stereo_calibrate が書いた値（28 組、誤差 0.33 px、レンズの間隔 59.8 mm、2026/10）
     calib_file: "~/AI-CAR_ws/calib/stereo/stereo_calib.yaml"
-    # 片目 640x360（焦点 約 210 px・間隔 0.06 m）で視差 0〜128 px → 近いほうは約 0.10 m まで測れる
-    # （96 px だと約 0.14 m までで、0.12 m ののりの棒がまちがった遠い距離になった）。
-    # そのかわり左はしの 128 px（約 42° より左）は測れず、計算は 96 px の約 1.4 倍
-    num_disparities: 128
-    block_size: 5
+    # 片目 320x180（焦点 約 105 px・間隔 0.06 m）で視差 0〜64 px → 近いほうは約 0.10 m まで測れる
+    # （640x360・128 px と同じ近さ。640x360・96 px だと約 0.14 m までで、0.12 m ののりの棒がまちがった遠い距離になった）。
+    # 左はしの 64 px（約 42° より左）は測れない。SGBM は 1 回 約 25 ms（640x360・128 px は 約 300 ms）
+    num_disparities: 64
+    block_size: 3
     uniqueness_ratio: 10
-    speckle_window: 100
+    speckle_window: 25
     speckle_range: 2
     # 床からの高さを出すためのカメラのレンズの床からの高さ（3D マウントの CAD 値）と下向きの角度
     camera_height_m: 0.112
@@ -298,7 +300,7 @@ stereo_depth_node:
     corridor_center_y_m: -0.038
     corridor_half_width_m: 0.15
     max_range_m: 2.0
-    # 床より 2 cm 以上・60 cm 以下の点を物とみなす。40 点より少ないときは無視
+    # 床より 2 cm 以上・60 cm 以下の点を物とみなす。10 点（640x360 の 40 点と同じ広さ）より少ないときは無視
     # （4 cm だと、0.23 m 先の高さ 約 3.4 cm の入れ物が床あつかいになった）
     min_height_m: 0.02
     max_height_m: 0.6
@@ -307,7 +309,7 @@ stereo_depth_node:
     near_objects_max: 5
     # 横幅 2 cm より細いまとまりは出さない（窓わくの細い線を 0.19 m の物とまちがえた）
     near_objects_min_width_m: 0.02
-    min_points: 40
+    min_points: 10
     # 距離の色の画像: 0.2 m が赤、3 m より遠いと青
     display_near_m: 0.2
     display_far_m: 3.0
