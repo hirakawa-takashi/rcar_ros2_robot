@@ -10,6 +10,9 @@
 - `perception_node` が 2 眼の距離（`/stereo/depth_status`）のいちばん近い物を、同じ方位の LiDAR の距離と比べる。LiDAR がそれより `stereo_low_margin` 0.15 m 以上遠い（または無い）と「低い障害物」とし、0.8 m で減速・0.45 m で停止と判定して `/obstacle_status` の `stereo` に出す。`stereo_guard: true` のときだけ `level`・`speed_scale` に反映する（既定は `false` で表示のみ）。`stereo_depth_node` は方位（`bearing_min_deg`・`bearing_max_deg`）も出す。ダッシュボードの「2眼の距離」の行に判定を出す
 - 2 眼カメラで距離を出す `stereo_depth_node`（表示だけ）。`stereo_calib.yaml` で左右を平行にそろえ、SGBM で距離にして、通り道の中で床より 4 cm 以上高い物のいちばん近い距離を `/stereo/depth_status` に出す。`stereo_camera_node` は受けるノードがいるときだけ、左右を 640×360 の白黒にして `/stereo/pair_gray` に 3 Hz で出す（今の `/camera/image_raw/compressed` はそのまま）。ダッシュボードのカメラカードに「2眼の距離」の行と、映像を距離の色に切り替える「距離の画像」ボタン（`GET /api/camera/depth_stream`）を追加。launch に `use_stereo_depth`（既定 true）。走る・止まるの判断には使わない
 
+### Changed
+- 物の枠（AI HAT+ の YOLO・Jetson）の距離: 2 眼で測れる所は 2 眼の距離、測れない所（左はし約 44° より左など）は LiDAR の距離にする（`distance_source` が `stereo` / `lidar`、画面に「（2眼）」「（LiDAR）」）。これまでは枠の方向の LiDAR の距離だけで、床から 17.5 cm の線が高い所のテレビ（約 1.5 m）に当たらず、手前の左の物の 0.43 m を出していた。`stereo_depth_node` が点を平行化する前の左目の画像に戻して、32×18 のマスごとの前方の距離（中央値、4 m まで）を `/stereo/depth_grid` に出す
+
 ### Removed
 - カメラの床の色で低い障害物を見つける `floor_obstacle_node` を消した（`/floor_obstacle_status`・launch の `use_floor`・`perception_node` の `floor_*` と `/obstacle_status` の `floor`・ダッシュボードの「低い障害物（床の色）」の行と映像の足元の線）。窓の光が床に映って白く光るので、覚える床の色の幅が広くなり（明るさ ±59・黄色み ±15）、床の約 0.14 m に置いた白い薬のびんの胴を床とまちがえて、青いふたのふちを足元として 0.22 m と出していた。低い障害物は 2 眼の判定（`stereo`、表示のみ）だけにする
 

@@ -1268,7 +1268,7 @@ function renderObstacle(o) {
     jetsonCell.title = jt && jt.age != null ? `最後の受信から ${fmt(jt.age, 1)} s` : '/jetson_detections 未受信';
   } else {
     const items = (jt.detections || []).map((d) =>
-      d.distance != null ? `${d.label} ${fmt(d.distance)} m` : `${d.label} 距離不明`);
+      d.distance != null ? `${d.label} ${fmt(d.distance)} m${DIST_SOURCE[d.distance_source] || ''}` : `${d.label} 距離不明`);
     jetsonCell.textContent = items.length
       ? items[0] + (items.length > 1 ? ` 他${items.length - 1}` : '')
       : 'なし';
@@ -1660,6 +1660,8 @@ function renderJoy(j) {
   el.textContent = j.active ? '操作中' : '接続中';
 }
 
+const DIST_SOURCE = { stereo: '（2眼）', lidar: '（LiDAR）' };
+
 // 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑。Jetson の検出は水色）。
 function drawDetections(o) {
   const canvas = document.getElementById('cam_overlay');
@@ -1674,7 +1676,8 @@ function drawDetections(o) {
     ctx.lineWidth = near ? 3 : 2;
     ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
     const text = d.distance != null
-      ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
+      ? `${d.label} ${d.distance.toFixed(2)} m${DIST_SOURCE[d.distance_source] || ''}`
+      : `${d.label} 距離不明`;
     ctx.font = 'bold 32px sans-serif';
     const tw = ctx.measureText(text).width + 16;
     const ty = Math.max(0, y1 * h - 40);
@@ -1690,7 +1693,8 @@ function drawDetections(o) {
     ctx.lineWidth = 3;
     ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
     const text = d.distance != null
-      ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
+      ? `${d.label} ${d.distance.toFixed(2)} m${DIST_SOURCE[d.distance_source] || ''}`
+      : `${d.label} 距離不明`;
     ctx.font = 'bold 32px sans-serif';
     const tw = ctx.measureText(text).width + 16;
     const ty = Math.min(h - 40, Math.max(0, y1 * h));

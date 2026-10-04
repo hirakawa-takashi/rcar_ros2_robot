@@ -9,6 +9,8 @@ SGBM で左右のずれ（視差）を求めて距離にする。
 床からの高さを出し、通り道（車幅 + 余裕）の中で床より min_height_m 以上高い点を物とみなす。
 いちばん近い物の距離を /stereo/depth_status（std_msgs/String の JSON）に、
 距離の色の画像（近い = 赤、遠い = 青、測れない = 黒）を /stereo/depth/compressed に出す。
+点を平行化する前の左目の画像（= /camera/image_raw/compressed と同じ見え方）に戻し、
+grid_cols x grid_rows のマスごとの前方の距離を /stereo/depth_grid に出す（物の枠の距離に使う）。
 走る・止まるの判断には使わない（表示だけ）。
 """
 
@@ -116,6 +118,35 @@ def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_ran
     }, mask
 
 
+def depth_grid(pts, forward, valid, k1, d1, size, cols, rows, max_range, min_points,
+               step=4):
+    """マスごとの前方の距離の中央値 [cm]（左上から行ごと、測れないマスは 0）。
+
+    pts は平行化する前の左目の向きの 3D 点なので、K1・D1 で左目の元の画像の位置に戻す。
+    """
+    sub = (slice(None, None, step), slice(None, None, step))
+    f = forward[sub]
+    sel = valid[sub] & (f > 0.1) & (f <= max_range)
+    cells = np.zeros(cols * rows, dtype=np.int32)
+    if not sel.any():
+        return cells.tolist()
+    p = pts[sub][sel].reshape(-1, 1, 3).astype(np.float64)
+    uv, _ = cv2.projectPoints(p, np.zeros(3), np.zeros(3), k1, d1)
+    uv = uv.reshape(-1, 2)
+    cx = np.floor(uv[:, 0] / size[0] * cols).astype(np.int64)
+    cy = np.floor(uv[:, 1] / size[1] * rows).astype(np.int64)
+    inside = (cx >= 0) & (cx < cols) & (cy >= 0) & (cy < rows)
+    idx = (cy * cols + cx)[inside]
+    dist = f[sel][inside]
+    order = np.lexsort((dist, idx))
+    idx, dist = idx[order], dist[order]
+    counts = np.bincount(idx, minlength=cols * rows)
+    starts = np.concatenate(([0], np.cumsum(counts)[:-1]))
+    ok = counts >= min_points
+    cells[ok] = np.round(dist[starts[ok] + counts[ok] // 2] * 100.0).astype(np.int32)
+    return cells.tolist()
+
+
 def colorize(forward, valid, mask, near_m, far_m):
     """距離の色の画像（近い = 赤、遠い = 青、測れない = 黒、通り道の物 = 白で混ぜる）。"""
     t = np.clip((far_m - forward) / max(far_m - near_m, 1e-3), 0.0, 1.0)
@@ -133,6 +164,11 @@ class StereoDepthNode(Node):
         self.declare_parameter('pair_topic', '/stereo/pair_gray')
         self.declare_parameter('status_topic', '/stereo/depth_status')
         self.declare_parameter('image_topic', '/stereo/depth/compressed')
+        self.declare_parameter('grid_topic', '/stereo/depth_grid')
+        self.declare_parameter('grid_cols', 32)
+        self.declare_parameter('grid_rows', 18)
+        self.declare_parameter('grid_max_range_m', 4.0)
+        self.declare_parameter('grid_min_points', 6)
         self.declare_parameter('calib_file', os.path.join(DEFAULT_DIR, 'stereo_calib.yaml'))
         self.declare_parameter('num_disparities', 96)
         self.declare_parameter('block_size', 5)
@@ -173,11 +209,16 @@ class StereoDepthNode(Node):
         self.near_m = float(g('display_near_m').value)
         self.far_m = float(g('display_far_m').value)
         self.jpeg_params = [cv2.IMWRITE_JPEG_QUALITY, int(g('jpeg_quality').value)]
+        self.grid_cols = max(1, int(g('grid_cols').value))
+        self.grid_rows = max(1, int(g('grid_rows').value))
+        self.grid_max_range = float(g('grid_max_range_m').value)
+        self.grid_min_points = max(1, int(g('grid_min_points').value))
 
         qos = QoSProfile(depth=1, history=QoSHistoryPolicy.KEEP_LAST,
                          reliability=QoSReliabilityPolicy.BEST_EFFORT)
         self.status_pub = self.create_publisher(String, g('status_topic').value, 10)
         self.image_pub = self.create_publisher(CompressedImage, g('image_topic').value, qos)
+        self.grid_pub = self.create_publisher(String, g('grid_topic').value, 10)
         self.create_subscription(Image, g('pair_topic').value, self._pair_cb, qos)
 
         self._calib = None
@@ -185,6 +226,7 @@ class StereoDepthNode(Node):
         self._maps = None
         self._maps_size = None
         self._rays = None
+        self._k1 = None
         self._cond = threading.Condition()
         self._pending = None
         self._times = deque(maxlen=20)
@@ -229,6 +271,8 @@ class StereoDepthNode(Node):
             self._maps = rectify_maps(self._calib, size)
             self._maps_size = size
             self._rays = pixel_rays(size, self._maps[2], self._maps[3], self._calib['R1'])
+            self._k1 = self._calib['K1'].copy()
+            self._k1[:2] *= size[0] / self._calib['image_size'][0]
         return ''
 
     def _loop(self):
@@ -269,6 +313,17 @@ class StereoDepthNode(Node):
         floor = (valid & (forward > 0.1) & (forward <= self.max_range)
                  & (np.abs(lateral - self.center_y) <= self.half_width)
                  & (np.abs(height) < self.min_height))
+        if self.grid_pub.get_subscription_count() > 0:
+            grid = String()
+            grid.data = json.dumps({
+                'cols': self.grid_cols,
+                'rows': self.grid_rows,
+                'cm': depth_grid(pts, forward, valid, self._k1, self._calib['D1'], size,
+                                 self.grid_cols, self.grid_rows, self.grid_max_range,
+                                 self.grid_min_points),
+                'stamp': round(time.time(), 3),
+            })
+            self.grid_pub.publish(grid)
         ms = (time.perf_counter() - t0) * 1000.0
         now = time.monotonic()
         self._times.append(now)

@@ -185,6 +185,10 @@ class PerceptionNode(Node):
         self.declare_parameter('stereo_stop_distance', 0.45)
         self.declare_parameter('stereo_low_margin', 0.15)
         self.declare_parameter('stereo_max_age', 1.5)
+        # 物の枠の距離: 2 眼のマスの距離（/stereo/depth_grid）で測れればそれを使い、
+        # 測れない所（左はしなど）は LiDAR の距離にする。空で 2 眼を使わない
+        self.declare_parameter('stereo_grid_topic', '/stereo/depth_grid')
+        self.declare_parameter('stereo_grid_min_ratio', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
@@ -223,6 +227,8 @@ class PerceptionNode(Node):
         self._detector_note = ''
         self._stereo = None
         self._stereo_stamp = 0.0
+        self._grid = None
+        self._grid_stamp = 0.0
         self._jetson = None
         self._jetson_stamp = 0.0
 
@@ -238,6 +244,9 @@ class PerceptionNode(Node):
         stereo_topic = self.get_parameter('stereo_topic').value
         if stereo_topic:
             self.create_subscription(String, stereo_topic, self._stereo_cb, 10)
+        grid_topic = self.get_parameter('stereo_grid_topic').value
+        if grid_topic:
+            self.create_subscription(String, grid_topic, self._grid_cb, 10)
         jetson_topic = self.get_parameter('jetson_topic').value
         if jetson_topic:
             self.create_subscription(String, jetson_topic, self._jetson_cb, 10)
@@ -290,6 +299,7 @@ class PerceptionNode(Node):
         self.stereo_stop_distance = float(self.get_parameter('stereo_stop_distance').value)
         self.stereo_low_margin = float(self.get_parameter('stereo_low_margin').value)
         self.stereo_max_age = float(self.get_parameter('stereo_max_age').value)
+        self.stereo_grid_min_ratio = float(self.get_parameter('stereo_grid_min_ratio').value)
         self.jetson_max_age = float(self.get_parameter('jetson_max_age').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
@@ -326,6 +336,7 @@ class PerceptionNode(Node):
             'stereo_stop_distance': lambda v: setattr(self, 'stereo_stop_distance', float(v)),
             'stereo_low_margin': lambda v: setattr(self, 'stereo_low_margin', float(v)),
             'stereo_max_age': lambda v: setattr(self, 'stereo_max_age', float(v)),
+            'stereo_grid_min_ratio': lambda v: setattr(self, 'stereo_grid_min_ratio', float(v)),
             'jetson_max_age': lambda v: setattr(self, 'jetson_max_age', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
@@ -402,6 +413,17 @@ class PerceptionNode(Node):
                 self._stereo = data
                 self._stereo_stamp = time.time()
 
+    def _grid_cb(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            cols, rows = int(data['cols']), int(data['rows'])
+            cells = np.asarray(data['cm'], dtype=np.float64).reshape(rows, cols) / 100.0
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            return
+        with self._lock:
+            self._grid = cells
+            self._grid_stamp = time.time()
+
     def _jetson_cb(self, msg: String):
         """Jetson の検出に、同じ方向の LiDAR の距離を付けて保持する。"""
         try:
@@ -418,7 +440,7 @@ class PerceptionNode(Node):
                 score = float(d['score'])
             except (KeyError, TypeError, ValueError):
                 continue
-            distance = self._distance_for_box(x_min, x_max)
+            distance, source = self._detection_distance(x_min, y_min, x_max, y_max)
             detections.append({
                 'label': label,
                 'prompt': str(d.get('prompt', '')),
@@ -426,6 +448,7 @@ class PerceptionNode(Node):
                 'box': [round(x_min, 3), round(y_min, 3), round(x_max, 3), round(y_max, 3)],
                 'center_x': round((x_min + x_max) / 2.0, 3),
                 'distance': distance,
+                'distance_source': source,
             })
         with self._lock:
             self._jetson = {
@@ -447,6 +470,49 @@ class PerceptionNode(Node):
             'inference_ms': jetson['inference_ms'] if jetson else None,
             'detections': jetson['detections'] if alive else [],
         }
+
+    def _detection_distance(self, x_min, y_min, x_max, y_max):
+        """物の枠の距離と、出した方法（'stereo' / 'lidar' / None）。"""
+        distance = self._stereo_distance_for_box(x_min, y_min, x_max, y_max)
+        if distance is not None:
+            return distance, 'stereo'
+        distance = self._distance_for_box(x_min, x_max)
+        return distance, ('lidar' if distance is not None else None)
+
+    def _stereo_distance_for_box(self, x_min, y_min, x_max, y_max):
+        """枠の真ん中（縦横の半分）にかかる 2 眼のマスの距離。
+
+        測れたマスが stereo_grid_min_ratio より少なければ None。マスの距離を近い順に
+        まとめ、測れたマスの 3 割以上がある、いちばん手前のまとまりの中央値を返す。
+        """
+        with self._lock:
+            grid = self._grid
+            stamp = self._grid_stamp
+        if grid is None or time.time() - stamp > self.stereo_max_age:
+            return None
+        rows, cols = grid.shape
+        mx, my = (x_max - x_min) / 4.0, (y_max - y_min) / 4.0
+        xs = (np.arange(cols) + 0.5) / cols
+        ys = (np.arange(rows) + 0.5) / rows
+        cx = np.nonzero((xs >= x_min + mx) & (xs <= x_max - mx))[0]
+        cy = np.nonzero((ys >= y_min + my) & (ys <= y_max - my))[0]
+        if not len(cx):
+            cx = [min(int((x_min + x_max) / 2.0 * cols), cols - 1)]
+        if not len(cy):
+            cy = [min(int((y_min + y_max) / 2.0 * rows), rows - 1)]
+        cells = grid[np.ix_(cy, cx)].ravel()
+        vals = np.sort(cells[cells > 0])
+        if not len(vals) or len(vals) < self.stereo_grid_min_ratio * len(cells):
+            return None
+        clusters = [[vals[0]]]
+        for r in vals[1:]:
+            if r - clusters[-1][-1] > max(self.cluster_gap, 0.1 * r):
+                clusters.append([r])
+            else:
+                clusters[-1].append(r)
+        need = max(1, int(math.ceil(0.3 * len(vals))))
+        cluster = next((c for c in clusters if len(c) >= need), max(clusters, key=len))
+        return round(float(cluster[len(cluster) // 2]), 3)
 
     def _distance_for_box(self, x_min: float, x_max: float):
         """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
@@ -586,9 +652,10 @@ class PerceptionNode(Node):
                 if x_max <= x_min or y_max <= y_min:
                     continue
                 cx = (x_min + x_max) / 2.0
-                distance = self._distance_for_box(x_min, x_max)
+                distance, source = self._detection_distance(x_min, y_min, x_max, y_max)
                 detections.append({
                     'distance': distance,
+                    'distance_source': source,
                     'danger': distance is not None and distance <= self.danger_distance,
                     'label': COCO_CLASSES[class_id] if class_id < len(COCO_CLASSES)
                     else str(class_id),
