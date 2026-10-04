@@ -268,11 +268,11 @@
   .bar > span.t-warm { background: linear-gradient(90deg, #a8961a, #f2d64b); box-shadow: 0 0 6px rgba(242, 214, 75, .35); }
   .bar > span.t-hot { background: linear-gradient(90deg, #c4621a, #ff9a3c); box-shadow: 0 0 8px rgba(255, 154, 60, .45); }
   .bar > span.t-crit { background: linear-gradient(90deg, #c23a48, #ff5c6c); box-shadow: 0 0 10px rgba(255, 92, 108, .55); }
-  .barrow .v.t-cool { color: #6cb6ff; }
-  .barrow .v.t-ok { color: #5fe39a; }
-  .barrow .v.t-warm { color: #f2d64b; }
-  .barrow .v.t-hot { color: #ff9a3c; }
-  .barrow .v.t-crit { color: #ff5c6c; font-weight: 700; }
+  .barrow .v.t-cool, .core .pct.t-cool { color: #6cb6ff; }
+  .barrow .v.t-ok, .core .pct.t-ok { color: #5fe39a; }
+  .barrow .v.t-warm, .core .pct.t-warm { color: #f2d64b; }
+  .barrow .v.t-hot, .core .pct.t-hot { color: #ff9a3c; }
+  .barrow .v.t-crit, .core .pct.t-crit { color: #ff5c6c; font-weight: 700; }
   .badge, .modebadge { font-family: var(--mono); letter-spacing: .04em; border: 1px solid transparent; }
   .badge { background: rgba(84, 130, 190, .15); color: var(--muted); border-color: var(--line); }
   .badge.ok { background: rgba(53, 227, 154, .12); color: var(--ok); border-color: rgba(53, 227, 154, .4); box-shadow: 0 0 8px rgba(53, 227, 154, .2); }
@@ -834,6 +834,22 @@ function setTempBar(bar, label, celsius, fallback = '-') {
   label.title = `${lv.text}（45℃ 未満 青 / 60℃ 未満 緑 / 70℃ 未満 黄 / 80℃ 未満 橙 / 80℃ 以上 赤）`;
 }
 
+// コアごとの負荷率の色（温度バーと同じ 5 段階の色）
+const LOAD_LEVELS = [
+  { below: 25, cls: 't-cool' },
+  { below: 50, cls: 't-ok' },
+  { below: 70, cls: 't-warm' },
+  { below: 90, cls: 't-hot' },
+  { below: Infinity, cls: 't-crit' },
+];
+
+function coreHtml(v, i) {
+  const cls = LOAD_LEVELS.find(l => v < l.below).cls;
+  return `<div class="core" title="25% 未満 青 / 50% 未満 緑 / 70% 未満 黄 / 90% 未満 橙 / 90% 以上 赤">`
+    + `C${i}<div class="bar"><span class="${cls}" style="width:${v}%"></span></div>`
+    + `<span class="pct ${cls}">${fmt(v, 0)}%</span></div>`;
+}
+
 // 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
 function renderThrottled(t) {
   const state = document.getElementById('pwr_state');
@@ -965,7 +981,7 @@ function renderSystem(s) {
     m.swap_percent == null ? '-' : fmt(m.swap_percent, 1) + ' %';
   const cores = document.getElementById('cores');
   cores.innerHTML = (c.per_core || [])
-    .map((v, i) => `<div class="core">C${i}<div class="bar"><span style="width:${v}%"></span></div>${fmt(v, 0)}%</div>`)
+    .map(coreHtml)
     .join('');
 
   const p = s.power;
