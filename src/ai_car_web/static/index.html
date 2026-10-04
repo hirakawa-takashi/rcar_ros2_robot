@@ -1710,14 +1710,14 @@ function drawDetections(o) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
-    const text = `2眼 ${st.distance.toFixed(2)} m${st.low ? ' 低い物' : ''}`;
-    ctx.font = 'bold 28px sans-serif';
+    const text = `${st.low ? '低い物' : '物'} ${st.distance.toFixed(2)} m${DIST_SOURCE.stereo}`;
+    ctx.font = 'bold 32px sans-serif';
     const tw = ctx.measureText(text).width + 16;
-    const ty = Math.max(0, y1 * h - 36);
+    const ty = Math.max(0, y1 * h - 40);
     ctx.fillStyle = color;
-    ctx.fillRect(x1 * w, ty, tw, 36);
+    ctx.fillRect(x1 * w, ty, tw, 40);
     ctx.fillStyle = '#0e1116';
-    ctx.fillText(text, x1 * w + 8, ty + 27);
+    ctx.fillText(text, x1 * w + 8, ty + 30);
   }
 }
 
