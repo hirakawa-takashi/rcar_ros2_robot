@@ -792,22 +792,14 @@ class PerceptionNode(Node):
             result['reason'] = stereo.get('reason') or '測れない'
             return result
         result['ready'] = True
+        result['objects'] = [self._stereo_object(o) for o in (stereo.get('objects') or [])
+                             if o.get('bearing_min_deg') is not None]
         nearest = stereo.get('nearest')
         if not nearest or nearest.get('bearing_min_deg') is None:
             return result
-        distance = nearest['distance_m']
-        lidar = self._distance_for_bearings(
-            math.radians(nearest['bearing_min_deg']), math.radians(nearest['bearing_max_deg']))
-        low = lidar is None or lidar > distance + self.stereo_low_margin
-        result.update({'distance': distance, 'lidar_distance': lidar, 'low': low})
-        if nearest.get('depression_min_deg') is not None:
-            # 前方カメラの映像（960x540）の上の位置。ピンホールとして縦の画角は横から出す
-            v_tan = math.tan(self.camera_hfov / 2.0) * CAMERA_ASPECT
-            x1, x2 = (min(max(bearing_to_image_x(math.radians(b), self.camera_hfov), 0.0), 1.0)
-                      for b in (nearest['bearing_max_deg'], nearest['bearing_min_deg']))
-            y1, y2 = (min(max(0.5 + math.tan(math.radians(e)) / (2.0 * v_tan), 0.0), 1.0)
-                      for e in (nearest['depression_min_deg'], nearest['depression_max_deg']))
-            result['box'] = [round(x1, 3), round(y1, 3), round(x2, 3), round(y2, 3)]
+        item = self._stereo_object(nearest)
+        result.update(item)
+        distance, low = item['distance'], item['low']
         if low:
             where = f'低い障害物 {distance:.2f} m（2 眼）'
             if distance <= self.stereo_stop_distance:
@@ -815,6 +807,23 @@ class PerceptionNode(Node):
             elif distance <= self.stereo_slow_distance:
                 result['level'], result['reason'] = 'slow', f'前方 {where} で減速'
         return result
+
+    def _stereo_object(self, obj):
+        """2 眼の物 1 個の距離・同じ向きの LiDAR の距離・低い物か・映像の上の枠。"""
+        distance = obj['distance_m']
+        lidar = self._distance_for_bearings(
+            math.radians(obj['bearing_min_deg']), math.radians(obj['bearing_max_deg']))
+        item = {'distance': distance, 'lidar_distance': lidar,
+                'low': lidar is None or lidar > distance + self.stereo_low_margin}
+        if obj.get('depression_min_deg') is not None:
+            # 前方カメラの映像（960x540）の上の位置。ピンホールとして縦の画角は横から出す
+            v_tan = math.tan(self.camera_hfov / 2.0) * CAMERA_ASPECT
+            x1, x2 = (min(max(bearing_to_image_x(math.radians(b), self.camera_hfov), 0.0), 1.0)
+                      for b in (obj['bearing_max_deg'], obj['bearing_min_deg']))
+            y1, y2 = (min(max(0.5 + math.tan(math.radians(e)) / (2.0 * v_tan), 0.0), 1.0)
+                      for e in (obj['depression_min_deg'], obj['depression_max_deg']))
+            item['box'] = [round(x1, 3), round(y1, 3), round(x2, 3), round(y2, 3)]
+        return item
 
     def _throughput(self, stamps, inference_ms, now):
         """実測推論レートから実効スループットを換算する。
