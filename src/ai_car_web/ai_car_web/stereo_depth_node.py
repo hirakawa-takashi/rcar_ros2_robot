@@ -139,15 +139,42 @@ def checked_nearest(nearest, objects, forward, left, height, mask, near_range, m
     return describe_obstacle(forward, left, height, far, camera_height)
 
 
+def occlusion_shadow(disp, near, max_disp, ratio=0.8, step=4, margin=2):
+    """near の点のうち、右の目では手前の物にかくれて見えない帯にある、奥の点。
+
+    右の目は左の目より右にあるので、手前の物（視差 d）の左の d 画素くらいは、右の目からは見えない。
+    そこは正しい対応がなく、手前の物のふちとまちがえて、中くらいの距離の物が出やすい。
+    視差を step ごとに分け、視差 d0 以上の手前の点の左 d0 + margin 画素（上下は margin 画素）の中で、
+    視差が d0 の ratio 倍より小さい（奥の）点を返す。
+    """
+    out = np.zeros(near.shape, dtype=bool)
+    front = np.where(near, disp, 0.0)
+    for d0 in range(2 * step, int(max_disp) + 1, step):
+        src = (front >= d0).astype(np.uint8)
+        if not src.any():
+            break
+        kernel = np.ones((2 * margin + 1, d0 + margin + 1), np.uint8)
+        cover = cv2.dilate(src, kernel, anchor=(0, margin))
+        out |= (cover > 0) & (disp < ratio * d0)
+    return out & near
+
+
 def near_obstacles(forward, left, height, mask, near_range, min_points, max_count,
-                   min_width=0.0, camera_height=0.0, close_px=5):
+                   min_width=0.0, camera_height=0.0, close_px=5,
+                   disp=None, max_disp=0, texture=None, min_texture=0.0):
     """mask のうち near_range より近い点を、画像の上でつながっているまとまりごとに分ける。
 
     すき間 close_px // 2 画素くらいはつなぐ。min_points 点より少ないまとまりと、横幅（左右の 5〜95 %）が
     min_width より細いまとまり（窓わくの細い線などの、左右の目のまちがった対応）は捨て、
     近い順に max_count 個まで。
+    disp があれば、右の目からは手前の物にかくれて見えない所の奥の点（occlusion_shadow）を除く。
+    texture（左の目の明るさの変わり方）があれば、その平均が min_texture より小さいまとまり
+    （もようのない床など、左右の対応がまちがいやすい所）も捨てる。
     """
-    near = (mask & (forward <= near_range)).astype(np.uint8)
+    near = mask & (forward <= near_range)
+    if disp is not None:
+        near &= ~occlusion_shadow(disp, near, max_disp)
+    near = near.astype(np.uint8)
     if int(near.sum()) < min_points:
         return []
     joined = cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((close_px, close_px), np.uint8))
@@ -159,6 +186,8 @@ def near_obstacles(forward, left, height, mask, near_range, min_points, max_coun
             continue
         lo, hi = np.percentile(left[part], [5, 95])
         if hi - lo < min_width:
+            continue
+        if texture is not None and float(texture[part].mean()) < min_texture:
             continue
         obj = describe_obstacle(forward, left, height, part, camera_height)
         obj['width_m'] = round(float(hi - lo), 3)
@@ -235,6 +264,7 @@ class StereoDepthNode(Node):
         self.declare_parameter('near_objects_range_m', 0.6)
         self.declare_parameter('near_objects_max', 5)
         self.declare_parameter('near_objects_min_width_m', 0.02)
+        self.declare_parameter('near_objects_min_texture', 40.0)
         self.declare_parameter('display_near_m', 0.2)
         self.declare_parameter('display_far_m', 3.0)
         self.declare_parameter('jpeg_quality', 70)
@@ -261,6 +291,7 @@ class StereoDepthNode(Node):
         self.objects_range = float(g('near_objects_range_m').value)
         self.objects_max = max(1, int(g('near_objects_max').value))
         self.objects_min_width = float(g('near_objects_min_width_m').value)
+        self.objects_min_texture = float(g('near_objects_min_texture').value)
         self.near_m = float(g('display_near_m').value)
         self.far_m = float(g('display_far_m').value)
         self.jpeg_params = [cv2.IMWRITE_JPEG_QUALITY, int(g('jpeg_quality').value)]
@@ -366,9 +397,12 @@ class StereoDepthNode(Node):
             forward, lateral, height, valid, self.center_y, self.half_width, self.max_range,
             self.min_height, self.max_height, self.min_points, self.camera_height)
         px_scale = half / 640.0
+        texture = (np.abs(cv2.Sobel(left, cv2.CV_16S, 1, 0)).astype(np.float32)
+                   + np.abs(cv2.Sobel(left, cv2.CV_16S, 0, 1)))
         objects = near_obstacles(forward, lateral, height, mask, self.objects_range,
                                  self.min_points, self.objects_max, self.objects_min_width,
-                                 self.camera_height, max(3, round(5 * px_scale) | 1))
+                                 self.camera_height, max(3, round(5 * px_scale) | 1),
+                                 disp, self.max_disp, texture, self.objects_min_texture)
         nearest = checked_nearest(nearest, objects, forward, lateral, height, mask,
                                   self.objects_range, self.min_points, self.camera_height)
         floor = (valid & (forward > 0.1) & (forward <= self.max_range)
