@@ -205,6 +205,9 @@ perception_node:
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
+    # 物の枠の距離: 枠の真ん中の 2 眼のマスが 3 割以上測れていれば 2 眼の距離、だめなら（左はしなど）LiDAR の距離
+    stereo_grid_topic: "/stereo/depth_grid"
+    stereo_grid_min_ratio: 0.3
     # Jetson（jetson/owl_detector の NanoOWL）の物体検出。LiDAR の距離を付けて表示するだけ（速度は変えない）
     jetson_topic: "/jetson_detections"
     jetson_max_age: 2.0
@@ -263,6 +266,12 @@ stereo_depth_node:
     pair_topic: "/stereo/pair_gray"
     status_topic: "/stereo/depth_status"
     image_topic: "/stereo/depth/compressed"
+    # 物の枠の距離用: 左目の画像を 32x18 のマスに分け、マスごとの前方の距離（中央値、4 m まで、15 点以上）
+    grid_topic: "/stereo/depth_grid"
+    grid_cols: 32
+    grid_rows: 18
+    grid_max_range_m: 4.0
+    grid_min_points: 15
     # stereo_calibrate が書いた値（28 組、誤差 0.33 px、レンズの間隔 59.8 mm、2026/10）
     calib_file: "~/AI-CAR_ws/calib/stereo/stereo_calib.yaml"
     # 片目 640x360（焦点 約 210 px・間隔 0.06 m）で視差 0〜96 px → 近いほうは約 0.14 m まで測れる
