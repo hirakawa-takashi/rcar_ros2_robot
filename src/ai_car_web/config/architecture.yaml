@@ -581,10 +581,12 @@ api:
     - {method: POST, path: /api/stop, desc: 全モード停止（ゼロ速度 + stop モード要求）, auth: true}
     - {method: POST, path: /api/drive_mode, desc: 'モード切替 {mode: manual|auto|stop}', auth: true}
     - {method: POST, path: /api/jetson/detections, desc: Jetson（NanoOWL）の物体検出 → /jetson_detections, auth: true}
-    - {method: POST, path: /api/jetson/status, desc: Jetson の状態（温度・メモリ・電力・AI の部品・更新・IP アドレス）。/api/status の jetson_host に出す。返事の reboot が true なら Jetson は再起動する、upgrade が true なら jetson-upgrade.service で更新する, auth: true}
+    - {method: POST, path: /api/jetson/status, desc: Jetson の状態（温度・メモリ・電力・AI の部品・更新・IP アドレス）。/api/status の jetson_host に出す。返事の reboot が true なら Jetson は再起動する、poweroff が true なら電源を切る、upgrade が true なら jetson-upgrade.service で更新する, auth: true}
     - {method: POST, path: /api/jetson/reboot, desc: Jetson の再起動を頼む（次に状態が届いたときの返事で伝える。未接続なら 409）, auth: true}
+    - {method: POST, path: /api/jetson/poweroff, desc: Jetson の電源を切ることを頼む（次の返事で伝える。未接続なら 409、sudoers に poweroff がなければ 503）。もう一度入れるのは本体の電源ボタンか電源のつなぎ直し, auth: true}
     - {method: POST, path: /api/jetson/upgrade, desc: Jetson の更新（NVIDIA の部品以外）を頼む（次の返事で伝える。未接続・更新中なら 409、sudoers がなければ 503）, auth: true}
     - {method: POST, path: /api/system/reboot, desc: ラズパイを 10 秒後に再起動する（止めてから。そのあいだも Jetson の再起動を受け付け、頼みが残っていれば伝え終わるまで最長 10 秒待つ。走行中・自動運転中は 409）, auth: true}
+    - {method: POST, path: /api/system/poweroff, desc: ラズパイの電源を 10 秒後に切る（止めてから。再起動と同じく、そのあいだに頼んだ Jetson の再起動・電源を切ることも伝え終わってから。走行中・自動運転中は 409、sudoers に poweroff がなければ 503）, auth: true}
     - {method: POST, path: /api/system/upgrade, desc: ラズパイの更新（ai-car-upgrade.service、ROS 2 も含む）を始める（走行中・自動運転中は断る。ai-car-upgrade.sudoers が必要）, auth: true}
     - {method: GET, path: /api/camera/snapshot, desc: JPEG 1 枚, auth: false}
     - {method: GET, path: /api/camera/stream, desc: MJPEG ストリーム, auth: false}

@@ -411,9 +411,9 @@
       <tr><td class="k">IP アドレス</td><td class="v wrap" id="pi_ips">-</td></tr>
       <tr><td class="k">セキュリティ更新</td><td class="v" id="pi_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
       <tr><td class="k">再起動</td><td class="v" id="pi_reboot_req">-</td></tr>
-      <tr><td class="k">最後の自動更新</td><td class="v" id="pi_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
       <tr><td class="k">更新する</td><td class="v wrap"><span id="pi_upgrade_state"></span> <button class="reboot" id="pi_upgrade_btn" title="ROS 2 も含めて更新する。走行中は押せない">ラズパイを更新</button> <span id="pi_upgrade_msg"></span></td></tr>
       <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="pi_reboot_btn">ラズパイを再起動</button> <span id="pi_reboot_msg"></span></td></tr>
+      <tr><td class="k">電源を切る</td><td class="v"><button class="reboot" id="pi_poweroff_btn" title="走行中は押せない">ラズパイの電源を切る</button> <span id="pi_poweroff_msg"></span></td></tr>
     </table>
   </div>
 
@@ -473,13 +473,13 @@
         <table>
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
           <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
-          <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
           <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
           <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
           <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+          <tr><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">Jetson の電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
         </table>
       </div>
     </div>
@@ -843,6 +843,18 @@ function rebootButton(btnId, msgId, name, path, when) {
 }
 rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot', '10 秒後に');
 rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
+function poweroffButton(btnId, msgId, name, path, when) {
+  document.getElementById(btnId).addEventListener('click', () => {
+    if (!confirm(`${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
+    const msg = document.getElementById(msgId);
+    msg.textContent = '送っています…';
+    apiPost(path).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+      msg.textContent = ok ? `${when}電源を切ります` : (j.detail || '送れませんでした');
+    }).catch(() => { msg.textContent = '送れませんでした'; });
+  });
+}
+poweroffButton('pi_poweroff_btn', 'pi_poweroff_msg', 'ラズパイ', '/api/system/poweroff', '10 秒後に');
+poweroffButton('jt_poweroff_btn', 'jt_poweroff_msg', 'Jetson ', '/api/jetson/poweroff', '');
 document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   const n = latestTelemetry.system?.updates?.updates_pending;
   if (!confirm(`ラズパイを更新しますか？（ROS 2 も含めて ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだは走らせないでください。`)) return;
@@ -865,11 +877,6 @@ document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
 function badge(cls, text) {
   return `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;
 }
-function upgradeTime(t) {
-  const d = t ? new Date(t * 1000) : null;
-  const pad = n => String(n).padStart(2, '0');
-  return d ? `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '-';
-}
 const UPGRADE_PHASES = {prepare: '準備中', download: 'ダウンロード中', install: 'インストール中'};
 function upgradeProgress(u) {
   const text = u.upgrade_phase === 'prepare' ? '更新の準備中'
@@ -885,7 +892,6 @@ function renderUpdates(u, prefix) {
     : u.upgrade_result === 'success' ? badge('ok', '前回は成功')
     : u.upgrade_result ? badge('crit', '前回は失敗') : '';
   if (u.upgrade_running) byId('upgrade_msg').textContent = '';
-  byId('last_upgrade').textContent = upgradeTime(u.last_upgrade);
 }
 
 function renderSystem(s) {
@@ -1333,6 +1339,7 @@ function renderJetsonHost(j) {
   byId('jt_os').title = v.l4t ? `L4T ${v.l4t}` : '';
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
+  byId('jt_poweroff_btn').disabled = !alive;
 }
 
 function setLink(id, cls, text, title) {

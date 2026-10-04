@@ -9,7 +9,11 @@
 - ダッシュボードの IP アドレスで「（Wi-Fi）」が「Wi-」と「Fi）」の 2 行に分かれることがあったので、アドレスと名前の間だけで折り返すようにした
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
+### Added
+- ダッシュボードのラズパイと Jetson のカードに「電源を切る」ボタン（確認の画面あり、API トークンが必要）。ラズパイは `POST /api/system/poweroff`（走行中・自動運転中は断り、止めてから 10 秒後に `systemctl poweroff`。そのあいだに押した Jetson の再起動・電源を切ることも伝えてから）、Jetson は `POST /api/jetson/poweroff`（次の状態の返事の `poweroff` で `jetson_status.py` が `systemctl poweroff`）。`ai-car-reboot.sudoers`・`jetson-reboot.sudoers` に `systemctl poweroff` を足した。ラズパイの sudo の確かめは `sudo -n -l` の NOPASSWD の行で見るようにした。入れ直すのは本体の電源ボタンか電源のつなぎ直し
+
 ### Changed
+- ダッシュボードのラズパイと Jetson のカードから「最後の自動更新」の行を消した（値は今も送っている）
 - カメラの物の検出: 間隔を前の検出の「始まり」から数え、同じコマは 2 回検出しない（`inference_rate: 15` なのに、検出の時間と待ち時間が足されて実際は 1 秒に約 8 回だった）
 - ダッシュボードの AI HAT+ のカード: PCIe の番地を消し、「負荷率」を横のバーで出す（1 秒のうち推論している時間の割合 = fps × 1 回の推論時間。Hailo-8 は NPU の使用率を返さないので推論レートから出す）
 - ダッシュボードの LiDAR の図に、上から見た車体を本当の大きさで描く（天板 200 x 154 mm・前後のバンパー・カバー・メカナムホイール 4 つ・LiDAR・2 眼カメラのレンズ。寸法は battery_lidar_mount.scad と ai_car.xacro。車輪の左右の位置は見込み）。点群は車体の上に描く
