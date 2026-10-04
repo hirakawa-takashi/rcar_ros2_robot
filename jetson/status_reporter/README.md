@@ -14,8 +14,8 @@ Jetson  /proc・/sys・systemctl・HTTP（whisper 8178 / Ollama 11434 / Kokoro 8
 ## 送るもの
 - 温度（CPU・GPU・Tj）、CPU / GPU の使用率とクロック、ファン
 - メモリ・スワップ・ディスク、ボード全体の入力電圧と消費電力（INA3221 の `VDD_IN`）、電源モード（`nvpmodel -q`）
-- AI の部品が動いているか: `whisper-server`（声→文字）、`ollama`（会話の AI、読み込み中のモデルと、その大きさ・GPU に載っている量）、
-  Kokoro（文字→声、Docker）、`jetson-owl`（NanoOWL の物体検出）
+- AI の部品が動いているか: `whisper-server`（声→文字。`whisper-server.service` の `-m` から仕組みの名前 `stt_engine`、例: whisper.cpp small（GPU））、`ollama`（会話の AI、読み込み中のモデルと、その大きさ・GPU に載っている量）、
+  Kokoro（文字→声、Docker。`/openapi.json` の題名と版から `tts_engine`、例: Kokoro TTS 1.0.0）、`jetson-owl`（NanoOWL の物体検出）
 - 更新: 残りの更新とセキュリティ更新の数（`apt-check`、重いので 1 時間に 1 回と、ボタンの更新のあと）、再起動が必要か、
   最後に自動更新（unattended-upgrades）が動いた時刻。残りの更新の数には、NVIDIA の部品（JetPack: `nvidia-`・`cuda-`・
   `libcudnn`・`libnvinfer`・`tensorrt`）を入れない（その数は `updates_held`）。ボタンの更新が動いているかと、前回の結果

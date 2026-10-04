@@ -145,6 +145,45 @@ def services():
     return states
 
 
+def stt_engine():
+    """声→文字の仕組み（whisper-server の ExecStart の -m から、例: whisper.cpp small）。"""
+    try:
+        argv = subprocess.run(['systemctl', 'show', '-p', 'ExecStart', '--value', SERVICES['whisper']],
+                              capture_output=True, text=True, timeout=5, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
+    m = re.search(r'\s(?:-m|--model)\s+(\S+)', argv)
+    if not m:
+        return ''
+    model = os.path.basename(m.group(1)).removeprefix('ggml-').removesuffix('.bin')
+    device = 'CPU' if re.search(r'\s(?:-ng|--no-gpu)\s', argv) else 'GPU'
+    return f'whisper.cpp {model}（{device}）'
+
+
+def tts_engine():
+    """文字→声の仕組み（Kokoro の API の題名と版。例: Kokoro TTS 1.0.0）。"""
+    ok, body = http_ok('http://127.0.0.1:8880/openapi.json')
+    if not ok:
+        return ''
+    try:
+        info = json.loads(body).get('info', {})
+        title = str(info.get('title', '')).removesuffix(' API')
+        return f"{title} {info.get('version', '')}".strip()
+    except (ValueError, AttributeError):
+        return ''
+
+
+_engines_cache = {'stamp': 0.0, 'engines': {}}
+
+
+def voice_engines_cached(max_age=60.0):
+    now = time.monotonic()
+    if not _engines_cache['stamp'] or now - _engines_cache['stamp'] >= max_age:
+        _engines_cache['engines'] = {'stt_engine': stt_engine(), 'tts_engine': tts_engine()}
+        _engines_cache['stamp'] = now
+    return _engines_cache['engines']
+
+
 def ollama_models():
     """読み込み中のモデルの名前と、大きさ・GPU に載っている量の合計 [MB]（Ollama の /api/ps）。"""
     empty = {'llm_models': [], 'llm_size_mb': None, 'llm_vram_mb': None}
@@ -338,6 +377,7 @@ def collect(prev_cpu, slow):
     }
     status.update(memory())
     status.update(ollama_models())
+    status.update(voice_engines_cached())
     status.update(upgrade_state())
     status.update(slow.get())
     return status, (total, idle)
