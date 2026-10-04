@@ -274,10 +274,10 @@ stereo_depth_node:
     grid_min_points: 6
     # stereo_calibrate が書いた値（28 組、誤差 0.33 px、レンズの間隔 59.8 mm、2026/10）
     calib_file: "~/AI-CAR_ws/calib/stereo/stereo_calib.yaml"
-    # 片目 640x360（焦点 約 210 px・間隔 0.06 m）で視差 0〜96 px → 近いほうは約 0.14 m まで測れる
-    # （64 px だと約 0.21 m までで、それより近い物はまちがった遠い距離になった）。
-    # そのかわり左はしの 96 px（約 44° より左）は測れない
-    num_disparities: 96
+    # 片目 640x360（焦点 約 210 px・間隔 0.06 m）で視差 0〜128 px → 近いほうは約 0.10 m まで測れる
+    # （96 px だと約 0.14 m までで、0.12 m ののりの棒がまちがった遠い距離になった）。
+    # そのかわり左はしの 128 px（約 42° より左）は測れず、計算は 96 px の約 1.4 倍
+    num_disparities: 128
     block_size: 5
     uniqueness_ratio: 10
     speckle_window: 100
@@ -288,8 +288,9 @@ stereo_depth_node:
     corridor_center_y_m: -0.038
     corridor_half_width_m: 0.15
     max_range_m: 2.0
-    # 床より 4 cm 以上・60 cm 以下の点を物とみなす。40 点より少ないときは無視
-    min_height_m: 0.04
+    # 床より 2 cm 以上・60 cm 以下の点を物とみなす。40 点より少ないときは無視
+    # （4 cm だと、0.23 m 先の高さ 約 3.4 cm の入れ物が床あつかいになった）
+    min_height_m: 0.02
     max_height_m: 0.6
     min_points: 40
     # 距離の色の画像: 0.2 m が赤、3 m より遠いと青
