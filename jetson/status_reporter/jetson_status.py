@@ -20,6 +20,7 @@ GPU_DIR = '/sys/devices/platform/bus@0/17000000.gpu'
 THERMAL_NAMES = {'cpu-thermal': 'cpu', 'gpu-thermal': 'gpu', 'tj-thermal': 'tj'}
 IP_SKIP = ('lo', 'docker', 'br-', 'veth', 'l4tbr')
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
+POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_UNIT = 'jetson-upgrade.service'
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', UPGRADE_UNIT]
 UPGRADE_PROGRESS = '/run/jetson-upgrade.progress'
@@ -181,6 +182,7 @@ class SlowFacts:
 
     def refresh(self):
         facts = {'power_mode': self._power_mode(), 'can_reboot': can_sudo(REBOOT_CMD),
+                 'can_poweroff': can_sudo(POWEROFF_CMD),
                  'can_upgrade': can_sudo(UPGRADE_CMD)}
         updates, facts['security_pending'] = self._apt_check()
         held = self._held_count()
@@ -389,7 +391,10 @@ def main():
             if reply_flag(reply, 'upgrade'):
                 print('ダッシュボードから更新を頼まれたので jetson-upgrade.service を始めます', flush=True)
                 subprocess.run(UPGRADE_CMD, timeout=30, check=False)
-            if reply_flag(reply, 'reboot'):
+            if reply_flag(reply, 'poweroff'):
+                print('ダッシュボードから電源を切ることを頼まれたので電源を切ります', flush=True)
+                subprocess.run(POWEROFF_CMD, timeout=30, check=False)
+            elif reply_flag(reply, 'reboot'):
                 print('ダッシュボードから再起動を頼まれたので再起動します', flush=True)
                 subprocess.run(REBOOT_CMD, timeout=30, check=False)
         except (urllib.error.URLError, OSError, subprocess.TimeoutExpired) as e:

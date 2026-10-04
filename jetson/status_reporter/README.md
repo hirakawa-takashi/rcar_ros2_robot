@@ -39,14 +39,14 @@ sudo systemctl enable --now jetson-status.service
 journalctl -u jetson-status -f
 ```
 
-## ダッシュボードの「再起動」ボタン
+## ダッシュボードの「再起動」「電源を切る」ボタン
 Jetson カードの「Jetson を再起動」を押すと、AI-CAR は次に状態が届いたときの返事に `"reboot": true` を入れます。
-`jetson_status.py` はそれを見て `sudo -n systemctl reboot` を実行します。パスワードなしで再起動だけを許す設定が要ります:
+`jetson_status.py` はそれを見て `sudo -n systemctl reboot` を実行します。「Jetson の電源を切る」は `"poweroff": true` で、`sudo -n systemctl poweroff` を実行します（入れ直すのは本体の電源ボタンか電源のつなぎ直し）。パスワードなしで再起動と電源を切ることだけを許す設定が要ります:
 ```bash
 sudo visudo -cf ~/status_reporter/jetson-reboot.sudoers
 sudo install -m 440 ~/status_reporter/jetson-reboot.sudoers /etc/sudoers.d/jetson-reboot
 ```
-入っていないときはボタンを押しても「jetson-reboot.sudoers が入っていません」と出て、再起動しません。
+入っていないときはボタンを押しても「jetson-reboot.sudoers が入っていません」（電源は「… に poweroff が入っていません」）と出て、何もしません。
 
 ## ダッシュボードの「Jetson を更新」ボタン
 自動の更新（unattended-upgrades）はセキュリティ更新だけを入れます。ほかの更新は、ボタンを押したときだけ入れます。
