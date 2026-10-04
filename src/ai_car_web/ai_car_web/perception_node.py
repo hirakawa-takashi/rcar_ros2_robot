@@ -247,6 +247,8 @@ class PerceptionNode(Node):
             self._detector_note = 'hef_path が未設定のためカメラ推論は無効です'
 
         self._infer_busy = False
+        self._infer_started = 0.0
+        self._infer_frame_stamp = 0.0
         self.create_timer(0.02, self._inference_tick)
         self.create_timer(0.2, self._publish_status)
 
@@ -497,12 +499,15 @@ class PerceptionNode(Node):
         with self._lock:
             frame = self._frame
             frame_stamp = self._frame_stamp
-            last = self._detection_stamp
-        if frame is None or time.time() - last < interval:
+        now = time.time()
+        # 間隔は前の推論の始まりから数える。同じコマは 2 回推論しない
+        if frame is None or now - self._infer_started < interval:
             return
-        if time.time() - frame_stamp > 2.0:
+        if frame_stamp == self._infer_frame_stamp or now - frame_stamp > 2.0:
             return
         self._infer_busy = True
+        self._infer_started = now
+        self._infer_frame_stamp = frame_stamp
         threading.Thread(target=self._run_inference, args=(frame,), daemon=True).start()
 
     def _run_inference(self, frame: bytes):
