@@ -1720,10 +1720,9 @@ function renderJoy(j) {
 
 const DIST_SOURCE = { stereo: '（2眼）', lidar: '（LiDAR）' };
 
-// カメラ映像の枠の文字: 距離は m を付けない。2 眼の距離は出し方を書かず、LiDAR のときだけ（LiDAR）を付ける。
+// カメラ映像の枠の文字: 名前と距離の数字だけ（m や出し方は付けない）。
 function camLabel(d) {
-  if (d.distance == null) return `${d.label} 距離不明`;
-  return `${d.label} ${d.distance.toFixed(2)}${d.distance_source === 'lidar' ? DIST_SOURCE.lidar : ''}`;
+  return d.distance == null ? `${d.label} 距離不明` : `${d.label} ${d.distance.toFixed(2)}`;
 }
 
 // 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑。Jetson の検出は水色）。
