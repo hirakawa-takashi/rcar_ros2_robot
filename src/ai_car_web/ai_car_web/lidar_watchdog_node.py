@@ -38,7 +38,7 @@ class LidarWatchdogNode(Node):
         super().__init__('lidar_watchdog_node')
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('scan_timeout', 3.0)
-        self.declare_parameter('startup_grace', 20.0)
+        self.declare_parameter('startup_grace', 15.0)
         self.declare_parameter('kill_wait', 3.0)
         self.declare_parameter('process_pattern', 'rplidar_ros/rplidar_composition')
 

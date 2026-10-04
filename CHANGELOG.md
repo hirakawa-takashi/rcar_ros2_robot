@@ -6,7 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
-- `lidar_watchdog_node`: `/scan` が 3 秒来ないと `rplidar_composition` に SIGTERM（3 秒で終わらなければ SIGKILL）を送り、launch の respawn（5 秒後）で起動し直させる。起動直後と起動し直した後は 20 秒待つ。LiDAR の USB（CP2102）が起動の約 1 分後に一度切れて ttyUSB0 → ttyUSB1 でつながり直したとき、rplidar は古いポートを握ったまま `/scan` を出さず、CPU を約 66 % 使い続けていた（`use_lidar` で一緒に起動）
+- `lidar_watchdog_node`: `/scan` が 3 秒来ないと `rplidar_composition` に SIGTERM（3 秒で終わらなければ SIGKILL）を送り、launch の respawn（5 秒後）で起動し直させる。起動直後と起動し直した後は 15 秒待つ。LiDAR の USB（CP2102）が起動の約 1 分後に一度切れて ttyUSB0 → ttyUSB1 でつながり直したとき、rplidar は古いポートを握ったまま `/scan` を出さず、CPU を約 66 % 使い続けていた（`use_lidar` で一緒に起動）
 - 2 眼の低い障害物で走る速さを変える: dashboard.yaml の `stereo_guard` を true にする。LiDAR（床から約 17.5 cm の線）に写らない低い物が 2 眼で 0.8 m 以内なら減速、0.45 m 以内なら停止。まちがって止まらないように、0.6 m より近い所の「いちばん近い物」（`nearest`）は、`objects` に残ったまとまり（40 点以上・横幅 2 cm 以上）から選ぶ（窓わくの細い線を 0.19 m の物とまちがえたことがある）
 - ダッシュボードの LiDAR の図: カメラで見つけた物の名前・距離の吹き出しを消して点だけにする。2 眼の物（`/obstacle_status.stereo.objects`、なければいちばん近い 1 個）も白ふちの点で描く。色は距離（LiDAR の点と同じ危険・停止・減速・安全の距離帯）、点の直径は横幅の 2 倍（小さい物も見えるように）。`perception_node` は 2 眼の物ごとに横の位置 `lateral` と横幅 `width` も出す
 - 2 眼の距離: 視差の幅 `num_disparities` を 64 → 96 px にして、約 0.21 m → 約 0.14 m まで近くを測れるようにする（床の約 0.15 m に置いた高さ約 5 cm の薬のびんが、64 px ではまちがった遠い距離になっていた）。左はしの 96 px は測れない。いちばん近い物の上下の向き（`depression_min_deg`・`depression_max_deg`）も出し、`perception_node` が前方カメラの映像の上の枠（`stereo.box`）にして、ダッシュボードの映像に「2眼 0.15 m 低い物」の枠を出す。前からの床の色の行は「低い障害物（床の色）」と名前を変える

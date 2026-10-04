@@ -245,7 +245,7 @@ rplidar:
 lidar_watchdog_node:
   ros__parameters:
     scan_timeout: 3.0
-    startup_grace: 20.0
+    startup_grace: 15.0
     kill_wait: 3.0
     process_pattern: "rplidar_ros/rplidar_composition"
 
