@@ -7,8 +7,12 @@
 eye で選んだ片目を output_width x output_height に縮めて、camera_ros と同じ
 /camera/image_raw/compressed（JPEG）へ出す。ダッシュボード・perception_node・
 floor_obstacle_node はそのまま使える。
+~/capture_calib（std_srvs/Trigger）を呼ぶと、その時の左右の画像で市松模様を探し、
+左右とも見つかれば calib_dir に pair_NNN_left.png / pair_NNN_right.png で保存する。
 """
 
+import json
+import os
 import threading
 import time
 
@@ -17,6 +21,9 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
+from std_srvs.srv import Trigger
+
+from ai_car_web.stereo_calib import DEFAULT_DIR, find_board, list_pairs, next_index
 
 
 def select_eye(frame, eye, rotate_180):
@@ -46,6 +53,10 @@ class StereoCameraNode(Node):
         self.declare_parameter('jpeg_quality', 80)
         self.declare_parameter('image_topic', '/camera/image_raw/compressed')
         self.declare_parameter('frame_id', 'camera_link')
+        # キャリブレーション用の撮影（市松模様の内側の角の数と保存先）
+        self.declare_parameter('calib_dir', DEFAULT_DIR)
+        self.declare_parameter('calib_board_cols', 9)
+        self.declare_parameter('calib_board_rows', 6)
         g = self.get_parameter
         self.device = g('device').value
         self.width = int(g('width').value)
@@ -56,7 +67,12 @@ class StereoCameraNode(Node):
         self.out_size = (int(g('output_width').value), int(g('output_height').value))
         self.jpeg_params = [cv2.IMWRITE_JPEG_QUALITY, int(g('jpeg_quality').value)]
         self.frame_id = g('frame_id').value
+        self.calib_dir = os.path.expanduser(g('calib_dir').value or DEFAULT_DIR)
+        self.calib_board = (int(g('calib_board_cols').value), int(g('calib_board_rows').value))
         self.pub = self.create_publisher(CompressedImage, g('image_topic').value, 10)
+        self.create_service(Trigger, '~/capture_calib', self._capture_calib)
+        self._lock = threading.Lock()
+        self._latest = None
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
@@ -95,6 +111,8 @@ class StereoCameraNode(Node):
                 cap = None
                 time.sleep(1.0)
                 continue
+            with self._lock:
+                self._latest = frame
             image = cv2.resize(select_eye(frame, self.eye, self.rotate_180), self.out_size,
                                interpolation=cv2.INTER_AREA)
             ok, jpeg = cv2.imencode('.jpg', image, self.jpeg_params)
@@ -110,6 +128,31 @@ class StereoCameraNode(Node):
             self.pub.publish(msg)
         if cap is not None:
             cap.release()
+
+    def _capture_calib(self, request, response):
+        with self._lock:
+            frame = self._latest
+        result = {'ok': False, 'found': {}, 'count': len(list_pairs(self.calib_dir)), 'reason': ''}
+        if frame is None:
+            result['reason'] = 'カメラの画像がまだない'
+        else:
+            eyes = {eye: select_eye(frame, eye, self.rotate_180) for eye in ('left', 'right')}
+            result['found'] = {eye: find_board(img, self.calib_board) is not None
+                               for eye, img in eyes.items()}
+            missing = [name for eye, name in (('left', '左'), ('right', '右'))
+                       if not result['found'][eye]]
+            if missing:
+                result['reason'] = f'市松模様が見つからない（{"・".join(missing)}）'
+            else:
+                os.makedirs(self.calib_dir, exist_ok=True)
+                base = os.path.join(self.calib_dir, f'pair_{next_index(self.calib_dir):03d}')
+                for eye, img in eyes.items():
+                    cv2.imwrite(f'{base}_{eye}.png', img)
+                result.update(ok=True, count=result['count'] + 1, name=os.path.basename(base))
+                self.get_logger().info(f'キャリブレーション用に保存: {base}（{result["count"]} 組）')
+        response.success = result['ok']
+        response.message = json.dumps(result, ensure_ascii=False)
+        return response
 
     def destroy_node(self):
         self._running = False
