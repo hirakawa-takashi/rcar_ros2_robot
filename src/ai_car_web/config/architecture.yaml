@@ -322,7 +322,7 @@ nodes:
     file: ai_car_web/dashboard_node.py
     role: FastAPI サーバー（別スレッド）+ rclpy ノード。ブラウザと ROS 2 の橋渡し。Web 操作とゲームパッドの指令を同じ経路で /cmd_vel_manual に変換する
     publishes: [/cmd_vel_manual, /drive_mode_request, /jetson_detections]
-    subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status, /map, /pose]
+    subscribes: [/scan, /imu/data, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status, /map, /pose, /stereo/depth_status, /stereo/depth/compressed]
     params:
       - {name: max_linear_speed, ref: dashboard_node.max_linear_speed, unit: m/s, desc: 正規化指令 1.0 のときの並進速度}
       - {name: max_angular_speed, ref: dashboard_node.max_angular_speed, unit: rad/s, desc: 正規化指令 1.0 のときの旋回速度}
@@ -412,8 +412,8 @@ nodes:
   - id: stereo_camera_node
     label: stereo_camera_node
     file: ai_car_web/stereo_camera_node.py
-    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、180° 回して左目を 960×540・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば左右の画像を calib_dir に保存する（キャリブレーション用）
-    publishes: [/camera/image_raw/compressed]
+    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、180° 回して左目を 960×540・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば左右の画像を calib_dir に保存する（キャリブレーション用）。/stereo/pair_gray を受けるノードがいるときだけ、左右を片目 640×360 の白黒にして横に並べ 5 Hz で出す（距離の計算用）
+    publishes: [/camera/image_raw/compressed, /stereo/pair_gray]
     subscribes: []
     params:
       - {name: fps, ref: stereo_camera_node.fps, unit: fps, desc: 取り込みと publish の速さ}
@@ -450,6 +450,20 @@ nodes:
       - {name: invalid_is_cliff, ref: cliff_node.invalid_is_cliff, unit: '', desc: 床が見えない（測定無効）も段差とみなす}
       - {name: timing_budget_ms, ref: cliff_node.timing_budget_ms, unit: ms, desc: 1 回の測定時間（短距離モード）}
     layer: sensor
+  - id: stereo_depth_node
+    label: stereo_depth_node
+    file: ai_car_web/stereo_depth_node.py
+    role: 2 眼カメラの左右（/stereo/pair_gray）を stereo_calib.yaml で平行にそろえ、SGBM（視差 0〜64 px）で距離にする。カメラの高さ・向きで床からの高さを出し、通り道の中で床より 4〜60 cm 高い点のいちばん近い距離を /stereo/depth_status に、距離の色の画像を /stereo/depth/compressed に出す。表示だけ（走る・止まるの判断には使わない）。use_stereo_depth（既定 true）と camera_type:=stereo のとき起動
+    publishes: [/stereo/depth_status, /stereo/depth/compressed]
+    subscribes: [/stereo/pair_gray]
+    params:
+      - {name: calib_file, ref: stereo_depth_node.calib_file, unit: '', desc: stereo_calibrate が書いたキャリブレーションの値}
+      - {name: num_disparities, ref: stereo_depth_node.num_disparities, unit: px, desc: 探す左右のずれの幅（大きいほど近くまで測れるが重い）}
+      - {name: camera_height_m, ref: stereo_depth_node.camera_height_m, unit: m, desc: 床からカメラまでの高さ}
+      - {name: camera_pitch_deg, ref: stereo_depth_node.camera_pitch_deg, unit: deg, desc: カメラの下向きの角度}
+      - {name: max_range_m, ref: stereo_depth_node.max_range_m, unit: m, desc: これより遠い物は見ない}
+      - {name: min_height_m, ref: stereo_depth_node.min_height_m, unit: m, desc: 床よりこれだけ高い点を物とみなす}
+    layer: perception
   - id: floor_obstacle_node
     label: floor_obstacle_node
     file: ai_car_web/floor_obstacle_node.py
@@ -503,6 +517,9 @@ topics:
   - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の距離・前進 / 後退の停止（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
+  - {name: /stereo/pair_gray, type: sensor_msgs/Image (mono8), desc: 2 眼カメラの左右を片目 640×360 の白黒にして横に並べた画像（5 Hz、受けるノードがいるときだけ）}
+  - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 2 眼の距離（通り道の中のいちばん近い物の距離・左右・高さ、測れた画素の割合、処理時間）。表示のみ}
+  - {name: /stereo/depth/compressed, type: sensor_msgs/CompressedImage, desc: 2 眼の距離の色の画像（近い = 赤、遠い = 青、測れない = 黒）}
   - {name: /floor_obstacle_status, type: std_msgs/String (JSON), desc: カメラの床の検出（床の上の物の足元の距離・画面の位置、5 Hz）}
   - {name: /jetson_detections, type: std_msgs/String (JSON), desc: Jetson（NanoOWL）の物体検出（名前・信頼度・画面の位置）。POST /api/jetson/detections から dashboard_node が流す。表示のみ}
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}

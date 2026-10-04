@@ -9,6 +9,8 @@ eye で選んだ片目を output_width x output_height に縮めて、camera_ros
 floor_obstacle_node はそのまま使える。
 ~/capture_calib（std_srvs/Trigger）を呼ぶと、その時の左右の画像で市松模様を探し、
 左右とも見つかれば calib_dir に pair_NNN_left.png / pair_NNN_right.png で保存する。
+pair_topic を受けるノード（stereo_depth_node）がいるときだけ、左右を pair_scale に縮めた
+白黒を横に並べて（左 | 右）pair_rate で出す（距離の計算用）。
 """
 
 import json
@@ -17,10 +19,12 @@ import threading
 import time
 
 import cv2
+import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
+from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
+from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
 from ai_car_web.stereo_calib import DEFAULT_DIR, find_board, list_pairs, next_index
@@ -57,6 +61,10 @@ class StereoCameraNode(Node):
         self.declare_parameter('calib_dir', DEFAULT_DIR)
         self.declare_parameter('calib_board_cols', 9)
         self.declare_parameter('calib_board_rows', 6)
+        # 距離の計算用の左右の白黒（stereo_depth_node が受けているときだけ出す）
+        self.declare_parameter('pair_topic', '/stereo/pair_gray')
+        self.declare_parameter('pair_rate', 5.0)
+        self.declare_parameter('pair_scale', 0.5)
         g = self.get_parameter
         self.device = g('device').value
         self.width = int(g('width').value)
@@ -71,6 +79,13 @@ class StereoCameraNode(Node):
         self.calib_board = (int(g('calib_board_cols').value), int(g('calib_board_rows').value))
         self.pub = self.create_publisher(CompressedImage, g('image_topic').value, 10)
         self.create_service(Trigger, '~/capture_calib', self._capture_calib)
+        self.pair_period = 1.0 / max(float(g('pair_rate').value), 0.1)
+        self.pair_scale = float(g('pair_scale').value)
+        self.pair_pub = self.create_publisher(
+            Image, g('pair_topic').value,
+            QoSProfile(depth=1, history=QoSHistoryPolicy.KEEP_LAST,
+                       reliability=QoSReliabilityPolicy.BEST_EFFORT))
+        self._pair_next = 0.0
         self._lock = threading.Lock()
         self._latest = None
         self._running = True
@@ -126,8 +141,30 @@ class StereoCameraNode(Node):
             if not rclpy.ok():
                 break
             self.pub.publish(msg)
+            self._publish_pair(frame, msg.header)
         if cap is not None:
             cap.release()
+
+    def _publish_pair(self, frame, header):
+        now = time.monotonic()
+        if now < self._pair_next or self.pair_pub.get_subscription_count() == 0:
+            return
+        self._pair_next = now + self.pair_period
+        eyes = []
+        for eye in ('left', 'right'):
+            gray = cv2.cvtColor(select_eye(frame, eye, self.rotate_180), cv2.COLOR_BGR2GRAY)
+            if self.pair_scale != 1.0:
+                gray = cv2.resize(gray, None, fx=self.pair_scale, fy=self.pair_scale,
+                                  interpolation=cv2.INTER_AREA)
+            eyes.append(gray)
+        pair = np.ascontiguousarray(np.hstack(eyes))
+        msg = Image()
+        msg.header = header
+        msg.height, msg.width = pair.shape
+        msg.encoding = 'mono8'
+        msg.step = msg.width
+        msg.data = pair.tobytes()
+        self.pair_pub.publish(msg)
 
     def _capture_calib(self, request, response):
         with self._lock:
