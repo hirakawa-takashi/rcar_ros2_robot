@@ -59,6 +59,7 @@ system:
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
         - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 1 秒ごとに AI-CAR へ送る（jetson-status.service）
         - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
+        - 家族の顔を見分ける（jetson-face.service、YuNet + SFace・CPU、登録の画面は 8090 番）。今は AI-CAR のカメラで試す。スタックちゃんのカメラから受け取るのは予定
     - id: stackchan
       label: M5 スタックちゃん
       sub: M5Stack CoreS3（準備中）
