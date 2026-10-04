@@ -66,7 +66,7 @@ system:
       items:
         - 画面の顔・マイク・スピーカー
         - 首振り（左右・上下のサーボ）
-        - カメラ（GC0308 640×480）
+        - カメラ（GC0308 640×480）。届くまでは AI-CAR の 2 眼カメラ（左目）で代わりに見て、ダッシュボードのスタックちゃんのカードに Jetson の顔の見分けの結果と画面の顔を出す
     - {id: browser, label: ブラウザ（PC・スマホ）, sub: ダッシュボード・手動操作, state: done}
     - {id: person, label: 家の人, sub: 声で話しかける, state: planned}
   links:
@@ -589,6 +589,8 @@ api:
     - {method: POST, path: /api/system/poweroff, desc: ラズパイの電源を 10 秒後に切る（止めてから。再起動と同じく、そのあいだに頼んだ Jetson の再起動・電源を切ることも伝え終わってから。走行中・自動運転中は 409、sudoers に poweroff がなければ 503）, auth: true}
     - {method: POST, path: /api/system/upgrade, desc: ラズパイの更新（ai-car-upgrade.service、ROS 2 も含む）を始める（走行中・自動運転中は断る。ai-car-upgrade.sudoers が必要）, auth: true}
     - {method: GET, path: /api/camera/snapshot, desc: JPEG 1 枚, auth: false}
+    - {method: GET, path: /api/stackchan/face, desc: スタックちゃんのカード用。Jetson の face_id（8090 の /api/face/status）の登録した人と最後の結果をそのまま返す。呼ばれているあいだだけ Jetson が 2 眼カメラの画像で顔を見分ける（表示だけ）, auth: true}
+    - {method: GET, path: /api/stackchan/frame.jpg, desc: Jetson の face_id が最後に見た画像（/api/face/frame.jpg）, auth: true}
     - {method: GET, path: /api/camera/stream, desc: MJPEG ストリーム, auth: false}
     - {method: WS, path: /ws, desc: テレメトリ配信（telemetry_rate Hz）。未導入環境は /api/status ポーリングにフォールバック, auth: false}
   auth_note: dashboard_node.api_token または環境変数 AI_CAR_API_TOKEN を設定すると auth=true の API に X-API-Token（または Authorization Bearer）ヘッダーが必要。UI は ?token= を一度開くと localStorage に保存する
