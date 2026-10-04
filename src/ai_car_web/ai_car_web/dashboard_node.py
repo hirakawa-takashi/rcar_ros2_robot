@@ -104,6 +104,8 @@ class JetsonStatusRequest(BaseModel):
     disk_used_gb: float | None = None
     services: dict[str, bool] = {}
     llm_models: list[str] = []
+    stt_engine: str = ''
+    tts_engine: str = ''
     llm_size_mb: float | None = None
     llm_vram_mb: float | None = None
     updates_pending: int | None = None
@@ -741,7 +743,8 @@ class DashboardNode(Node):
     def update_jetson_status(self, req: JetsonStatusRequest):
         """Jetson の状態を、文字の長さと項目の数を絞ってから覚える。"""
         status = req.model_dump()
-        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result', 'upgrade_phase'):
+        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result', 'upgrade_phase',
+                    'stt_engine', 'tts_engine'):
             status[key] = status[key][:64]
         status['temperatures_c'] = {k[:16]: round(v, 1)
                                     for k, v in list(req.temperatures_c.items())[:8]}

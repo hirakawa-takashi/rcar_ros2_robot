@@ -10,6 +10,7 @@
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Added
+- ダッシュボードの Jetson カードの「声→文字」「文字→声」に、使っている仕組みの名前を出す（例: `whisper.cpp small（GPU） / 稼働中`、`Kokoro TTS 1.0.0 / 稼働中`）。`jetson_status.py` が `whisper-server.service` の `-m` と Kokoro の `/openapi.json` から `stt_engine`・`tts_engine` を作って送る（60 秒ごとに見直す）
 - ダッシュボードのラズパイと Jetson のカードに「電源を切る」ボタン（確認の画面あり、API トークンが必要）。ラズパイは `POST /api/system/poweroff`（走行中・自動運転中は断り、止めてから 10 秒後に `systemctl poweroff`。そのあいだに押した Jetson の再起動・電源を切ることも伝えてから）、Jetson は `POST /api/jetson/poweroff`（次の状態の返事の `poweroff` で `jetson_status.py` が `systemctl poweroff`）。`ai-car-reboot.sudoers`・`jetson-reboot.sudoers` に `systemctl poweroff` を足した。ラズパイの sudo の確かめは `sudo -n -l` の NOPASSWD の行で見るようにした。入れ直すのは本体の電源ボタンか電源のつなぎ直し
 
 ### Changed
