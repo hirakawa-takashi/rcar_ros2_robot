@@ -1704,21 +1704,27 @@ function drawDetections(o) {
     ctx.fillText(text, x1 * w + 8, ty + 30);
   }
   const st = o && o.stereo;
-  if (st && st.box && st.distance != null) {
-    const [x1, y1, x2, y2] = st.box;
-    const color = st.low ? '#f0a030' : '#8a94a6';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
-    const text = `${st.low ? '低い物' : '物'} ${st.distance.toFixed(2)} m${DIST_SOURCE.stereo}`;
-    ctx.font = 'bold 32px sans-serif';
-    const tw = ctx.measureText(text).width + 16;
-    const ty = Math.max(0, y1 * h - 40);
-    ctx.fillStyle = color;
-    ctx.fillRect(x1 * w, ty, tw, 40);
-    ctx.fillStyle = '#0e1116';
-    ctx.fillText(text, x1 * w + 8, ty + 30);
+  const stItems = st ? (st.objects && st.objects.length ? st.objects : [st]) : [];
+  for (const it of stItems) {
+    if (!it.box || it.distance == null) continue;
+    drawStereoBox(ctx, w, h, it);
   }
+}
+
+function drawStereoBox(ctx, w, h, st) {
+  const [x1, y1, x2, y2] = st.box;
+  const color = st.low ? '#f0a030' : '#8a94a6';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
+  const text = `${st.low ? '低い物' : '物'} ${st.distance.toFixed(2)} m${DIST_SOURCE.stereo}`;
+  ctx.font = 'bold 32px sans-serif';
+  const tw = ctx.measureText(text).width + 16;
+  const ty = Math.max(0, y1 * h - 40);
+  ctx.fillStyle = color;
+  ctx.fillRect(x1 * w, ty, tw, 40);
+  ctx.fillStyle = '#0e1116';
+  ctx.fillText(text, x1 * w + 8, ty + 30);
 }
 
 let camStreaming = false;
@@ -1753,7 +1759,8 @@ function renderStereoDepth(sd, judge) {
     : !judge.low ? ' LiDAR にも見える'
     : judge.level === 'clear' ? ' 低い物' : ` → ${LEVEL_TEXT[judge.level] || judge.level}${mode}`;
   cell.textContent = n
-    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）${verdict}`
+    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）${verdict}` +
+      ((sd.objects || []).length > 1 ? `・近くに ${sd.objects.length} 個` : '')
     : `${fmt(sd.max_range_m, 1)} m 以内になし`;
   cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
     `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
