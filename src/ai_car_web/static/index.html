@@ -3083,7 +3083,21 @@ function connect() {
     }
   };
 }
+const PI_VALUE_IDS = ['pi_os', 'cpu_pct', 'cpu_freq', 'cpu_fan', 'mem', 'swap', 'pwr_total', 'pwr_input',
+                     'pwr_amp', 'pwr_state', 'pwr_pd', 'pi_ips', 'pi_security', 'pi_reboot_req'];
+
+function blankPiCard() {
+  const byId = id => document.getElementById(id);
+  for (const id of PI_VALUE_IDS) byId(id).textContent = '-';
+  byId('pi_os').title = '';
+  byId('pi_upgrade_state').innerHTML = '';
+  setTempBar(byId('cpu_temp_bar'), byId('cpu_temp'), null);
+  setBar(byId('cpu_bar'), 0);
+  byId('cores').innerHTML = '';
+}
+
 function markTelemetryStale() {
+  blankPiCard();
   const title = `ラズパイから ${fmt((Date.now() - lastTelemetryAt) / 1000, 0)} 秒届いていません`;
   for (const id of PI_LINK_IDS) setLink(id, 'crit', '未接続', title);
   document.getElementById('cam_state').innerHTML = '<span class="badge crit">未接続</span>';
