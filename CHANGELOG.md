@@ -9,7 +9,17 @@
 - ダッシュボードの IP アドレスで「（Wi-Fi）」が「Wi-」と「Fi）」の 2 行に分かれることがあったので、アドレスと名前の間だけで折り返すようにした
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
+### Added
+- ダッシュボードのラズパイと Jetson のカードに「電源を切る」ボタン（確認の画面あり、API トークンが必要）。ラズパイは `POST /api/system/poweroff`（走行中・自動運転中は断り、止めてから 10 秒後に `systemctl poweroff`。そのあいだに押した Jetson の再起動・電源を切ることも伝えてから）、Jetson は `POST /api/jetson/poweroff`（次の状態の返事の `poweroff` で `jetson_status.py` が `systemctl poweroff`）。`ai-car-reboot.sudoers`・`jetson-reboot.sudoers` に `systemctl poweroff` を足した。ラズパイの sudo の確かめは `sudo -n -l` の NOPASSWD の行で見るようにした。入れ直すのは本体の電源ボタンか電源のつなぎ直し
+
 ### Changed
+- ダッシュボードのラズパイと Jetson のカードから「最後の自動更新」の行を消した（値は今も送っている）
+- カメラの物の検出: 間隔を前の検出の「始まり」から数え、同じコマは 2 回検出しない（`inference_rate: 15` なのに、検出の時間と待ち時間が足されて実際は 1 秒に約 8 回だった）
+- ダッシュボードの AI HAT+ のカード: PCIe の番地を消し、「負荷率」を横のバーで出す（1 秒のうち推論している時間の割合 = fps × 1 回の推論時間。Hailo-8 は NPU の使用率を返さないので推論レートから出す）
+- ダッシュボードの LiDAR の図に、上から見た車体を本当の大きさで描く（天板 200 x 154 mm・前後のバンパー・カバー・メカナムホイール 4 つ・LiDAR・2 眼カメラのレンズ。寸法は battery_lidar_mount.scad と ai_car.xacro。車輪の左右の位置は見込み）。点群は車体の上に描く
+- ダッシュボードの温度（ラズパイ・AI HAT+・Jetson の CPU/GPU）を、バーと数字の両方で温度ごとに色分けする（45℃ 未満 青 / 60℃ 未満 緑 / 70℃ 未満 黄 / 80℃ 未満 橙 / 80℃ 以上 赤）
+- ダッシュボード: 「Raspberry Pi 5 — CPU」と Jetson のカードの 2 行目（タイトルの下）に OS の名前（`/etc/os-release` の `PRETTY_NAME`）を出す。マウスを当てると、ラズパイはカーネル、Jetson は L4T の版が出る。`system_monitor_node` が `/system_status` に `os`・`kernel` を足した（Jetson は前から `os` を送っている）
+- ダッシュボード: 「ラズパイを更新」「Jetson を更新」のあいだ、「更新中」の横に進み具合（例: 「更新中 45 %」）を出す。更新スクリプトが `apt-get install -o APT::Status-Fd=3` の `dlstatus`（ダウンロード、0〜30 %）と `pmstatus`（インストール、30〜100 %）を `/run/ai-car-upgrade.progress`・`/run/jetson-upgrade.progress` に書き、`system_monitor_node`・`jetson_status.py` が `upgrade_percent`・`upgrade_phase` として送る。`apt-get update` のあいだは「更新の準備中」。いまダウンロードかインストールかは、印にマウスを当てると出る
 - ダッシュボード: Jetson カードと同じように、カメラ・LiDAR・Raspberry Pi 5 — CPU・AI HAT+・IMU・落下防止センサーのカードのタイトルの横にも、つながっているかの印（接続中 / 途絶 / 未受信。カメラは映像なし、AI HAT+ は未検出・ドライバ未導入・無効、落下防止センサーは未配線・未接続も）を出す。LiDAR・IMU は 2 秒、`/system_status` は 3 秒届かないと途絶（`renderLinks`）
 - 3D 部品（ふた `lid.stl`）: 2 眼カメラの板を留めるふたの前端の柱 2 本の M3 の穴を貫通にした。板の上の M2 のネジ 2 本の後ろに、M2 ナットの六角のくぼみ（二面幅 4.4 mm、深さ 2.5 mm）とネジの先の Ø2.4 の穴を開けた。IMU の台を LiDAR の後ろの柱 2 本の間（`imu_c` [90, 145] → [65, 122.3]）へ移して -90° 回し、ピンヘッダーの開いた側を Pi 側（後ろ）に向けた。ふたの後ろ端の結束バンドの受け（LiDAR とカメラの USB）は X 69 → 86 mm へずらした
 - Jetson カードの「セキュリティ更新」の「全部」の数から、NVIDIA の部品（自動でもボタンでも更新しない、今は 48 個）を除いた
@@ -23,6 +33,7 @@
 - 2 眼カメラを 3D の板（`cam_mount`）に USB 端子を上にして付け替えたので、`stereo_camera_node` の `rotate_180` を true → false にした（ノードの既定も false）
 
 ### Added
+- 2 眼カメラのキャリブレーションの道具。ダッシュボードのカメラカードの「キャリブレーション」の「撮影」（`POST /api/camera/calib_capture`、API トークンが必要）で、`stereo_camera_node` の `~/capture_calib`（std_srvs/Trigger）が、その時の左右の画像（片目 1280×720）で市松模様（内側の角 9×6）を探し、左右とも見つかれば `~/AI-CAR_ws/calib/stereo/pair_NNN_left.png` / `_right.png` に保存する。`ros2 run ai_car_web stereo_calibrate`（`ai_car_web/stereo_calib.py`）が左右のゆがみ・向きのずれ・レンズの間隔・画角を求めて `stereo_calib.yaml` に書く。印刷用の市松模様（A4、1 マス 24 mm）と手順は `docs/calib/`。距離の計算はまだしない
 - ダッシュボードの「Raspberry Pi 5 — CPU」カードに、Jetson と同じ更新の行（「セキュリティ更新」「再起動」「最後の自動更新」）と「ラズパイを更新」ボタンを追加した。`system_monitor_node` が `apt-check` で 1 時間に 1 回（とボタンの更新のあと）数を調べ、`/system_status` の `updates` で送る。ボタンは `POST /api/system/upgrade`（走行中・自動運転中は断る）で `ai-car-upgrade.service`（`systemd/ai-car-upgrade.sh`、ROS 2 も含めて更新、消える部品があるときはやめる）を始める。sudo は `systemd/ai-car-upgrade.sudoers` でこのサービスを始めることだけ許す。自動のセキュリティ更新（unattended-upgrades、Ubuntu の既定、自動の再起動なし）は前から動いている
 - ダッシュボードの Jetson カードに「Jetson を更新」ボタンを追加した。押したときだけ、NVIDIA の部品（JetPack）以外を更新する（`jetson/status_reporter/jetson-upgrade.sh`・`jetson-upgrade.service`・`jetson-upgrade.sudoers`）。更新中は「更新中」、終わると「前回は成功 / 失敗」と出る
 - ダッシュボードの「Raspberry Pi 5 — CPU」と「Jetson」のカードに、IP アドレス（Tailscale・Wi-Fi など。lo・Docker は出さない）と「再起動」ボタンを付けた。押すと確認の画面が出る。ラズパイは `POST /api/system/reboot`（走行中・自動運転中は 409 で断り、止めてから 2 秒後に `sudo -n systemctl reboot`）、Jetson は `POST /api/jetson/reboot`（次に状態が届いたときの返事に `reboot: true` を入れ、`jetson_status.py` が再起動する）。どちらも API トークンが必要。パスワードなしで `systemctl reboot` だけを許す sudoers（`systemd/ai-car-reboot.sudoers`、`jetson/status_reporter/jetson-reboot.sudoers`）が要る。IP は `system_monitor_node` の `/system_status` の `ips`、`jetson_status.py` の `ips`（30 秒ごとに調べる）

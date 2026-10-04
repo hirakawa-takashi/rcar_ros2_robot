@@ -20,8 +20,10 @@ GPU_DIR = '/sys/devices/platform/bus@0/17000000.gpu'
 THERMAL_NAMES = {'cpu-thermal': 'cpu', 'gpu-thermal': 'gpu', 'tj-thermal': 'tj'}
 IP_SKIP = ('lo', 'docker', 'br-', 'veth', 'l4tbr')
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
+POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_UNIT = 'jetson-upgrade.service'
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', UPGRADE_UNIT]
+UPGRADE_PROGRESS = '/run/jetson-upgrade.progress'
 HOLD_PREFIXES = ('nvidia-', 'cuda-', 'libcudnn', 'libnvinfer', 'tensorrt')
 SERVICES = {'whisper': 'whisper-server', 'ollama': 'ollama', 'nanoowl': 'jetson-owl'}
 
@@ -180,6 +182,7 @@ class SlowFacts:
 
     def refresh(self):
         facts = {'power_mode': self._power_mode(), 'can_reboot': can_sudo(REBOOT_CMD),
+                 'can_poweroff': can_sudo(POWEROFF_CMD),
                  'can_upgrade': can_sudo(UPGRADE_CMD)}
         updates, facts['security_pending'] = self._apt_check()
         held = self._held_count()
@@ -271,6 +274,16 @@ def last_upgrade():
         return None
 
 
+def upgrade_progress(path):
+    """更新スクリプトが書く「<0〜100> <prepare|download|install>」を読む。"""
+    try:
+        with open(path, encoding='utf-8') as f:
+            percent, phase = f.read().split()
+        return {'upgrade_percent': max(0, min(100, int(percent))), 'upgrade_phase': phase}
+    except (OSError, ValueError):
+        return {'upgrade_percent': None, 'upgrade_phase': ''}
+
+
 def upgrade_state():
     """ボタンの更新（jetson-upgrade.service）が動いているかと、前回の結果（一度も動いていなければ空）。"""
     try:
@@ -282,8 +295,11 @@ def upgrade_state():
     props = dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
     running = props.get('ActiveState') in ('activating', 'active', 'deactivating')
     started = props.get('ExecMainStartTimestampMonotonic', '0') not in ('', '0')
-    return {'upgrade_running': running,
-            'upgrade_result': props.get('Result', '') if started and not running else ''}
+    state = {'upgrade_running': running,
+             'upgrade_result': props.get('Result', '') if started and not running else ''}
+    state.update(upgrade_progress(UPGRADE_PROGRESS) if running
+                 else {'upgrade_percent': None, 'upgrade_phase': ''})
+    return state
 
 
 def collect(prev_cpu, slow):
@@ -375,7 +391,10 @@ def main():
             if reply_flag(reply, 'upgrade'):
                 print('ダッシュボードから更新を頼まれたので jetson-upgrade.service を始めます', flush=True)
                 subprocess.run(UPGRADE_CMD, timeout=30, check=False)
-            if reply_flag(reply, 'reboot'):
+            if reply_flag(reply, 'poweroff'):
+                print('ダッシュボードから電源を切ることを頼まれたので電源を切ります', flush=True)
+                subprocess.run(POWEROFF_CMD, timeout=30, check=False)
+            elif reply_flag(reply, 'reboot'):
                 print('ダッシュボードから再起動を頼まれたので再起動します', flush=True)
                 subprocess.run(REBOOT_CMD, timeout=30, check=False)
         except (urllib.error.URLError, OSError, subprocess.TimeoutExpired) as e:

@@ -31,6 +31,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 from ai_car_web.architecture import load_architecture
 from ai_car_web.dev_diary import find_repo, load_dev_diary
@@ -112,16 +113,31 @@ class JetsonStatusRequest(BaseModel):
     last_upgrade: float | None = None
     ips: list[dict[str, str]] = []
     can_reboot: bool | None = None
+    can_poweroff: bool | None = None
     can_upgrade: bool | None = None
     upgrade_running: bool | None = None
     upgrade_result: str = ''
+    upgrade_percent: int | None = None
+    upgrade_phase: str = ''
 
 
 JETSON_STATUS_TIMEOUT = 5.0
 JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
+POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
+
+
+def _can_sudo(cmd):
+    """sudoers でパスワードなしに cmd を実行できるか（sudo -n -l の NOPASSWD の行で見る）。"""
+    try:
+        out = subprocess.run(['sudo', '-n', '-l'], capture_output=True, text=True,
+                             timeout=5, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    want = ' '.join(cmd[2:])
+    return any('NOPASSWD:' in line and line.rstrip().endswith(want) for line in out.splitlines())
 
 
 def _jpeg_dimensions(data: bytes):
@@ -229,6 +245,8 @@ class DashboardNode(Node):
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('slam_pose_topic', '/pose')
         self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
+        # 2 眼カメラのキャリブレーション用の撮影（stereo_camera_node）
+        self.declare_parameter('calib_capture_service', '/stereo_camera_node/capture_calib')
         # 地図の保存先（空なら ~/maps）
         self.declare_parameter('map_save_dir', '')
         # Jetson から POST /api/jetson/detections で受けた検出を流すトピック。空で無効
@@ -321,6 +339,8 @@ class DashboardNode(Node):
         if SaveMap is not None:
             self.slam_save_client = self.create_client(
                 SaveMap, self.get_parameter('slam_save_service').value)
+        self.calib_capture_client = self.create_client(
+            Trigger, self.get_parameter('calib_capture_service').value)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -344,6 +364,7 @@ class DashboardNode(Node):
         self._jetson_host = None
         self._jetson_host_stamp = 0.0
         self._jetson_reboot_at = None
+        self._jetson_poweroff_at = None
         self._jetson_upgrade_at = None
         self._map = None
         self._map_png = None
@@ -490,6 +511,23 @@ class DashboardNode(Node):
         with self._lock:
             self._map_saved = saved
         return saved
+
+    def capture_calib(self, timeout: float = 10.0):
+        """stereo_camera_node に、キャリブレーション用の左右の画像を 1 組撮らせる。"""
+        if not self.calib_capture_client.service_is_ready():
+            return {'ok': False, 'reason': '2 眼カメラのノードが起動していない'}
+        done = threading.Event()
+        future = self.calib_capture_client.call_async(Trigger.Request())
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(timeout):
+            return {'ok': False, 'reason': '撮影の応答がない'}
+        result = future.result()
+        if result is None:
+            return {'ok': False, 'reason': '撮影の応答が空'}
+        try:
+            return json.loads(result.message)
+        except json.JSONDecodeError:
+            return {'ok': result.success, 'reason': result.message}
 
     def _obstacle_cb(self, msg: String):
         try:
@@ -703,7 +741,7 @@ class DashboardNode(Node):
     def update_jetson_status(self, req: JetsonStatusRequest):
         """Jetson の状態を、文字の長さと項目の数を絞ってから覚える。"""
         status = req.model_dump()
-        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result'):
+        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result', 'upgrade_phase'):
             status[key] = status[key][:64]
         status['temperatures_c'] = {k[:16]: round(v, 1)
                                     for k, v in list(req.temperatures_c.items())[:8]}
@@ -718,14 +756,19 @@ class DashboardNode(Node):
             reboot = (self._jetson_reboot_at is not None
                       and now - self._jetson_reboot_at < JETSON_REBOOT_WINDOW)
             self._jetson_reboot_at = None
+            poweroff = (self._jetson_poweroff_at is not None
+                        and now - self._jetson_poweroff_at < JETSON_REBOOT_WINDOW)
+            self._jetson_poweroff_at = None
             upgrade = (self._jetson_upgrade_at is not None
                        and now - self._jetson_upgrade_at < JETSON_REBOOT_WINDOW)
             self._jetson_upgrade_at = None
         if reboot:
             self.get_logger().warn('Jetson に再起動を伝えました')
+        if poweroff:
+            self.get_logger().warn('Jetson に電源を切ることを伝えました')
         if upgrade:
             self.get_logger().info('Jetson に更新を伝えました')
-        return {'ok': True, 'reboot': reboot, 'upgrade': upgrade}
+        return {'ok': True, 'reboot': reboot, 'poweroff': poweroff, 'upgrade': upgrade}
 
     def request_jetson_upgrade(self):
         """次に Jetson から状態が届いたときの返事で、更新（NVIDIA の部品以外）を頼む。"""
@@ -757,6 +800,20 @@ class DashboardNode(Node):
         self.get_logger().warn('ダッシュボードから Jetson の再起動を受け付けました')
         return {'ok': True}
 
+    def request_jetson_poweroff(self):
+        """次に Jetson から状態が届いたときの返事で、電源を切ることを頼む。"""
+        with self._lock:
+            state = self._jetson_host_state()
+            if not state or not state['alive']:
+                raise HTTPException(status_code=409, detail='Jetson が未接続です')
+            if not state.get('can_poweroff'):
+                raise HTTPException(
+                    status_code=503,
+                    detail='Jetson の jetson-reboot.sudoers に poweroff が入っていません')
+            self._jetson_poweroff_at = self.get_clock().now().nanoseconds * 1e-9
+        self.get_logger().warn('ダッシュボードから Jetson の電源を切ることを受け付けました')
+        return {'ok': True}
+
     def _moving(self):
         now = self.get_clock().now().nanoseconds * 1e-9
         with self._lock:
@@ -768,19 +825,21 @@ class DashboardNode(Node):
 
     def reboot_pi(self):
         """止まっているときだけ、ラズパイを再起動する（10 秒後。返事を先に返す）。"""
+        return self._shutdown_pi(REBOOT_CMD, '再起動')
+
+    def poweroff_pi(self):
+        """止まっているときだけ、ラズパイの電源を切る（10 秒後。返事を先に返す）。"""
+        return self._shutdown_pi(POWEROFF_CMD, '電源オフ')
+
+    def _shutdown_pi(self, cmd, label):
         if self._moving():
-            raise HTTPException(status_code=409, detail='走行中は再起動できません（先に止めてください）')
-        try:
-            allowed = subprocess.run(['sudo', '-n', '-l', *REBOOT_CMD[2:]], capture_output=True,
-                                     timeout=5, check=False).returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            allowed = False
-        if not allowed:
+            raise HTTPException(status_code=409, detail=f'走行中は{label}できません（先に止めてください）')
+        if not _can_sudo(cmd):
             raise HTTPException(status_code=503,
-                                detail='ラズパイに ai-car-reboot.sudoers が入っていません')
+                                detail=f'ラズパイの ai-car-reboot.sudoers に {cmd[-1]} が入っていません')
         self.stop()
-        self.get_logger().warn(f'ダッシュボードからラズパイの再起動を受け付けました（{PI_REBOOT_DELAY:.0f} 秒後）')
-        threading.Thread(target=self._reboot_pi_later, daemon=True).start()
+        self.get_logger().warn(f'ダッシュボードからラズパイの{label}を受け付けました（{PI_REBOOT_DELAY:.0f} 秒後）')
+        threading.Thread(target=self._reboot_pi_later, args=(cmd,), daemon=True).start()
         return {'ok': True}
 
     def upgrade_pi(self):
@@ -804,21 +863,21 @@ class DashboardNode(Node):
         self.get_logger().info('ダッシュボードからラズパイの更新を始めました')
         return {'ok': True}
 
-    def _reboot_pi_later(self):
-        """10 秒待ち（そのあいだも Jetson の再起動を受け付ける）、Jetson への再起動の頼みが残っていれば伝え終わるまで待ってから再起動する。"""
+    def _reboot_pi_later(self, cmd):
+        """10 秒待ち（そのあいだも Jetson の再起動・電源を切る頼みを受け付ける）、頼みが残っていれば伝え終わるまで待ってから cmd を実行する。"""
         time.sleep(PI_REBOOT_DELAY)
         deadline = time.monotonic() + JETSON_REBOOT_WINDOW
         waited = False
         while time.monotonic() < deadline:
             with self._lock:
-                pending = self._jetson_reboot_at is not None
+                pending = self._jetson_reboot_at is not None or self._jetson_poweroff_at is not None
             if not pending:
                 break
             waited = True
             time.sleep(0.2)
         if waited:
             time.sleep(1.0)
-        subprocess.run(REBOOT_CMD, timeout=30, check=False)
+        subprocess.run(cmd, timeout=30, check=False)
 
     def _jetson_host_state(self):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -829,6 +888,7 @@ class DashboardNode(Node):
         state['alive'] = age < JETSON_STATUS_TIMEOUT
         state['age_s'] = round(age, 1)
         state['reboot_pending'] = self._jetson_reboot_at is not None
+        state['poweroff_pending'] = self._jetson_poweroff_at is not None
         state['upgrade_pending'] = self._jetson_upgrade_at is not None
         return state
 
@@ -1025,6 +1085,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     def jetson_reboot():
         return node.request_jetson_reboot()
 
+    @app.post('/api/jetson/poweroff', dependencies=[Depends(require_token)])
+    def jetson_poweroff():
+        return node.request_jetson_poweroff()
+
     @app.post('/api/jetson/upgrade', dependencies=[Depends(require_token)])
     def jetson_upgrade():
         return node.request_jetson_upgrade()
@@ -1032,6 +1096,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/system/reboot', dependencies=[Depends(require_token)])
     def system_reboot():
         return node.reboot_pi()
+
+    @app.post('/api/system/poweroff', dependencies=[Depends(require_token)])
+    def system_poweroff():
+        return node.poweroff_pi()
 
     @app.post('/api/system/upgrade', dependencies=[Depends(require_token)])
     def system_upgrade():
@@ -1055,6 +1123,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/slam/save', dependencies=[Depends(require_token)])
     def slam_save():
         return node.save_map()
+
+    @app.post('/api/camera/calib_capture', dependencies=[Depends(require_token)])
+    def calib_capture():
+        return node.capture_calib()
 
     @app.get('/api/camera/snapshot')
     def snapshot():

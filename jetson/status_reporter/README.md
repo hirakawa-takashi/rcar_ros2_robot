@@ -39,21 +39,21 @@ sudo systemctl enable --now jetson-status.service
 journalctl -u jetson-status -f
 ```
 
-## ダッシュボードの「再起動」ボタン
+## ダッシュボードの「再起動」「電源を切る」ボタン
 Jetson カードの「Jetson を再起動」を押すと、AI-CAR は次に状態が届いたときの返事に `"reboot": true` を入れます。
-`jetson_status.py` はそれを見て `sudo -n systemctl reboot` を実行します。パスワードなしで再起動だけを許す設定が要ります:
+`jetson_status.py` はそれを見て `sudo -n systemctl reboot` を実行します。「Jetson の電源を切る」は `"poweroff": true` で、`sudo -n systemctl poweroff` を実行します（入れ直すのは本体の電源ボタンか電源のつなぎ直し）。パスワードなしで再起動と電源を切ることだけを許す設定が要ります:
 ```bash
 sudo visudo -cf ~/status_reporter/jetson-reboot.sudoers
 sudo install -m 440 ~/status_reporter/jetson-reboot.sudoers /etc/sudoers.d/jetson-reboot
 ```
-入っていないときはボタンを押しても「jetson-reboot.sudoers が入っていません」と出て、再起動しません。
+入っていないときはボタンを押しても「jetson-reboot.sudoers が入っていません」（電源は「… に poweroff が入っていません」）と出て、何もしません。
 
 ## ダッシュボードの「Jetson を更新」ボタン
 自動の更新（unattended-upgrades）はセキュリティ更新だけを入れます。ほかの更新は、ボタンを押したときだけ入れます。
 押すと、AI-CAR は次の返事に `"upgrade": true` を入れ、`jetson_status.py` が `sudo -n systemctl start --no-block jetson-upgrade.service` を実行します。
 `jetson-upgrade.sh`（root）は `apt-get update` のあと、NVIDIA の部品を除いて `apt-get install --only-upgrade` します。
 先に試しに動かして（`apt-get -s`）、NVIDIA の部品が変わるか、消える部品があるときは、更新せずに失敗にします。
-動いているあいだはカードに「更新中」、終わると「前回は成功」か「前回は失敗」と出ます。記録は `journalctl -u jetson-upgrade` で見られます。
+動いているあいだはカードに「更新中 45 %」のように進み具合が出ます（`jetson-upgrade.sh` が `/run/jetson-upgrade.progress` に書く。ダウンロードが 0〜30 %、インストールが 30〜100 %）。終わると「前回は成功」か「前回は失敗」と出ます。記録は `journalctl -u jetson-upgrade` で見られます。
 ```bash
 sudo install -m 755 ~/status_reporter/jetson-upgrade.sh /usr/local/sbin/jetson-upgrade
 sudo cp ~/status_reporter/jetson-upgrade.service /etc/systemd/system/
