@@ -42,7 +42,6 @@ def generate_launch_description():
     use_cliff = LaunchConfiguration('use_cliff')
     use_drive_mode = LaunchConfiguration('use_drive_mode')
     use_autonomy = LaunchConfiguration('use_autonomy')
-    use_floor = LaunchConfiguration('use_floor')
     use_slam = LaunchConfiguration('use_slam')
     use_stereo_depth = LaunchConfiguration('use_stereo_depth')
 
@@ -126,8 +125,6 @@ def generate_launch_description():
                               description='運転モード管理（手動/自動/停止 → /cmd_vel）を起動する'),
         DeclareLaunchArgument('use_autonomy', default_value='true',
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
-        DeclareLaunchArgument('use_floor', default_value='true',
-                              description='カメラで床の上の低い障害物を見つけるノードを起動する'),
         DeclareLaunchArgument('use_stereo_depth', default_value='true',
                               description='2 眼カメラで距離を出すノードを起動する（camera_type:=stereo のとき・表示だけ）'),
         DeclareLaunchArgument('use_slam', default_value='false',
@@ -212,16 +209,6 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_autonomy),
-        ),
-        Node(
-            package='ai_car_web',
-            executable='floor_obstacle_node',
-            name='floor_obstacle_node',
-            output='screen',
-            parameters=[params_file],
-            respawn=True,
-            respawn_delay=2.0,
-            condition=IfCondition(use_floor),
         ),
         Node(
             package='ai_car_web',

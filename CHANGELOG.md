@@ -10,6 +10,9 @@
 - `perception_node` が 2 眼の距離（`/stereo/depth_status`）のいちばん近い物を、同じ方位の LiDAR の距離と比べる。LiDAR がそれより `stereo_low_margin` 0.15 m 以上遠い（または無い）と「低い障害物」とし、0.8 m で減速・0.45 m で停止と判定して `/obstacle_status` の `stereo` に出す。`stereo_guard: true` のときだけ `level`・`speed_scale` に反映する（既定は `false` で表示のみ）。`stereo_depth_node` は方位（`bearing_min_deg`・`bearing_max_deg`）も出す。ダッシュボードの「2眼の距離」の行に判定を出す
 - 2 眼カメラで距離を出す `stereo_depth_node`（表示だけ）。`stereo_calib.yaml` で左右を平行にそろえ、SGBM で距離にして、通り道の中で床より 4 cm 以上高い物のいちばん近い距離を `/stereo/depth_status` に出す。`stereo_camera_node` は受けるノードがいるときだけ、左右を 640×360 の白黒にして `/stereo/pair_gray` に 3 Hz で出す（今の `/camera/image_raw/compressed` はそのまま）。ダッシュボードのカメラカードに「2眼の距離」の行と、映像を距離の色に切り替える「距離の画像」ボタン（`GET /api/camera/depth_stream`）を追加。launch に `use_stereo_depth`（既定 true）。走る・止まるの判断には使わない
 
+### Removed
+- カメラの床の色で低い障害物を見つける `floor_obstacle_node` を消した（`/floor_obstacle_status`・launch の `use_floor`・`perception_node` の `floor_*` と `/obstacle_status` の `floor`・ダッシュボードの「低い障害物（床の色）」の行と映像の足元の線）。窓の光が床に映って白く光るので、覚える床の色の幅が広くなり（明るさ ±59・黄色み ±15）、床の約 0.14 m に置いた白い薬のびんの胴を床とまちがえて、青いふたのふちを足元として 0.22 m と出していた。低い障害物は 2 眼の判定（`stereo`、表示のみ）だけにする
+
 ### Fixed
 - 3D: バッテリー箱（`box.stl`）の開口側の後ろのボスの上の部分の下に、45° の補強があった（上の 5 mm より下には作らない）。45° の部分をなくし、上の 5 mm の中だけで、上から見て三角の板にして、壁の外側に 20 mm 沿わせた（壁と接する面は約 120 mm²）。柱の部分は壁の端から約 6.5 mm 空中に出るので、そこだけスライサーでサポートを付ける
 - 3D: バッテリー箱（`box.stl`）の開口側の後ろのボスに、バッテリーに差す L 字の USB プラグが当たった。上下 5 mm だけ残して真ん中を抜き、上の部分は後ろの壁の端と外側（長さ 15 mm・厚さ 2 mm の板）につないで強くした。下は 45° で壁へつなぎ、サポートなしで印刷できる
