@@ -17,7 +17,7 @@
           gap: 16px; }
   .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
   .card.wide { grid-column: span 2; }
-  /* 4 列固定: カメラ / LiDAR を上段、ラズパイ / Jetson / AI HAT+ を 2 段目に揃える */
+  /* 4 列固定: 1 段目 カメラ / LiDAR、2 段目 ラズパイ / Jetson / AI HAT+・IMU・落下防止、3 段目 運転モード / 自律走行、4 段目 スタックちゃん / SLAM */
   @media (min-width: 900px) { .grid { grid-template-columns: repeat(4, 1fr); } }
   @media (max-width: 620px) { .card.wide { grid-column: auto; } }
   .stack { display: grid; gap: 16px; grid-template-rows: auto 1fr; }
@@ -294,6 +294,7 @@
   .camwrap::after, .mapwrap::after { right: 4px; bottom: 4px; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
   .mapwrap { position: relative; margin-bottom: 8px; }
   .mapwrap .map { margin-bottom: 0; }
+  .mapwrap.slam { max-width: 640px; margin: 0 auto 8px; }
   .aboutbtn { background: linear-gradient(180deg, #123a5a, #0c2a44); border-color: var(--cyan2); color: #bfe9ff; letter-spacing: .04em; }
   .aboutpanel { background: linear-gradient(180deg, #0c1629, #080f1e); border-color: var(--line2);
                 box-shadow: 0 20px 70px #000, 0 0 0 1px rgba(53, 214, 255, .08); }
@@ -488,35 +489,6 @@
     <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
   </div>
 
-  <div class="card wide">
-    <h2>M5 スタックちゃん（CoreS3） <span class="badge" id="sc_state">-</span></h2>
-    <div class="osline" title="スタックちゃんが届いたら、そのカメラに替える">机の上に置き、Jetson と Wi-Fi でつなぐ予定。今は AI-CAR の 2 眼カメラ（左目）で代わりに見る</div>
-    <div class="jcols">
-      <div>
-        <h3>顔（画面）</h3>
-        <svg class="scface" id="sc_face" viewBox="0 0 320 240" role="img" aria-label="スタックちゃんの顔"></svg>
-        <div class="scsay" id="sc_say">-</div>
-      </div>
-      <div>
-        <h3>カメラ（臨時: 2 眼カメラの左目）</h3>
-        <div class="camwrap">
-          <img class="cam" id="sc_cam" alt="スタックちゃんのカメラ（臨時）">
-          <canvas class="cam_overlay" id="sc_overlay" width="640" height="480"></canvas>
-        </div>
-      </div>
-    </div>
-    <table>
-      <tr><td class="k">本体</td><td class="v"><span class="badge warn">まだ届いていない</span></td></tr>
-      <tr><td class="k">見えている顔</td><td class="v" id="sc_faces">-</td></tr>
-      <tr><td class="k">だれ</td><td class="v wrap" id="sc_who" title="近さ（cos）がしきい値以上なら、その人">-</td></tr>
-      <tr><td class="k">首の向き（目安）</td><td class="v" id="sc_pan" title="顔のほうを向くときの首の角度（スタックちゃんから見て）。カメラの画角から計算した目安">-</td></tr>
-      <tr><td class="k">登録している人</td><td class="v wrap" id="sc_people">-</td></tr>
-      <tr><td class="k">顔の見分け</td><td class="v" id="sc_engine" title="Jetson の face_id（YuNet + SFace、CPU）">-</td></tr>
-      <tr><td class="k">マイク・スピーカー</td><td class="v"><span class="badge">つないでいない（予定）</span></td></tr>
-    </table>
-    <div class="note">このカードを見ているあいだだけ、Jetson が 2 眼カメラの画像で顔を見分ける（API トークンが必要）。顔の画像は保存しない。表示だけで、AI-CAR の走行・安全には使わない。</div>
-  </div>
-
   <div class="stack">
     <div class="card">
       <h2>AI HAT+ — Hailo-8 NPU <span class="badge" id="h_link">-</span></h2>
@@ -609,8 +581,37 @@
   </div>
 
   <div class="card wide">
+    <h2>M5 スタックちゃん（CoreS3） <span class="badge" id="sc_state">-</span></h2>
+    <div class="osline" title="スタックちゃんが届いたら、そのカメラに替える">机の上に置き、Jetson と Wi-Fi でつなぐ予定。今は AI-CAR の 2 眼カメラ（左目）で代わりに見る</div>
+    <div class="jcols">
+      <div>
+        <h3>顔（画面）</h3>
+        <svg class="scface" id="sc_face" viewBox="0 0 320 240" role="img" aria-label="スタックちゃんの顔"></svg>
+        <div class="scsay" id="sc_say">-</div>
+      </div>
+      <div>
+        <h3>カメラ（臨時: 2 眼カメラの左目）</h3>
+        <div class="camwrap">
+          <img class="cam" id="sc_cam" alt="スタックちゃんのカメラ（臨時）">
+          <canvas class="cam_overlay" id="sc_overlay" width="640" height="480"></canvas>
+        </div>
+      </div>
+    </div>
+    <table>
+      <tr><td class="k">本体</td><td class="v"><span class="badge warn">まだ届いていない</span></td></tr>
+      <tr><td class="k">見えている顔</td><td class="v" id="sc_faces">-</td></tr>
+      <tr><td class="k">だれ</td><td class="v wrap" id="sc_who" title="近さ（cos）がしきい値以上なら、その人">-</td></tr>
+      <tr><td class="k">首の向き（目安）</td><td class="v" id="sc_pan" title="顔のほうを向くときの首の角度（スタックちゃんから見て）。カメラの画角から計算した目安">-</td></tr>
+      <tr><td class="k">登録している人</td><td class="v wrap" id="sc_people">-</td></tr>
+      <tr><td class="k">顔の見分け</td><td class="v" id="sc_engine" title="Jetson の face_id（YuNet + SFace、CPU）">-</td></tr>
+      <tr><td class="k">マイク・スピーカー</td><td class="v"><span class="badge">つないでいない（予定）</span></td></tr>
+    </table>
+    <div class="note">このカードを見ているあいだだけ、Jetson が 2 眼カメラの画像で顔を見分ける（API トークンが必要）。顔の画像は保存しない。表示だけで、AI-CAR の走行・安全には使わない。</div>
+  </div>
+
+  <div class="card wide">
     <h2>地図と自己位置（SLAM） <span class="badge" id="sl_state">-</span></h2>
-    <div class="mapwrap"><canvas class="map" id="slam_map" width="480" height="480"></canvas></div>
+    <div class="mapwrap slam"><canvas class="map" id="slam_map" width="480" height="480"></canvas></div>
     <table>
       <tr><td class="k">地図 [セル / m]</td><td class="v" id="sl_size">-</td></tr>
       <tr><td class="k">自己位置 x / y [m] / 向き [°]</td><td class="v" id="sl_pose">-</td></tr>
