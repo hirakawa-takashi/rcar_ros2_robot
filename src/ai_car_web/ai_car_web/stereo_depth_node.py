@@ -58,20 +58,24 @@ def rectify_maps(calib, size):
     return map1, map2, focal, (float(p1[0, 2]), float(p1[1, 2])), baseline
 
 
-def points_from_disparity(disp, focal, center, baseline, r1, max_disp):
+def pixel_rays(size, focal, center, r1):
+    """各画素の向き（z = 1 のときの平行化前の左目の x, y, z）。距離 z を掛けると 3D 点になる。"""
+    w, h = size
+    v, u = np.mgrid[0:h, 0:w].astype(np.float32)
+    rays = np.stack([(u - center[0]) / focal, (v - center[1]) / focal,
+                     np.ones_like(u)], axis=-1)
+    return rays @ r1.astype(np.float32)
+
+
+def points_from_disparity(disp, focal, baseline, rays, max_disp):
     """視差 [px] から、左目（平行化する前）の向きの 3D 点 (x 右, y 下, z 前) [m] と有効な画素。
 
     探す幅のいちばん端（max_disp 以上）の視差は、まちがった対応が多いので使わない。
     """
-    h, w = disp.shape
     valid = (disp > 0.5) & (disp < max_disp)
     z = np.zeros_like(disp)
     z[valid] = focal * baseline / disp[valid]
-    v, u = np.mgrid[0:h, 0:w].astype(np.float32)
-    x = (u - center[0]) * z / focal
-    y = (v - center[1]) * z / focal
-    pts = np.stack([x, y, z], axis=-1) @ r1.astype(np.float32)
-    return pts, valid
+    return rays * z[..., None], valid
 
 
 def to_vehicle(pts, camera_height, pitch):
@@ -174,6 +178,7 @@ class StereoDepthNode(Node):
         self._calib_mtime = None
         self._maps = None
         self._maps_size = None
+        self._rays = None
         self._cond = threading.Condition()
         self._pending = None
         self._times = deque(maxlen=20)
@@ -217,6 +222,7 @@ class StereoDepthNode(Node):
         if self._maps is None or self._maps_size != size:
             self._maps = rectify_maps(self._calib, size)
             self._maps_size = size
+            self._rays = pixel_rays(size, self._maps[2], self._maps[3], self._calib['R1'])
         return ''
 
     def _loop(self):
@@ -245,12 +251,11 @@ class StereoDepthNode(Node):
         if reason:
             self._publish_status({'ok': False, 'reason': reason, 'nearest': None})
             return
-        map1, map2, focal, center, baseline = self._maps
+        map1, map2, focal, _, baseline = self._maps
         left = cv2.remap(frame[:, :half], map1[0], map1[1], cv2.INTER_LINEAR)
         right = cv2.remap(frame[:, half:], map2[0], map2[1], cv2.INTER_LINEAR)
         disp = self.sgbm.compute(left, right).astype(np.float32) / 16.0
-        pts, valid = points_from_disparity(
-            disp, focal, center, baseline, self._calib['R1'], self.max_disp)
+        pts, valid = points_from_disparity(disp, focal, baseline, self._rays, self.max_disp)
         forward, lateral, height = to_vehicle(pts, self.camera_height, self.pitch)
         nearest, mask = nearest_obstacle(
             forward, lateral, height, valid, self.center_y, self.half_width, self.max_range,

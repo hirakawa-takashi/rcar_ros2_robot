@@ -412,7 +412,7 @@ nodes:
   - id: stereo_camera_node
     label: stereo_camera_node
     file: ai_car_web/stereo_camera_node.py
-    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、180° 回して左目を 960×540・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば左右の画像を calib_dir に保存する（キャリブレーション用）。/stereo/pair_gray を受けるノードがいるときだけ、左右を片目 640×360 の白黒にして横に並べ 5 Hz で出す（距離の計算用）
+    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、180° 回して左目を 960×540・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば左右の画像を calib_dir に保存する（キャリブレーション用）。/stereo/pair_gray を受けるノードがいるときだけ、左右を片目 640×360 の白黒にして横に並べ 3 Hz で出す（距離の計算用）
     publishes: [/camera/image_raw/compressed, /stereo/pair_gray]
     subscribes: []
     params:
@@ -517,7 +517,7 @@ topics:
   - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の距離・前進 / 後退の停止（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
-  - {name: /stereo/pair_gray, type: sensor_msgs/Image (mono8), desc: 2 眼カメラの左右を片目 640×360 の白黒にして横に並べた画像（5 Hz、受けるノードがいるときだけ）}
+  - {name: /stereo/pair_gray, type: sensor_msgs/Image (mono8), desc: 2 眼カメラの左右を片目 640×360 の白黒にして横に並べた画像（3 Hz、受けるノードがいるときだけ）}
   - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 2 眼の距離（通り道の中のいちばん近い物の距離・左右・高さ、測れた画素の割合、処理時間）。表示のみ}
   - {name: /stereo/depth/compressed, type: sensor_msgs/CompressedImage, desc: 2 眼の距離の色の画像（近い = 赤、遠い = 青、測れない = 黒）}
   - {name: /floor_obstacle_status, type: std_msgs/String (JSON), desc: カメラの床の検出（床の上の物の足元の距離・画面の位置、5 Hz）}

@@ -283,7 +283,7 @@ stereo_camera_node:
     frame_id: "camera_link"
     # 距離の計算用に、左右を半分（片目 640x360）の白黒にして横に並べて出す。stereo_depth_node が受けているときだけ
     pair_topic: "/stereo/pair_gray"
-    pair_rate: 5.0
+    pair_rate: 3.0
     pair_scale: 0.5
 
 # 2 眼カメラの左右の画像から距離を出す（表示だけ。走る・止まるの判断には使わない）
@@ -294,7 +294,7 @@ stereo_depth_node:
     image_topic: "/stereo/depth/compressed"
     # stereo_calibrate が書いた値（28 組、誤差 0.33 px、レンズの間隔 59.8 mm、2026/10）
     calib_file: "~/AI-CAR_ws/calib/stereo/stereo_calib.yaml"
-    # 片目 640x360 で視差 0〜64 px → 近いほうは約 0.2 m まで測れる。1 回 約 65 ms（Pi 5 で実測）
+    # 片目 640x360 で視差 0〜64 px → 近いほうは約 0.2 m まで測れる。他のノードと一緒に動かして 1 回 約 100〜150 ms（Pi 5 で実測）
     num_disparities: 64
     block_size: 5
     uniqueness_ratio: 10
