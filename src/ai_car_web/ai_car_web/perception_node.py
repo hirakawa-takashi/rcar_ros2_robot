@@ -42,9 +42,17 @@ COCO_CLASSES = [
 LEVEL_RANK = {'unknown': 0, 'clear': 0, 'slow': 1, 'stop': 2}
 
 
+CAMERA_ASPECT = 540.0 / 960.0
+
+
 def image_x_to_bearing(x, hfov):
     """画像の横位置（0 = 左端、1 = 右端）を、カメラから見た方位角 [rad]（左が正）にする（ピンホール）。"""
     return math.atan((0.5 - x) * 2.0 * math.tan(hfov / 2.0))
+
+
+def bearing_to_image_x(bearing, hfov):
+    """image_x_to_bearing の逆。方位角 [rad]（左が正）を画像の横位置（0 = 左端、1 = 右端）にする。"""
+    return 0.5 - math.tan(bearing) / (2.0 * math.tan(hfov / 2.0))
 
 
 def scan_point_in_camera(r, angle, offset_x, offset_y):
@@ -806,6 +814,14 @@ class PerceptionNode(Node):
             math.radians(nearest['bearing_min_deg']), math.radians(nearest['bearing_max_deg']))
         low = lidar is None or lidar > distance + self.stereo_low_margin
         result.update({'distance': distance, 'lidar_distance': lidar, 'low': low})
+        if nearest.get('depression_min_deg') is not None:
+            # 前方カメラの映像（960x540）の上の位置。ピンホールとして縦の画角は横から出す
+            v_tan = math.tan(self.camera_hfov / 2.0) * CAMERA_ASPECT
+            x1, x2 = (min(max(bearing_to_image_x(math.radians(b), self.camera_hfov), 0.0), 1.0)
+                      for b in (nearest['bearing_max_deg'], nearest['bearing_min_deg']))
+            y1, y2 = (min(max(0.5 + math.tan(math.radians(e)) / (2.0 * v_tan), 0.0), 1.0)
+                      for e in (nearest['depression_min_deg'], nearest['depression_max_deg']))
+            result['box'] = [round(x1, 3), round(y1, 3), round(x2, 3), round(y2, 3)]
         if low:
             where = f'低い障害物 {distance:.2f} m（2 眼）'
             if distance <= self.stereo_stop_distance:

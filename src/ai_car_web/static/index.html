@@ -362,7 +362,7 @@
       <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
-      <tr><td class="k">低い障害物</td><td class="v" id="o_floor" title="-">-</td></tr>
+      <tr><td class="k">低い障害物（床の色）</td><td class="v" id="o_floor" title="-">-</td></tr>
       <tr>
         <td class="k">2眼の距離</td>
         <td class="v wrap"><span id="sd_val" title="-">-</span> <button id="sd_view">距離の画像</button></td>
@@ -1736,6 +1736,22 @@ function drawDetections(o) {
     ctx.fillRect(x1 * w, Math.min(h - 36, y1 * h + 4), tw, 36);
     ctx.fillStyle = '#0e1116';
     ctx.fillText(text, x1 * w + 8, Math.min(h - 36, y1 * h + 4) + 27);
+  }
+  const st = o && o.stereo;
+  if (st && st.box && st.distance != null) {
+    const [x1, y1, x2, y2] = st.box;
+    const color = st.low ? '#f0a030' : '#8a94a6';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
+    const text = `2眼 ${st.distance.toFixed(2)} m${st.low ? ' 低い物' : ''}`;
+    ctx.font = 'bold 28px sans-serif';
+    const tw = ctx.measureText(text).width + 16;
+    const ty = Math.max(0, y1 * h - 36);
+    ctx.fillStyle = color;
+    ctx.fillRect(x1 * w, ty, tw, 36);
+    ctx.fillStyle = '#0e1116';
+    ctx.fillText(text, x1 * w + 8, ty + 27);
   }
 }
 
