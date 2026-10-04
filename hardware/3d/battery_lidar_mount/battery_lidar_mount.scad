@@ -122,9 +122,8 @@ boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
 // 中を抜くボス（boss_pts の番号）。開口側の後ろの角は、バッテリーに差す L 字の USB プラグが当たるので、上下 boss_keep だけ残す
 boss_open = [1];
 boss_keep = 5;            // 残す高さ（下はフランジの上から、上は箱の上端から）
-boss_tie_l = 15;          // 上の部分を、後ろ（前）の壁の外側に沿わせて留める長さ
+boss_tie_l = 20;          // 上の部分を、後ろ（前）の壁の外側に沿わせて留める長さ
 boss_tie_t = 2;           // 壁の外側に足す厚さ
-boss_drop = 7;            // 上の部分の下を 45° で壁へつなぐ高さ（サポートなしで印刷するため）
 
 // ---- 2 眼カメラ（3D USB Camera 3D-1080P02、基板 80 x 17 mm）: ふたの前、LiDAR のモーターの下に、USB 端子を上にして立てる ----
 // 四隅の M2 の穴で、ふたの前端の面に当てる板（cam_mount.stl）に留める。板は左右の耳を、ふたの前端の柱 2 本に M3 で留める
@@ -314,34 +313,37 @@ module boss_end_rect(p, z, h) {
     w = boss_wall(p);
     translate([min(w[0], w[0] - boss_side(p)[0] * 1.5), min(w[1], w[2]), z]) cube([1.5, wall_y, h]);
 }
-module boss_top_foot(p, z, h) {
-    hull() {
-        translate([p[0], p[1], z]) cylinder(d = boss_d, h = h);
-        boss_end_rect(p, z, h);
+// 上の部分。上端から boss_keep の厚さだけで、上から見て三角の板にして壁の端と外側につなぐ（これより下には作らない）
+module boss_top(p) {
+    sd = boss_side(p);
+    w = boss_wall(p);
+    z1 = box_h - boss_keep;
+    tx0 = min(w[0] - sd[0] * boss_tie_l, p[0]);
+    tx1 = max(w[0] - sd[0] * boss_tie_l, p[0]);
+    ty = sd[1] > 0 ? w[1] : w[1] - boss_tie_t;
+    difference() {
+        union() {
+            hull() {
+                translate([p[0], p[1], z1]) cylinder(d = boss_d, h = boss_keep);
+                boss_end_rect(p, z1, boss_keep);
+            }
+            hull() {
+                translate([p[0], p[1], z1]) cylinder(d = boss_d, h = boss_keep);
+                translate([tx0, ty, z1]) cube([tx1 - tx0, boss_tie_t, boss_keep]);
+            }
+        }
+        // バッテリーの入る側へははみ出さない
+        translate([sd[0] > 0 ? w[0] - 1.5 - 60 : w[0] + 1.5, sd[1] > 0 ? w[2] - 60 : w[2], z1 - 1])
+            cube([60, 60, boss_keep + 2]);
     }
 }
 module boss_body(i) {
     p = boss_pts[i];
-    s = boss_side(p);
-    w = boss_wall(p);
-    z1 = box_h - boss_keep;
-    tx0 = min(w[0] - s[0] * boss_tie_l, p[0]);
-    tx1 = max(w[0] - s[0] * boss_tie_l, p[0]);
-    ty = s[1] > 0 ? w[1] - 0.01 : w[1] - boss_tie_t;
     if (len(search(i, boss_open)) == 0) {
         translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
     } else {
         translate([p[0], p[1], 0]) cylinder(d = boss_d, h = flange_t + boss_keep);
-        boss_top_foot(p, z1, boss_keep);
-        hull() {
-            boss_top_foot(p, z1, 0.01);
-            boss_end_rect(p, z1 - boss_drop, 0.01);
-        }
-        // 壁の外側に沿わせる板（下は 45°）
-        hull() {
-            translate([tx0, ty, z1]) cube([tx1 - tx0, boss_tie_t + 0.01, boss_keep]);
-            translate([tx0, w[1] - 0.01, z1 - boss_tie_t]) cube([tx1 - tx0, 0.02, 0.01]);
-        }
+        boss_top(p);
     }
 }
 
