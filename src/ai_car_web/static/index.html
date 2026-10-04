@@ -261,6 +261,16 @@
                 box-shadow: 0 0 8px var(--cyan2); transition: width .3s, background .4s; }
   .bar > span.warn { background: linear-gradient(90deg, #c98a1e, var(--warn)); box-shadow: 0 0 8px rgba(245, 185, 66, .4); }
   .bar > span.crit { background: linear-gradient(90deg, #c23a48, var(--crit)); box-shadow: 0 0 10px rgba(255, 92, 108, .5); }
+  .bar > span.t-cool { background: linear-gradient(90deg, #1f5fd1, #3d9bff); box-shadow: none; }
+  .bar > span.t-ok { background: linear-gradient(90deg, #1f9d55, #3ddc84); box-shadow: none; }
+  .bar > span.t-warm { background: linear-gradient(90deg, #a8961a, #f2d64b); box-shadow: 0 0 6px rgba(242, 214, 75, .35); }
+  .bar > span.t-hot { background: linear-gradient(90deg, #c4621a, #ff9a3c); box-shadow: 0 0 8px rgba(255, 154, 60, .45); }
+  .bar > span.t-crit { background: linear-gradient(90deg, #c23a48, #ff5c6c); box-shadow: 0 0 10px rgba(255, 92, 108, .55); }
+  .barrow .v.t-cool { color: #6cb6ff; }
+  .barrow .v.t-ok { color: #5fe39a; }
+  .barrow .v.t-warm { color: #f2d64b; }
+  .barrow .v.t-hot { color: #ff9a3c; }
+  .barrow .v.t-crit { color: #ff5c6c; font-weight: 700; }
   .badge, .modebadge { font-family: var(--mono); letter-spacing: .04em; border: 1px solid transparent; }
   .badge { background: rgba(84, 130, 190, .15); color: var(--muted); border-color: var(--line); }
   .badge.ok { background: rgba(53, 227, 154, .12); color: var(--ok); border-color: rgba(53, 227, 154, .4); box-shadow: 0 0 8px rgba(53, 227, 154, .2); }
@@ -758,17 +768,30 @@ function setBar(el, percent) {
   el.className = percent >= 90 ? 'crit' : percent >= 70 ? 'warn' : '';
 }
 
-// 温度バーは 0–100℃ スケール。70℃以上で警告、85℃以上で危険色。
+// 温度バーは 0–100℃ スケール。色は温度の段階（Pi 5 は 80℃ から速度を落とすので、80℃ 以上を赤）
+const TEMP_LEVELS = [
+  { below: 45, cls: 't-cool', text: '低い' },
+  { below: 60, cls: 't-ok', text: 'ふつう' },
+  { below: 70, cls: 't-warm', text: 'やや高い' },
+  { below: 80, cls: 't-hot', text: '高い' },
+  { below: Infinity, cls: 't-crit', text: '高すぎ' },
+];
+
 function setTempBar(bar, label, celsius, fallback = '-') {
   if (celsius == null) {
     bar.style.width = '0%';
     bar.className = '';
+    label.className = 'v';
     label.textContent = fallback;
+    label.title = '';
     return;
   }
+  const lv = TEMP_LEVELS.find(l => celsius < l.below);
   bar.style.width = `${Math.max(0, Math.min(100, celsius))}%`;
-  bar.className = celsius >= 85 ? 'crit' : celsius >= 70 ? 'warn' : '';
+  bar.className = lv.cls;
+  label.className = `v ${lv.cls}`;
   label.textContent = `${fmt(celsius, 1)} ℃`;
+  label.title = `${lv.text}（45℃ 未満 青 / 60℃ 未満 緑 / 70℃ 未満 黄 / 80℃ 未満 橙 / 80℃ 以上 赤）`;
 }
 
 // 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
@@ -934,6 +957,60 @@ function scanBands(danger, stopD, slowD) {
 }
 
 const SCAN_RANGE_M = 3;  // LiDAR 点群の表示範囲 [m]（固定）
+
+// 車体の上から見た形 [m]。原点は LiDAR の回転中心、x は前、y は左。
+// battery_lidar_mount.scad と ai_car.xacro の値: 天板 200 x 154 mm（中心は LiDAR から後ろ 43 mm・右 8 mm）、
+// バンパーは天板の前後に 32.8 mm、カバーは 212.3 x 159.4 mm、車軸は天板の前後の端から 52 mm、
+// 2 眼カメラのレンズ（Ø18 mm）は LiDAR から前 53〜79 mm、メカナムホイール Ø80.6 x 幅 39.1 mm。車輪の左右の位置（天板の端から 11 mm 外）は見込み
+const CAR_SHAPE = (() => {
+  const px = -0.043, py = -0.008, pl = 0.200, pw = 0.154, bump = 0.0328;
+  const wheelX = pl / 2 - 0.052, wheelY = pw / 2 + 0.011 + 0.0391 / 2;
+  return {
+    plate: [px - pl / 2, py - pw / 2, pl, pw],
+    bumpers: [[px + pl / 2, py - pw / 2, bump, pw], [px - pl / 2 - bump, py - pw / 2, bump, pw]],
+    cover: [px - 0.1034, py - 0.0797, 0.2123, 0.1594],
+    wheels: [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sy]) =>
+      [px + sx * wheelX - 0.0403, py + sy * wheelY - 0.01955, 0.0806, 0.0391, sx * sy]),
+    lidarHead: 0.035,
+    lidarMotor: [0.0455, 0, 0.016],
+    lenses: [0.030, -0.030].map(y => [0.053, y - 0.009, 0.026, 0.018]),
+  };
+})();
+
+// 車体を実際の大きさで描く（toPx と同じ向き: 前 = 上、左 = 左）
+function drawCar(ctx, cx, cy, scale) {
+  const c = CAR_SHAPE;
+  ctx.save();
+  ctx.transform(0, -scale, -scale, 0, cx, cy);
+  ctx.lineWidth = 1 / scale;
+  const box = ([x, y, l, w], fill, stroke) => {
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, l, w);
+    if (stroke) { ctx.strokeStyle = stroke; ctx.strokeRect(x, y, l, w); }
+  };
+  for (const w of c.wheels) {
+    box(w, '#1a1e25', '#7d8aa0');
+    const [x, y, l, wd, diag] = w;
+    ctx.strokeStyle = 'rgba(160, 175, 200, 0.55)';
+    ctx.beginPath();
+    for (let i = 1; i < 5; i++) {
+      const xi = x + l * i / 5;
+      ctx.moveTo(xi - diag * wd / 3, y);
+      ctx.lineTo(xi + diag * wd / 3, y + wd);
+    }
+    ctx.stroke();
+  }
+  box(c.plate, '#3a4250');
+  for (const b of c.bumpers) box(b, '#5d6878', '#8b98ab');
+  box(c.cover, 'rgba(72, 84, 104, 0.92)', '#a9b6c9');
+  for (const l of c.lenses) box(l, '#0b0e13', '#d8dde6');
+  ctx.fillStyle = '#20252d';
+  ctx.strokeStyle = '#35d6ff';
+  const [mx, my, mr] = c.lidarMotor;
+  ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, c.lidarHead, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
 // カメラの見える範囲（扇形）と、カメラで見つけた物の位置・名前を LiDAR の図に重ねる。
 // 物の位置は画面の横位置から出した方向と、perception_node が LiDAR で付けた距離（カメラから前方の距離）
 function drawCameraView(ctx, cx, cy, scale, range, o) {
@@ -1056,6 +1133,8 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
   ctx.fillText('右', size - 4, cy);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
+
+  drawCar(ctx, cx, cy, scale);
 
   const bands = scanBands(danger, stopD, slowD);
   for (const [x, y] of points) {

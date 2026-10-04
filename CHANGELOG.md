@@ -10,6 +10,8 @@
 - ダッシュボードの「Raspberry Pi 5 — CPU」と AI HAT+ の温度・状態が「-」のままだった。「システム構成」タブの図を描く関数を同じ名前 `renderSystem` で足したので、テレメトリー表示の `renderSystem` が上書きされていた。図のほうを `renderSystemDiagram` に改名した
 
 ### Changed
+- ダッシュボードの LiDAR の図に、上から見た車体を本当の大きさで描く（天板 200 x 154 mm・前後のバンパー・カバー・メカナムホイール 4 つ・LiDAR・2 眼カメラのレンズ。寸法は battery_lidar_mount.scad と ai_car.xacro。車輪の左右の位置は見込み）。点群は車体の上に描く
+- ダッシュボードの温度（ラズパイ・AI HAT+・Jetson の CPU/GPU）を、バーと数字の両方で温度ごとに色分けする（45℃ 未満 青 / 60℃ 未満 緑 / 70℃ 未満 黄 / 80℃ 未満 橙 / 80℃ 以上 赤）
 - ダッシュボード: 「Raspberry Pi 5 — CPU」と Jetson のカードの 2 行目（タイトルの下）に OS の名前（`/etc/os-release` の `PRETTY_NAME`）を出す。マウスを当てると、ラズパイはカーネル、Jetson は L4T の版が出る。`system_monitor_node` が `/system_status` に `os`・`kernel` を足した（Jetson は前から `os` を送っている）
 - ダッシュボード: 「ラズパイを更新」「Jetson を更新」のあいだ、「更新中」の横に進み具合（例: 「更新中 45 %」）を出す。更新スクリプトが `apt-get install -o APT::Status-Fd=3` の `dlstatus`（ダウンロード、0〜30 %）と `pmstatus`（インストール、30〜100 %）を `/run/ai-car-upgrade.progress`・`/run/jetson-upgrade.progress` に書き、`system_monitor_node`・`jetson_status.py` が `upgrade_percent`・`upgrade_phase` として送る。`apt-get update` のあいだは「更新の準備中」。いまダウンロードかインストールかは、印にマウスを当てると出る
 - ダッシュボード: Jetson カードと同じように、カメラ・LiDAR・Raspberry Pi 5 — CPU・AI HAT+・IMU・落下防止センサーのカードのタイトルの横にも、つながっているかの印（接続中 / 途絶 / 未受信。カメラは映像なし、AI HAT+ は未検出・ドライバ未導入・無効、落下防止センサーは未配線・未接続も）を出す。LiDAR・IMU は 2 秒、`/system_status` は 3 秒届かないと途絶（`renderLinks`）
