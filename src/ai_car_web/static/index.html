@@ -268,11 +268,11 @@
   .bar > span.t-warm { background: linear-gradient(90deg, #a8961a, #f2d64b); box-shadow: 0 0 6px rgba(242, 214, 75, .35); }
   .bar > span.t-hot { background: linear-gradient(90deg, #c4621a, #ff9a3c); box-shadow: 0 0 8px rgba(255, 154, 60, .45); }
   .bar > span.t-crit { background: linear-gradient(90deg, #c23a48, #ff5c6c); box-shadow: 0 0 10px rgba(255, 92, 108, .55); }
-  .barrow .v.t-cool, .core .pct.t-cool { color: #6cb6ff; }
-  .barrow .v.t-ok, .core .pct.t-ok { color: #5fe39a; }
-  .barrow .v.t-warm, .core .pct.t-warm { color: #f2d64b; }
-  .barrow .v.t-hot, .core .pct.t-hot { color: #ff9a3c; }
-  .barrow .v.t-crit, .core .pct.t-crit { color: #ff5c6c; font-weight: 700; }
+  .barrow .v.t-cool, td.v.t-cool, .core .pct.t-cool { color: #6cb6ff; }
+  .barrow .v.t-ok, td.v.t-ok, .core .pct.t-ok { color: #5fe39a; }
+  .barrow .v.t-warm, td.v.t-warm, .core .pct.t-warm { color: #f2d64b; }
+  .barrow .v.t-hot, td.v.t-hot, .core .pct.t-hot { color: #ff9a3c; }
+  .barrow .v.t-crit, td.v.t-crit, .core .pct.t-crit { color: #ff5c6c; font-weight: 700; }
   .badge, .modebadge { font-family: var(--mono); letter-spacing: .04em; border: 1px solid transparent; }
   .badge { background: rgba(84, 130, 190, .15); color: var(--muted); border-color: var(--line); }
   .badge.ok { background: rgba(53, 227, 154, .12); color: var(--ok); border-color: rgba(53, 227, 154, .4); box-shadow: 0 0 8px rgba(53, 227, 154, .2); }
@@ -834,7 +834,7 @@ function setTempBar(bar, label, celsius, fallback = '-') {
   label.title = `${lv.text}（45℃ 未満 青 / 60℃ 未満 緑 / 70℃ 未満 黄 / 80℃ 未満 橙 / 80℃ 以上 赤）`;
 }
 
-// コアごとの負荷率の色（温度バーと同じ 5 段階の色）
+// 負荷率の色（温度バーと同じ 5 段階の色）
 const LOAD_LEVELS = [
   { below: 25, cls: 't-cool' },
   { below: 50, cls: 't-ok' },
@@ -848,6 +848,21 @@ function coreHtml(v, i) {
   return `<div class="core" title="25% 未満 青 / 50% 未満 緑 / 70% 未満 黄 / 90% 未満 橙 / 90% 以上 赤">`
     + `C${i}<div class="bar"><span class="${cls}" style="width:${v}%"></span></div>`
     + `<span class="pct ${cls}">${fmt(v, 0)}%</span></div>`;
+}
+
+function setLoadBar(bar, label, percent, digits = 0) {
+  if (percent == null) {
+    bar.style.width = '0%';
+    bar.className = '';
+    label.className = 'v';
+    label.textContent = '-';
+    return;
+  }
+  const cls = LOAD_LEVELS.find(l => percent < l.below).cls;
+  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  bar.className = cls;
+  label.className = `v ${cls}`;
+  label.textContent = `${fmt(percent, digits)} %`;
 }
 
 // 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
@@ -964,8 +979,7 @@ function renderSystem(s) {
     : u.reboot_required ? badge('warn', '必要') : badge('ok', 'いらない');
   document.getElementById('pi_upgrade_btn').disabled = !u.can_upgrade || !!u.upgrade_running;
   const c = s.cpu || {};
-  document.getElementById('cpu_pct').textContent = fmt(c.percent, 1) + ' %';
-  setBar(document.getElementById('cpu_bar'), c.percent);
+  setLoadBar(document.getElementById('cpu_bar'), document.getElementById('cpu_pct'), c.percent, 1);
   document.getElementById('cpu_freq').textContent = fmt(c.freq_mhz, 0);
   const fan = c.fan || {};
   document.getElementById('cpu_fan').textContent = fan.rpm == null
@@ -1450,11 +1464,9 @@ function renderJetsonHost(j) {
   const t = v.temperatures_c || {};
   setTempBar(byId('jt_cpu_temp_bar'), byId('jt_cpu_temp'), t.cpu);
   setTempBar(byId('jt_gpu_temp_bar'), byId('jt_gpu_temp'), t.gpu);
-  setBar(byId('jt_cpu_bar'), v.cpu_percent);
-  byId('jt_cpu').textContent = v.cpu_percent == null ? '-' : fmt(v.cpu_percent, 0) + ' %';
+  setLoadBar(byId('jt_cpu_bar'), byId('jt_cpu'), v.cpu_percent);
   byId('jt_cpu').title = v.cpu_freq_mhz == null ? '' : `${fmt(v.cpu_freq_mhz, 0)} MHz`;
-  setBar(byId('jt_gpu_bar'), v.gpu_percent);
-  byId('jt_gpu').textContent = v.gpu_percent == null ? '-' : fmt(v.gpu_percent, 0) + ' %';
+  setLoadBar(byId('jt_gpu_bar'), byId('jt_gpu'), v.gpu_percent);
   byId('jt_gpu').title = v.gpu_freq_mhz == null ? '' : `${fmt(v.gpu_freq_mhz, 0)} MHz`;
   const memPct = v.mem_total_mb ? 100 * v.mem_used_mb / v.mem_total_mb : null;
   setBar(byId('jt_mem_bar'), memPct);
@@ -3180,7 +3192,7 @@ function blankPiCard() {
   byId('pi_os').title = '';
   byId('pi_upgrade_state').innerHTML = '';
   setTempBar(byId('cpu_temp_bar'), byId('cpu_temp'), null);
-  setBar(byId('cpu_bar'), 0);
+  setLoadBar(byId('cpu_bar'), byId('cpu_pct'), null);
   byId('cores').innerHTML = '';
 }
 
