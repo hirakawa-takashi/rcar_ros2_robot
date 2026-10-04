@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Yahboom CUBE ケースの横の OLED（SSD1306 128x32、I2C 7 番 0x3C）に Jetson の状態を出す。
 
+大きな文字の 2 行で、CPU/GPU → メモリ/SSD → IP アドレスの画面を 3 秒ごとに切り替える。
+ケースの RGB の光（同じ I2C の 0x0E）は、ふだんは虹色、CPU が熱いときは赤の呼吸にする。
 標準ライブラリと Pillow（JetPack の /usr/bin/python3 に入っている）だけで動く。
 """
 import fcntl
@@ -13,23 +15,36 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 
 I2C_BUS = int(os.environ.get('OLED_I2C_BUS', '7'))
-I2C_ADDR = int(os.environ.get('OLED_I2C_ADDR', '0x3c'), 16)
+OLED_ADDR = 0x3C
+CASE_ADDR = 0x0E
 WIDTH, HEIGHT = 128, 32
 I2C_SLAVE = 0x0703
 INIT = [0xAE, 0xD5, 0x80, 0xA8, HEIGHT - 1, 0xD3, 0x00, 0x40, 0x8D, 0x14, 0x20, 0x00,
-        0xA1, 0xC8, 0xDA, 0x02, 0x81, 0x8F, 0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6, 0xAF]
-IP_SKIP = ('lo', 'docker', 'l4tbr', 'veth', 'br-')
+        0xA1, 0xC8, 0xDA, 0x02, 0x81, 0xCF, 0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6, 0xAF]
+FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+FONT_SIZE = 14
+PAGE_SEC = 3
+HOT_C = float(os.environ.get('OLED_HOT_C', '70'))
+RGB_EFFECT, RGB_SPEED, RGB_COLOR = 0x04, 0x05, 0x06
+RAINBOW, BREATHING, RED = 3, 1, 0
+GPU_LOAD = '/sys/devices/platform/bus@0/17000000.gpu/load'
+IF_NAMES = (('tailscale', 'Tailscale'), ('wl', 'Wi-Fi'), ('en', 'LAN'), ('eth', 'LAN'))
 
 
-class Oled:
+class I2cDevice:
     def __init__(self, bus, addr):
         self.fd = os.open(f'/dev/i2c-{bus}', os.O_RDWR)
         fcntl.ioctl(self.fd, I2C_SLAVE, addr)
-        self.command(*INIT)
 
-    def command(self, *cmds):
-        for c in cmds:
-            os.write(self.fd, bytes([0x00, c]))
+    def write(self, data):
+        os.write(self.fd, bytes(data))
+
+
+class Oled(I2cDevice):
+    def __init__(self, bus):
+        super().__init__(bus, OLED_ADDR)
+        for c in INIT:
+            self.write([0x00, c])
 
     def show(self, image):
         data = bytearray(WIDTH * HEIGHT // 8)
@@ -41,13 +56,32 @@ class Oled:
                     if px[x, page * 8 + bit]:
                         b |= 1 << bit
                 data[page * WIDTH + x] = b
-        self.command(0x21, 0, WIDTH - 1, 0x22, 0, HEIGHT // 8 - 1)
+        for c in (0x21, 0, WIDTH - 1, 0x22, 0, HEIGHT // 8 - 1):
+            self.write([0x00, c])
         for i in range(0, len(data), 16):
-            os.write(self.fd, bytes([0x40]) + data[i:i + 16])
+            self.write(bytes([0x40]) + data[i:i + 16])
 
     def off(self):
         self.show(Image.new('1', (WIDTH, HEIGHT)))
-        self.command(0xAE)
+        self.write([0x00, 0xAE])
+
+
+class CaseRgb(I2cDevice):
+    def __init__(self, bus):
+        super().__init__(bus, CASE_ADDR)
+        self.hot = None
+
+    def update(self, hot):
+        if hot == self.hot:
+            return
+        if hot:
+            self.write([RGB_COLOR, RED])
+            self.write([RGB_SPEED, 3])
+            self.write([RGB_EFFECT, BREATHING])
+        else:
+            self.write([RGB_SPEED, 2])
+            self.write([RGB_EFFECT, RAINBOW])
+        self.hot = hot
 
 
 def cpu_times():
@@ -56,18 +90,26 @@ def cpu_times():
     return sum(v), v[3] + v[4]
 
 
-def cpu_temp():
+def thermal(name):
     base = '/sys/devices/virtual/thermal'
     for z in sorted(os.listdir(base)):
         try:
             with open(f'{base}/{z}/type') as f:
-                if f.read().strip() != 'cpu-thermal':
+                if f.read().strip() != name:
                     continue
             with open(f'{base}/{z}/temp') as f:
                 return int(f.read()) / 1000.0
         except OSError:
             continue
     return None
+
+
+def gpu_load():
+    try:
+        with open(GPU_LOAD) as f:
+            return int(f.read()) / 10.0
+    except (OSError, ValueError):
+        return None
 
 
 def mem_gib():
@@ -95,14 +137,58 @@ def ip_addrs():
     addrs = []
     for line in out.splitlines():
         parts = line.split()
-        if len(parts) > 3 and not parts[1].startswith(IP_SKIP):
-            addrs.append(parts[3].split('/')[0])
-    addrs.sort(key=lambda a: not a.startswith('100.'))
+        if len(parts) < 4:
+            continue
+        for prefix, label in IF_NAMES:
+            if parts[1].startswith(prefix):
+                addrs.append((label, parts[3].split('/')[0]))
+                break
     return addrs
 
 
+def pct(v):
+    return f'{v:.0f}%' if v is not None else '-'
+
+
+def deg(v):
+    return f'{v:.0f}°C' if v is not None else '-'
+
+
+def pages(cpu, cpu_c, gpu, gpu_c, mem, disk, ips):
+    yield (('CPU', pct(cpu), deg(cpu_c)), ('GPU', pct(gpu), deg(gpu_c)))
+    yield (('RAM', f'{mem[0]:.1f}/{mem[1]:.1f}G', ''), ('SSD', f'{disk[0]:.0f}/{disk[1]:.0f}G', ''))
+    for label, ip in ips or [('IP', 'no network')]:
+        yield ((label, '', ''), ('', ip, ''))
+
+
+def render(page, font):
+    image = Image.new('1', (WIDTH, HEIGHT))
+    draw = ImageDraw.Draw(image)
+    for row, (label, value, extra) in enumerate(page):
+        y = row * 16
+        if label and not value:
+            draw.text((0, y), label, font=font, fill=255)
+            continue
+        x = 0
+        if label:
+            draw.text((0, y), label, font=font, fill=255)
+            x = 38
+        if extra:
+            draw.text((x + 50 - draw.textlength(value, font=font), y), value, font=font, fill=255)
+            draw.text((WIDTH - draw.textlength(extra, font=font), y), extra, font=font, fill=255)
+        else:
+            draw.text((max(x, WIDTH - draw.textlength(value, font=font)), y), value,
+                      font=font, fill=255)
+    return image
+
+
 def main():
-    oled = Oled(I2C_BUS, I2C_ADDR)
+    oled = Oled(I2C_BUS)
+    try:
+        rgb = CaseRgb(I2C_BUS)
+    except OSError as e:
+        print(f'ケースの RGB を開けません: {e}', file=sys.stderr, flush=True)
+        rgb = None
 
     def stop(*_):
         oled.off()
@@ -110,7 +196,10 @@ def main():
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    font = ImageFont.load_default()
+    try:
+        font = ImageFont.truetype(FONT, FONT_SIZE)
+    except OSError:
+        font = ImageFont.load_default()
     last = cpu_times()
     ips, ips_at, tick = [], 0.0, 0
     while True:
@@ -121,28 +210,22 @@ def main():
         cpu = 100.0 * (dt - di) / dt if dt else 0.0
         if time.monotonic() - ips_at > 30:
             ips, ips_at = ip_addrs(), time.monotonic()
-        temp = cpu_temp()
-        mu, mt = mem_gib()
-        du, dtot = disk_gb()
-        ip = ips[(tick // 5) % len(ips)] if ips else 'no network'
+        cpu_c = thermal('cpu-thermal')
+        all_pages = list(pages(cpu, cpu_c, gpu_load(), thermal('gpu-thermal'),
+                               mem_gib(), disk_gb(), ips))
+        page = all_pages[(tick // PAGE_SEC) % len(all_pages)]
         tick += 1
-        lines = [
-            f'CPU:{cpu:3.0f}%  ' + (f'{temp:.1f}C' if temp is not None else '-'),
-            f'RAM:{mu:.1f}/{mt:.1f}G',
-            f'SSD:{du:.0f}/{dtot:.0f}G',
-            f'IP:{ip}',
-        ]
-        image = Image.new('1', (WIDTH, HEIGHT))
-        draw = ImageDraw.Draw(image)
-        for i, text in enumerate(lines):
-            draw.text((0, -2 + i * 8), text, font=font, fill=255)
         try:
-            oled.show(image)
+            if rgb is not None:
+                rgb.update(cpu_c is not None and cpu_c >= HOT_C)
+            oled.show(render(page, font))
         except OSError as e:
-            print(f'OLED に書けません: {e}', file=sys.stderr, flush=True)
+            print(f'I2C に書けません: {e}', file=sys.stderr, flush=True)
             time.sleep(5)
             try:
-                oled = Oled(I2C_BUS, I2C_ADDR)
+                oled = Oled(I2C_BUS)
+                if rgb is not None:
+                    rgb.hot = None
             except OSError:
                 pass
 

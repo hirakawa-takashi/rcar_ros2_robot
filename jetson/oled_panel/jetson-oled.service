@@ -1,5 +1,5 @@
 [Unit]
-Description=Show Jetson status on the Yahboom CUBE case OLED (I2C bus 7, 0x3C)
+Description=Show Jetson status on the Yahboom CUBE case OLED and RGB light bar (I2C bus 7)
 
 [Service]
 User=jetson
