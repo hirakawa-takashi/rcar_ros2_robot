@@ -119,6 +119,12 @@ boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + 6],
             [box_x0 - boss_d / 2 + 1.5, box_y0 + box_y - 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + box_y - 6]];
+// 中を抜くボス（boss_pts の番号）。開口側の後ろの角は、バッテリーに差す L 字の USB プラグが当たるので、上下 boss_keep だけ残す
+boss_open = [1];
+boss_keep = 5;            // 残す高さ（下はフランジの上から、上は箱の上端から）
+boss_tie_l = 15;          // 上の部分を、後ろ（前）の壁の外側に沿わせて留める長さ
+boss_tie_t = 2;           // 壁の外側に足す厚さ
+boss_drop = 7;            // 上の部分の下を 45° で壁へつなぐ高さ（サポートなしで印刷するため）
 
 // ---- 2 眼カメラ（3D USB Camera 3D-1080P02、基板 80 x 17 mm）: ふたの前、LiDAR のモーターの下に、USB 端子を上にして立てる ----
 // 四隅の M2 の穴で、ふたの前端の面に当てる板（cam_mount.stl）に留める。板は左右の耳を、ふたの前端の柱 2 本に M3 で留める
@@ -300,12 +306,51 @@ module drok_holder() {
     }
 }
 
+// ふた固定用のボス。boss_open のものは上下だけ残し、上の部分を壁の端と外側に広くつなぐ
+function boss_side(p) = [p[0] > box_cx ? 1 : -1, p[1] > box_cy ? 1 : -1];
+function boss_wall(p) = let(s = boss_side(p), yo = s[1] > 0 ? box_y0 + box_y : box_y0)
+    [s[0] > 0 ? box_x0 + box_x : box_x0, yo, yo - s[1] * wall_y];  // 壁の端の X、壁の外側と内側の Y
+module boss_end_rect(p, z, h) {
+    w = boss_wall(p);
+    translate([min(w[0], w[0] - boss_side(p)[0] * 1.5), min(w[1], w[2]), z]) cube([1.5, wall_y, h]);
+}
+module boss_top_foot(p, z, h) {
+    hull() {
+        translate([p[0], p[1], z]) cylinder(d = boss_d, h = h);
+        boss_end_rect(p, z, h);
+    }
+}
+module boss_body(i) {
+    p = boss_pts[i];
+    s = boss_side(p);
+    w = boss_wall(p);
+    z1 = box_h - boss_keep;
+    tx0 = min(w[0] - s[0] * boss_tie_l, p[0]);
+    tx1 = max(w[0] - s[0] * boss_tie_l, p[0]);
+    ty = s[1] > 0 ? w[1] - 0.01 : w[1] - boss_tie_t;
+    if (len(search(i, boss_open)) == 0) {
+        translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+    } else {
+        translate([p[0], p[1], 0]) cylinder(d = boss_d, h = flange_t + boss_keep);
+        boss_top_foot(p, z1, boss_keep);
+        hull() {
+            boss_top_foot(p, z1, 0.01);
+            boss_end_rect(p, z1 - boss_drop, 0.01);
+        }
+        // 壁の外側に沿わせる板（下は 45°）
+        hull() {
+            translate([tx0, ty, z1]) cube([tx1 - tx0, boss_tie_t + 0.01, boss_keep]);
+            translate([tx0, w[1] - 0.01, z1 - boss_tie_t]) cube([tx1 - tx0, 0.02, 0.01]);
+        }
+    }
+}
+
 module box() {
     difference() {
         union() {
             rrect(flange_x0, flange_y0, flange_x1, flange_y1, flange_r, flange_t);
             translate([box_x0, box_y0, 0]) cube([box_x, box_y, box_h]);
-            for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+            for (i = [0 : len(boss_pts) - 1]) boss_body(i);
             motor_recess_pad([motor_scr_pts[2], motor_scr_pts[3]]);
             for (p = tie_pts_box) translate([p[0], p[1], flange_t - 0.01]) tie_mount();
             drok_holder();
@@ -316,7 +361,7 @@ module box() {
         ox = open_end == "right" ? box_x0 + box_x - wall - 1 : box_x0 - 1;
         difference() {
             translate([ox, box_y0 + wall_y, floor_t]) cube([wall + 2, in_y, in_z + 1]);
-            for (p = boss_pts) translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+            for (i = [0 : len(boss_pts) - 1]) boss_body(i);
         }
         // 反対側の端: 押し出し用の窓
         cx = open_end == "right" ? box_x0 - 1 : box_x0 + box_x - wall - end_fill - 1;
