@@ -1276,7 +1276,7 @@ function renderObstacle(o, stale) {
       el.textContent = '-';
       el.title = '';
     }
-    setBar(document.getElementById('h_load_bar'), 0);
+    setLoadBar(document.getElementById('h_load_bar'), document.getElementById('h_load'), null);
     return;
   }
   const LEVEL_BADGE = { clear: 'ok', slow: 'warn', stop: 'crit' };
@@ -1333,8 +1333,7 @@ function renderObstacle(o, stale) {
     ? '-' : `${fmt(tp.now_tops, 2)} / ${fmt(tp.max_tops, 2)}`;
   // 負荷率 = 1 秒のうち推論している時間の割合（fps × 1 回の推論時間）
   const load = tp.fps == null || !tp.max_fps ? null : Math.min(tp.fps / tp.max_fps * 100, 100);
-  setBar(document.getElementById('h_load_bar'), load);
-  document.getElementById('h_load').textContent = load == null ? '-' : `${fmt(load, 0)} %`;
+  setLoadBar(document.getElementById('h_load_bar'), document.getElementById('h_load'), load);
   document.getElementById('h_load').title = load == null ? ''
     : `1 秒のうち推論している時間の割合（${fmt(tp.fps, 1)} 回 × 最近 30 回の推論時間の中央値 ${fmt(1000 / tp.max_fps, 1)} ms）`;
   document.getElementById('h_tops').title = tp.peak_tops == null ? ''
