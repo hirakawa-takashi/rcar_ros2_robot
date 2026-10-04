@@ -213,20 +213,13 @@ perception_node:
     living_labels: ["人", "犬", "猫", "鳥"]
     living_slow_distance: 1.5
     living_stop_distance: 0.6
-    # カメラの床の検出（floor_obstacle_node）で見つけた低い障害物。false の間は判定を表示するだけ
-    floor_guard: false
-    floor_slow_distance: 0.8
-    # カメラに床が映るのは約 0.35 m 先からなので、見えなくなる前に止まるよう少し長め
-    floor_stop_distance: 0.45
-    floor_low_margin: 0.15
-    floor_max_age: 1.0
     # 2 眼カメラの距離（stereo_depth_node）で見つけた低い障害物。false の間は判定を表示するだけ
     stereo_topic: "/stereo/depth_status"
     stereo_guard: false
     stereo_slow_distance: 0.8
     stereo_stop_distance: 0.45
     stereo_low_margin: 0.15
-    # stereo_depth_node は約 3 回/秒なので、床の検出（1.0 s）より長め
+    # stereo_depth_node は約 3 回/秒なので、1 回分ぬけても切れないように
     stereo_max_age: 1.5
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
@@ -235,36 +228,6 @@ perception_node:
     # 実効スループット表示用（YOLOv8m 640x640 = 78.9 GOP / Hailo-8 公称 26 TOPS）
     model_gops: 78.9
     hailo_peak_tops: 26.0
-
-floor_obstacle_node:
-  ros__parameters:
-    camera_topic: "/camera/image_raw/compressed"
-    status_topic: "/floor_obstacle_status"
-    rate: 5.0
-    # カメラのレンズの床からの高さ（3D マウントの CAD 値）と下向きの角度。実機で紙を 0.4 / 0.6 / 1.0 m に置いて合わせる
-    camera_height_m: 0.112
-    camera_pitch_deg: 0.0
-    # 2 眼カメラ（ELP、片目 16:9）の視野角。仮の値（縦は横 120° からピンホールで計算）。実測して直す。
-    # Camera Module 3（IMX708 16:9）に戻すときは 66.0 / 40.1
-    camera_hfov_deg: 120.0
-    camera_vfov_deg: 88.6
-    # 車体の中心はカメラ（左目、X 39 mm）の 38 mm 右（天板の中心 77 mm）。片側 0.15 m は車輪の外側 + 余裕
-    corridor_center_y_m: -0.038
-    corridor_half_width_m: 0.15
-    max_range_m: 1.5
-    # 床の色を覚える、いちばん近い帯（カメラから 0.35〜0.45 m）
-    ref_max_m: 0.45
-    # 床の色の許容幅（Lab）。明るさ（L）は影で変わるので広め
-    tol_l: 25.0
-    tol_ab: 8.0
-    tol_sigma: 3.0
-    learn_rate: 0.05
-    warmup_frames: 5
-    min_rows: 3
-    min_width_m: 0.03
-    segment_gap_m: 0.15
-    confirm_frames: 2
-    history_frames: 3
 
 rplidar:
   ros__parameters:
@@ -310,7 +273,7 @@ stereo_depth_node:
     uniqueness_ratio: 10
     speckle_window: 100
     speckle_range: 2
-    # 床からの高さを出すためのカメラの高さと下向きの角度（floor_obstacle_node と同じ値）
+    # 床からの高さを出すためのカメラのレンズの床からの高さ（3D マウントの CAD 値）と下向きの角度
     camera_height_m: 0.112
     camera_pitch_deg: 0.0
     corridor_center_y_m: -0.038

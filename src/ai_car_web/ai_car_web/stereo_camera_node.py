@@ -5,8 +5,8 @@
 上下逆さまに付けたときは rotate_180 を true にする。1 枚全体を 180° 回すと左右の画像も
 入れ替わるので、回したあとの左半分が左目、右半分が右目になる。
 eye で選んだ片目を output_width x output_height に縮めて、camera_ros と同じ
-/camera/image_raw/compressed（JPEG）へ出す。ダッシュボード・perception_node・
-floor_obstacle_node はそのまま使える。
+/camera/image_raw/compressed（JPEG）へ出す。ダッシュボード・perception_node は
+そのまま使える。
 ~/capture_calib（std_srvs/Trigger）を呼ぶと、その時の左右の画像で市松模様を探し、
 左右とも見つかれば calib_dir に pair_NNN_left.png / pair_NNN_right.png で保存する。
 pair_topic を受けるノード（stereo_depth_node）がいるときだけ、左右を pair_scale に縮めた
