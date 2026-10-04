@@ -413,13 +413,14 @@ nodes:
   - id: lidar_watchdog_node
     label: lidar_watchdog_node
     file: ai_car_web/lidar_watchdog_node.py
-    role: /scan が途絶えたら rplidar を終了させ、launch の respawn で起動し直させる（USB の抜き差し対策）
+    role: /scan が途絶えたら rplidar を終了させ、launch の respawn で起動し直させる（USB の抜き差し対策）。何度も戻らなければ LiDAR の USB をつなぎ直す
     publishes: []
     subscribes: [/scan]
     params:
       - {name: scan_timeout, ref: lidar_watchdog_node.scan_timeout, unit: s, desc: この秒数 /scan が来ないと rplidar を起動し直す}
       - {name: startup_grace, ref: lidar_watchdog_node.startup_grace, unit: s, desc: 起動直後と起動し直した後に待つ秒数}
       - {name: kill_wait, ref: lidar_watchdog_node.kill_wait, unit: s, desc: SIGTERM で終わらなければ SIGKILL を送るまでの秒数}
+      - {name: usb_reset_after, ref: lidar_watchdog_node.usb_reset_after, unit: 回, desc: 起動し直しても /scan が戻らないことがこの回数続くと、LiDAR の USB をつなぎ直す（0 でしない）}
     layer: sensor
   - id: stereo_camera_node
     label: stereo_camera_node

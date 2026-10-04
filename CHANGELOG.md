@@ -6,6 +6,8 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- `lidar_watchdog_node`: 起動し直しても `/scan` が 2 回続けて戻らなければ、rplidar を止めた後に LiDAR の USB（CP2102、10c4:ea60）をつなぎ直す（`USBDEVFS_RESET`、`usb_reset_after`）。ラズパイの電池の電圧が下がった後、CP2102 が返事をしなくなり（`cp210x ttyUSB0: failed set request 0x12 status: -110`）、起動し直しを 33 分で 81 回しても戻らず、ラズパイの再起動でしか直らなかったため。書き込み権限は `systemd/99-ai-car-lidar-usb.rules`（`install_service.sh` で入れる）
+- ダッシュボード: ラズパイの電池の電圧が下がったら、いちばん上に出す（今下がっている: 赤、起動後に下がった: 橙で回数と最後の時刻）。`system_monitor_node` は `hwmon rpi_volt` の `in0_lcrit_alarm` と `get_throttled` を 1 秒ごとに見て、`power.under_voltage`（`now` / `count` / `last`）を出す
 - Jetson: 前の起動の記録をのこす設定（journald persistent）と、メモリ・温度・ファン・止まっているサービスを 1 分ごとに 1 行記録する `jetson-health.timer`（`jetson/health_log`）。放っておくと止まる原因を調べるため
 - ダッシュボードの AI HAT+ の負荷率のバーと数字も、ほかの負荷率と同じ 5 色で色分けする（25 % 未満 青 / 50 % 未満 緑 / 70 % 未満 黄 / 90 % 未満 橙 / それ以上 赤）
 - ダッシュボードのラズパイの CPU 全体、Jetson の CPU・GPU の負荷率のバーと数字も、コアのバーと同じ 5 色で色分けする（25 % 未満 青 / 50 % 未満 緑 / 70 % 未満 黄 / 90 % 未満 橙 / それ以上 赤）
