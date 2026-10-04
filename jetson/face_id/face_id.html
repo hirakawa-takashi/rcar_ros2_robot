@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>顔の登録（Jetson）</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #0d1218; color: #dbe4ee; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; display: grid; gap: 14px;
+         grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); }
+  h1 { font-size: 18px; margin: 0; grid-column: 1 / -1; }
+  .card { background: #151c25; border: 1px solid #253141; border-radius: 10px; padding: 12px; }
+  h2 { font-size: 14px; margin: 0 0 8px; color: #8fb3d9; }
+  canvas { width: 100%; background: #000; border-radius: 6px; display: block; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  input { background: #0d1218; color: #dbe4ee; border: 1px solid #33445a; border-radius: 6px; padding: 6px 8px; }
+  button { background: #1f6fb2; color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button.del { background: #8a2c36; padding: 3px 9px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 4px 2px; border-bottom: 1px solid #222d3a; }
+  td.n { text-align: right; white-space: nowrap; }
+  #msg { min-height: 1.4em; font-size: 13px; }
+  #msg.err { color: #ff7b86; } #msg.ok { color: #5fe39a; }
+  .muted { color: #7f8fa3; font-size: 12px; }
+  ul { margin: 4px 0; padding-left: 18px; font-size: 14px; }
+  @media (max-width: 700px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>顔の登録と確認（Jetson）</h1>
+  <div class="card">
+    <h2>カメラ（今は AI-CAR の 2 眼カメラ）</h2>
+    <canvas id="view" width="960" height="540"></canvas>
+    <ul id="faces"></ul>
+    <div class="muted" id="info">-</div>
+  </div>
+  <div class="card">
+    <h2>登録</h2>
+    <div class="row"><input id="name" maxlength="20" placeholder="名前（例: たかし）"><button id="enroll">今の顔を登録</button></div>
+    <div class="muted">カメラの前に 1 人だけで立ち、顔の向きを少しずつ変えながら 10 回くらい押してください。顔の画像は保存せず、特ちょうの数字だけを Jetson に残します。</div>
+    <div id="msg"></div>
+    <h2 style="margin-top:14px">登録した人</h2>
+    <table id="people"></table>
+    <div class="row" style="margin-top:14px"><span class="muted">API トークン</span><input id="token" type="password" size="16"></div>
+  </div>
+</main>
+<script>
+const TOKEN_KEY = 'face_id_token';
+const $ = id => document.getElementById(id);
+$('token').value = localStorage.getItem(TOKEN_KEY) || '';
+$('token').addEventListener('change', () => localStorage.setItem(TOKEN_KEY, $('token').value));
+const headers = () => { const t = localStorage.getItem(TOKEN_KEY); return t ? {'X-API-Token': t} : {}; };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+let lastStamp = null;
+
+function say(text, cls) { $('msg').textContent = text; $('msg').className = cls || ''; }
+
+async function api(method, path, body) {
+  const r = await fetch(path, {method, headers: headers(), body});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+
+function drawFrame(img, latest) {
+  const c = $('view'), ctx = c.getContext('2d');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  ctx.drawImage(img, 0, 0);
+  ctx.lineWidth = Math.max(2, c.width / 320);
+  ctx.font = `${Math.round(c.width / 30)}px system-ui`;
+  for (const f of latest.faces) {
+    const [x0, y0, x1, y1] = [f.box[0] * c.width, f.box[1] * c.height, f.box[2] * c.width, f.box[3] * c.height];
+    ctx.strokeStyle = f.name ? '#3ddc84' : '#f2d64b';
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillText(f.name || '知らない人', x0, Math.max(16, y0 - 6));
+  }
+}
+
+function render(s) {
+  const l = s.latest || {faces: []};
+  $('faces').innerHTML = l.faces.length ? l.faces.map(f =>
+    `<li>${f.name ? esc(f.name) : '知らない人'}（近さ ${f.similarity ?? '-'}` +
+    `${!f.name && f.nearest ? `、いちばん近いのは ${esc(f.nearest)}` : ''}・顔の幅 ${f.width_px} px）</li>`).join('')
+    : '<li class="muted">顔は写っていません</li>';
+  $('info').textContent = l.note || (l.stamp
+    ? `${new Date(l.stamp * 1000).toLocaleTimeString()}・1 回 ${l.elapsed_ms} ms・同じ人とみなす近さ ${s.match_threshold} 以上`
+    : '画像を待っています');
+  $('people').innerHTML = s.people.length ? s.people.map(p =>
+    `<tr><td>${esc(p.name)}</td><td class="n">${p.samples} 枚</td>` +
+    `<td class="n"><button class="del" data-name="${esc(p.name)}">消す</button></td></tr>`).join('')
+    : '<tr><td class="muted">まだだれも登録していません</td></tr>';
+  if (l.stamp && l.stamp !== lastStamp) {
+    lastStamp = l.stamp;
+    fetch('/api/face/frame.jpg', {headers: headers()}).then(r => r.ok ? r.blob() : null).then(b => {
+      if (!b) return;
+      const img = new Image();
+      img.onload = () => { drawFrame(img, l); URL.revokeObjectURL(img.src); };
+      img.src = URL.createObjectURL(b);
+    });
+  }
+}
+
+async function poll() {
+  try { render(await api('GET', '/api/face/status')); }
+  catch (e) { $('info').textContent = `つながりません: ${e.message}`; }
+  setTimeout(poll, 700);
+}
+
+$('enroll').addEventListener('click', async () => {
+  const name = $('name').value.trim();
+  if (!name) return say('名前を入れてください', 'err');
+  try {
+    const r = await api('POST', `/api/face/enroll?name=${encodeURIComponent(name)}`);
+    say(`${r.name} を登録しました（${r.samples} 枚目）`, 'ok');
+  } catch (e) { say(e.message, 'err'); }
+});
+
+$('people').addEventListener('click', async ev => {
+  const name = ev.target.dataset && ev.target.dataset.name;
+  if (!name || !confirm(`${name} の登録を消しますか？`)) return;
+  try { await api('DELETE', `/api/face/people?name=${encodeURIComponent(name)}`); say(`${name} を消しました`, 'ok'); }
+  catch (e) { say(e.message, 'err'); }
+});
+
+poll();
+</script>
+</body>
+</html>
