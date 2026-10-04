@@ -14,6 +14,7 @@
 - 2 眼カメラで距離を出す `stereo_depth_node`（表示だけ）。`stereo_calib.yaml` で左右を平行にそろえ、SGBM で距離にして、通り道の中で床より 4 cm 以上高い物のいちばん近い距離を `/stereo/depth_status` に出す。`stereo_camera_node` は受けるノードがいるときだけ、左右を 640×360 の白黒にして `/stereo/pair_gray` に 3 Hz で出す（今の `/camera/image_raw/compressed` はそのまま）。ダッシュボードのカメラカードに「2眼の距離」の行と、映像を距離の色に切り替える「距離の画像」ボタン（`GET /api/camera/depth_stream`）を追加。launch に `use_stereo_depth`（既定 true）。走る・止まるの判断には使わない
 
 ### Changed
+- ダッシュボード: データが古い・届かない（未接続・途絶）ときは、全部のカードの値を「-」にする。LiDAR（`/scan`）・IMU・`/obstacle_status` は 2 秒、`/system_status` は 3 秒より古いと「-」（AI HAT+ の fps・TOPS・負荷率、物の枠も消す）。カメラは映像なしのとき解像度・fps・最終受信を「-」。SLAM は途絶中の位置と地図を出さない。スタックちゃんは画像が古いとカメラの画像を消す。ラズパイから 3 秒届かないときは、ラズパイのカードだけでなく全部のカードを「-」にし、映像も止める
 - `drive_mode_node` の最終段ガード（`obstacle_guard`）: 障害物の stop 判定中だけでなく、LiDAR データなし（`level: unknown`）と `/obstacle_status` の途絶（`obstacle_timeout` 2 秒）のあいだも、手動・自動とも前進を 0 にする（後退と旋回はできる）。これまでは LiDAR が止まっていても手動では前に進めた
 - ダッシュボードの LiDAR の図: `/scan` が 2 秒より古いときは点を描かない。LiDAR が止まった後も、最後の点（車の前 0.24 m の赤い点）が残って出ていた
 - AI HAT+ の負荷率: 1 回の推論時間は CPU の混み具合で 30〜100 ms とばらつき、最新の 1 回で計算していたので 32〜110 % と大きく動いていた。最近 30 回の中央値で計算し、100 % で止める（`throughput.max_fps` / `max_tops` / `utilization` も中央値から）
