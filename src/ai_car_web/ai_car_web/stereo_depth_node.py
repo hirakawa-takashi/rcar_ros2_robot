@@ -100,12 +100,15 @@ def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_ran
     near = float(np.percentile(f, 5))
     close = mask & (forward <= near + 0.05)
     cols = np.nonzero(close)[1]
+    bearing = np.degrees(np.arctan2(left[close], forward[close]))
     return {
         'distance_m': round(near, 3),
         'lateral_m': round(float(np.median(left[close])), 3),
         'height_m': round(float(np.median(height[close])), 3),
         'x_min': round(float(cols.min()) / forward.shape[1], 3),
         'x_max': round(float(cols.max() + 1) / forward.shape[1], 3),
+        'bearing_min_deg': round(float(bearing.min()), 1),
+        'bearing_max_deg': round(float(bearing.max()), 1),
         'points': count,
     }, mask
 

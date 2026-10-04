@@ -177,6 +177,15 @@ class PerceptionNode(Node):
         self.declare_parameter('floor_stop_distance', 0.45)
         self.declare_parameter('floor_low_margin', 0.15)
         self.declare_parameter('floor_max_age', 1.0)
+        # 2 眼カメラの距離（stereo_depth_node）で見つけた通り道の中の物。床の検出と同じく
+        # LiDAR の同じ方向の距離が stereo_low_margin 以上遠いものだけを低い物とする。
+        # stereo_guard が false の間は判定を表示するだけ
+        self.declare_parameter('stereo_topic', '/stereo/depth_status')
+        self.declare_parameter('stereo_guard', False)
+        self.declare_parameter('stereo_slow_distance', 0.8)
+        self.declare_parameter('stereo_stop_distance', 0.45)
+        self.declare_parameter('stereo_low_margin', 0.15)
+        self.declare_parameter('stereo_max_age', 1.5)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
@@ -215,6 +224,8 @@ class PerceptionNode(Node):
         self._detector_note = ''
         self._floor = None
         self._floor_stamp = 0.0
+        self._stereo = None
+        self._stereo_stamp = 0.0
         self._jetson = None
         self._jetson_stamp = 0.0
 
@@ -229,6 +240,9 @@ class PerceptionNode(Node):
             String, self.get_parameter('system_status_topic').value, self._system_cb, 10)
         self.create_subscription(
             String, self.get_parameter('floor_topic').value, self._floor_cb, 10)
+        stereo_topic = self.get_parameter('stereo_topic').value
+        if stereo_topic:
+            self.create_subscription(String, stereo_topic, self._stereo_cb, 10)
         jetson_topic = self.get_parameter('jetson_topic').value
         if jetson_topic:
             self.create_subscription(String, jetson_topic, self._jetson_cb, 10)
@@ -281,6 +295,11 @@ class PerceptionNode(Node):
         self.floor_stop_distance = float(self.get_parameter('floor_stop_distance').value)
         self.floor_low_margin = float(self.get_parameter('floor_low_margin').value)
         self.floor_max_age = float(self.get_parameter('floor_max_age').value)
+        self.stereo_guard = bool(self.get_parameter('stereo_guard').value)
+        self.stereo_slow_distance = float(self.get_parameter('stereo_slow_distance').value)
+        self.stereo_stop_distance = float(self.get_parameter('stereo_stop_distance').value)
+        self.stereo_low_margin = float(self.get_parameter('stereo_low_margin').value)
+        self.stereo_max_age = float(self.get_parameter('stereo_max_age').value)
         self.jetson_max_age = float(self.get_parameter('jetson_max_age').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
@@ -317,6 +336,11 @@ class PerceptionNode(Node):
             'floor_stop_distance': lambda v: setattr(self, 'floor_stop_distance', float(v)),
             'floor_low_margin': lambda v: setattr(self, 'floor_low_margin', float(v)),
             'floor_max_age': lambda v: setattr(self, 'floor_max_age', float(v)),
+            'stereo_guard': lambda v: setattr(self, 'stereo_guard', bool(v)),
+            'stereo_slow_distance': lambda v: setattr(self, 'stereo_slow_distance', float(v)),
+            'stereo_stop_distance': lambda v: setattr(self, 'stereo_stop_distance', float(v)),
+            'stereo_low_margin': lambda v: setattr(self, 'stereo_low_margin', float(v)),
+            'stereo_max_age': lambda v: setattr(self, 'stereo_max_age', float(v)),
             'jetson_max_age': lambda v: setattr(self, 'jetson_max_age', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
@@ -393,6 +417,16 @@ class PerceptionNode(Node):
                 self._floor = data
                 self._floor_stamp = time.time()
 
+    def _stereo_cb(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if isinstance(data, dict):
+            with self._lock:
+                self._stereo = data
+                self._stereo_stamp = time.time()
+
     def _jetson_cb(self, msg: String):
         """Jetson の検出に、同じ方向の LiDAR の距離を付けて保持する。"""
         try:
@@ -449,8 +483,12 @@ class PerceptionNode(Node):
         方位窓内の点は距離でクラスタリングし、最も手前のまとまった面の
         代表距離（中央値）を返す。単発の外れ点で極端に近い値にならない。
         """
-        angle_max = image_x_to_bearing(x_min, self.camera_hfov)
-        angle_min = image_x_to_bearing(x_max, self.camera_hfov)
+        return self._distance_for_bearings(
+            image_x_to_bearing(x_max, self.camera_hfov),
+            image_x_to_bearing(x_min, self.camera_hfov))
+
+    def _distance_for_bearings(self, angle_min: float, angle_max: float):
+        """カメラから見た方位の範囲 [rad]（左が正）の LiDAR の距離。_distance_for_box と同じ求め方。"""
         with self._lock:
             bearings = self._scan_bearings
             scan_stamp = self._scan_stamp
@@ -622,6 +660,9 @@ class PerceptionNode(Node):
         floor = self._floor_assessment(now)
         if self.floor_guard and LEVEL_RANK[floor['level']] > LEVEL_RANK.get(level, 0):
             level, reason = floor['level'], floor['reason']
+        stereo = self._stereo_assessment(now)
+        if self.stereo_guard and LEVEL_RANK[stereo['level']] > LEVEL_RANK.get(level, 0):
+            level, reason = stereo['level'], stereo['reason']
 
         # 前方セクターに写っている物体のみ障害物種別として扱う
         labels = [
@@ -647,6 +688,7 @@ class PerceptionNode(Node):
             'front_labels': labels,
             'living': living,
             'floor': floor,
+            'stereo': stereo,
             'jetson': self._jetson_assessment(now),
             'inference_ms': inference_ms,
             'inference_age': round(det_age, 2) if det_age is not None else None,
@@ -730,6 +772,45 @@ class PerceptionNode(Node):
             if distance <= self.floor_stop_distance:
                 result['level'], result['reason'] = 'stop', f'前方 {where} で停止'
             elif distance <= self.floor_slow_distance:
+                result['level'], result['reason'] = 'slow', f'前方 {where} で減速'
+        return result
+
+    def _stereo_assessment(self, now):
+        """2 眼の距離のいちばん近い物を LiDAR と比べ、低い障害物の減速・停止の判定を作る。"""
+        with self._lock:
+            stereo = self._stereo
+            age = now - self._stereo_stamp if self._stereo_stamp else None
+        result = {
+            'enabled': self.stereo_guard,
+            'ready': False,
+            'level': 'clear',
+            'reason': '',
+            'distance': None,
+            'lidar_distance': None,
+            'low': False,
+            'slow_distance': self.stereo_slow_distance,
+            'stop_distance': self.stereo_stop_distance,
+        }
+        if stereo is None or age is None or age > self.stereo_max_age:
+            result['reason'] = '/stereo/depth_status 未受信'
+            return result
+        if not stereo.get('ok'):
+            result['reason'] = stereo.get('reason') or '測れない'
+            return result
+        result['ready'] = True
+        nearest = stereo.get('nearest')
+        if not nearest or nearest.get('bearing_min_deg') is None:
+            return result
+        distance = nearest['distance_m']
+        lidar = self._distance_for_bearings(
+            math.radians(nearest['bearing_min_deg']), math.radians(nearest['bearing_max_deg']))
+        low = lidar is None or lidar > distance + self.stereo_low_margin
+        result.update({'distance': distance, 'lidar_distance': lidar, 'low': low})
+        if low:
+            where = f'低い障害物 {distance:.2f} m（2 眼）'
+            if distance <= self.stereo_stop_distance:
+                result['level'], result['reason'] = 'stop', f'前方 {where} で停止'
+            elif distance <= self.stereo_slow_distance:
                 result['level'], result['reason'] = 'slow', f'前方 {where} で減速'
         return result
 

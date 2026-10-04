@@ -1559,7 +1559,7 @@ function render(d) {
   renderJetsonHost(d.jetson_host);
   if (d.obstacle && d.obstacle.camera_hfov_deg) stackHfov = d.obstacle.camera_hfov_deg;
   renderCamera(d.camera);
-  renderStereoDepth(d.stereo_depth);
+  renderStereoDepth(d.stereo_depth, d.obstacle && d.obstacle.stereo);
   renderLinks(d);
 }
 
@@ -1751,7 +1751,7 @@ document.getElementById('sd_view').addEventListener('click', () => {
 });
 
 // 2 眼カメラの距離（stereo_depth_node、表示だけ）
-function renderStereoDepth(sd) {
+function renderStereoDepth(sd, judge) {
   const cell = document.getElementById('sd_val');
   if (!sd || !sd.alive) {
     cell.textContent = sd ? '止まっている' : '-';
@@ -1766,12 +1766,18 @@ function renderStereoDepth(sd) {
   const n = sd.nearest;
   const side = n ? (Math.abs(n.lateral_m) < 0.03 ? '正面'
     : `${n.lateral_m > 0 ? '左' : '右'} ${fmt(Math.abs(n.lateral_m), 2)} m`) : '';
+  const mode = judge && judge.enabled ? '' : '（表示のみ）';
+  const verdict = !n || !judge || judge.distance == null ? ''
+    : !judge.low ? ' LiDAR にも見える'
+    : judge.level === 'clear' ? ' 低い物' : ` → ${LEVEL_TEXT[judge.level] || judge.level}${mode}`;
   cell.textContent = n
-    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）`
+    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）${verdict}`
     : `${fmt(sd.max_range_m, 1)} m 以内になし`;
   cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
     `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
-    `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。表示だけ`;
+    `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。` +
+    (judge ? `LiDAR ${fmt(judge.lidar_distance)} m。減速 ${fmt(judge.slow_distance)} m / 停止 ${fmt(judge.stop_distance)} m` +
+      (judge.enabled ? '' : '。stereo_guard が false なので速度制限には使わない') : '');
 }
 
 function renderCamera(cam) {
