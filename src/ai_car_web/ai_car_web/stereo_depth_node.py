@@ -119,7 +119,7 @@ def nearest_obstacle(forward, left, height, valid, center_y, half_width, max_ran
 
 
 def depth_grid(pts, forward, valid, k1, d1, size, cols, rows, max_range, min_points,
-               step=2):
+               step=4):
     """マスごとの前方の距離の中央値 [cm]（左上から行ごと、測れないマスは 0）。
 
     pts は平行化する前の左目の向きの 3D 点なので、K1・D1 で左目の元の画像の位置に戻す。
@@ -168,7 +168,7 @@ class StereoDepthNode(Node):
         self.declare_parameter('grid_cols', 32)
         self.declare_parameter('grid_rows', 18)
         self.declare_parameter('grid_max_range_m', 4.0)
-        self.declare_parameter('grid_min_points', 15)
+        self.declare_parameter('grid_min_points', 6)
         self.declare_parameter('calib_file', os.path.join(DEFAULT_DIR, 'stereo_calib.yaml'))
         self.declare_parameter('num_disparities', 96)
         self.declare_parameter('block_size', 5)
