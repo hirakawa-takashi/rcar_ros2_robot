@@ -363,6 +363,10 @@
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
       <tr><td class="k">低い障害物</td><td class="v" id="o_floor" title="-">-</td></tr>
+      <tr>
+        <td class="k">2眼の距離</td>
+        <td class="v wrap"><span id="sd_val" title="-">-</span> <button id="sd_view">距離の画像</button></td>
+      </tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
       <tr>
@@ -1555,6 +1559,7 @@ function render(d) {
   renderJetsonHost(d.jetson_host);
   if (d.obstacle && d.obstacle.camera_hfov_deg) stackHfov = d.obstacle.camera_hfov_deg;
   renderCamera(d.camera);
+  renderStereoDepth(d.stereo_depth);
   renderLinks(d);
 }
 
@@ -1735,13 +1740,46 @@ function drawDetections(o) {
 }
 
 let camStreaming = false;
+let camDepth = false;
+const camSrc = () => `/api/camera/${camDepth ? 'depth_stream' : 'stream'}?t=${Date.now()}`;
+
+document.getElementById('sd_view').addEventListener('click', () => {
+  camDepth = !camDepth;
+  document.getElementById('sd_view').textContent = camDepth ? 'カメラの映像' : '距離の画像';
+  document.getElementById('cam_overlay').style.display = camDepth ? 'none' : '';
+  if (camStreaming) document.getElementById('cam').src = camSrc();
+});
+
+// 2 眼カメラの距離（stereo_depth_node、表示だけ）
+function renderStereoDepth(sd) {
+  const cell = document.getElementById('sd_val');
+  if (!sd || !sd.alive) {
+    cell.textContent = sd ? '止まっている' : '-';
+    cell.title = 'stereo_depth_node から届いていません';
+    return;
+  }
+  if (!sd.ok) {
+    cell.textContent = sd.reason || '測れない';
+    cell.title = '-';
+    return;
+  }
+  const n = sd.nearest;
+  const side = n ? (Math.abs(n.lateral_m) < 0.03 ? '正面'
+    : `${n.lateral_m > 0 ? '左' : '右'} ${fmt(Math.abs(n.lateral_m), 2)} m`) : '';
+  cell.textContent = n
+    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）`
+    : `${fmt(sd.max_range_m, 1)} m 以内になし`;
+  cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
+    `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
+    `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。表示だけ`;
+}
 
 function renderCamera(cam) {
   if (!cam) return;
   const img = document.getElementById('cam');
   if (cam.available && !camStreaming) {
     camStreaming = true;
-    img.src = `/api/camera/stream?t=${Date.now()}`;
+    img.src = camSrc();
   } else if (!cam.available && camStreaming) {
     camStreaming = false;
     img.removeAttribute('src');
@@ -3102,6 +3140,7 @@ function markTelemetryStale() {
   const title = `ラズパイから ${fmt((Date.now() - lastTelemetryAt) / 1000, 0)} 秒届いていません`;
   for (const id of PI_LINK_IDS) setLink(id, 'crit', '未接続', title);
   document.getElementById('cam_state').innerHTML = '<span class="badge crit">未接続</span>';
+  renderStereoDepth(null);
   setLink('jt_state', '', '不明', 'Jetson の状態はラズパイを通して届くため、今はわかりません');
   setConn(false, 'ラズパイとつながっていません（再接続します）');
 }

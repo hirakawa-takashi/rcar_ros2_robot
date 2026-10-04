@@ -44,6 +44,7 @@ def generate_launch_description():
     use_autonomy = LaunchConfiguration('use_autonomy')
     use_floor = LaunchConfiguration('use_floor')
     use_slam = LaunchConfiguration('use_slam')
+    use_stereo_depth = LaunchConfiguration('use_stereo_depth')
 
     try:
         get_package_share_directory('camera_ros')
@@ -127,6 +128,8 @@ def generate_launch_description():
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
         DeclareLaunchArgument('use_floor', default_value='true',
                               description='カメラで床の上の低い障害物を見つけるノードを起動する'),
+        DeclareLaunchArgument('use_stereo_depth', default_value='true',
+                              description='2 眼カメラで距離を出すノードを起動する（camera_type:=stereo のとき・表示だけ）'),
         DeclareLaunchArgument('use_slam', default_value='false',
                               description='slam_toolbox で地図と自己位置を出す（slam.launch.py）'),
         Node(
@@ -230,6 +233,18 @@ def generate_launch_description():
             respawn_delay=5.0,
             condition=IfCondition(AndSubstitution(
                 use_camera, EqualsSubstitution(camera_type, 'stereo'))),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='stereo_depth_node',
+            name='stereo_depth_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=5.0,
+            condition=IfCondition(AndSubstitution(
+                AndSubstitution(use_camera, use_stereo_depth),
+                EqualsSubstitution(camera_type, 'stereo'))),
         ),
         *camera_nodes,
         *lidar_nodes,

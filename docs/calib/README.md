@@ -37,3 +37,10 @@ ros2 run ai_car_web stereo_calibrate --square-mm 24
 - 平行化後の上下のずれ（`rectified_y_error_px`）: 0.5 px 以下
 - レンズの間隔（`baseline_m`）: 約 0.060 m
 - 広角でゆがみが大きく誤差が下がらないときは `--rational` を付ける
+
+## 距離の計算（stereo_depth_node）
+
+- `stereo_calib.yaml` ができると、`stereo_depth_node` が自動で読む（ファイルが変わると読み直す。再起動はいらない）
+- ダッシュボードのカメラカードの「2眼の距離」に、通り道の中のいちばん近い物の距離が出る。「距離の画像」を押すと、映像が距離の色（近い = 赤、遠い = 青、測れない = 黒）に変わる
+- 「2眼の距離」の行にマウスを乗せると、床の高さ（中央値）が出る。0 m から 2 cm 以上ずれるときは、`dashboard.yaml` の `stereo_depth_node` の `camera_height_m`・`camera_pitch_deg` を合わせる
+- 白い壁・ガラス・真っ暗な所は、左右で同じ所が見つからず測れない（黒くなる）
