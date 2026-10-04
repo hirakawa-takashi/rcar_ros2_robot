@@ -14,6 +14,8 @@ import struct
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.request
 import zlib
 from collections import deque
 
@@ -126,6 +128,8 @@ class JetsonStatusRequest(BaseModel):
 JETSON_STATUS_TIMEOUT = 5.0
 JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
+FACE_ID_PORT = 8090
+FACE_ID_TIMEOUT = 2.0
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
@@ -247,6 +251,8 @@ class DashboardNode(Node):
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('slam_pose_topic', '/pose')
         self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
+        # スタックちゃんのカードに出す顔の見分け（Jetson の face_id）。空なら Jetson が送ってくる IP アドレスの 8090
+        self.declare_parameter('face_id_url', '')
         # 2 眼カメラのキャリブレーション用の撮影（stereo_camera_node）
         self.declare_parameter('calib_capture_service', '/stereo_camera_node/capture_calib')
         # 地図の保存先（空なら ~/maps）
@@ -265,6 +271,7 @@ class DashboardNode(Node):
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
         self.api_token = str(self.get_parameter('api_token').value) or os.environ.get(
             'AI_CAR_API_TOKEN', '')
+        self.face_id_url = str(self.get_parameter('face_id_url').value).rstrip('/')
         self.gpio_config = self.get_parameter('gpio_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'gpio_pins.yaml')
         self.motor_hat_config = self.get_parameter('motor_hat_config').value or os.path.join(
@@ -803,6 +810,31 @@ class DashboardNode(Node):
         self.get_logger().warn('ダッシュボードから Jetson の再起動を受け付けました')
         return {'ok': True}
 
+    def _face_id_base(self):
+        """Jetson の face_id の URL（face_id_url か、Jetson が送ってくる IP アドレス。Tailscale を先に）。"""
+        if self.face_id_url:
+            return self.face_id_url
+        with self._lock:
+            state = self._jetson_host_state()
+        ips = [ip for ip in (state or {}).get('ips') or [] if ip.get('addr')]
+        ips.sort(key=lambda ip: ip.get('iface') != 'tailscale0')
+        return f"http://{ips[0]['addr']}:{FACE_ID_PORT}" if ips else ''
+
+    def face_id_get(self, path):
+        """Jetson の face_id へ GET して、中身と Content-Type を返す（スタックちゃんのカード用、表示だけ）。"""
+        base = self._face_id_base()
+        if not base:
+            raise HTTPException(status_code=503, detail='Jetson の IP アドレスがまだ届いていません')
+        headers = {'X-API-Token': self.api_token} if self.api_token else {}
+        try:
+            with urllib.request.urlopen(urllib.request.Request(base + path, headers=headers),
+                                        timeout=FACE_ID_TIMEOUT) as res:
+                return res.read(), res.headers.get('Content-Type', '')
+        except urllib.error.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f'Jetson の顔の見分けが {exc.code} を返しました')
+        except (urllib.error.URLError, OSError):
+            raise HTTPException(status_code=503, detail='Jetson の顔の見分け（face_id）につながりません')
+
     def request_jetson_poweroff(self):
         """次に Jetson から状態が届いたときの返事で、電源を切ることを頼む。"""
         with self._lock:
@@ -1130,6 +1162,19 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/camera/calib_capture', dependencies=[Depends(require_token)])
     def calib_capture():
         return node.capture_calib()
+
+    @app.get('/api/stackchan/face', dependencies=[Depends(require_token)])
+    def stackchan_face():
+        body, _ = node.face_id_get('/api/face/status')
+        try:
+            return json.loads(body)
+        except ValueError:
+            raise HTTPException(status_code=502, detail='Jetson の顔の見分けの返事を読めません')
+
+    @app.get('/api/stackchan/frame.jpg', dependencies=[Depends(require_token)])
+    def stackchan_frame():
+        body, ctype = node.face_id_get('/api/face/frame.jpg')
+        return Response(content=body, media_type=ctype or 'image/jpeg', headers={'Cache-Control': 'no-store'})
 
     @app.get('/api/camera/snapshot')
     def snapshot():

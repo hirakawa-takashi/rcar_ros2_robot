@@ -67,6 +67,8 @@
   .jcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
   @media (min-width: 900px) { .card.wide .jcols { grid-template-columns: repeat(2, 1fr); } }
   .osline { font-size: 12px; margin: -4px 0 10px; color: #9fb0c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scface { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 10px; display: block; }
+  .scsay { min-height: 1.5em; margin-top: 6px; text-align: center; font-size: 13px; color: #bfe9ff; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
               border-radius: 8px; margin-bottom: 10px; }
@@ -484,6 +486,35 @@
       </div>
     </div>
     <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
+  </div>
+
+  <div class="card wide">
+    <h2>M5 スタックちゃん（CoreS3） <span class="badge" id="sc_state">-</span></h2>
+    <div class="osline" title="スタックちゃんが届いたら、そのカメラに替える">机の上に置き、Jetson と Wi-Fi でつなぐ予定。今は AI-CAR の 2 眼カメラ（左目）で代わりに見る</div>
+    <div class="jcols">
+      <div>
+        <h3>顔（画面）</h3>
+        <svg class="scface" id="sc_face" viewBox="0 0 320 240" role="img" aria-label="スタックちゃんの顔"></svg>
+        <div class="scsay" id="sc_say">-</div>
+      </div>
+      <div>
+        <h3>カメラ（臨時: 2 眼カメラの左目）</h3>
+        <div class="camwrap">
+          <img class="cam" id="sc_cam" alt="スタックちゃんのカメラ（臨時）">
+          <canvas class="cam_overlay" id="sc_overlay" width="640" height="480"></canvas>
+        </div>
+      </div>
+    </div>
+    <table>
+      <tr><td class="k">本体</td><td class="v"><span class="badge warn">まだ届いていない</span></td></tr>
+      <tr><td class="k">見えている顔</td><td class="v" id="sc_faces">-</td></tr>
+      <tr><td class="k">だれ</td><td class="v wrap" id="sc_who" title="近さ（cos）がしきい値以上なら、その人">-</td></tr>
+      <tr><td class="k">首の向き（目安）</td><td class="v" id="sc_pan" title="顔のほうを向くときの首の角度（スタックちゃんから見て）。カメラの画角から計算した目安">-</td></tr>
+      <tr><td class="k">登録している人</td><td class="v wrap" id="sc_people">-</td></tr>
+      <tr><td class="k">顔の見分け</td><td class="v" id="sc_engine" title="Jetson の face_id（YuNet + SFace、CPU）">-</td></tr>
+      <tr><td class="k">マイク・スピーカー</td><td class="v"><span class="badge">つないでいない（予定）</span></td></tr>
+    </table>
+    <div class="note">このカードを見ているあいだだけ、Jetson が 2 眼カメラの画像で顔を見分ける（API トークンが必要）。顔の画像は保存しない。表示だけで、AI-CAR の走行・安全には使わない。</div>
   </div>
 
   <div class="stack">
@@ -1279,6 +1310,112 @@ function renderObstacle(o) {
 let latestTelemetry = {};
 
 // Jetson（jetson/status_reporter）が 1 秒ごとに送る状態。5 秒以上届かないと未接続
+const scId = id => document.getElementById(id);
+let stackHfov = 120;
+let stackFrameUrl = null;
+let stackBusy = false;
+
+function stackFace(mood, dx, dy) {
+  const ex = [100 + dx, 220 + dx], ey = 100 + dy;
+  const color = mood === 'off' ? '#555' : '#fff';
+  const line = d => `<path d="${d}" stroke="${color}" stroke-width="8" fill="none" stroke-linecap="round"/>`;
+  const eyes = ex.map(x => mood === 'sleep' ? line(`M${x - 16} ${ey} H${x + 16}`)
+    : mood === 'happy' ? line(`M${x - 16} ${ey + 6} Q${x} ${ey - 18} ${x + 16} ${ey + 6}`)
+      : `<circle cx="${x}" cy="${ey}" r="16" fill="${color}"/>`).join('');
+  const mx = 160 + dx * 0.5, my = 170 + dy * 0.5;
+  const mouth = mood === 'happy' ? line(`M${mx - 30} ${my} Q${mx} ${my + 26} ${mx + 30} ${my}`)
+    : mood === 'sleep' ? line(`M${mx - 10} ${my} H${mx + 10}`)
+      : line(`M${mx - 26} ${my} H${mx + 26}`);
+  scId('sc_face').innerHTML = eyes + mouth;
+}
+
+function renderStackchan(r, err) {
+  const latest = (r && r.latest) || {};
+  const faces = latest.faces || [];
+  const fresh = Boolean(r && latest.stamp && Date.now() / 1000 - latest.stamp < 5);
+  const state = scId('sc_state');
+  state.className = 'badge' + (r ? (fresh ? ' ok' : ' warn') : '');
+  state.textContent = r ? (fresh ? '代わりのカメラで動作中' : '画像を待っています') : '止まっています';
+  const known = faces.find(f => f.name);
+  const main = known || faces.slice().sort((a, b) => b.width_px - a.width_px)[0];
+  let mood = 'off', dx = 0, dy = 0, say = err || '-', pan = '-';
+  if (r && !fresh) {
+    mood = 'sleep';
+    say = latest.note || 'カメラの画像を待っています';
+  } else if (r && main) {
+    const cx = (main.box[0] + main.box[2]) / 2, cy = (main.box[1] + main.box[3]) / 2;
+    dx = Math.max(-40, Math.min(40, (0.5 - cx) * 80));
+    dy = Math.max(-20, Math.min(20, (cy - 0.5) * 40));
+    mood = known ? 'happy' : 'normal';
+    say = known ? `${known.name}さん、こんにちは！` : 'はじめまして。だれかな？';
+    const half = stackHfov / 2 * Math.PI / 180;
+    const deg = Math.atan((cx - 0.5) * 2 * Math.tan(half)) * 180 / Math.PI;
+    pan = Math.abs(deg) < 3 ? 'まっすぐ' : `${deg > 0 ? '右' : '左'}へ ${fmt(Math.abs(deg), 0)}°`;
+  } else if (r) {
+    mood = 'sleep';
+    say = '（だれもいない…）';
+  }
+  stackFace(mood, dx, dy);
+  scId('sc_say').textContent = say;
+  scId('sc_pan').textContent = pan;
+  scId('sc_faces').textContent = fresh ? `${faces.length} 人` : '-';
+  scId('sc_who').innerHTML = !fresh || !faces.length ? '-'
+    : faces.map(f => `<span class="nw">${f.name ? `${esc(f.name)}（${fmt(f.similarity, 2)}）`
+      : `知らない人${f.nearest ? `（${esc(f.nearest)} に ${fmt(f.similarity, 2)}）` : ''}`}</span>`).join(' ');
+  const people = (r && r.people) || [];
+  scId('sc_people').innerHTML = !r ? '-' : people.length
+    ? people.map(p => `<span class="nw">${esc(p.name)}（${p.samples} 枚）</span>`).join(' ') : 'まだいない';
+  scId('sc_engine').innerHTML = r
+    ? `${badge('ok', '稼働中')}${latest.elapsed_ms != null ? ` 1 回 ${fmt(latest.elapsed_ms, 0)} ms` : ''}`
+    : badge('warn', '未接続');
+  const canvas = scId('sc_overlay');
+  if (latest.size) {
+    const ratio = `${latest.size[0]} / ${latest.size[1]}`;
+    scId('sc_cam').style.aspectRatio = ratio;
+    canvas.style.aspectRatio = ratio;
+    if (canvas.width !== latest.size[0]) {
+      canvas.width = latest.size[0];
+      canvas.height = latest.size[1];
+    }
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!fresh) return;
+  ctx.lineWidth = Math.max(2, canvas.width / 240);
+  ctx.font = `${Math.round(canvas.width / 30)}px sans-serif`;
+  for (const f of faces) {
+    const [x0, y0, x1, y1] = [f.box[0] * canvas.width, f.box[1] * canvas.height,
+      f.box[2] * canvas.width, f.box[3] * canvas.height];
+    ctx.strokeStyle = ctx.fillStyle = f.name ? '#35e39a' : '#f5b942';
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.fillText(f.name || '知らない人', x0, Math.max(14, y0 - 6));
+  }
+}
+
+function pollStackchan() {
+  if (stackBusy || document.visibilityState !== 'visible') return;
+  stackBusy = true;
+  fetch('/api/stackchan/face', {headers: authHeaders()})
+    .then(r => r.json().then(j => [r, j]))
+    .then(([r, j]) => {
+      if (!r.ok) {
+        renderStackchan(null, r.status === 401 ? 'API トークンを入れると見られます' : (j.detail || '見分けの返事がありません'));
+        return null;
+      }
+      renderStackchan(j);
+      return fetch('/api/stackchan/frame.jpg', {headers: authHeaders()})
+        .then(f => f.ok ? f.blob() : null)
+        .then(b => {
+          if (!b) return;
+          if (stackFrameUrl) URL.revokeObjectURL(stackFrameUrl);
+          stackFrameUrl = URL.createObjectURL(b);
+          scId('sc_cam').src = stackFrameUrl;
+        });
+    })
+    .catch(() => renderStackchan(null, 'ダッシュボードにつながりません'))
+    .finally(() => { stackBusy = false; });
+}
+
 function renderJetsonHost(j) {
   const byId = id => document.getElementById(id);
   const alive = !!(j && j.alive);
@@ -1414,6 +1551,7 @@ function render(d) {
   renderSlam(d.slam);
   renderSystem(d.system);
   renderJetsonHost(d.jetson_host);
+  if (d.obstacle && d.obstacle.camera_hfov_deg) stackHfov = d.obstacle.camera_hfov_deg;
   renderCamera(d.camera);
   renderLinks(d);
 }
@@ -1717,6 +1855,9 @@ function loadGpio() {
 loadGpio();
 // 配線表は静的情報のため 30 秒ごとの再取得に留める
 setInterval(loadGpio, 30000);
+stackFace('off', 0, 0);
+pollStackchan();
+setInterval(pollStackchan, 1000);
 
 // ---- Motor HAT 接続図 ----
 function wireHex(c, fallback) {
