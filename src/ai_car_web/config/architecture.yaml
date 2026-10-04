@@ -379,7 +379,7 @@ nodes:
     file: ai_car_web/perception_node.py
     role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
-    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /floor_obstacle_status, /jetson_detections]
+    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /floor_obstacle_status, /stereo/depth_status, /jetson_detections]
     params:
       - {name: stop_distance, ref: perception_node.stop_distance, unit: m, desc: 停止判定}
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
@@ -391,6 +391,10 @@ nodes:
       - {name: floor_slow_distance, ref: perception_node.floor_slow_distance, unit: m, desc: 低い障害物がこの距離以内で減速}
       - {name: floor_stop_distance, ref: perception_node.floor_stop_distance, unit: m, desc: 低い障害物がこの距離以内で停止}
       - {name: floor_low_margin, ref: perception_node.floor_low_margin, unit: m, desc: LiDAR の距離がカメラよりこれ以上遠ければ低い物}
+      - {name: stereo_guard, ref: perception_node.stereo_guard, unit: '', desc: 2 眼の距離で見つけた低い障害物で減速・停止する（false は表示のみ）}
+      - {name: stereo_slow_distance, ref: perception_node.stereo_slow_distance, unit: m, desc: 2 眼で見つけた低い障害物がこの距離以内で減速}
+      - {name: stereo_stop_distance, ref: perception_node.stereo_stop_distance, unit: m, desc: 2 眼で見つけた低い障害物がこの距離以内で停止}
+      - {name: stereo_low_margin, ref: perception_node.stereo_low_margin, unit: m, desc: LiDAR の距離が 2 眼よりこれ以上遠ければ低い物}
       - {name: inference_rate, ref: perception_node.inference_rate, unit: Hz, desc: 推論レート上限}
       - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
       - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
@@ -453,7 +457,7 @@ nodes:
   - id: stereo_depth_node
     label: stereo_depth_node
     file: ai_car_web/stereo_depth_node.py
-    role: 2 眼カメラの左右（/stereo/pair_gray）を stereo_calib.yaml で平行にそろえ、SGBM（視差 0〜64 px）で距離にする。カメラの高さ・向きで床からの高さを出し、通り道の中で床より 4〜60 cm 高い点のいちばん近い距離を /stereo/depth_status に、距離の色の画像を /stereo/depth/compressed に出す。表示だけ（走る・止まるの判断には使わない）。use_stereo_depth（既定 true）と camera_type:=stereo のとき起動
+    role: 2 眼カメラの左右（/stereo/pair_gray）を stereo_calib.yaml で平行にそろえ、SGBM（視差 0〜64 px）で距離にする。カメラの高さ・向きで床からの高さを出し、通り道の中で床より 4〜60 cm 高い点のいちばん近い距離を /stereo/depth_status に、距離の色の画像を /stereo/depth/compressed に出す。perception_node が LiDAR と比べて低い障害物の判定を作る（stereo_guard が false の間は表示だけ）。use_stereo_depth（既定 true）と camera_type:=stereo のとき起動
     publishes: [/stereo/depth_status, /stereo/depth/compressed]
     subscribes: [/stereo/pair_gray]
     params:
@@ -518,7 +522,7 @@ topics:
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
   - {name: /stereo/pair_gray, type: sensor_msgs/Image (mono8), desc: 2 眼カメラの左右を片目 640×360 の白黒にして横に並べた画像（3 Hz、受けるノードがいるときだけ）}
-  - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 2 眼の距離（通り道の中のいちばん近い物の距離・左右・高さ、測れた画素の割合、処理時間）。表示のみ}
+  - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 2 眼の距離（通り道の中のいちばん近い物の距離・左右・高さ・方位、測れた画素の割合、処理時間）。perception_node が低い障害物の判定に使う（stereo_guard が false の間は表示のみ）}
   - {name: /stereo/depth/compressed, type: sensor_msgs/CompressedImage, desc: 2 眼の距離の色の画像（近い = 赤、遠い = 青、測れない = 黒）}
   - {name: /floor_obstacle_status, type: std_msgs/String (JSON), desc: カメラの床の検出（床の上の物の足元の距離・画面の位置、5 Hz）}
   - {name: /jetson_detections, type: std_msgs/String (JSON), desc: Jetson（NanoOWL）の物体検出（名前・信頼度・画面の位置）。POST /api/jetson/detections から dashboard_node が流す。表示のみ}

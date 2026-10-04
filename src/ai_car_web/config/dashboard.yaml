@@ -220,6 +220,14 @@ perception_node:
     floor_stop_distance: 0.45
     floor_low_margin: 0.15
     floor_max_age: 1.0
+    # 2 眼カメラの距離（stereo_depth_node）で見つけた低い障害物。false の間は判定を表示するだけ
+    stereo_topic: "/stereo/depth_status"
+    stereo_guard: false
+    stereo_slow_distance: 0.8
+    stereo_stop_distance: 0.45
+    stereo_low_margin: 0.15
+    # stereo_depth_node は約 3 回/秒なので、床の検出（1.0 s）より長め
+    stereo_max_age: 1.5
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0

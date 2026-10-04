@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- `perception_node` が 2 眼の距離（`/stereo/depth_status`）のいちばん近い物を、同じ方位の LiDAR の距離と比べる。LiDAR がそれより `stereo_low_margin` 0.15 m 以上遠い（または無い）と「低い障害物」とし、0.8 m で減速・0.45 m で停止と判定して `/obstacle_status` の `stereo` に出す。`stereo_guard: true` のときだけ `level`・`speed_scale` に反映する（既定は `false` で表示のみ）。`stereo_depth_node` は方位（`bearing_min_deg`・`bearing_max_deg`）も出す。ダッシュボードの「2眼の距離」の行に判定を出す
 - 2 眼カメラで距離を出す `stereo_depth_node`（表示だけ）。`stereo_calib.yaml` で左右を平行にそろえ、SGBM で距離にして、通り道の中で床より 4 cm 以上高い物のいちばん近い距離を `/stereo/depth_status` に出す。`stereo_camera_node` は受けるノードがいるときだけ、左右を 640×360 の白黒にして `/stereo/pair_gray` に 3 Hz で出す（今の `/camera/image_raw/compressed` はそのまま）。ダッシュボードのカメラカードに「2眼の距離」の行と、映像を距離の色に切り替える「距離の画像」ボタン（`GET /api/camera/depth_stream`）を追加。launch に `use_stereo_depth`（既定 true）。走る・止まるの判断には使わない
 
 ### Fixed
