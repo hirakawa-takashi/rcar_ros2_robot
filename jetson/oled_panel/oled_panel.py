@@ -2,7 +2,8 @@
 """Yahboom CUBE ケースの横の OLED（SSD1306 128x32、I2C 7 番 0x3C）に Jetson の状態を出す。
 
 大きな文字の 2 行で、CPU/GPU → メモリ/SSD → IP アドレスの画面を 3 秒ごとに切り替える。
-ケースの RGB の光（同じ I2C の 0x0E）は、ふだんは虹色、CPU が熱いときは赤の呼吸にする。
+ケースの RGB の光（同じ I2C の 0x0E）は、AI の負荷（GPU の負荷率の 5 秒平均）で呼吸の色と速さを変える。
+CPU が熱いときは負荷にかかわらず赤の速い呼吸にする。
 標準ライブラリと Pillow（JetPack の /usr/bin/python3 に入っている）だけで動く。
 """
 import fcntl
@@ -11,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections import deque
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -26,7 +28,10 @@ FONT_SIZE = 14
 PAGE_SEC = 3
 HOT_C = float(os.environ.get('OLED_HOT_C', '70'))
 RGB_EFFECT, RGB_SPEED, RGB_COLOR = 0x04, 0x05, 0x06
-RAINBOW, BREATHING, RED = 3, 1, 0
+BREATHING, RED = 1, 0
+# (GPU の負荷率の下限 %, 色, 速さ): 色 0 赤・1 緑・2 青・3 黄、速さ 1 低速〜3 高速
+LOAD_LEVELS = ((70, RED, 3), (40, 3, 2), (10, 1, 2), (0, 2, 1))
+LOAD_AVG_SEC = 5
 GPU_LOAD = '/sys/devices/platform/bus@0/17000000.gpu/load'
 IF_NAMES = (('tailscale', 'Tailscale'), ('wl', 'Wi-Fi'), ('en', 'LAN'), ('eth', 'LAN'))
 
@@ -69,19 +74,25 @@ class Oled(I2cDevice):
 class CaseRgb(I2cDevice):
     def __init__(self, bus):
         super().__init__(bus, CASE_ADDR)
-        self.hot = None
+        self.state = None
 
-    def update(self, hot):
-        if hot == self.hot:
+    def update(self, color, speed):
+        if (color, speed) == self.state:
             return
-        if hot:
-            self.write([RGB_COLOR, RED])
-            self.write([RGB_SPEED, 3])
-            self.write([RGB_EFFECT, BREATHING])
-        else:
-            self.write([RGB_SPEED, 2])
-            self.write([RGB_EFFECT, RAINBOW])
-        self.hot = hot
+        self.write([RGB_COLOR, color])
+        self.write([RGB_SPEED, speed])
+        self.write([RGB_EFFECT, BREATHING])
+        self.state = (color, speed)
+        print(f'RGB: 色 {color}・速さ {speed}', flush=True)
+
+
+def light_for(gpu_avg, cpu_c):
+    if cpu_c is not None and cpu_c >= HOT_C:
+        return RED, 3
+    for low, color, speed in LOAD_LEVELS:
+        if gpu_avg >= low:
+            return color, speed
+    return LOAD_LEVELS[-1][1:]
 
 
 def cpu_times():
@@ -202,6 +213,7 @@ def main():
         font = ImageFont.load_default()
     last = cpu_times()
     ips, ips_at, tick = [], 0.0, 0
+    gpu_hist = deque(maxlen=LOAD_AVG_SEC)
     while True:
         time.sleep(1.0)
         now = cpu_times()
@@ -211,13 +223,17 @@ def main():
         if time.monotonic() - ips_at > 30:
             ips, ips_at = ip_addrs(), time.monotonic()
         cpu_c = thermal('cpu-thermal')
-        all_pages = list(pages(cpu, cpu_c, gpu_load(), thermal('gpu-thermal'),
+        gpu = gpu_load()
+        if gpu is not None:
+            gpu_hist.append(gpu)
+        gpu_avg = sum(gpu_hist) / len(gpu_hist) if gpu_hist else 0.0
+        all_pages = list(pages(cpu, cpu_c, gpu, thermal('gpu-thermal'),
                                mem_gib(), disk_gb(), ips))
         page = all_pages[(tick // PAGE_SEC) % len(all_pages)]
         tick += 1
         try:
             if rgb is not None:
-                rgb.update(cpu_c is not None and cpu_c >= HOT_C)
+                rgb.update(*light_for(gpu_avg, cpu_c))
             oled.show(render(page, font))
         except OSError as e:
             print(f'I2C に書けません: {e}', file=sys.stderr, flush=True)
@@ -225,7 +241,7 @@ def main():
             try:
                 oled = Oled(I2C_BUS)
                 if rgb is not None:
-                    rgb.hot = None
+                    rgb.state = None
             except OSError:
                 pass
 
