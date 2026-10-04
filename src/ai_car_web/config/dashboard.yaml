@@ -309,6 +309,9 @@ stereo_depth_node:
     near_objects_max: 5
     # 横幅 2 cm より細いまとまりは出さない（窓わくの細い線を 0.19 m の物とまちがえた）
     near_objects_min_width_m: 0.02
+    # 明るさの変わり方（左の目の Sobel の |横|+|縦| の平均）が 40 より小さいまとまりは出さない
+    # （もようのない床が 0.14 m の物になった。そのときの値は 14〜22、のりの棒・入れ物は 110〜150）
+    near_objects_min_texture: 40.0
     min_points: 10
     # 距離の色の画像: 0.2 m が赤、3 m より遠いと青
     display_near_m: 0.2
