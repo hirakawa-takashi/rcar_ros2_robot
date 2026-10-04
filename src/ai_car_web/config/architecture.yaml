@@ -352,7 +352,7 @@ nodes:
       - {name: joy_timeout, ref: drive_mode_node.joy_timeout, unit: s, desc: ゲームパッド未接続判定}
       - {name: auto_requires_joy, ref: drive_mode_node.auto_requires_joy, unit: '', desc: AUTO にゲームパッド接続を必須にする}
       - {name: manual_override, ref: drive_mode_node.manual_override, unit: '', desc: AUTO 中の手動指令で MANUAL へ復帰}
-      - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: stop 判定中は前進を 0 にする}
+      - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: stop / LiDAR データなし（unknown）/ 判定の途絶中は前進を 0 にする}
       - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にし、AUTO は STOP}
       - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 段差判定が古ければ使わない（配線済みなら AUTO を拒否 / STOP）}
     layer: control
@@ -409,6 +409,17 @@ nodes:
     publishes: [/scan]
     subscribes: []
     params: []
+    layer: sensor
+  - id: lidar_watchdog_node
+    label: lidar_watchdog_node
+    file: ai_car_web/lidar_watchdog_node.py
+    role: /scan が途絶えたら rplidar を終了させ、launch の respawn で起動し直させる（USB の抜き差し対策）
+    publishes: []
+    subscribes: [/scan]
+    params:
+      - {name: scan_timeout, ref: lidar_watchdog_node.scan_timeout, unit: s, desc: この秒数 /scan が来ないと rplidar を起動し直す}
+      - {name: startup_grace, ref: lidar_watchdog_node.startup_grace, unit: s, desc: 起動直後と起動し直した後に待つ秒数}
+      - {name: kill_wait, ref: lidar_watchdog_node.kill_wait, unit: s, desc: SIGTERM で終わらなければ SIGKILL を送るまでの秒数}
     layer: sensor
   - id: stereo_camera_node
     label: stereo_camera_node

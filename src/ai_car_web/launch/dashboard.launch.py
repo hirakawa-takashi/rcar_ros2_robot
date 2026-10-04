@@ -83,6 +83,16 @@ def generate_launch_description():
             respawn_delay=5.0,
             condition=IfCondition(use_lidar),
         ),
+        Node(
+            package='ai_car_web',
+            executable='lidar_watchdog_node',
+            name='lidar_watchdog_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_lidar),
+        ),
     ] if lidar_available else []
 
     try:
