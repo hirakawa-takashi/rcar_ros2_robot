@@ -56,8 +56,8 @@ function clear_d(m) = m + 0.4;
 function head_d(m) = m == 2 ? 4.4 : m == 2.5 ? 5.2 : 6.2;
 
 // 入口を z = 0 とし、-Z 方向へ depth の深さのねじ込み穴（入口に面取り）
-module screw_hole(m, depth) {
-    d = nut_hole_d(m);
+module screw_hole(m, depth, d = undef) {
+    d = is_undef(d) ? nut_hole_d(m) : d;
     translate([0, 0, -depth]) cylinder(d = d, h = depth + 0.01);
     translate([0, 0, -0.6]) cylinder(d1 = d, d2 = d + 1.2, h = 0.61);
     cylinder(d = d + 1.2, h = 1);
@@ -134,6 +134,7 @@ scam_usb_room = 15;           // 基板の上端から LiDAR のモーターの�
 scam_mnt_t = 2.5;             // 板の厚さ
 scam_so = scam_back_h + 0.5;  // 板から基板の裏までの支柱の長さ
 scam_so_d = 4.6;              // 支柱の太さ
+scam_hole_d = 2.5;            // 支柱と板の M2 の下穴（1.7 では印刷で約 0.5 mm につぶれたため）
 scam_ear_w = 8;               // 板の左右の耳（ふたの柱に M3 で留める）の幅
 scam_lpost_d = 6;             // ふたの柱の奥行き
 scam_slot_clr = 1.5;          // カバーの窓とレンズのすき間（片側）
@@ -391,7 +392,7 @@ module cam_mount() {
             for (x = scam_ear_x) translate([x, scam_mnt_y0, zb]) cube([scam_ear_w, scam_mnt_t, scam_ear_top - zb]);
             for (h = scam_holes) translate([h[0], y1 - 0.01, h[1]]) rotate([-90, 0, 0]) cylinder(d = scam_so_d, h = scam_so + 0.01);
         }
-        for (h = scam_holes) translate([h[0], scam_back_y, h[1]]) rotate([-90, 0, 0]) screw_hole(2, scam_so + scam_mnt_t + 1);
+        for (h = scam_holes) translate([h[0], scam_back_y, h[1]]) rotate([-90, 0, 0]) screw_hole(2, scam_so + scam_mnt_t + 1, scam_hole_d);
         for (x = scam_ear_x) translate([x + scam_ear_w / 2, scam_mnt_y0, scam_ear_scr_z]) rotate([-90, 0, 0]) clear_hole(3, scam_mnt_t);
     }
 }
