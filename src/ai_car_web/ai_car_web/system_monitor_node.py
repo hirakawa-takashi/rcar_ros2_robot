@@ -9,6 +9,7 @@ import ctypes
 import glob
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -187,6 +188,11 @@ class _UpdateFacts:
             return dict(self.facts)
 
 
+def _os_name():
+    m = re.search(r'^PRETTY_NAME="?([^"\n]+)', _read_text('/etc/os-release') or '', re.M)
+    return m.group(1) if m else ''
+
+
 def _last_upgrade():
     try:
         return round(os.path.getmtime('/var/lib/apt/periodic/unattended-upgrades-stamp'))
@@ -221,6 +227,8 @@ class SystemMonitorNode(Node):
         self._ips = []
         self._ips_stamp = 0.0
         self._update_facts = _UpdateFacts(float(self.get_parameter('update_check_interval').value))
+        self._os = _os_name()
+        self._kernel = platform.release()
         self._upgrade = {'upgrade_running': None, 'upgrade_result': ''}
         self._upgrade_stamp = 0.0
         self.create_timer(1.0 / max(rate, 0.1), self._publish_cb)
@@ -451,6 +459,8 @@ class SystemMonitorNode(Node):
         now = self.get_clock().now().nanoseconds * 1e-9
         payload = {
             'stamp': round(self.get_clock().now().nanoseconds * 1e-9, 3),
+            'os': self._os,
+            'kernel': self._kernel,
             'uptime_s': int(psutil.boot_time() and
                             (self.get_clock().now().nanoseconds * 1e-9 - psutil.boot_time())),
             'cpu': self._cpu(),

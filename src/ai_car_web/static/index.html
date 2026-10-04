@@ -66,6 +66,7 @@
   .card.full { grid-column: 1 / -1; }
   .jcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
   @media (min-width: 900px) { .card.wide .jcols { grid-template-columns: repeat(2, 1fr); } }
+  .osline { font-size: 12px; margin: -4px 0 10px; color: #9fb0c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
               border-radius: 8px; margin-bottom: 10px; }
@@ -378,6 +379,7 @@
 
   <div class="card">
     <h2>Raspberry Pi 5 — CPU <span class="badge" id="pi_link">-</span></h2>
+    <div class="osline" id="pi_os">-</div>
     <div class="barrow">
       <span class="k">温度</span>
       <span class="bar"><span id="cpu_temp_bar"></span></span>
@@ -407,6 +409,7 @@
 
   <div class="card wide">
     <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span></h2>
+    <div class="osline" id="jt_os">-</div>
     <div class="jcols">
       <div>
         <h3>温度・使用率</h3>
@@ -860,6 +863,9 @@ function renderUpdates(u, prefix) {
 function renderSystem(s) {
   if (!s) return;
   renderIps(document.getElementById('pi_ips'), s.ips);
+  const piOs = document.getElementById('pi_os');
+  piOs.textContent = s.os || '-';
+  piOs.title = s.kernel ? `カーネル ${s.kernel}` : '';
   const u = s.updates || {};
   renderUpdates(u, 'pi_');
   document.getElementById('pi_reboot_req').innerHTML = u.reboot_required == null ? '-'
@@ -1234,6 +1240,8 @@ function renderJetsonHost(j) {
   byId('jt_disk').textContent = v.disk_total_gb == null ? '-' : `${fmt(v.disk_used_gb, 0)} / ${fmt(v.disk_total_gb, 0)}`;
   byId('jt_l4t').textContent = v.l4t || '-';
   byId('jt_l4t').title = v.os || '';
+  byId('jt_os').textContent = v.os || '-';
+  byId('jt_os').title = v.l4t ? `L4T ${v.l4t}` : '';
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
 }
