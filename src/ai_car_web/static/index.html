@@ -414,7 +414,7 @@
       <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
       <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
       <tr><td class="k">電源状態</td><td class="v" id="pwr_state">-</td></tr>
-      <tr><td class="k">PD対応（5A）</td><td class="v" id="pwr_pd">-</td></tr>
+      <tr><td class="k">電源の電流上限 [A]</td><td class="v" id="pwr_supply" title="ラズパイが電源とやりとりして決めた上限（5 A 未満は橙）">-</td></tr>
       <tr><td class="k">IP アドレス</td><td class="v wrap" id="pi_ips">-</td></tr>
       <tr><td class="k">セキュリティ更新</td><td class="v" id="pi_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
       <tr><td class="k">再起動</td><td class="v" id="pi_reboot_req">-</td></tr>
@@ -866,7 +866,7 @@ function setLoadBar(bar, label, percent, digits = 0) {
   label.textContent = `${fmt(percent, digits)} %`;
 }
 
-// ラズパイの電池の電圧低下は LiDAR などが急に止まる原因になるので、いちばん上に出す
+// ラズパイの 5V の不足は LiDAR などが急に止まる原因になるので、いちばん上に出す
 function renderPowerAlert(p) {
   const el = document.getElementById('power_alert');
   const uv = p && p.under_voltage;
@@ -877,13 +877,20 @@ function renderPowerAlert(p) {
   }
   if (uv.now) {
     el.className = 'badge crit';
-    el.textContent = 'ラズパイの電池の電圧が下がっています（充電・交換してください）';
-  } else {
-    const t = uv.last ? new Date(uv.last * 1000) : null;
-    const last = t ? `、最後 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
-    const count = uv.count > 0 ? ` ${uv.count} 回${last}` : '';
+    el.textContent = 'ラズパイの 5V が足りません（電源の力不足）';
+    el.style.display = '';
+    return;
+  }
+  const t = uv.last ? new Date(uv.last * 1000) : null;
+  const last = t ? `、最後 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
+  const total = uv.count > 0 ? `起動後 ${uv.count} 回${last}` : '起動後にあり';
+  const recent = uv.recent_10min || 0;
+  if (recent > 0) {
     el.className = 'badge warn';
-    el.textContent = `ラズパイの電池の電圧が下がりました（起動後${count}）。電池の残りを見てください`;
+    el.textContent = `ラズパイの 5V が足りなくなりました（直近 10 分 ${recent} 回、${total}）。電源・ケーブルの力不足です`;
+  } else {
+    el.className = 'badge';
+    el.textContent = `ラズパイの 5V の不足: 直近 10 分は 0 回（${total}）`;
   }
   el.style.display = '';
 }
@@ -1025,9 +1032,10 @@ function renderSystem(s) {
   document.getElementById('pwr_total').textContent = p ? fmt(p.total_w, 2) : '-';
   document.getElementById('pwr_input').textContent = p ? fmt(p.input_volt, 2) : '-';
   document.getElementById('pwr_amp').textContent = p ? fmt(p.input_amp, 2) : '-';
-  const pd = p ? p.pd_5a : null;
-  document.getElementById('pwr_pd').textContent =
-    pd === true ? '〇' : pd === false ? '×' : '-';
+  const sup = p && p.supply;
+  document.getElementById('pwr_supply').innerHTML = sup && sup.max_a != null
+    ? `<span class="badge ${sup.max_a >= 5 ? 'ok' : 'warn'}">${fmt(sup.max_a, 1)}</span> PD ${sup.pd ? 'あり' : 'なし'}`
+    : '-';
   renderThrottled(p && p.throttled);
   renderPowerAlert(p);
 
@@ -3208,7 +3216,7 @@ function connect() {
   };
 }
 const PI_VALUE_IDS = ['pi_os', 'cpu_pct', 'cpu_freq', 'cpu_fan', 'mem', 'swap', 'pwr_total', 'pwr_input',
-                     'pwr_amp', 'pwr_state', 'pwr_pd', 'pi_ips', 'pi_security', 'pi_reboot_req'];
+                     'pwr_amp', 'pwr_state', 'pwr_supply', 'pi_ips', 'pi_security', 'pi_reboot_req'];
 
 function blankPiCard() {
   const byId = id => document.getElementById(id);
