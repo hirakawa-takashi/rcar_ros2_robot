@@ -122,7 +122,7 @@
 - ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`、`FrameDurationLimits` [33333, 33333]、実測 30.04Hz）
 - ダッシュボード MJPEG: 30fps（`camera_stream_rate`）
 - AI HAT+ 推論: YOLOv8m、640x640 にレターボックスして 15Hz 設定（推論タイマー 0.02秒）。推論 約32.6ms、dashboard CPU 28〜33%、CPU 53.8〜54.3℃、Hailo 49.6〜50.7℃、サーマル状態 normal
-- 電源: 12V 系 → DROK 降圧コンバータ 5.2V/5A → USB-C。`/boot/firmware/config.txt` に `usb_max_current_enable=1`（再起動後 `pd_5a: true`）。実測 入力電圧 4.96〜5.02V、`get_throttled=0x0`（低電圧履歴なし）。以前のモバイルバッテリー（CIO SMARTCOBY Pro SLIM 35W、5V 時 3A 上限）では 4.77〜4.90V・低電圧フラグが発生していた
+- 電源: 12V 系 → DROK 降圧コンバータ 5.2V/5A → USB-C。`/boot/firmware/config.txt` に `usb_max_current_enable=1`（USB-A からなので PD のやりとりはなく、ラズパイが認識する電源の上限は 3 A。ダッシュボードの「電源の電流上限」は `power.supply` = device tree の `chosen/power/max_current`）。実測 入力電圧 4.96〜5.02V、`get_throttled=0x0`（低電圧履歴なし）。以前のモバイルバッテリー（CIO SMARTCOBY Pro SLIM 35W、5V 時 3A 上限）では 4.77〜4.90V・低電圧フラグが発生していた
 - 低負荷設定（カメラ 15fps・推論 5Hz・テレメトリ 5Hz・LiDAR 360 点）時の参考値: dashboard CPU 18.4〜21.1%、camera_node 約18.1%、perception_node 約16.5%、dashboard_node 約16.8%
 
 ## 次回作業
