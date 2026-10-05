@@ -4,12 +4,15 @@
 カメラは左右の画像を横に並べた 1 枚（例: 2560x720 = 1280x720 x 2）を MJPG で送ってくる。
 上下逆さまに付けたときは rotate_180 を true にする。1 枚全体を 180° 回すと左右の画像も
 入れ替わるので、回したあとの左半分が左目、右半分が右目になる。
+MJPG はそのまま受け取り、decode_reduce 分の 1 の大きさで展開する（JPEG の展開を縮めながら
+するので、全部展開してから縮めるより軽い）。
 eye で選んだ片目を output_width x output_height に縮めて、camera_ros と同じ
 /camera/image_raw/compressed（JPEG）へ出す。ダッシュボード・perception_node は
 そのまま使える。
 ~/capture_calib（std_srvs/Trigger）を呼ぶと、その時の左右の画像で市松模様を探し、
-左右とも見つかれば calib_dir に pair_NNN_left.png / pair_NNN_right.png で保存する。
-pair_topic を受けるノード（stereo_depth_node）がいるときだけ、左右を pair_scale に縮めた
+左右とも見つかれば（このときだけ元の大きさで展開する）calib_dir に pair_NNN_left.png / pair_NNN_right.png で保存する。
+pair_topic を受けるノード（stereo_depth_node）がいるときだけ、左右を pair_scale（元の大きさに
+対する割合）に縮めた
 白黒を横に並べて（左 | 右）pair_rate で出す（距離の計算用）。
 """
 
@@ -28,6 +31,16 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
 from ai_car_web.stereo_calib import DEFAULT_DIR, find_board, list_pairs, next_index
+
+REDUCED_COLOR = {1: cv2.IMREAD_COLOR, 2: cv2.IMREAD_REDUCED_COLOR_2,
+                 4: cv2.IMREAD_REDUCED_COLOR_4, 8: cv2.IMREAD_REDUCED_COLOR_8}
+
+
+def decode_frame(raw, reduce=1):
+    """V4L2 から受け取った 1 枚を BGR にする（MJPG のままなら 1/reduce の大きさで展開）。"""
+    if raw.ndim == 3:
+        return raw
+    return cv2.imdecode(raw.reshape(-1), REDUCED_COLOR.get(reduce, cv2.IMREAD_COLOR))
 
 
 def select_eye(frame, eye, rotate_180):
@@ -50,6 +63,7 @@ class StereoCameraNode(Node):
         self.declare_parameter('width', 2560)
         self.declare_parameter('height', 720)
         self.declare_parameter('fps', 30.0)
+        self.declare_parameter('decode_reduce', 1)
         self.declare_parameter('rotate_180', False)
         self.declare_parameter('eye', 'left')
         self.declare_parameter('output_width', 960)
@@ -70,6 +84,9 @@ class StereoCameraNode(Node):
         self.width = int(g('width').value)
         self.height = int(g('height').value)
         self.fps = float(g('fps').value)
+        self.reduce = int(g('decode_reduce').value)
+        if self.reduce not in REDUCED_COLOR:
+            self.reduce = 1
         self.rotate_180 = bool(g('rotate_180').value)
         self.eye = 'right' if g('eye').value == 'right' else 'left'
         self.out_size = (int(g('output_width').value), int(g('output_height').value))
@@ -101,9 +118,10 @@ class StereoCameraNode(Node):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         cap.set(cv2.CAP_PROP_FPS, self.fps)
+        cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
         self.get_logger().info(
             f'2 眼カメラ接続: {self.device} {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x'
-            f'{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))} → {self.eye} 目 '
+            f'{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}（1/{self.reduce} で展開） → {self.eye} 目 '
             f'{self.out_size[0]}x{self.out_size[1]}（180° 回転: {self.rotate_180}）')
         return cap
 
@@ -119,17 +137,21 @@ class StereoCameraNode(Node):
                         last_warn = time.monotonic()
                     time.sleep(2.0)
                     continue
-            ok, frame = cap.read()
-            if not ok or frame is None:
+            ok, raw = cap.read()
+            if not ok or raw is None:
                 self.get_logger().warn('2 眼カメラの読み取りに失敗。開き直します')
                 cap.release()
                 cap = None
                 time.sleep(1.0)
                 continue
             with self._lock:
-                self._latest = frame
-            image = cv2.resize(select_eye(frame, self.eye, self.rotate_180), self.out_size,
-                               interpolation=cv2.INTER_AREA)
+                self._latest = raw
+            frame = decode_frame(raw, self.reduce)
+            if frame is None:
+                continue
+            image = select_eye(frame, self.eye, self.rotate_180)
+            if (image.shape[1], image.shape[0]) != self.out_size:
+                image = cv2.resize(image, self.out_size, interpolation=cv2.INTER_AREA)
             ok, jpeg = cv2.imencode('.jpg', image, self.jpeg_params)
             if not ok:
                 continue
@@ -150,12 +172,12 @@ class StereoCameraNode(Node):
         if now < self._pair_next or self.pair_pub.get_subscription_count() == 0:
             return
         self._pair_next = now + self.pair_period
+        scale = self.pair_scale * self.width / frame.shape[1]
         eyes = []
         for eye in ('left', 'right'):
             gray = cv2.cvtColor(select_eye(frame, eye, self.rotate_180), cv2.COLOR_BGR2GRAY)
-            if self.pair_scale != 1.0:
-                gray = cv2.resize(gray, None, fx=self.pair_scale, fy=self.pair_scale,
-                                  interpolation=cv2.INTER_AREA)
+            if scale != 1.0:
+                gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
             eyes.append(gray)
         pair = np.ascontiguousarray(np.hstack(eyes))
         msg = Image()
@@ -168,7 +190,8 @@ class StereoCameraNode(Node):
 
     def _capture_calib(self, request, response):
         with self._lock:
-            frame = self._latest
+            raw = self._latest
+        frame = None if raw is None else decode_frame(raw)
         result = {'ok': False, 'found': {}, 'count': len(list_pairs(self.calib_dir)), 'reason': ''}
         if frame is None:
             result['reason'] = 'カメラの画像がまだない'
