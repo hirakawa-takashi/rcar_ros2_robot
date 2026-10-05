@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- `stereo_camera_node`: 2 眼カメラの MJPG をそのまま受け取り（`CAP_PROP_CONVERT_RGB` 0）、`decode_reduce`（既定 1、dashboard.yaml は 2）分の 1 の大きさで展開する。映像は片目 640×360（前は 960×540）。`pair_scale` は元の大きさに対する割合のまま（片目 320×180）、キャリブレーションの撮影だけ元の大きさで展開する。電池（3 A）に切り替えた後、映像と物体検出が動くと Pi の電力が約 4.0 W・5V が 4.73 V まで下がり、電圧低下が出ていた（取り込みを止めると約 2.7 W・4.92 V で 0 回、距離の計算だけ止めても変わらず）。1 枚の処理は 約 25 → 約 8 ms、実機で Pi の CPU 45〜48 → 33〜34 %、電力 約 4.0 → 約 3.4 W、電圧低下は 50 秒に 0〜3 回 → 3 分に 1 回
 - `lidar_watchdog_node`: 起動し直しても `/scan` が 2 回続けて戻らなければ、rplidar を止めた後に LiDAR の USB（CP2102、10c4:ea60）をつなぎ直す（`USBDEVFS_RESET`、`usb_reset_after`）。ラズパイの電池の電圧が下がった後、CP2102 が返事をしなくなり（`cp210x ttyUSB0: failed set request 0x12 status: -110`）、起動し直しを 33 分で 81 回しても戻らず、ラズパイの再起動でしか直らなかったため。書き込み権限は `systemd/99-ai-car-lidar-usb.rules`（`install_service.sh` で入れる）
 - ダッシュボード: ラズパイの電池の電圧が下がったら、いちばん上に出す（今下がっている: 赤、起動後に下がった: 橙で回数と最後の時刻）。`system_monitor_node` は `hwmon rpi_volt` の `in0_lcrit_alarm` と `get_throttled` を 1 秒ごとに見て、`power.under_voltage`（`now` / `count` / `last`）を出す
 - Jetson: 前の起動の記録をのこす設定（journald persistent）と、メモリ・温度・ファン・止まっているサービスを 1 分ごとに 1 行記録する `jetson-health.timer`（`jetson/health_log`）。放っておくと止まる原因を調べるため

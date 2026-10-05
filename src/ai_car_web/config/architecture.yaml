@@ -46,7 +46,7 @@ system:
       state: done
       items:
         - LiDAR（A1M8）で障害物までの距離
-        - 2 眼カメラ（960×540・15 fps）
+        - 2 眼カメラ（640×360・15 fps）
         - AI HAT+ の YOLOv8m（人・動物など 80 種類）
         - 運転モード・自律走行・安全ガード
         - ダッシュボード（8080 番）
@@ -70,7 +70,7 @@ system:
     - {id: browser, label: ブラウザ（PC・スマホ）, sub: ダッシュボード・手動操作, state: done}
     - {id: person, label: 家の人, sub: 声で話しかける, state: planned}
   links:
-    - {from: ai_car, to: jetson, short: 画像, desc: カメラの画像（JPEG 960×540）。Jetson が 1 秒に 5 回取りに行く, via: 'GET /api/camera/snapshot', state: done}
+    - {from: ai_car, to: jetson, short: 画像, desc: カメラの画像（JPEG 640×360）。Jetson が 1 秒に 5 回取りに行く, via: 'GET /api/camera/snapshot', state: done}
     - {from: jetson, to: ai_car, short: 名前・位置, desc: 見つけた物の名前・信頼度・画面の位置。AI-CAR が LiDAR の距離を付けて表示する（速度には使わない）, via: 'POST /api/jetson/detections（API トークン）', state: done}
     - {from: jetson, to: ai_car, short: 命令（予定）, desc: 声の命令（「前に進んで」「止まって」）を速度の指令にする。AI-CAR の安全ガードはそのまま効く, via: 'POST /api/cmd_vel・/api/stop（API トークン）', state: planned}
     - {from: stackchan, to: jetson, short: 声・映像（予定）, desc: マイクの声とカメラの映像, via: WebSocket（xiaozhi-esp32-server）, state: planned}
@@ -86,7 +86,7 @@ hardware:
     - {id: motor_hat, label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2, bus: I2C 0x60, power: 12V（モーター）, jump: motor, side: right}
     - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
     - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
-    - {id: camera, label: 2 眼カメラ（ELP 3D USB Camera）, sub: 片目 1280×720 → 960×540 15fps（上下逆さまに取付）, bus: USB 2.0, power: 5V, side: left}
+    - {id: camera, label: 2 眼カメラ（ELP 3D USB Camera）, sub: 片目 1280×720 → 640×360 15fps（上下逆さまに取付）, bus: USB 2.0, power: 5V, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線・配線色未定）, power: 3V3, jump: gpio, side: bottom}
@@ -425,7 +425,7 @@ nodes:
   - id: stereo_camera_node
     label: stereo_camera_node
     file: ai_car_web/stereo_camera_node.py
-    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、180° 回して左目を 960×540・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば左右の画像を calib_dir に保存する（キャリブレーション用）。/stereo/pair_gray を受けるノードがいるときだけ、左右を片目 320×180 の白黒にして横に並べ 3 Hz で出す（距離の計算用）
+    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、MJPG を 1/2 の大きさで展開して（decode_reduce）、左目を 640×360・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば元の大きさ（片目 1280×720）で左右の画像を calib_dir に保存する（キャリブレーション用）。/stereo/pair_gray を受けるノードがいるときだけ、左右を片目 320×180 の白黒にして横に並べ 3 Hz で出す（距離の計算用）
     publishes: [/camera/image_raw/compressed, /stereo/pair_gray]
     subscribes: []
     params:

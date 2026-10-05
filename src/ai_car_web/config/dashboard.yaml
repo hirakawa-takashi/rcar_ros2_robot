@@ -194,7 +194,7 @@ perception_node:
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
-    # 2 眼カメラ（ELP、片目 1280x720 → 960x540）の横の画角。仮の値（広角レンズでゆがみがあるので実測して直す）。
+    # 2 眼カメラ（ELP、片目 1280x720 → 640x360）の横の画角。仮の値（広角レンズでゆがみがあるので実測して直す）。
     # Camera Module 3 に戻すときは 66.0
     camera_hfov_deg: 120.0
     scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
@@ -263,11 +263,14 @@ stereo_camera_node:
     width: 2560
     height: 720
     fps: 15.0
+    # MJPG を 1/2 の大きさ（片目 640x360）で展開する。全部展開して 960x540 に作り直すと 1 枚 約 25 ms・CPU 約 53% で、
+    # 映像と物体検出が動くと Pi の電力が 約 4.0 W になり、電池（3 A）の 5V が 4.73 V まで下がって電圧低下が出た（半分で 約 8 ms）
+    decode_reduce: 2
     # 3D の板（cam_mount）に USB 端子を上にして付けているので回さない。上下逆さまに付けたときは true（左右の画像も入れ替わる）
     rotate_180: false
     eye: "left"
-    output_width: 960
-    output_height: 540
+    output_width: 640
+    output_height: 360
     jpeg_quality: 80
     image_topic: "/camera/image_raw/compressed"
     frame_id: "camera_link"
