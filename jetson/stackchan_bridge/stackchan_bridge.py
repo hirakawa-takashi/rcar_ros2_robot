@@ -16,9 +16,9 @@ XiaoZhi の 2 つの口をまねる:
   （api.tenclass.net）につなぎ、声と文字をそのまま中継する。「ローカルにして」で Jetson の会話にもどる。
   今の行き先は mode.txt に残す（起動し直しても同じ）。ネットのあいだは顔（目と口）を緑にする
   （ファームウェアの MCP `self.robot.set_face_color`、stackchan-face-color.patch）。
-- 調べもの: ニュース・天気・今の役職など新しいことは、Jetson がインターネット（Google ニュースの見出しと
-  DuckDuckGo）で調べて答える。ローカルは Ollama の tools、ネットは MCP の道具 `self.web.search` を足して
-  XiaoZhi から呼んでもらう（その呼び出しはスタックちゃんへ流さず、この受け口が答える）。
+- 調べもの（ネットのときだけ）: MCP の道具 `self.web.search` を足して、ニュース・天気・今の役職など新しいことを
+  XiaoZhi から呼んでもらう。その呼び出しはスタックちゃんへ流さず、この受け口がインターネット（Google ニュースの
+  見出しと DuckDuckGo）で調べて答える。ローカルのときは調べない（Jetson の AI だけで答える）。
 - 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
 
 AI-CAR の走行・安全停止には何も送らない。
@@ -51,15 +51,13 @@ WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
 SYSTEM_PROMPT = ('あなたは家庭用ロボット「スタックちゃん」です。日本語で、やさしく、1〜2文で短く答えてください。'
-                 '中国語や英語は使わず、日本語だけで話してください。'
-                 'ニュース・天気・今の役職や値段など新しいことや、知らないことは web_search で調べてから答えてください。')
+                 '中国語や英語は使わず、日本語だけで話してください。')
 IN_RATE = 16000
 OUT_RATE = 24000
 FRAME_MS = 60
 CLOUD_HOLD = 6  # ネットの声は出はじめを 6 枚（0.36 秒）ためてから流す。Wi-Fi のゆれで途切れないように
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
-CHINESE = re.compile(r'[^ぁ-んァ-ヶー]*[，们这为让吗呢么哪您该样过][^ぁ-んァ-ヶー]*')  # かながなく、中国語だけの字がある文
 NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
 PHOTO_TOOL = 'self.camera.take_photo'
 PHOTO_TIMEOUT = 15.0
@@ -77,8 +75,6 @@ SEARCH_DESC = ('Search the internet for up-to-date information: news, weather, p
                'about the present or recent events. Returns news headlines with dates and web snippets.')
 SEARCH_PARAMS = {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'search words'}},
                  'required': ['query']}
-SEARCH_FN = {'type': 'function', 'function': {'name': 'web_search', 'description': SEARCH_DESC,
-                                              'parameters': SEARCH_PARAMS}}
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
@@ -222,7 +218,7 @@ def _plain(s):
 
 
 def web_search(query, n=5):
-    """インターネットで調べる（Google ニュースの見出しと日付・DuckDuckGo の説明）。文字にして返す。"""
+    """ネットの XiaoZhi に頼まれて調べる（Google ニュースの見出しと日付・DuckDuckGo の説明）。文字にして返す。"""
     q = urllib.parse.quote(query)
     out = []
     try:
@@ -244,29 +240,19 @@ def web_search(query, n=5):
     return '\n'.join(out) if out else '見つかりませんでした'
 
 
-def llm_sentences(model, messages, search=True):
-    """返事を 1 文ずつ返す。新しいことを聞かれたら「調べますね」と言ってから調べて答える。"""
-    body = {'model': model, 'stream': True, 'keep_alive': -1, 'messages': messages, 'options': {'num_predict': 120}}
-    if search:
-        body['tools'] = [SEARCH_FN]
-    buf, calls = '', []
-    with urllib.request.urlopen(urllib.request.Request(OLLAMA_URL, json.dumps(body).encode()), timeout=60) as r:
+def llm_sentences(model, messages):
+    body = json.dumps({'model': model, 'stream': True, 'keep_alive': -1, 'messages': messages,
+                       'options': {'num_predict': 120}}).encode()
+    buf = ''
+    with urllib.request.urlopen(urllib.request.Request(OLLAMA_URL, body), timeout=60) as r:
         for line in r:
-            m = json.loads(line).get('message', {})
-            calls += m.get('tool_calls') or []
-            buf += m.get('content', '')
+            buf += json.loads(line).get('message', {}).get('content', '')
             while (m := SENTENCE_END.search(buf)):
                 s, buf = buf[:m.end()].strip(), buf[m.end():]
-                if s and not CHINESE.fullmatch(s):
+                if s:
                     yield s
-    if buf.strip() and not CHINESE.fullmatch(buf.strip()):
+    if buf.strip():
         yield buf.strip()
-    if calls:
-        yield '調べますね。'
-        query = (calls[0].get('function', {}).get('arguments') or {}).get('query') or messages[-1]['content']
-        found = web_search(str(query))
-        yield from llm_sentences(model, messages + [{'role': 'assistant', 'content': '', 'tool_calls': calls[:1]},
-                                                    {'role': 'tool', 'content': found}], search=False)
 
 
 def tts_pcm(text, voice, pitch, peak_db):
