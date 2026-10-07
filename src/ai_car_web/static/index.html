@@ -70,6 +70,7 @@
   .scface { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 10px; display: block; }
   .scsay { min-height: 1.5em; margin-top: 6px; text-align: center; font-size: 13px; color: #bfe9ff; }
   .scphoto { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
+  .scphoto input[type=text] { width: 9em; padding: 4px 6px; background: #0e1726; color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
               border-radius: 8px; margin-bottom: 10px; }
@@ -598,6 +599,11 @@
         <div class="scphoto"><button id="sc_stream_btn" title="押したときだけ、スタックちゃんが映像を送る（もう一度押すか、ページを閉じて 10 秒で止まる）">映像を撮る</button>
           <button id="sc_photo_btn" title="撮るたびにスタックちゃんからシャッターの音が鳴る">写真を撮る</button>
           <span id="sc_photo_msg">-</span></div>
+        <div class="scphoto" id="sc_enroll" hidden title="「撮影するよ」と言うと、スタックちゃんが正面を向いて 5 秒数えて撮る。写っている顔 1 つを、名前を付けて Jetson の face_id に登録する">
+          <span id="sc_shot_msg">-</span>
+          <input id="sc_name" type="text" maxlength="20" placeholder="名前" autocomplete="off">
+          <button id="sc_enroll_btn">名前を登録</button>
+          <span id="sc_enroll_msg"></span></div>
       </div>
       <div>
         <h3>最後の会話</h3>
@@ -1389,6 +1395,7 @@ let stackPhotoAt = null;
 let stackPhotoUrl = null;
 let stackPhotoBusy = false;
 let stackLive = false;
+let stackEnrollBusy = false;
 let stackStreamBusy = false;
 let stackFrameBusy = false;
 const STACK_STATE = {
@@ -1461,6 +1468,14 @@ function renderStackchan(r, err) {
     scId('sc_photo_msg').textContent = r && r.photo_at ? `写真: ${stackTime(r.photo_at)}`
       : r && r.connected && !r.camera ? 'カメラの返事がありません' : r && !r.connected ? '画面を 1 回さわると撮れます' : '-';
   }
+  const shot = r && r.shot;
+  scId('sc_enroll').hidden = stackLive || !(r && r.photo_at);
+  scId('sc_shot_msg').textContent = r && r.shooting ? '数えています…'
+    : !shot ? '顔:' : shot.error ? `顔: ${shot.error}` : shot.faces === 0 ? '顔: 見つかりません'
+    : shot.faces > 1 ? `顔: ${shot.faces} つ（1 人ずつ撮ってください）`
+    : shot.name ? `顔: ${shot.name} さん` : '顔: 1 つ（まだ登録していない人）';
+  scId('sc_enroll_btn').disabled = stackEnrollBusy || !!(r && r.shooting);
+  if (r && r.photo_at && r.photo_at !== stackPhotoAt) scId('sc_enroll_msg').textContent = '';
   if (!stackLive && r && r.photo_at && r.photo_at !== stackPhotoAt) {
     stackPhotoAt = r.photo_at;
     loadStackPhoto();
@@ -1515,6 +1530,21 @@ scId('sc_photo_btn').addEventListener('click', () => {
     out.innerHTML = r.ok ? badge('ok', '撮りました') : badge('warn', esc(j.detail || '撮れませんでした'));
     if (r.ok && j.photo_at) { stackPhotoAt = j.photo_at; loadStackPhoto(); }
   }).catch(() => { out.textContent = ''; }).finally(() => { stackPhotoBusy = false; btn.disabled = false; });
+});
+
+scId('sc_enroll_btn').addEventListener('click', () => {
+  const name = scId('sc_name').value.trim();
+  const out = scId('sc_enroll_msg');
+  if (!name) { out.innerHTML = badge('warn', '名前を入れてください'); return; }
+  stackEnrollBusy = true;
+  scId('sc_enroll_btn').disabled = true;
+  out.textContent = '登録しています…';
+  apiPost(`/api/stackchan/enroll?name=${encodeURIComponent(name)}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+    if (!res) { out.textContent = ''; return; }
+    const [r, j] = res;
+    out.innerHTML = r.ok ? badge('ok', `${esc(j.name)} さんを登録しました（${j.samples} 枚目）`)
+      : badge('warn', esc(j.detail || '登録できませんでした'));
+  }).catch(() => { out.textContent = ''; }).finally(() => { stackEnrollBusy = false; pollStackchan(); });
 });
 
 function pollStackchan() {
