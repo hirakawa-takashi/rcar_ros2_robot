@@ -86,7 +86,7 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 ```
 「撮影するよ」「写真を撮って」（ローカルは whisper、ネットは XiaoZhi の stt を bridge が見る）
   → bridge「撮影するよ。こっちを向いてね。」→ MCP self.camera.countdown_photo {seconds: 5}
-  → スタックちゃん: 首を正面（yaw 0）へ → bridge が self.robot.set_head_angles で少し上（pitch 15 度、--shot-pitch）へ → 画面にカメラの映像と右上に 5〜1 の数字（1 秒ごとにピッ）
+  → スタックちゃん: 首を正面（yaw 0）へ → bridge が self.robot.set_head_angles で上（pitch 30 度、--shot-pitch。数えているあいだ 1 秒ごとに送り直す）へ → 画面にカメラの映像と右上に 5〜1 の数字（1 秒ごとにピッ）
   → 0 でシャッターの音 → 撮った写真を 6 秒画面に出す → JPEG（320×240、品質 80）を POST /camera/shot
   → bridge: face_id の /api/face/recognize で顔を見る →「撮れたよ。ダッシュボードで名前を登録してね。」など
 ダッシュボード: 写真の下の「名前」→「名前を登録」→ POST /api/stackchan/enroll?name= → bridge POST /enroll?name=
