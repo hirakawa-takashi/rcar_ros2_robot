@@ -50,6 +50,7 @@ import wave
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import cv2
 import numpy as np
 import opuslib
 from websockets.asyncio.client import connect
@@ -101,6 +102,14 @@ WAKE_FILLER = 2  # 呼びかけのほかが 2 文字まで（「ねえ」「に�
 WAKE_REPLY = 'はい、なあに？'
 BYE_REPLY = 'じゃあ、またね。'
 KEEPALIVE = 60.0
+# 居眠り: 「じゃあ、またね。」から --doze-seconds たつと、居眠りの顔（llm の emotion sleepy）にして首をホーム（正面・水平）へ
+HOME_HEAD = {'yaw': 0, 'pitch': 0, 'speed': 150}
+# 画面の明るさ: 見守りの映像の明るさ（0〜255 の平均）の 1 分の中央値で、画面の明るさ（0〜100）を決める
+BRIGHT_TOOL = 'self.screen.set_brightness'
+BRIGHT_LEVELS = ((30, 10), (70, 35), (256, 75))  # 映像の明るさがこれ未満なら、この画面の明るさ（75 はもとの明るさ）
+BRIGHT_MARGIN = 8  # 境目の近くで行ったり来たりしないよう、±8 しても同じ段のときだけ変える
+BRIGHT_EVERY = 60.0
+BRIGHT_MIN_FRAMES = 5
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
@@ -111,11 +120,13 @@ STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
-          'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None}
+          'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
+          'dozing': False, 'light': None, 'screen': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
 WATCH = {'interval': 0.0, 'next': 0.0, 'busy': False, 'greeted': {}}
+LIGHT = []  # (時刻, 映像の明るさ)
 SESSIONS = []
 LOOP = None
 
@@ -137,6 +148,17 @@ def want_frames():
         set_status(stream_on=False)
     watch = WATCH['interval'] > 0 and not WATCH['busy'] and now >= WATCH['next']
     return '1' if FRAME['on'] or watch else '0'
+
+
+def frame_light(jpeg):
+    """映像の 1 枚の明るさ（0〜255 の平均）。読めなければ None。"""
+    img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_REDUCED_GRAYSCALE_4)
+    return None if img is None else float(img.mean())
+
+
+def screen_level(light):
+    """映像の明るさ（0〜255）から、画面の明るさ（0〜100）。"""
+    return next(level for limit, level in BRIGHT_LEVELS if light < limit)
 
 
 def jpeg_from_multipart(body, ctype):
@@ -487,6 +509,9 @@ class OtaHandler(BaseHTTPRequestHandler):
         now = time.time()
         if jpeg.startswith(b'\xff\xd8'):
             FRAME['jpeg'] = jpeg
+            light = frame_light(jpeg)
+            if light is not None:
+                LIGHT[:] = [x for x in LIGHT if now - x[0] < BRIGHT_EVERY] + [(now, light)]
             t = FRAME['times'] = [x for x in FRAME['times'][-9:] if now - x < FRAME_STALE] + [now]
             fps = round((len(t) - 1) / (t[-1] - t[0]), 1) if len(t) > 1 else None
             set_status(stream_at=now, frame_at=now, fps=fps)
@@ -610,6 +635,10 @@ class Session:
         self.awake = False
         self.cloud_tts = False
         self.keep_task = None
+        self.bright_tool = False
+        self.bright = None
+        self.dozing = False
+        self.doze_at = 0.0
 
     def asleep(self):
         """呼びかけ待ち（呼ばれていないか、最後に話してから --awake-seconds たった）なら True。"""
@@ -618,6 +647,7 @@ class Session:
     def wake_up(self):
         self.awake_until = time.time() + self.args.awake_seconds
         self.awake = True
+        self.doze_at = 0.0
 
     def busy(self):
         turn = self.turn and time.time() - self.turn['at'] < 60
@@ -630,9 +660,9 @@ class Session:
         return 'waiting' if self.asleep() else 'listening'
 
     async def keepalive(self):
-        """会話モードが 30 秒だまったら「じゃあ、またね。」で呼びかけ待ちにもどし、
-        60 秒ごとに 1 回送ってスタックちゃんの 120 秒の時間切れを防ぐ。"""
-        last = time.monotonic()
+        """会話モードが 30 秒だまったら「じゃあ、またね。」で呼びかけ待ちにもどし、その 30 秒後に居眠りする。
+        60 秒ごとに 1 回送ってスタックちゃんの 120 秒の時間切れを防ぎ、画面の明るさを映像に合わせる。"""
+        last = bright_last = time.monotonic()
         while True:
             await asyncio.sleep(1)
             try:
@@ -642,6 +672,16 @@ class Session:
                     await self.say(BYE_REPLY, wake=False)
                     await self.close_cloud()
                     set_status(state=self.listen_state())
+                    if self.args.doze_seconds > 0:
+                        self.doze_at = time.time() + self.args.doze_seconds
+                if self.doze_at and time.time() >= self.doze_at and self.asleep() and not self.busy():
+                    self.doze_at = 0.0
+                    await self.doze()
+                if self.dozing and not self.asleep():
+                    await self.wake_face()
+                if time.monotonic() - bright_last >= BRIGHT_EVERY:
+                    bright_last = time.monotonic()
+                    await self.adjust_brightness()
                 if STATUS['state'] == 'listening' and not self.busy() and self.asleep():
                     set_status(state='waiting')
                 if time.monotonic() - last >= KEEPALIVE:
@@ -649,6 +689,45 @@ class Session:
                     await self.send(type='ping')
             except ConnectionClosed:
                 return
+
+    async def doze(self):
+        """居眠りの顔にして、首をホーム（正面・水平）にもどす。呼ばれたら wake_face でふつうの顔へ。"""
+        self.dozing = True
+        log('居眠りします（顔を居眠りにして、首をホームへ）')
+        set_status(dozing=True)
+        await self.send(type='llm', emotion='sleepy')
+        head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': HOME_HEAD})
+        await sending
+        head.cancel()
+
+    async def wake_face(self):
+        if self.dozing:
+            self.dozing = False
+            set_status(dozing=False)
+            await self.send(type='llm', emotion='neutral')
+
+    async def adjust_brightness(self):
+        """見守りの映像の明るさ（1 分の中央値）で、画面の明るさを変える（夜の暗い部屋で明るすぎないように）。"""
+        now = time.time()
+        lights = [v for t, v in list(LIGHT) if now - t < BRIGHT_EVERY]
+        if not self.bright_tool or len(lights) < BRIGHT_MIN_FRAMES:
+            return
+        light = float(np.median(lights))
+        set_status(light=round(light))
+        level = screen_level(light)
+        if level == self.bright or screen_level(max(light - BRIGHT_MARGIN, 0)) != screen_level(
+                min(light + BRIGHT_MARGIN, 255)):
+            return
+        fut, sending = self.mcp_call('tools/call', {'name': BRIGHT_TOOL, 'arguments': {'brightness': level}})
+        await sending
+        try:
+            await asyncio.wait_for(fut, 5)
+        except asyncio.TimeoutError:
+            log('MCP: 画面の明るさの返事がありません')
+            return
+        log(f'画面の明るさ: {self.bright} → {level}（映像の明るさ {light:.0f}）')
+        self.bright = level
+        set_status(screen=level)
 
     async def send(self, **msg):
         msg['session_id'] = self.sid
@@ -681,8 +760,10 @@ class Session:
         self.camera = PHOTO_TOOL in names
         self.face = FACE_TOOL in names
         self.shot = SHOT_TOOL in names
+        self.bright_tool = BRIGHT_TOOL in names
         set_status(camera=self.camera, shot_tool=self.shot)
-        log(f'MCP: カメラ {"あり" if self.camera else "なし"} → {vision_url}、顔の色 {"あり" if self.face else "なし"}')
+        log(f'MCP: カメラ {"あり" if self.camera else "なし"} → {vision_url}、顔の色 {"あり" if self.face else "なし"}、'
+            f'画面の明るさ {"あり" if self.bright_tool else "なし"}')
 
     async def after_hello(self, vision_url):
         self.vision_url = vision_url
@@ -692,6 +773,8 @@ class Session:
             await self.to_net(announce=False)
         else:
             await self.set_face(STATUS['mode'])
+        if self.wake and self.args.doze_seconds > 0:
+            self.doze_at = time.time() + self.args.doze_seconds
 
     async def set_face(self, mode):
         if not self.face:
@@ -706,6 +789,7 @@ class Session:
     async def say(self, text, wake=True):
         """Jetson の声で 1 文だけ話す（切り替えのお知らせ）。wake なら、そのあと会話モードにする。"""
         a = self.args
+        await self.wake_face()
         try:
             pcm = await asyncio.to_thread(tts_pcm, text, a.voice, a.pitch, a.peak_db)
         except Exception as e:  # noqa: BLE001 - 声が作れなくても切り替えは続ける
@@ -1087,6 +1171,7 @@ class Session:
                     log('呼びかけがないので返事しません')
                     return
                 log('呼びかけ: スタックちゃん')
+                await self.wake_face()
                 set_status(state='thinking')
             heard = True
             if asleep and len(re.sub(r'[\s\W]', '', self.wake.sub('', text))) <= WAKE_FILLER:
@@ -1229,6 +1314,8 @@ async def main():
                    help='呼びかけ待ちのとき、これ（正規表現）が聞き取りに入っているときだけ返事をする。空で呼びかけ待ちにしない')
     p.add_argument('--awake-seconds', type=float, default=30.0,
                    help='呼ばれてから・最後に話してから、呼びかけなしで話せる秒数。たつと「じゃあ、またね。」')
+    p.add_argument('--doze-seconds', type=float, default=30.0,
+                   help='「じゃあ、またね。」からこの秒数たつと、居眠りの顔にして首をホーム（正面・水平）へ。0 で居眠りしない')
     p.add_argument('--shot-pitch', type=int, default=30,
                    help='「撮影して」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
     p.add_argument('--watch-interval', type=float, default=2.0,
