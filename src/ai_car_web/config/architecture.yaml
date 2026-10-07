@@ -67,7 +67,7 @@ system:
         - 画面の顔・マイク・スピーカー・首振り（左右・上下のサーボ）は純正のまま
         - 会話の AI Agent は Jetson の受け口（OTA 8003・WebSocket 8000）につなぐ。自動更新はしない
         - ダッシュボードのスタックちゃんのカードに、今の様子・最後の会話・IP アドレスを出す
-        - カメラ（GC0308）: 「撮影して」で 5 秒数えて撮り、320×240 の JPEG をダッシュボードに出す（見守りでも 2 秒に 1 枚もらって顔を見る）
+        - "カメラ（GC0308）: 「撮影して」で 5 秒数えて撮り、320×240 の JPEG をダッシュボードに出す（見守りでも 2 秒に 1 枚もらって顔を見る）"
     - {id: browser, label: ブラウザ（PC・スマホ）, sub: ダッシュボード・手動操作, state: done}
     - {id: person, label: 家の人, sub: 声で話しかける, state: planned}
   links:
@@ -78,7 +78,7 @@ system:
     - {from: jetson, to: stackchan, short: 返事, desc: 返事の声（Opus 24 kHz）と顔の表情（考え中・笑顔）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（5 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
-    - {from: person, to: stackchan, short: 話す, desc: 画面を 1 回さわるか「Hi, StackChan」で起こして、声で話しかけ、返事を聞く, via: 声, state: done, both: true}
+    - {from: person, to: stackchan, short: 話す, desc: 「スタックちゃん」と呼んで会話モードにし、声で話しかけて返事を聞く（30 秒だまると「じゃあ、またね。」）, via: 声, state: done, both: true}
 
 hardware:
   center: {id: pi5, label: Raspberry Pi 5, sub: 8GB / Ubuntu 24.04 / ROS 2 Jazzy}
