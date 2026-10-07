@@ -568,7 +568,8 @@
       <input id="gain" type="range" min="10" max="100" value="50">
     </div>
     <div class="speed">
-      <input id="api_token" type="password" placeholder="API トークン（api_token 設定時）">
+      APIキー: <input id="api_token" type="password" placeholder="未設定" readonly autocomplete="off">
+      <button id="api_token_edit" class="reboot" type="button">変更</button>
       <span id="auth_note" class="note"></span>
     </div>
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
@@ -687,8 +688,23 @@ const TOKEN_KEY = 'ai_car_api_token';
 const urlToken = new URLSearchParams(location.search).get('token');
 if (urlToken) localStorage.setItem(TOKEN_KEY, urlToken);
 const tokenInput = document.getElementById('api_token');
+const tokenEdit = document.getElementById('api_token_edit');
 tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
-tokenInput.addEventListener('change', () => localStorage.setItem(TOKEN_KEY, tokenInput.value));
+// APIキーはふだん読むだけ。「変更」→ 確認 → 入力 →「保存」（Enter）で保存する
+function saveToken() {
+  localStorage.setItem(TOKEN_KEY, tokenInput.value);
+  tokenInput.readOnly = true;
+  tokenEdit.textContent = '変更';
+}
+tokenEdit.addEventListener('click', () => {
+  if (!tokenInput.readOnly) return saveToken();
+  if (!confirm('APIキーを変更しますか？\nまちがえると、ボタンで操作できなくなります。')) return;
+  tokenInput.readOnly = false;
+  tokenEdit.textContent = '保存';
+  tokenInput.focus();
+  tokenInput.select();
+});
+tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !tokenInput.readOnly) saveToken(); });
 
 function authHeaders() {
   const t = localStorage.getItem(TOKEN_KEY);
