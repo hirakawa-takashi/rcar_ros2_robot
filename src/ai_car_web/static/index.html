@@ -608,6 +608,7 @@
         </table>
         <h3>本体</h3>
         <table>
+          <tr><td class="k">会話の行き先</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる。ネットのときは顔が緑">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v" id="sc_ip">-</td></tr>
           <tr><td class="k">ファームウェア</td><td class="v wrap" id="sc_fw" title="純正の行き先を Jetson にかえ、自動更新をやめたもの">-</td></tr>
           <tr><td class="k">最後に来た時刻</td><td class="v" id="sc_seen" title="起動のときの問い合わせか、会話のつながり">-</td></tr>
@@ -1395,9 +1396,9 @@ const STACK_STATE = {
   idle: ['', '待ち受け', 'sleep', '画面を 1 回さわると話せます'],
 };
 
-function stackFace(mood) {
+function stackFace(mood, net) {
   const ex = [100, 220], ey = 100;
-  const color = mood === 'off' ? '#555' : '#fff';
+  const color = mood === 'off' ? '#555' : net ? '#0f0' : '#fff';
   const line = d => `<path d="${d}" stroke="${color}" stroke-width="8" fill="none" stroke-linecap="round"/>`;
   const eyes = ex.map(x => mood === 'sleep' ? line(`M${x - 16} ${ey} H${x + 16}`)
     : mood === 'happy' ? line(`M${x - 16} ${ey + 6} Q${x} ${ey - 18} ${x + 16} ${ey + 6}`)
@@ -1431,17 +1432,19 @@ function renderStackchan(r, err) {
     const [cls, label, mood, say] = STACK_STATE[r.connected ? r.state : 'idle'] || STACK_STATE.idle;
     st.className = 'badge' + (cls ? ` ${cls}` : '');
     st.textContent = label;
-    stackFace(mood);
+    stackFace(mood, r.mode === 'net');
     scId('sc_say').textContent = say || last.reply || '-';
   }
   scId('sc_at').textContent = stackTime(last.at);
   scId('sc_heard').textContent = last.heard || '-';
   scId('sc_reply').textContent = last.reply || '-';
   scId('sc_time').textContent = last.at
-    ? `文字 ${fmt(last.stt_s, 1)} 秒 / 声 ${last.voice_s != null ? `${fmt(last.voice_s, 1)} 秒` : '-'}` : '-';
+    ? `文字 ${last.stt_s != null ? `${fmt(last.stt_s, 1)} 秒` : '-'} / 声 ${last.voice_s != null ? `${fmt(last.voice_s, 1)} 秒` : '-'}` : '-';
   scId('sc_ip').innerHTML = dev.ip
     ? `<span class="nw">${esc(dev.ip)}</span>${dev.id ? `<wbr><span class="nw">（${esc(dev.id)}）</span>` : ''}` : '-';
-  scId('sc_fw').textContent = dev.version ? `純正 ${dev.version}（行き先: Jetson）` : '-';
+  const net = !!(r && r.mode === 'net');
+  scId('sc_mode').textContent = r ? (net ? 'ネット（XiaoZhi、顔が緑）' : 'ローカル（Jetson）') : '-';
+  scId('sc_fw').textContent = dev.version ? `純正 ${dev.version}（Jetson 経由）` : '-';
   scId('sc_seen').textContent = r ? (r.connected ? '今つながっています' : stackTime(r.last_seen)) : '-';
   scId('sc_turns').textContent = r ? `${r.turns} 回` : '-';
   stackLive = !!(r && r.stream_at && r.now - r.stream_at < 10);
@@ -1458,7 +1461,7 @@ function renderStackchan(r, err) {
     stackPhotoAt = r.photo_at;
     loadStackPhoto();
   }
-  scId('sc_engine').innerHTML = r && eng.llm
+  scId('sc_engine').innerHTML = net ? '<span class="nw">XiaoZhi（ネット）</span>' : r && eng.llm
     ? [eng.stt, eng.llm, eng.tts].map(x => `<span class="nw">${esc(x || '-')}</span>`).join(' → ') : '-';
 }
 
