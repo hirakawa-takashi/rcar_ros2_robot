@@ -5,6 +5,8 @@ Wants=network-online.target
 
 [Service]
 User=jetson
+# face_id に顔を登録するときの X-API-Token（AI_CAR_API_TOKEN）
+EnvironmentFile=-/etc/jetson-status.env
 ExecStart=/usr/bin/python3 -u /home/jetson/stackchan_bridge/stackchan_bridge.py
 Restart=always
 RestartSec=5

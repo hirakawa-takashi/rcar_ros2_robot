@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zlib
 from collections import deque
@@ -878,7 +879,7 @@ class DashboardNode(Node):
                 detail = json.loads(exc.read()).get('detail')
             except (ValueError, AttributeError):
                 detail = None
-            raise HTTPException(status_code=exc.code if exc.code in (404, 409) else 502,
+            raise HTTPException(status_code=exc.code if exc.code in (400, 404, 409) else 502,
                                 detail=detail or f'Jetson の stackchan_bridge が {exc.code} を返しました')
         except (urllib.error.URLError, OSError):
             raise HTTPException(status_code=503, detail='Jetson の stackchan_bridge につながりません')
@@ -1231,6 +1232,11 @@ def create_app(node: DashboardNode) -> FastAPI:
     def stackchan_photo_jpg():
         body, ctype = node.stackchan_request('/photo.jpg')
         return Response(content=body, media_type=ctype or 'image/jpeg', headers={'Cache-Control': 'no-store'})
+
+    @app.post('/api/stackchan/enroll', dependencies=[Depends(require_token)])
+    def stackchan_enroll(name: str):
+        return node.stackchan_json('/enroll?name=' + urllib.parse.quote(name.strip()), 'POST',
+                                   STACKCHAN_PHOTO_TIMEOUT)
 
     @app.post('/api/stackchan/stream', dependencies=[Depends(require_token)])
     def stackchan_stream(on: int = 0):

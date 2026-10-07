@@ -44,6 +44,7 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 | `firmware/xiaozhi-no-auto-upgrade.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | AI Agent を開くたびの自動更新（`UpgradeFirmware`）をやめ、ログだけ出す（純正の版にもどらないように） |
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 | `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
+| `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影するよ」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
 
 ```bash
 cd StackChan/firmware
@@ -52,6 +53,7 @@ cp <このフォルダ>/firmware/sdkconfig.defaults.local .
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-no-auto-upgrade.patch
 git apply <このフォルダ>/firmware/stackchan-camera-stream.patch
 git apply <このフォルダ>/firmware/stackchan-face-color.patch
+git apply <このフォルダ>/firmware/stackchan-countdown-shot.patch
 . ~/esp/esp-idf-v5.5.4/export.sh
 idf.py build
 # Jetson の USB-A につなぐと /dev/ttyACM0。Wi-Fi の設定（NVS）は消えない
@@ -78,6 +80,26 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 - `/status` の `stream_at`（スタックちゃんが最後に聞きに来た時刻）・`frame_at`・`fps` をダッシュボードが出します。
   `stream_at` がないときは、前のとおり「写真を撮る」（MCP の `self.camera.take_photo`）だけ
 - 「写真を撮る」と映像は同じカメラを使うので、ファームウェアの中で順番に使います（`frame_mutex_`）
+
+## 撮影と名前の登録
+
+```
+「撮影するよ」「写真を撮って」（ローカルは whisper、ネットは XiaoZhi の stt を bridge が見る）
+  → bridge「撮影するよ。こっちを向いてね。」→ MCP self.camera.countdown_photo {seconds: 5}
+  → スタックちゃん: 首を正面（yaw 0・pitch 0）へ → 画面にカメラの映像と右上に 5〜1 の数字（1 秒ごとにピッ）
+  → 0 でシャッターの音 → 撮った写真を 6 秒画面に出す → JPEG（320×240、品質 80）を POST /camera/shot
+  → bridge: face_id の /api/face/recognize で顔を見る →「撮れたよ。ダッシュボードで名前を登録してね。」など
+ダッシュボード: 写真の下の「名前」→「名前を登録」→ POST /api/stackchan/enroll?name= → bridge POST /enroll?name=
+  → face_id の /api/face/enroll（顔が 1 つ・幅 60 px 以上・ほかの人と近すぎない）
+```
+
+- 数えるのと撮るのは、ファームウェアの映像の送り係（`cam_frame` の task）がします。MCP の返事はすぐ返り、
+  会話の動き（main の task）は止めません。bridge は写真が `/camera/shot` に届くまで最大 20 秒待ちます
+- ネットのときも同じです。そのときは XiaoZhi に `abort` を送り、撮り終わるまで XiaoZhi の声と文字はスタックちゃんへ流しません
+- face_id の API トークンは、`jetson-stackchan.service` の `EnvironmentFile=/etc/jetson-status.env` の
+  `AI_CAR_API_TOKEN` を使います。face_id の場所は `FACE_ID_URL`（既定 `http://127.0.0.1:8090`）
+- 顔の見分けは、あいさつや表示だけに使います。鍵・走行・安全停止には使いません
+- `/status` の `shot_tool`（ファームウェアに道具がある）・`shooting`（数えている）・`shot`（`faces`・`name`・`error`）
 
 ## ネットとローカルの切り替え
 

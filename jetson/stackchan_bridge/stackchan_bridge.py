@@ -20,6 +20,9 @@ XiaoZhi の 2 つの口をまねる:
   XiaoZhi から呼んでもらう。その呼び出しはスタックちゃんへ流さず、この受け口がインターネット（Google ニュースの
   見出しと DuckDuckGo）で調べて答える。ローカルのときは調べない（Jetson の AI だけで答える）。
 - 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
+- 撮影: 「撮影するよ」と言うと、MCP の `self.camera.countdown_photo`（stackchan-countdown-shot.patch）で
+  正面を向いて 5 秒数え、画面にカメラを出してから撮る。写真は `POST /camera/shot` に届く。face_id で顔を見て
+  （`shot`）、ダッシュボードから `POST /enroll?name=` で名前を付けて face_id に登録する（ネットのときも同じ）。
 
 AI-CAR の走行・安全停止には何も送らない。
 """
@@ -34,6 +37,7 @@ import re
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -64,6 +68,14 @@ PHOTO_TIMEOUT = 15.0
 PHOTO_MAX_BYTES = 2 * 2 ** 20
 FRAME_PATH = '/camera/frame'
 STREAM_PATH = '/camera/stream'
+# 「撮影するよ」: 正面を向いて 5 秒数え、画面にカメラを出してから撮る（ファームウェアが SHOT_PATH へ送る）
+SHOT_TOOL = 'self.camera.countdown_photo'
+SHOT_PATH = '/camera/shot'
+SHOT_SECONDS = 5
+SHOOT = re.compile(r'(?:撮影|さつえい|写真(?:を|お)?(?:撮|と)(?:って|る|ろ))')
+FACE_ID_URL = os.environ.get('FACE_ID_URL', 'http://127.0.0.1:8090')
+FACE_ID_TIMEOUT = 10.0
+NAME_MAX = 20
 VIEWER_HOLD = 10.0
 FRAME_STALE = 3.0
 CLOUD_OTA_URL = 'https://api.tenclass.net/xiaozhi/ota/'
@@ -84,7 +96,8 @@ TO_LOCAL = re.compile(r'(?:ローカル|ジェットソン|local|jetson)' + _SWI
 STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
-          'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local'}
+          'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
+          'shot_tool': False, 'shooting': False, 'shot': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
@@ -162,6 +175,39 @@ def save_device_ota(headers, body):
 
 def is_switch(pattern, text):
     return bool(pattern.search(re.sub(r'\s', '', text or '')))
+
+
+def face_id(path, jpeg):
+    """Jetson の face_id に JPEG を送って JSON を返す。だめなら ValueError（face_id の理由）か OSError。"""
+    req = urllib.request.Request(FACE_ID_URL + path, jpeg, {
+        'Content-Type': 'image/jpeg', 'X-API-Token': os.environ.get('AI_CAR_API_TOKEN', '')})
+    try:
+        with urllib.request.urlopen(req, timeout=FACE_ID_TIMEOUT) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read()).get('error')
+        except (ValueError, AttributeError):
+            msg = None
+        raise ValueError(msg or f'顔の見分けが {e.code} を返しました')
+
+
+def face_check(jpeg):
+    """撮った写真の顔を見て、ダッシュボード用の様子と、スタックちゃんが話す 1 文を返す。"""
+    shot = {'at': time.time(), 'faces': None, 'name': None, 'width_px': None, 'error': None}
+    try:
+        faces = face_id('/api/face/recognize', jpeg).get('faces') or []
+    except (ValueError, OSError) as e:
+        shot['error'] = str(e) if isinstance(e, ValueError) else '顔の見分け（face_id）につながりません'
+        return shot, '撮れたよ。ダッシュボードを見てね。'
+    shot['faces'] = len(faces)
+    if len(faces) != 1:
+        return shot, ('撮れたよ。でも、顔が見つからなかったよ。' if not faces
+                      else f'撮れたよ。顔が {len(faces)} つ写っているよ。登録は 1 人ずつしてね。')
+    shot.update(name=faces[0].get('name'), width_px=faces[0].get('width_px'))
+    if shot['name']:
+        return shot, f'撮れたよ。{shot["name"]}さんだね。'
+    return shot, '撮れたよ。ダッシュボードで名前を登録してね。'
 
 
 def cloud_ota(device_id, client_id):
@@ -355,6 +401,10 @@ class OtaHandler(BaseHTTPRequestHandler):
             self._photo()
         elif path == FRAME_PATH:
             self._frame()
+        elif path == SHOT_PATH:
+            self._shot()
+        elif path == '/enroll':
+            self._enroll()
         elif path == STREAM_PATH:
             on = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('on', ['0'])[0] == '1'
             FRAME.update(on=on, viewer_at=time.time())
@@ -391,6 +441,39 @@ class OtaHandler(BaseHTTPRequestHandler):
             fps = round((len(t) - 1) / (t[-1] - t[0]), 1) if len(t) > 1 else None
             set_status(stream_at=now, frame_at=now, fps=fps)
         self._send_body(want_frames(), 'text/plain')
+
+    def _shot(self):
+        """「撮影するよ」で数えて撮った写真（image/jpeg）。"""
+        try:
+            jpeg = self._read_body(PHOTO_MAX_BYTES)
+        except ValueError as e:
+            return self._send_error(413, str(e))
+        if not jpeg.startswith(b'\xff\xd8'):
+            return self._send_error(400, 'JPEG ではありません')
+        PHOTO['jpeg'] = jpeg
+        set_status(photo_at=time.time(), shot=None)
+        log(f'撮影: {len(jpeg) // 1024} KB')
+        self._send_json({'ok': True})
+
+    def _enroll(self):
+        """いちばん新しい写真の顔を、名前を付けて face_id に登録する。"""
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        name = (q.get('name') or [''])[0].strip()
+        if not name or len(name) > NAME_MAX:
+            return self._send_error(400, f'名前を 1〜{NAME_MAX} 文字で入れてください')
+        if not PHOTO['jpeg']:
+            return self._send_error(404, 'まだ写真がありません')
+        try:
+            res = face_id('/api/face/enroll?name=' + urllib.parse.quote(name), PHOTO['jpeg'])
+        except ValueError as e:
+            return self._send_error(409, str(e))
+        except OSError:
+            return self._send_error(503, '顔の見分け（face_id）につながりません')
+        with STATUS_LOCK:
+            if STATUS['shot']:
+                STATUS['shot'] = {**STATUS['shot'], 'name': name}
+        log(f'顔を登録: {name}（{res.get("samples")} 枚目）')
+        self._send_json({'ok': True, 'name': name, 'samples': res.get('samples')})
 
     def _photo(self):
         """いちばん新しくつながったスタックちゃんに写真を撮ってもらう（終わるまで待つ）。"""
@@ -454,6 +537,8 @@ class Session:
         self.cancel = threading.Event()
         self.camera = False
         self.face = False
+        self.shot = False
+        self.shooting = False
         self.vision_url = ''
         # ネットの XiaoZhi も MCP の id を 1 から使うので、こちらの id はぶつからない所から始める
         self.mcp_id = 10000
@@ -497,7 +582,8 @@ class Session:
         names = {t.get('name') for t in tools}
         self.camera = PHOTO_TOOL in names
         self.face = FACE_TOOL in names
-        set_status(camera=self.camera)
+        self.shot = SHOT_TOOL in names
+        set_status(camera=self.camera, shot_tool=self.shot)
         log(f'MCP: カメラ {"あり" if self.camera else "なし"} → {vision_url}、顔の色 {"あり" if self.face else "なし"}')
 
     async def after_hello(self, vision_url):
@@ -605,6 +691,8 @@ class Session:
                 if cloud is not self.cloud:
                     return
                 if isinstance(m, bytes):
+                    if self.shooting:
+                        continue
                     if hold is None:
                         await self.ws.send(m)
                         continue
@@ -624,6 +712,8 @@ class Session:
                 if call.get('method') == 'tools/call' and (call.get('params') or {}).get('name') == SEARCH_TOOL:
                     asyncio.create_task(self.cloud_search(call))
                     continue
+                if self.shooting and msg.get('type') in ('tts', 'llm'):
+                    continue
                 if msg.get('type') == 'tts' and msg.get('state') == 'start':
                     hold = []
                 elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
@@ -636,6 +726,11 @@ class Session:
                 if msg.get('type') == 'stt' and is_switch(TO_LOCAL, msg.get('text')):
                     await self.to_local(cloud)
                     return
+                if msg.get('type') == 'stt' and not self.shooting and is_switch(SHOOT, msg.get('text')):
+                    self.shooting = True
+                    hold = None
+                    await self.to_cloud({'type': 'abort'})
+                    asyncio.create_task(self.countdown_shot())
         except ConnectionClosed:
             pass
         except Exception as e:  # noqa: BLE001 - 中継の失敗はつなぎ直しで直す
@@ -673,6 +768,35 @@ class Session:
                                       'voice_s': v and round(v, 2)}
             self.turn = {}
             set_status(state='listening' if self.listening else 'idle')
+
+    async def countdown_shot(self):
+        """「撮影するよ」: 正面を向いて SHOT_SECONDS 秒数えて撮ってもらい、だれの顔かを見る。"""
+        self.shooting = True
+        set_status(shooting=True)
+        try:
+            if not self.shot:
+                await self.say('ごめんね。今のプログラムでは、撮影できないよ。')
+                return
+            await self.say('撮影するよ。こっちを向いてね。')
+            before = STATUS['photo_at']
+            fut, sending = self.mcp_call('tools/call', {'name': SHOT_TOOL, 'arguments': {'seconds': SHOT_SECONDS}})
+            await sending
+            deadline = time.time() + SHOT_SECONDS + PHOTO_TIMEOUT
+            while STATUS['photo_at'] == before and time.time() < deadline:
+                await asyncio.sleep(0.2)
+            fut.cancel()
+            self.mcp_wait = {k: v for k, v in self.mcp_wait.items() if v is not fut}
+            if STATUS['photo_at'] == before:
+                log('撮影: 写真が届きませんでした')
+                await self.say('ごめんね。うまく撮れなかったよ。')
+                return
+            shot, words = await asyncio.to_thread(face_check, PHOTO['jpeg'])
+            set_status(shot=shot)
+            log(f'撮影: 顔 {shot["faces"]} 個、{shot["name"] or shot["error"] or "知らない人"}')
+            await self.say(words)
+        finally:
+            self.shooting = False
+            set_status(shooting=False)
 
     async def take_photo(self):
         """写真を撮ってもらう。うまくいけば None、だめなら理由。"""
@@ -794,6 +918,9 @@ class Session:
                 return
             if is_switch(TO_LOCAL, text):
                 await self.say('今はローカルです。')
+                return
+            if is_switch(SHOOT, text):
+                await self.countdown_shot()
                 return
             await self.send(type='llm', emotion='thinking', text='🤔')
             now = time.strftime('今は %Y年%m月%d日 %H時%M分です。')
