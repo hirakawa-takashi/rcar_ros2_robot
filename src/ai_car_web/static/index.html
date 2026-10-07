@@ -70,6 +70,9 @@
   .scphoto[hidden] { display: none; }
   .scphoto { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
   .scmsgs { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  table.sctalk { margin-top: 8px; }
+  table.sctalk td.k { width: 3em; vertical-align: top; }
+  table.sctalk td.v { text-align: left; }
   .scphoto input[type=text] { width: 9em; padding: 4px 6px; background: #0e1726; color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
@@ -612,8 +615,8 @@
           <span id="sc_enroll_msg"></span></div>
       </div>
     </div>
-    <table style="margin-top: 12px">
-      <tr><td class="k">聞き取り</td><td class="v wrap" id="sc_heard">-</td></tr>
+    <table class="sctalk">
+      <tr><td class="k">聞取</td><td class="v wrap" id="sc_heard">-</td></tr>
       <tr><td class="k">返事</td><td class="v wrap" id="sc_reply">-</td></tr>
     </table>
     <div class="note">Jetson の受け口（jetson-stackchan.service）から 2 秒ごとに取る（API トークンが必要）。写真は「撮影して」と言ったときだけ撮り、Jetson にはいちばん新しい 1 枚だけを置く（保存しない）。表示だけで、AI-CAR の走行・安全には使わない。</div>
