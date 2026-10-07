@@ -102,6 +102,10 @@ WAKE_FILLER = 2  # 呼びかけのほかが 2 文字まで（「ねえ」「に�
 WAKE_REPLY = 'はい、なあに？'
 BYE_REPLY = 'じゃあ、またね。'
 KEEPALIVE = 60.0
+# whisper-server は長く動かすと、どの声も「チャンネル登録をお願いします」のような決まった言葉にすることがある。
+# 5 分ごとに Kokoro の「スタックちゃん」を聞き取らせ、呼びかけが出なければ止めて systemd に起動し直させる
+STT_CHECK_EVERY = 300.0
+STT_CHECK_TEXT = 'スタックちゃん'
 # 居眠り: 「じゃあ、またね。」から --doze-seconds たつと、居眠りの顔（llm の emotion sleepy）にして首をホーム（正面・水平）へ
 HOME_HEAD = {'yaw': 0, 'pitch': 0, 'speed': 150}
 # 画面の明るさ: 見守りの映像の明るさ（0〜255 の平均）の 1 分の中央値で、画面の明るさ（0〜100）を決める
@@ -373,20 +377,40 @@ def llm_sentences(model, messages):
         yield buf.strip()
 
 
-def tts_pcm(text, voice, pitch, peak_db):
-    """文字を 24 kHz・16 bit・1 ch の PCM（bytes）にする。いちばん大きい所を peak_db（dBFS）にそろえる。"""
+def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE):
+    """文字を rate（ふつうは 24 kHz）・16 bit・1 ch の PCM（bytes）にする。いちばん大きい所を peak_db（dBFS）にそろえる。"""
     body = json.dumps({'model': 'kokoro', 'input': text, 'voice': voice, 'response_format': 'wav',
                        'lang_code': 'j', 'speed': 1.0}).encode()
     req = urllib.request.Request(KOKORO_URL, body, {'Content-Type': 'application/json'})
     with urllib.request.urlopen(req, timeout=30) as r:
         wav = r.read()
-    sox = ['sox', '-t', 'wav', '-', '-t', 'wav', '-r', str(OUT_RATE), '-c', '1', '-b', '16', '-']
+    sox = ['sox', '-t', 'wav', '-', '-t', 'wav', '-r', str(rate), '-c', '1', '-b', '16', '-']
     if pitch:
         sox += ['pitch', str(pitch)]
     sox += ['norm', str(peak_db)]
     wav = subprocess.run(sox, input=wav, capture_output=True, check=True).stdout
     with wave.open(io.BytesIO(wav)) as w:
         return w.readframes(w.getnframes())
+
+
+async def stt_watchdog(voice, wake_words):
+    """whisper-server が決まった言葉しか返さなくなったら、プロセスを止める（Restart=on-failure で起動し直る）。"""
+    wake = re.compile(wake_words or WAKE_WORDS, re.I)
+    probe = None
+    while True:
+        await asyncio.sleep(STT_CHECK_EVERY)
+        try:
+            if probe is None:
+                pcm = await asyncio.to_thread(tts_pcm, STT_CHECK_TEXT, voice, 0, -3.0, IN_RATE)
+                probe = np.frombuffer(pcm, np.int16).astype(np.float32)
+            text = await asyncio.to_thread(stt, probe)
+        except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as e:
+            log(f'whisper の見回り: 試せませんでした（{e}）')
+            continue
+        if wake.search(text):
+            continue
+        log(f'whisper がおかしいので起動し直します（「{STT_CHECK_TEXT}」→「{text}」）')
+        subprocess.run(['pkill', '-KILL', '-x', 'whisper-server'], check=False)
 
 
 class OtaHandler(BaseHTTPRequestHandler):
@@ -1331,9 +1355,11 @@ async def main():
                engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
+    watchdog = asyncio.create_task(stt_watchdog(args.voice, args.wake_words))
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
         log(f'待ち受け: OTA http://{args.host}:{args.ota_port}/xiaozhi/ota/  WebSocket :{args.ws_port}/xiaozhi/v1/')
         await asyncio.Future()
+    watchdog.cancel()
 
 
 if __name__ == '__main__':
