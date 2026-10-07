@@ -48,6 +48,7 @@ SYSTEM_PROMPT = ('あなたは家庭用ロボット「スタックちゃん」�
 IN_RATE = 16000
 OUT_RATE = 24000
 FRAME_MS = 60
+CLOUD_HOLD = 6  # ネットの声は出はじめを 6 枚（0.36 秒）ためてから流す。Wi-Fi のゆれで途切れないように
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
 NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
@@ -540,12 +541,20 @@ class Session:
 
     async def relay_cloud(self, cloud):
         """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。"""
+        hold = None
         try:
             async for m in cloud:
                 if cloud is not self.cloud:
                     return
                 if isinstance(m, bytes):
-                    await self.ws.send(m)
+                    if hold is None:
+                        await self.ws.send(m)
+                        continue
+                    hold.append(m)
+                    if len(hold) >= CLOUD_HOLD:
+                        for f in hold:
+                            await self.ws.send(f)
+                        hold = None
                     continue
                 try:
                     msg = json.loads(m)
@@ -553,6 +562,12 @@ class Session:
                     continue
                 if msg.get('type') == 'hello':
                     continue
+                if msg.get('type') == 'tts' and msg.get('state') == 'start':
+                    hold = []
+                elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
+                    for f in hold:
+                        await self.ws.send(f)
+                    hold = None
                 msg['session_id'] = self.sid
                 await self.ws.send(json.dumps(msg, ensure_ascii=False))
                 self.note_cloud(msg)
