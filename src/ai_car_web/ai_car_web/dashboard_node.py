@@ -1232,6 +1232,10 @@ def create_app(node: DashboardNode) -> FastAPI:
         body, ctype = node.stackchan_request('/photo.jpg')
         return Response(content=body, media_type=ctype or 'image/jpeg', headers={'Cache-Control': 'no-store'})
 
+    @app.post('/api/stackchan/stream', dependencies=[Depends(require_token)])
+    def stackchan_stream(on: int = 0):
+        return node.stackchan_json(f'/camera/stream?on={1 if on else 0}', 'POST')
+
     @app.get('/api/stackchan/frame.jpg', dependencies=[Depends(require_token)])
     def stackchan_frame_jpg():
         body, ctype = node.stackchan_request('/camera/frame.jpg')

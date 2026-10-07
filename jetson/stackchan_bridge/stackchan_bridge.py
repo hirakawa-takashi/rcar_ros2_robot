@@ -12,26 +12,40 @@ XiaoZhi の 2 つの口をまねる:
 - カメラ: つながったら MCP の initialize で写真の送り先（`POST /vision`）を教える。`POST /photo` で
   MCP の `self.camera.take_photo` を呼ぶと、スタックちゃんが JPEG を `/vision` へ送ってくるので、
   いちばん新しい 1 枚を `GET /photo.jpg` で返す（撮るたびにシャッターの音が鳴る）。
+- ネット / ローカルの切り替え: 「ネットにして」と言うと、この受け口がスタックちゃんのかわりにネットの XiaoZhi
+  （api.tenclass.net）につなぎ、声と文字をそのまま中継する。「ローカルにして」で Jetson の会話にもどる。
+  今の行き先は mode.txt に残す（起動し直しても同じ）。ネットのあいだは顔（目と口）を緑にする
+  （ファームウェアの MCP `self.robot.set_face_color`、stackchan-face-color.patch）。
+- 調べもの（ネットのときだけ）: MCP の道具 `self.web.search` を足して、ニュース・天気・今の役職など新しいことを
+  XiaoZhi から呼んでもらう。その呼び出しはスタックちゃんへ流さず、この受け口がインターネット（Google ニュースの
+  見出しと DuckDuckGo）で調べて答える。ローカルのときは調べない（Jetson の AI だけで答える）。
+- 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
 
 AI-CAR の走行・安全停止には何も送らない。
 """
 import argparse
 import asyncio
+import html
 import io
 import json
+import os
 import queue
 import re
 import subprocess
 import threading
 import time
+import urllib.parse
 import urllib.request
 import uuid
 import wave
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 import opuslib
+from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosed
 
 WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
@@ -41,6 +55,7 @@ SYSTEM_PROMPT = ('あなたは家庭用ロボット「スタックちゃん」�
 IN_RATE = 16000
 OUT_RATE = 24000
 FRAME_MS = 60
+CLOUD_HOLD = 6  # ネットの声は出はじめを 6 枚（0.36 秒）ためてから流す。Wi-Fi のゆれで途切れないように
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
 NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
@@ -48,15 +63,31 @@ PHOTO_TOOL = 'self.camera.take_photo'
 PHOTO_TIMEOUT = 15.0
 PHOTO_MAX_BYTES = 2 * 2 ** 20
 FRAME_PATH = '/camera/frame'
+STREAM_PATH = '/camera/stream'
 VIEWER_HOLD = 10.0
 FRAME_STALE = 3.0
+CLOUD_OTA_URL = 'https://api.tenclass.net/xiaozhi/ota/'
+FACE_TOOL = 'self.robot.set_face_color'
+FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00}
+SEARCH_TOOL = 'self.web.search'
+SEARCH_DESC = ('Search the internet for up-to-date information: news, weather, prices, who currently holds a '
+               'position, and anything that may have changed after your training. Always use it for questions '
+               'about the present or recent events. Returns news headlines with dates and web snippets.')
+SEARCH_PARAMS = {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'search words'}},
+                 'required': ['query']}
+MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
+OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
+_SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
+TO_NET = re.compile(r'(?:インターネット|ネット|クラウド|net)' + _SWITCH, re.I)
+TO_LOCAL = re.compile(r'(?:ローカル|ジェットソン|local|jetson)' + _SWITCH, re.I)
 
 STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
-          'stream_at': None, 'frame_at': None, 'fps': None}
+          'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local'}
+DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
-FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0}
+FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
 SESSIONS = []
 LOOP = None
 
@@ -71,8 +102,11 @@ def set_status(**kw):
 
 
 def want_frames():
-    """ダッシュボードが 10 秒以内に映像を取りに来ていれば '1'（スタックちゃんに送り続けてもらう）。"""
-    return '1' if time.time() - FRAME['viewer_at'] < VIEWER_HOLD else '0'
+    """「映像を撮る」が押されていて、ダッシュボードが 10 秒以内に取りに来ていれば '1'（送り続けてもらう）。"""
+    if FRAME['on'] and time.time() - FRAME['viewer_at'] >= VIEWER_HOLD:
+        FRAME['on'] = False
+        set_status(stream_on=False)
+    return '1' if FRAME['on'] else '0'
 
 
 def jpeg_from_multipart(body, ctype):
@@ -91,6 +125,60 @@ def jpeg_from_multipart(body, ctype):
 def set_device(**kw):
     with STATUS_LOCK:
         STATUS['device'] = {**STATUS['device'], **{k: v for k, v in kw.items() if v and v != '?'}}
+
+
+def load_mode():
+    try:
+        with open(MODE_FILE) as f:
+            return 'net' if f.read().strip() == 'net' else 'local'
+    except OSError:
+        return 'local'
+
+
+def save_mode(mode):
+    with open(MODE_FILE, 'w') as f:
+        f.write(mode + '\n')
+    set_status(mode=mode)
+
+
+def load_device_ota():
+    """最後にスタックちゃんから来た OTA の問い合わせ（ネットの OTA に同じものを送る）。"""
+    try:
+        with open(OTA_FILE) as f:
+            d = json.load(f)
+        DEVICE_OTA.update(headers=d['headers'], body=d['body'].encode())
+    except (OSError, ValueError, KeyError):
+        pass
+
+
+def save_device_ota(headers, body):
+    DEVICE_OTA.update(headers=headers, body=body)
+    try:
+        with open(OTA_FILE, 'w') as f:
+            json.dump({'headers': headers, 'body': body.decode(errors='replace')}, f, ensure_ascii=False)
+    except OSError as e:
+        log(f'OTA の問い合わせを残せません: {e}')
+
+
+def is_switch(pattern, text):
+    return bool(pattern.search(re.sub(r'\s', '', text or '')))
+
+
+def cloud_ota(device_id, client_id):
+    """スタックちゃんのかわりにネットの XiaoZhi の OTA に聞いて、WebSocket の行き先と token を返す。"""
+    version = STATUS['device'].get('version', '')
+    headers = {'Activation-Version': '1', 'User-Agent': f'm5stack-stack-chan/{version}',
+               **DEVICE_OTA['headers'], 'Device-Id': device_id, 'Client-Id': client_id,
+               'Content-Type': 'application/json'}
+    body = DEVICE_OTA['body'] or json.dumps({'application': {'name': 'xiaozhi', 'version': version}}).encode()
+    with urllib.request.urlopen(urllib.request.Request(CLOUD_OTA_URL, body, headers), timeout=10) as r:
+        res = json.loads(r.read())
+    if res.get('activation'):
+        raise RuntimeError('ネットのほうで、スタックちゃんの登録が要ります（アプリで登録し直す）')
+    ws = res.get('websocket') or {}
+    if not ws.get('url'):
+        raise RuntimeError('ネットの返事に WebSocket の行き先がありません')
+    return ws['url'], ws.get('token', '')
 
 
 def log(msg):
@@ -117,6 +205,39 @@ def stt(samples):
     req = urllib.request.Request(WHISPER_URL, body, {'Content-Type': f'multipart/form-data; boundary={b}'})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())['text'].strip().replace('\n', '')
+
+
+def _get(url, timeout=8):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def _plain(s):
+    return html.unescape(re.sub(r'<[^>]+>', '', s)).strip()
+
+
+def web_search(query, n=5):
+    """ネットの XiaoZhi に頼まれて調べる（Google ニュースの見出しと日付・DuckDuckGo の説明）。文字にして返す。"""
+    q = urllib.parse.quote(query)
+    out = []
+    try:
+        root = ET.fromstring(_get(f'https://news.google.com/rss/search?q={q}&hl=ja&gl=JP&ceid=JP:ja'))
+        for item in root.iter('item'):
+            if len(out) >= n:
+                break
+            out.append(f'ニュース（{item.findtext("pubDate", "")[:16]}）: {item.findtext("title", "")}')
+    except Exception as e:  # noqa: BLE001 - 片方だけでも答える
+        log(f'調べもの（ニュース）のエラー: {e}')
+    try:
+        page = _get(f'https://html.duckduckgo.com/html/?q={q}').decode('utf-8', 'replace')
+        titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', page, re.S)
+        snips = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', page, re.S)
+        out += [f'ウェブ: {_plain(t)}: {_plain(x)}' for t, x in zip(titles, snips)][:n]
+    except Exception as e:  # noqa: BLE001
+        log(f'調べもの（ウェブ）のエラー: {e}')
+    log(f'調べもの「{query}」: {len(out)} 件')
+    return '\n'.join(out) if out else '見つかりませんでした'
 
 
 def llm_sentences(model, messages):
@@ -234,6 +355,12 @@ class OtaHandler(BaseHTTPRequestHandler):
             self._photo()
         elif path == FRAME_PATH:
             self._frame()
+        elif path == STREAM_PATH:
+            on = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('on', ['0'])[0] == '1'
+            FRAME.update(on=on, viewer_at=time.time())
+            set_status(stream_on=on)
+            log(f'映像: {"撮る" if on else "止める"}')
+            self._send_json({'ok': True, 'stream_on': on})
         else:
             self._reply()
 
@@ -291,6 +418,9 @@ class OtaHandler(BaseHTTPRequestHandler):
             pass
         host = (self.headers.get('Host') or '').rsplit(':', 1)[0] or self.server.server_address[0]
         dev = self.headers.get('Device-Id', '?')
+        if self.headers.get('Client-Id'):
+            save_device_ota({k: self.headers[k] for k in ('Activation-Version', 'Serial-Number', 'User-Agent',
+                                                          'Accept-Language') if self.headers.get(k)}, info)
         set_device(id=dev, ip=self.client_address[0], version=version)
         set_status(last_ota=time.time())
         log(f'OTA: {dev} 版 {version or "?"} → ws://{host}:{self.ws_port}')
@@ -323,8 +453,19 @@ class Session:
         self.reply_task = None
         self.cancel = threading.Event()
         self.camera = False
-        self.mcp_id = 0
+        self.face = False
+        self.vision_url = ''
+        # ネットの XiaoZhi も MCP の id を 1 から使うので、こちらの id はぶつからない所から始める
+        self.mcp_id = 10000
         self.mcp_wait = {}
+        self.device_id = ws.request.headers.get('Device-Id', '')
+        self.client_id = ws.request.headers.get('Client-Id', '')
+        self.hello = None
+        self.cloud = None
+        self.cloud_sid = ''
+        self.search_added = False
+        self.switching = False
+        self.turn = {}
 
     async def send(self, **msg):
         msg['session_id'] = self.sid
@@ -347,15 +488,191 @@ class Session:
         except asyncio.TimeoutError:
             log('MCP: initialize の返事がありません（カメラは使えません）')
             return
-        fut, sending = self.mcp_call('tools/list', {})
+        fut, sending = self.mcp_call('tools/list', {'withUserTools': True})
         await sending
         try:
             tools = (await asyncio.wait_for(fut, 10)).get('result', {}).get('tools', [])
         except asyncio.TimeoutError:
             tools = []
-        self.camera = any(t.get('name') == PHOTO_TOOL for t in tools)
+        names = {t.get('name') for t in tools}
+        self.camera = PHOTO_TOOL in names
+        self.face = FACE_TOOL in names
         set_status(camera=self.camera)
-        log(f'MCP: カメラ {"あり" if self.camera else "なし"} → {vision_url}')
+        log(f'MCP: カメラ {"あり" if self.camera else "なし"} → {vision_url}、顔の色 {"あり" if self.face else "なし"}')
+
+    async def after_hello(self, vision_url):
+        self.vision_url = vision_url
+        if vision_url:
+            await self.mcp_init(vision_url)
+        if STATUS['mode'] == 'net':
+            await self.to_net(announce=False)
+        else:
+            await self.set_face('local')
+
+    async def set_face(self, mode):
+        if not self.face:
+            return
+        fut, sending = self.mcp_call('tools/call', {'name': FACE_TOOL, 'arguments': {'color': FACE_COLOR[mode]}})
+        await sending
+        try:
+            await asyncio.wait_for(fut, 5)
+        except asyncio.TimeoutError:
+            log('MCP: 顔の色の返事がありません')
+
+    async def say(self, text):
+        """Jetson の声で 1 文だけ話す（切り替えのお知らせ）。"""
+        a = self.args
+        try:
+            pcm = await asyncio.to_thread(tts_pcm, text, a.voice, a.pitch, a.peak_db)
+        except Exception as e:  # noqa: BLE001 - 声が作れなくても切り替えは続ける
+            log(f'声のエラー: {e}')
+            return
+        self.cancel.clear()
+        await self.send(type='tts', state='start')
+        await self.send(type='tts', state='sentence_start', text=text)
+        await self.play(pcm)
+        await self.send(type='tts', state='stop')
+
+    async def to_net(self, announce=True):
+        """ネットの XiaoZhi につなぎ、このセッションの声と文字を中継する。だめならローカルのまま。"""
+        self.switching = True
+        cloud = None
+        try:
+            if announce:
+                await self.say('ネットにつなぎます。')
+            url, token = await asyncio.to_thread(cloud_ota, self.device_id, self.client_id)
+            cloud = await connect(url, open_timeout=10, max_size=2 ** 20, additional_headers={
+                'Authorization': f'Bearer {token}', 'Protocol-Version': '1',
+                'Device-Id': self.device_id, 'Client-Id': self.client_id})
+            await cloud.send(json.dumps(self.hello))
+            hello = json.loads(await asyncio.wait_for(cloud.recv(), 10))
+            rate = (hello.get('audio_params') or {}).get('sample_rate')
+            if hello.get('type') != 'hello' or rate not in (None, OUT_RATE):
+                raise RuntimeError(f'ネットの hello がちがいます: {hello}')
+            self.cloud_sid = hello.get('session_id', '')
+            self.search_added = False
+            self.cloud = cloud
+            save_mode('net')
+            await self.set_face('net')
+            if self.listening:
+                await self.to_cloud({'type': 'listen', 'state': 'start', 'mode': self.mode})
+            asyncio.create_task(self.relay_cloud(cloud))
+            set_status(state='listening' if self.listening else 'idle')
+            log(f'ネットにつなぎました: {url}')
+        except Exception as e:  # noqa: BLE001 - ネットにつながらなくてもローカルで話せるようにする
+            log(f'ネットにつながりません: {e}')
+            self.cloud = None
+            if cloud:
+                await cloud.close()
+            save_mode('local')
+            await self.set_face('local')
+            await self.say('ネットにつながりませんでした。ローカルで話します。')
+        finally:
+            self.switching = False
+
+    async def to_local(self, cloud):
+        self.cloud = None
+        self.switching = True
+        try:
+            await cloud.close()
+            save_mode('local')
+            if self.vision_url:
+                await self.mcp_init(self.vision_url)
+            await self.set_face('local')
+            await self.say('ローカルにもどりました。')
+            log('ローカルにもどりました')
+        finally:
+            self.switching = False
+            set_status(state='listening' if self.listening else 'idle')
+
+    async def to_cloud(self, msg):
+        try:
+            await self.cloud.send(json.dumps({**msg, 'session_id': self.cloud_sid}, ensure_ascii=False))
+        except (ConnectionClosed, AttributeError):
+            pass
+
+    async def cloud_audio(self, data):
+        try:
+            await self.cloud.send(data)
+        except (ConnectionClosed, AttributeError):
+            pass
+
+    async def relay_cloud(self, cloud):
+        """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。"""
+        hold = None
+        try:
+            async for m in cloud:
+                if cloud is not self.cloud:
+                    return
+                if isinstance(m, bytes):
+                    if hold is None:
+                        await self.ws.send(m)
+                        continue
+                    hold.append(m)
+                    if len(hold) >= CLOUD_HOLD:
+                        for f in hold:
+                            await self.ws.send(f)
+                        hold = None
+                    continue
+                try:
+                    msg = json.loads(m)
+                except ValueError:
+                    continue
+                if msg.get('type') == 'hello':
+                    continue
+                call = (msg.get('payload') or {}) if msg.get('type') == 'mcp' else {}
+                if call.get('method') == 'tools/call' and (call.get('params') or {}).get('name') == SEARCH_TOOL:
+                    asyncio.create_task(self.cloud_search(call))
+                    continue
+                if msg.get('type') == 'tts' and msg.get('state') == 'start':
+                    hold = []
+                elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
+                    for f in hold:
+                        await self.ws.send(f)
+                    hold = None
+                msg['session_id'] = self.sid
+                await self.ws.send(json.dumps(msg, ensure_ascii=False))
+                self.note_cloud(msg)
+                if msg.get('type') == 'stt' and is_switch(TO_LOCAL, msg.get('text')):
+                    await self.to_local(cloud)
+                    return
+        except ConnectionClosed:
+            pass
+        except Exception as e:  # noqa: BLE001 - 中継の失敗はつなぎ直しで直す
+            log(f'ネットの中継のエラー: {e}')
+        if cloud is self.cloud:
+            log('ネットの会話が切れました（画面を 1 回さわると、またつながります）')
+            self.cloud = None
+            await self.ws.close()
+
+    async def cloud_search(self, call):
+        """ネットの XiaoZhi が呼んだ調べものに、スタックちゃんのかわりに答える。"""
+        query = str(((call.get('params') or {}).get('arguments') or {}).get('query', ''))
+        found = await asyncio.to_thread(web_search, query)
+        await self.to_cloud({'type': 'mcp', 'payload': {'jsonrpc': '2.0', 'id': call.get('id'), 'result': {
+            'content': [{'type': 'text', 'text': found}], 'isError': False}}})
+
+    def note_cloud(self, msg):
+        """ネットの会話の様子をダッシュボード用に残す。"""
+        t, now = msg.get('type'), time.time()
+        if t == 'stt':
+            self.turn = {'at': now, 'heard': msg.get('text', ''), 'reply': [], 'voice': None}
+            set_status(state='thinking')
+        elif t == 'tts' and msg.get('state') == 'sentence_start' and self.turn:
+            if self.turn['voice'] is None:
+                self.turn['voice'] = now - self.turn['at']
+                set_status(state='speaking')
+            self.turn['reply'].append(msg.get('text', ''))
+        elif t == 'tts' and msg.get('state') == 'stop':
+            if self.turn:
+                v = self.turn['voice']
+                with STATUS_LOCK:
+                    STATUS['turns'] += 1
+                    STATUS['last'] = {'at': self.turn['at'], 'heard': self.turn['heard'],
+                                      'reply': ''.join(self.turn['reply']), 'stt_s': None,
+                                      'voice_s': v and round(v, 2)}
+            self.turn = {}
+            set_status(state='listening' if self.listening else 'idle')
 
     async def take_photo(self):
         """写真を撮ってもらう。うまくいけば None、だめなら理由。"""
@@ -369,23 +686,40 @@ class Session:
         return ''.join(c.get('text', '') for c in r.get('content', [])) if r.get('isError') else None
 
     def on_mcp(self, payload):
+        """こちらが出した MCP の返事なら受け取って True。"""
         fut = self.mcp_wait.pop(payload.get('id'), None) if isinstance(payload, dict) else None
         if fut and not fut.done():
             fut.set_result(payload)
+        return fut is not None
 
     def reset_vad(self):
         self.speech, self.pre, self.started, self.silent = [], [], False, 0.0
 
     async def on_text(self, msg):
         t = msg.get('type')
+        if t == 'mcp' and self.on_mcp(msg.get('payload')):
+            return
+        if self.cloud and t != 'hello':
+            tools = ((msg.get('payload') or {}).get('result') or {}).get('tools') if t == 'mcp' else None
+            if isinstance(tools, list) and not self.search_added:
+                tools.append({'name': SEARCH_TOOL, 'description': SEARCH_DESC, 'inputSchema': SEARCH_PARAMS})
+                self.search_added = True
+            if t == 'listen' and msg.get('state') in ('start', 'stop'):
+                self.listening = msg['state'] == 'start'
+                self.mode = msg.get('mode', self.mode)
+            await self.to_cloud(msg)
+            return
         if t == 'hello':
+            self.hello = msg
             await self.ws.send(json.dumps({
                 'type': 'hello', 'transport': 'websocket', 'session_id': self.sid,
                 'audio_params': {'format': 'opus', 'sample_rate': OUT_RATE, 'channels': 1,
                                  'frame_duration': FRAME_MS}}))
+            vision_url = None
             if (msg.get('features') or {}).get('mcp'):
                 host = (self.ws.request.headers.get('Host') or '127.0.0.1').rsplit(':', 1)[0]
-                asyncio.create_task(self.mcp_init(f'http://{host}:{self.args.ota_port}/vision'))
+                vision_url = f'http://{host}:{self.args.ota_port}/vision'
+            asyncio.create_task(self.after_hello(vision_url))
         elif t == 'listen':
             state = msg.get('state')
             if state == 'start':
@@ -406,12 +740,12 @@ class Session:
         elif t == 'abort':
             self.cancel.set()
         elif t == 'mcp':
-            self.on_mcp(msg.get('payload'))
+            pass
         else:
             log(f'未対応のメッセージ: {msg}')
 
     def on_audio(self, data):
-        if not self.listening or self.reply_task:
+        if not self.listening or self.reply_task or self.switching:
             return
         try:
             pcm = np.frombuffer(self.dec.decode(data, IN_RATE * FRAME_MS // 1000), dtype=np.int16)
@@ -455,6 +789,12 @@ class Session:
             if not text or NOISE_TEXT.fullmatch(text):
                 return
             await self.send(type='stt', text=text)
+            if is_switch(TO_NET, text):
+                await self.to_net()
+                return
+            if is_switch(TO_LOCAL, text):
+                await self.say('今はローカルです。')
+                return
             await self.send(type='llm', emotion='thinking', text='🤔')
             now = time.strftime('今は %Y年%m月%d日 %H時%M分です。')
             messages = [{'role': 'system', 'content': SYSTEM_PROMPT + now}] + self.history + \
@@ -529,7 +869,10 @@ async def handler(ws, args):
     try:
         async for msg in ws:
             if isinstance(msg, bytes):
-                s.on_audio(msg)
+                if s.cloud:
+                    await s.cloud_audio(msg)
+                else:
+                    s.on_audio(msg)
             else:
                 try:
                     await s.on_text(json.loads(msg))
@@ -537,6 +880,9 @@ async def handler(ws, args):
                     log(f'JSON でないメッセージ: {msg[:80]}')
     finally:
         s.cancel.set()
+        cloud, s.cloud = s.cloud, None
+        if cloud:
+            await cloud.close()
         SESSIONS.remove(s)
         for fut in s.mcp_wait.values():
             fut.cancel()
@@ -568,7 +914,8 @@ async def main():
     global LOOP
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
-    set_status(engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
+    load_device_ota()
+    set_status(mode=load_mode(), engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):

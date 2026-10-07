@@ -36,13 +36,14 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 
 ## スタックちゃんのファームウェア
 
-公式 https://github.com/m5stack/StackChan の `firmware`（ESP-IDF v5.5.4）に、ここの 3 つを足してビルドします。
+公式 https://github.com/m5stack/StackChan の `firmware`（ESP-IDF v5.5.4）に、ここの 4 つを足してビルドします。
 
 | ファイル | 置く所 | 中身 |
 | --- | --- | --- |
 | `firmware/sdkconfig.defaults.local` | `StackChan/firmware/` | `CONFIG_OTA_URL` を Jetson（`http://192.168.11.23:8003/xiaozhi/ota/`）にする |
 | `firmware/xiaozhi-no-auto-upgrade.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | AI Agent を開くたびの自動更新（`UpgradeFirmware`）をやめ、ログだけ出す（純正の版にもどらないように） |
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
+| `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
 
 ```bash
 cd StackChan/firmware
@@ -50,6 +51,7 @@ python3 ./fetch_repos.py                 # 依存の取得と公式のパッチ
 cp <このフォルダ>/firmware/sdkconfig.defaults.local .
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-no-auto-upgrade.patch
 git apply <このフォルダ>/firmware/stackchan-camera-stream.patch
+git apply <このフォルダ>/firmware/stackchan-face-color.patch
 . ~/esp/esp-idf-v5.5.4/export.sh
 idf.py build
 # Jetson の USB-A につなぐと /dev/ttyACM0。Wi-Fi の設定（NVS）は消えない
@@ -76,6 +78,25 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 - `/status` の `stream_at`（スタックちゃんが最後に聞きに来た時刻）・`frame_at`・`fps` をダッシュボードが出します。
   `stream_at` がないときは、前のとおり「写真を撮る」（MCP の `self.camera.take_photo`）だけ
 - 「写真を撮る」と映像は同じカメラを使うので、ファームウェアの中で順番に使います（`frame_mutex_`）
+
+## ネットとローカルの切り替え
+
+スタックちゃんはいつも Jetson につなぎ、ネットのときは bridge がネットの XiaoZhi へ中継します（ファームウェアの行き先は変えない）。
+
+```
+「ネットにして」（Jetson の whisper が聞き取る）→ 「ネットにつなぎます」→ bridge が XiaoZhi の OTA
+  （https://api.tenclass.net/xiaozhi/ota/、スタックちゃんの Device-Id・Client-Id で）に聞いて wss につなぐ
+  → スタックちゃんの hello を送り、声・JSON・MCP をそのまま中継（session_id だけ入れかえる）。顔は緑（0x00FF00）
+「ローカルにして」（XiaoZhi の stt を bridge が見る）→ 中継をやめる → 顔は白 →「ローカルにもどりました」
+```
+
+- 言い方: 「ネット / インターネット / クラウド / NET」か「ローカル / ジェットソン / LOCAL」のあとに
+  「モード」「にして」「に切り替えて」「に変えて」「につないで」「に戻して」。「ネットで調べて」などでは切りかわらない
+- 今の行き先は `mode.txt`、スタックちゃんの最後の OTA の問い合わせ（ネットの OTA にも同じものを送る）は `device_ota.json`（どちらも bridge と同じフォルダ）に残す。bridge やスタックちゃんを起動し直しても同じ。`/status` の `mode`（`local` / `net`）
+- ネットにつながらない・登録が要るときは、「ネットにつながりませんでした。ローカルで話します。」と言ってローカルのまま
+- ネットの間も、カメラの映像（`/camera/frame`）は Jetson に来ます。「写真を撮る」は、XiaoZhi が写真の送り先を自分のほうに変えるので使えません（ローカルにもどると、送り先を Jetson にもどす）
+- XiaoZhi が会話を切ると（しばらく話さないときなど）、bridge もスタックちゃんとの会話を切ります。画面を 1 回さわると、またネットにつながります
+- ネットの間も Jetson を通るので、Jetson が止まると会話はできません（走行・安全停止には関係ありません）
 
 ## 純正にもどす
 

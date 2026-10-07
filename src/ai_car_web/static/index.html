@@ -595,7 +595,8 @@
         <div class="scsay" id="sc_say">-</div>
         <h3>カメラ（スタックちゃんの目）</h3>
         <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
-        <div class="scphoto"><button id="sc_photo_btn" title="撮るたびにスタックちゃんからシャッターの音が鳴る">写真を撮る</button>
+        <div class="scphoto"><button id="sc_stream_btn" title="押したときだけ、スタックちゃんが映像を送る（もう一度押すか、ページを閉じて 10 秒で止まる）">映像を撮る</button>
+          <button id="sc_photo_btn" title="撮るたびにスタックちゃんからシャッターの音が鳴る">写真を撮る</button>
           <span id="sc_photo_msg">-</span></div>
       </div>
       <div>
@@ -608,6 +609,7 @@
         </table>
         <h3>本体</h3>
         <table>
+          <tr><td class="k">会話の行き先</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる。ネットのときは顔が緑">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v" id="sc_ip">-</td></tr>
           <tr><td class="k">ファームウェア</td><td class="v wrap" id="sc_fw" title="純正の行き先を Jetson にかえ、自動更新をやめたもの">-</td></tr>
           <tr><td class="k">最後に来た時刻</td><td class="v" id="sc_seen" title="起動のときの問い合わせか、会話のつながり">-</td></tr>
@@ -1387,6 +1389,7 @@ let stackPhotoAt = null;
 let stackPhotoUrl = null;
 let stackPhotoBusy = false;
 let stackLive = false;
+let stackStreamBusy = false;
 let stackFrameBusy = false;
 const STACK_STATE = {
   listening: ['ok', '聞いています', 'normal', '（聞いているよ）'],
@@ -1395,9 +1398,9 @@ const STACK_STATE = {
   idle: ['', '待ち受け', 'sleep', '画面を 1 回さわると話せます'],
 };
 
-function stackFace(mood) {
+function stackFace(mood, net) {
   const ex = [100, 220], ey = 100;
-  const color = mood === 'off' ? '#555' : '#fff';
+  const color = mood === 'off' ? '#555' : net ? '#0f0' : '#fff';
   const line = d => `<path d="${d}" stroke="${color}" stroke-width="8" fill="none" stroke-linecap="round"/>`;
   const eyes = ex.map(x => mood === 'sleep' ? line(`M${x - 16} ${ey} H${x + 16}`)
     : mood === 'happy' ? line(`M${x - 16} ${ey + 6} Q${x} ${ey - 18} ${x + 16} ${ey + 6}`)
@@ -1431,20 +1434,24 @@ function renderStackchan(r, err) {
     const [cls, label, mood, say] = STACK_STATE[r.connected ? r.state : 'idle'] || STACK_STATE.idle;
     st.className = 'badge' + (cls ? ` ${cls}` : '');
     st.textContent = label;
-    stackFace(mood);
+    stackFace(mood, r.mode === 'net');
     scId('sc_say').textContent = say || last.reply || '-';
   }
   scId('sc_at').textContent = stackTime(last.at);
   scId('sc_heard').textContent = last.heard || '-';
   scId('sc_reply').textContent = last.reply || '-';
   scId('sc_time').textContent = last.at
-    ? `文字 ${fmt(last.stt_s, 1)} 秒 / 声 ${last.voice_s != null ? `${fmt(last.voice_s, 1)} 秒` : '-'}` : '-';
+    ? `文字 ${last.stt_s != null ? `${fmt(last.stt_s, 1)} 秒` : '-'} / 声 ${last.voice_s != null ? `${fmt(last.voice_s, 1)} 秒` : '-'}` : '-';
   scId('sc_ip').innerHTML = dev.ip
     ? `<span class="nw">${esc(dev.ip)}</span>${dev.id ? `<wbr><span class="nw">（${esc(dev.id)}）</span>` : ''}` : '-';
-  scId('sc_fw').textContent = dev.version ? `純正 ${dev.version}（行き先: Jetson）` : '-';
+  const net = !!(r && r.mode === 'net');
+  scId('sc_mode').textContent = r ? (net ? 'ネット（XiaoZhi、顔が緑）' : 'ローカル（Jetson）') : '-';
+  scId('sc_fw').textContent = dev.version ? `純正 ${dev.version}（Jetson 経由）` : '-';
   scId('sc_seen').textContent = r ? (r.connected ? '今つながっています' : stackTime(r.last_seen)) : '-';
   scId('sc_turns').textContent = r ? `${r.turns} 回` : '-';
-  stackLive = !!(r && r.stream_at && r.now - r.stream_at < 10);
+  if (!stackStreamBusy) stackLive = !!(r && r.stream_on);
+  scId('sc_stream_btn').textContent = stackLive ? '映像を止める' : '映像を撮る';
+  scId('sc_stream_btn').disabled = stackStreamBusy || !(r && r.connected && r.camera);
   scId('sc_photo_btn').hidden = stackLive;
   scId('sc_photo_btn').disabled = stackPhotoBusy || !(r && r.connected && r.camera);
   if (stackLive) {
@@ -1458,7 +1465,7 @@ function renderStackchan(r, err) {
     stackPhotoAt = r.photo_at;
     loadStackPhoto();
   }
-  scId('sc_engine').innerHTML = r && eng.llm
+  scId('sc_engine').innerHTML = net ? '<span class="nw">XiaoZhi（ネット）</span>' : r && eng.llm
     ? [eng.stt, eng.llm, eng.tts].map(x => `<span class="nw">${esc(x || '-')}</span>`).join(' → ') : '-';
 }
 
@@ -1486,6 +1493,15 @@ function pollStackFrame() {
     .catch(() => {})
     .finally(() => { stackFrameBusy = false; });
 }
+
+scId('sc_stream_btn').addEventListener('click', () => {
+  const on = !stackLive;
+  stackStreamBusy = true;
+  scId('sc_stream_btn').disabled = true;
+  apiPost(`/api/stackchan/stream?on=${on ? 1 : 0}`).then(r => {
+    if (r && r.ok) stackLive = on;
+  }).finally(() => { stackStreamBusy = false; pollStackchan(); });
+});
 
 scId('sc_photo_btn').addEventListener('click', () => {
   const btn = scId('sc_photo_btn');
