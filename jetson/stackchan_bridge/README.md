@@ -42,6 +42,7 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 | --- | --- | --- |
 | `firmware/sdkconfig.defaults.local` | `StackChan/firmware/` | `CONFIG_OTA_URL` を Jetson（`http://192.168.11.23:8003/xiaozhi/ota/`）にする |
 | `firmware/xiaozhi-no-auto-upgrade.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | AI Agent を開くたびの自動更新（`UpgradeFirmware`）をやめ、ログだけ出す（純正の版にもどらないように） |
+| `firmware/xiaozhi-auto-reopen.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | 会話が切れたら（画面をさわって止めたとき以外）、自分でつなぎ直す（3 秒後、だめなら 6・12…最大 60 秒ごと。つなぎ直しの失敗ではエラーの音を出さない）。AI Agent を開いたときも 2 秒後に自分でつなぐ（下の「呼びかけ」） |
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 | `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
 | `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
@@ -51,6 +52,7 @@ cd StackChan/firmware
 python3 ./fetch_repos.py                 # 依存の取得と公式のパッチ
 cp <このフォルダ>/firmware/sdkconfig.defaults.local .
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-no-auto-upgrade.patch
+git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-auto-reopen.patch
 git apply <このフォルダ>/firmware/stackchan-camera-stream.patch
 git apply <このフォルダ>/firmware/stackchan-face-color.patch
 git apply <このフォルダ>/firmware/stackchan-countdown-shot.patch
@@ -133,6 +135,7 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 - 呼びかけ待ちのあいだも、聞こえた声は whisper で文字にします（1 回 約 0.4〜0.5 秒）。テレビの声なども文字にするので、Jetson が少し働きます。返事はしません
 - 「ネットにして」「撮影して」も、呼びかけ待ちのときは「スタックちゃん、ネットにして」のように名前を付けて言います
 - ネットのときは使いません（今までどおり画面をさわって話す）
+- 呼びかけは、スタックちゃんが Jetson につながっている（ランプが緑）ときだけ聞こえます。ランプが消えている（待ち受け）ときは声を送らないので、`xiaozhi-auto-reopen.patch` で、会話が切れたら自分でつなぎ直します（画面をさわって止めたときはつなぎ直さない）。AI Agent を開いたときも、さわらなくてもつながります。つなぎ直したときは、さわったときと同じく 30 秒は名前なしで返事をします
 - あいさつ（見守り）をしたあとも 30 秒は名前なしで返事できます
 
 ## ネットとローカルの切り替え
