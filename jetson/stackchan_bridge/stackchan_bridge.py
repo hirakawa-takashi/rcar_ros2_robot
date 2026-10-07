@@ -20,9 +20,11 @@ XiaoZhi の 2 つの口をまねる:
   XiaoZhi から呼んでもらう。その呼び出しはスタックちゃんへ流さず、この受け口がインターネット（Google ニュースの
   見出しと DuckDuckGo）で調べて答える。ローカルのときは調べない（Jetson の AI だけで答える）。
 - 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
-- 呼びかけ（ローカルのとき）: 画面をさわってからと、最後に話してから --awake-seconds（30 秒）たつと「呼びかけ待ち」になる。
-  スタックちゃんは聞いているままで、声は whisper で文字にするが、「スタックちゃん」（--wake-words）が入っているときだけ返事をする。
-  スタックちゃんの 120 秒の時間切れで会話が切れないように、60 秒ごとに `{"type": "ping"}` を送る。
+- 呼びかけ（ネットもローカルも）: つながったときは「呼びかけ待ち」。スタックちゃんは聞いているままで、声は whisper で
+  文字にするが、「スタックちゃん」（--wake-words）が入っているときだけ返事をする（会話モード）。ネットのときは、呼ばれて
+  からの声だけを XiaoZhi へ流す（呼んだときの声も、Opus にしなおして先に送る）。最後に話してから --awake-seconds
+  （30 秒）たつと「じゃあ、またね。」と言って呼びかけ待ちにもどる。スタックちゃんの 120 秒の時間切れで会話が切れないように、
+  60 秒ごとに `{"type": "ping"}` を送る。
 - 撮影: 「撮影して」と言うと、MCP の `self.camera.countdown_photo`（stackchan-countdown-shot.patch）で
   正面を向いて 5 秒数え、画面にカメラを出してから撮る。写真は `POST /camera/shot` に届く。face_id で顔を見て
   （`shot`）、ダッシュボードから `POST /enroll?name=` で名前を付けて face_id に登録する（ネットのときも同じ）。
@@ -97,6 +99,7 @@ SEARCH_PARAMS = {'type': 'object', 'properties': {'query': {'type': 'string', 'd
 WAKE_WORDS = r'(?:ス[タダ]ッ?[クグ]?|す[ただ]っ?く?|stack)\s*[-ー・ ]?\s*(?:ちゃん?|チャン?|chan)'
 WAKE_FILLER = 2  # 呼びかけのほかが 2 文字まで（「ねえ」「に」など）なら、名前だけ呼ばれたとみなす
 WAKE_REPLY = 'はい、なあに？'
+BYE_REPLY = 'じゃあ、またね。'
 KEEPALIVE = 60.0
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
@@ -604,14 +607,22 @@ class Session:
         self.turn = {}
         self.wake = re.compile(args.wake_words, re.I) if args.wake_words else None
         self.awake_until = 0.0
+        self.awake = False
+        self.cloud_tts = False
         self.keep_task = None
 
     def asleep(self):
-        """呼びかけ待ち（ローカルで、さわってから・最後に話してから --awake-seconds たった）なら True。"""
-        return bool(self.wake) and not self.cloud and time.time() >= self.awake_until
+        """呼びかけ待ち（呼ばれていないか、最後に話してから --awake-seconds たった）なら True。"""
+        return bool(self.wake) and time.time() >= self.awake_until
 
     def wake_up(self):
         self.awake_until = time.time() + self.args.awake_seconds
+        self.awake = True
+
+    def busy(self):
+        turn = self.turn and time.time() - self.turn['at'] < 60
+        return bool(self.reply_task or self.switching or self.shooting or turn or self.cloud_tts or self.started
+                    or STATUS['state'] in ('thinking', 'speaking'))
 
     def listen_state(self):
         if not self.listening:
@@ -619,18 +630,24 @@ class Session:
         return 'waiting' if self.asleep() else 'listening'
 
     async def keepalive(self):
-        """呼びかけ待ちになったら /status に出し、60 秒ごとに 1 回送ってスタックちゃんの 120 秒の時間切れを防ぐ。"""
+        """会話モードが 30 秒だまったら「じゃあ、またね。」で呼びかけ待ちにもどし、
+        60 秒ごとに 1 回送ってスタックちゃんの 120 秒の時間切れを防ぐ。"""
         last = time.monotonic()
         while True:
-            await asyncio.sleep(2)
-            if STATUS['state'] == 'listening' and not (self.reply_task or self.switching) and self.asleep():
-                set_status(state='waiting')
-            if not self.cloud and time.monotonic() - last >= KEEPALIVE:
-                last = time.monotonic()
-                try:
+            await asyncio.sleep(1)
+            try:
+                if self.awake and self.asleep() and not self.busy():
+                    self.awake = False
+                    log(f'{self.args.awake_seconds:.0f} 秒話さなかったので、呼びかけ待ちにもどります')
+                    await self.say(BYE_REPLY, wake=False)
+                    set_status(state=self.listen_state())
+                if STATUS['state'] == 'listening' and not self.busy() and self.asleep():
+                    set_status(state='waiting')
+                if time.monotonic() - last >= KEEPALIVE:
+                    last = time.monotonic()
                     await self.send(type='ping')
-                except ConnectionClosed:
-                    return
+            except ConnectionClosed:
+                return
 
     async def send(self, **msg):
         msg['session_id'] = self.sid
@@ -685,8 +702,8 @@ class Session:
         except asyncio.TimeoutError:
             log('MCP: 顔の色の返事がありません')
 
-    async def say(self, text):
-        """Jetson の声で 1 文だけ話す（切り替えのお知らせ）。"""
+    async def say(self, text, wake=True):
+        """Jetson の声で 1 文だけ話す（切り替えのお知らせ）。wake なら、そのあと会話モードにする。"""
         a = self.args
         try:
             pcm = await asyncio.to_thread(tts_pcm, text, a.voice, a.pitch, a.peak_db)
@@ -698,7 +715,8 @@ class Session:
         await self.send(type='tts', state='sentence_start', text=text)
         await self.play(pcm)
         await self.send(type='tts', state='stop')
-        self.wake_up()
+        if wake:
+            self.wake_up()
 
     def can_greet(self):
         """会話・撮影・切り替えのじゃまにならないときだけ True。"""
@@ -773,6 +791,17 @@ class Session:
         except (ConnectionClosed, AttributeError):
             pass
 
+    async def cloud_speech(self, samples):
+        """呼びかけ待ちで聞いた声（「スタックちゃん、〜」）を、Opus にしなおしてネットへ送る。"""
+        enc = opuslib.Encoder(IN_RATE, 1, opuslib.APPLICATION_VOIP)
+        step = IN_RATE * FRAME_MS // 1000
+        pcm = np.clip(samples, -32768, 32767).astype(np.int16)
+        pcm = np.concatenate([pcm, np.zeros(-len(pcm) % step, np.int16)])
+        await self.to_cloud({'type': 'listen', 'state': 'start', 'mode': self.mode})
+        for off in range(0, len(pcm), step):
+            await self.cloud_audio(enc.encode(pcm[off:off + step].tobytes(), step))
+        self.wake_up()
+
     async def cloud_audio(self, data):
         try:
             await self.cloud.send(data)
@@ -846,7 +875,11 @@ class Session:
     def note_cloud(self, msg):
         """ネットの会話の様子をダッシュボード用に残す。"""
         t, now = msg.get('type'), time.time()
+        if t == 'tts' and msg.get('state') in ('start', 'stop'):
+            self.cloud_tts = msg['state'] == 'start'
+            self.wake_up()
         if t == 'stt':
+            self.wake_up()
             self.turn = {'at': now, 'heard': msg.get('text', ''), 'reply': [], 'voice': None}
             set_status(state='thinking')
         elif t == 'tts' and msg.get('state') == 'sentence_start' and self.turn:
@@ -954,7 +987,8 @@ class Session:
             if (msg.get('features') or {}).get('mcp'):
                 host = (self.ws.request.headers.get('Host') or '127.0.0.1').rsplit(':', 1)[0]
                 vision_url = f'http://{host}:{self.args.ota_port}/vision'
-            self.wake_up()
+            if not self.wake:
+                self.wake_up()
             if self.wake and not self.keep_task:
                 self.keep_task = asyncio.create_task(self.keepalive())
             asyncio.create_task(self.after_hello(vision_url))
@@ -1037,10 +1071,14 @@ class Session:
                 log('呼びかけ: スタックちゃん')
                 set_status(state='thinking')
             heard = True
-            await self.send(type='stt', text=text)
             if asleep and len(re.sub(r'[\s\W]', '', self.wake.sub('', text))) <= WAKE_FILLER:
+                await self.send(type='stt', text=text)
                 await self.say(WAKE_REPLY)
                 return
+            if self.cloud:
+                await self.cloud_speech(samples)
+                return
+            await self.send(type='stt', text=text)
             if is_switch(TO_NET, text):
                 await self.to_net()
                 return
@@ -1126,7 +1164,7 @@ async def handler(ws, args):
     try:
         async for msg in ws:
             if isinstance(msg, bytes):
-                if s.cloud:
+                if s.cloud and not s.asleep():
                     await s.cloud_audio(msg)
                 else:
                     s.on_audio(msg)
@@ -1171,7 +1209,7 @@ async def main():
     p.add_argument('--wake-words', default=WAKE_WORDS,
                    help='呼びかけ待ちのとき、これ（正規表現）が聞き取りに入っているときだけ返事をする。空で呼びかけ待ちにしない')
     p.add_argument('--awake-seconds', type=float, default=30.0,
-                   help='画面をさわってから・最後に話してから、呼びかけなしで話せる秒数')
+                   help='呼ばれてから・最後に話してから、呼びかけなしで話せる秒数。たつと「じゃあ、またね。」')
     p.add_argument('--shot-pitch', type=int, default=30,
                    help='「撮影して」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
     p.add_argument('--watch-interval', type=float, default=2.0,
