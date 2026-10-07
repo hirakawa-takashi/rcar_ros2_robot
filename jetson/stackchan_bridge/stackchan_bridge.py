@@ -20,7 +20,7 @@ XiaoZhi の 2 つの口をまねる:
   XiaoZhi から呼んでもらう。その呼び出しはスタックちゃんへ流さず、この受け口がインターネット（Google ニュースの
   見出しと DuckDuckGo）で調べて答える。ローカルのときは調べない（Jetson の AI だけで答える）。
 - 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
-- 撮影: 「撮影するよ」と言うと、MCP の `self.camera.countdown_photo`（stackchan-countdown-shot.patch）で
+- 撮影: 「撮影して」と言うと、MCP の `self.camera.countdown_photo`（stackchan-countdown-shot.patch）で
   正面を向いて 5 秒数え、画面にカメラを出してから撮る。写真は `POST /camera/shot` に届く。face_id で顔を見て
   （`shot`）、ダッシュボードから `POST /enroll?name=` で名前を付けて face_id に登録する（ネットのときも同じ）。
 
@@ -68,7 +68,7 @@ PHOTO_TIMEOUT = 15.0
 PHOTO_MAX_BYTES = 2 * 2 ** 20
 FRAME_PATH = '/camera/frame'
 STREAM_PATH = '/camera/stream'
-# 「撮影するよ」: 正面を向いて 5 秒数え、画面にカメラを出してから撮る（ファームウェアが SHOT_PATH へ送る）
+# 「撮影して」: 正面を向いて 5 秒数え、画面にカメラを出してから撮る（ファームウェアが SHOT_PATH へ送る）
 SHOT_TOOL = 'self.camera.countdown_photo'
 SHOT_PATH = '/camera/shot'
 SHOT_SECONDS = 5
@@ -485,7 +485,7 @@ class OtaHandler(BaseHTTPRequestHandler):
         self._send_body(want_frames(), 'text/plain')
 
     def _shot(self):
-        """「撮影するよ」で数えて撮った写真（image/jpeg）。"""
+        """「撮影して」で数えて撮った写真（image/jpeg）。"""
         try:
             jpeg = self._read_body(PHOTO_MAX_BYTES)
         except ValueError as e:
@@ -835,14 +835,14 @@ class Session:
         head.cancel()
 
     async def countdown_shot(self):
-        """「撮影するよ」: 正面を向いて SHOT_SECONDS 秒数えて撮ってもらい、だれの顔かを見る。"""
+        """「撮影して」: 正面を向いて SHOT_SECONDS 秒数えて撮ってもらい、だれの顔かを見る。"""
         self.shooting = True
         set_status(shooting=True)
         try:
             if not self.shot:
                 await self.say('ごめんね。今のプログラムでは、撮影できないよ。')
                 return
-            await self.say('撮影するよ。こっちを向いてね。')
+            await self.say('撮影します。こっちを向いてね。')
             before = STATUS['photo_at']
             fut, sending = self.mcp_call('tools/call', {'name': SHOT_TOOL, 'arguments': {'seconds': SHOT_SECONDS}})
             await sending
@@ -1110,7 +1110,7 @@ async def main():
     p.add_argument('--max-seconds', type=float, default=15.0)
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
     p.add_argument('--shot-pitch', type=int, default=30,
-                   help='「撮影するよ」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
+                   help='「撮影して」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
     p.add_argument('--watch-interval', type=float, default=2.0,
                    help='見守りで顔を見る間隔（秒）。0 で見守りをしない')
     args = p.parse_args()
