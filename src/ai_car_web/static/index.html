@@ -599,6 +599,7 @@
         </table>
         <h3 style="margin-top: 12px" title="画面を 1 回さわって、ランプが緑のときに言う">話しかける言葉</h3>
         <table>
+          <tr><td class="k">「スタックちゃん」</td><td class="v wrap" title="ローカルのとき。さわってから・最後に話してから 30 秒たつと「呼びかけ待ち」になり、名前を呼んだときだけ返事をする">呼びかけ（ローカル）</td></tr>
           <tr><td class="k">「ネットにして」</td><td class="v wrap">ネットの AI（顔が緑）</td></tr>
           <tr><td class="k">「ローカルにして」</td><td class="v wrap">Jetson の AI（顔が白）</td></tr>
           <tr><td class="k">「撮影して」</td><td class="v wrap">5 秒数えて撮る</td></tr>
@@ -1393,6 +1394,7 @@ const STACK_STATE = {
   listening: ['ok', '聞いています'],
   thinking: ['ok', '考えています'],
   speaking: ['ok', '話しています'],
+  waiting: ['', '呼びかけ待ち'],
   idle: ['', '待ち受け'],
 };
 
