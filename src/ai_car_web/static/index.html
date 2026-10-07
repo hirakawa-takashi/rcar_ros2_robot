@@ -1386,6 +1386,8 @@ let stackBusy = false;
 let stackPhotoAt = null;
 let stackPhotoUrl = null;
 let stackPhotoBusy = false;
+let stackLive = false;
+let stackFrameBusy = false;
 const STACK_STATE = {
   listening: ['ok', '聞いています', 'normal', '（聞いているよ）'],
   thinking: ['ok', '考えています', 'think', '（うーん…）'],
@@ -1442,12 +1444,17 @@ function renderStackchan(r, err) {
   scId('sc_fw').textContent = dev.version ? `純正 ${dev.version}（行き先: Jetson）` : '-';
   scId('sc_seen').textContent = r ? (r.connected ? '今つながっています' : stackTime(r.last_seen)) : '-';
   scId('sc_turns').textContent = r ? `${r.turns} 回` : '-';
+  stackLive = !!(r && r.stream_at && r.now - r.stream_at < 10);
+  scId('sc_photo_btn').hidden = stackLive;
   scId('sc_photo_btn').disabled = stackPhotoBusy || !(r && r.connected && r.camera);
-  if (!stackPhotoBusy) {
+  if (stackLive) {
+    scId('sc_photo_msg').textContent = r.frame_at && r.now - r.frame_at < 3 && r.fps
+      ? `映像: 1 秒に ${fmt(r.fps, 1)} 枚` : '映像を待っています…';
+  } else if (!stackPhotoBusy) {
     scId('sc_photo_msg').textContent = r && r.photo_at ? `写真: ${stackTime(r.photo_at)}`
       : r && r.connected && !r.camera ? 'カメラの返事がありません' : r && !r.connected ? '画面を 1 回さわると撮れます' : '-';
   }
-  if (r && r.photo_at && r.photo_at !== stackPhotoAt) {
+  if (!stackLive && r && r.photo_at && r.photo_at !== stackPhotoAt) {
     stackPhotoAt = r.photo_at;
     loadStackPhoto();
   }
@@ -1455,16 +1462,29 @@ function renderStackchan(r, err) {
     ? [eng.stt, eng.llm, eng.tts].map(x => `<span class="nw">${esc(x || '-')}</span>`).join(' → ') : '-';
 }
 
+function showStackImage(b) {
+  if (!b) return;
+  if (stackPhotoUrl) URL.revokeObjectURL(stackPhotoUrl);
+  stackPhotoUrl = URL.createObjectURL(b);
+  scId('sc_cam').src = stackPhotoUrl;
+}
+
 function loadStackPhoto() {
   fetch('/api/stackchan/photo.jpg', {headers: authHeaders()})
     .then(f => f.ok ? f.blob() : null)
-    .then(b => {
-      if (!b) return;
-      if (stackPhotoUrl) URL.revokeObjectURL(stackPhotoUrl);
-      stackPhotoUrl = URL.createObjectURL(b);
-      scId('sc_cam').src = stackPhotoUrl;
-    })
+    .then(showStackImage)
     .catch(() => {});
+}
+
+// 映像はこのページが開いている間だけ取りに行く（10 秒来ないと、スタックちゃんは送るのをやめる）
+function pollStackFrame() {
+  if (!stackLive || stackFrameBusy || document.visibilityState !== 'visible') return;
+  stackFrameBusy = true;
+  fetch('/api/stackchan/frame.jpg', {headers: authHeaders()})
+    .then(f => f.ok ? f.blob() : null)
+    .then(showStackImage)
+    .catch(() => {})
+    .finally(() => { stackFrameBusy = false; });
 }
 
 scId('sc_photo_btn').addEventListener('click', () => {
@@ -1997,6 +2017,7 @@ setInterval(loadGpio, 30000);
 stackFace('off');
 pollStackchan();
 setInterval(pollStackchan, 2000);
+setInterval(pollStackFrame, 250);
 
 // ---- Motor HAT 接続図 ----
 function wireHex(c, fallback) {

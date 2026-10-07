@@ -47,11 +47,16 @@ NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
 PHOTO_TOOL = 'self.camera.take_photo'
 PHOTO_TIMEOUT = 15.0
 PHOTO_MAX_BYTES = 2 * 2 ** 20
+FRAME_PATH = '/camera/frame'
+VIEWER_HOLD = 10.0
+FRAME_STALE = 3.0
 
 STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
-          'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None}
+          'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
+          'stream_at': None, 'frame_at': None, 'fps': None}
 PHOTO = {'jpeg': None}
+FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0}
 SESSIONS = []
 LOOP = None
 
@@ -63,6 +68,11 @@ def set_status(**kw):
             STATUS['last_seen'] = time.time()
         if not STATUS['connected']:
             STATUS['state'] = 'idle'
+
+
+def want_frames():
+    """ダッシュボードが 10 秒以内に映像を取りに来ていれば '1'（スタックちゃんに送り続けてもらう）。"""
+    return '1' if time.time() - FRAME['viewer_at'] < VIEWER_HOLD else '0'
 
 
 def jpeg_from_multipart(body, ctype):
@@ -153,6 +163,15 @@ class OtaHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_body(self, body, ctype):
+        body = body.encode() if isinstance(body, str) else body
+        self.send_response(200)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_error(self, code, detail):
         body = json.dumps({'detail': detail}, ensure_ascii=False).encode()
         self.send_response(code)
@@ -183,15 +202,17 @@ class OtaHandler(BaseHTTPRequestHandler):
             with STATUS_LOCK:
                 self._send_json({**STATUS, 'now': time.time()})
         elif path == '/photo.jpg':
-            jpeg = PHOTO['jpeg']
-            if not jpeg:
+            if not PHOTO['jpeg']:
                 return self._send_error(404, 'まだ写真がありません')
-            self.send_response(200)
-            self.send_header('Content-Type', 'image/jpeg')
-            self.send_header('Content-Length', str(len(jpeg)))
-            self.send_header('Cache-Control', 'no-store')
-            self.end_headers()
-            self.wfile.write(jpeg)
+            self._send_body(PHOTO['jpeg'], 'image/jpeg')
+        elif path == FRAME_PATH:
+            set_status(stream_at=time.time())
+            self._send_body(want_frames(), 'text/plain')
+        elif path == FRAME_PATH + '.jpg':
+            FRAME['viewer_at'] = time.time()
+            if not FRAME['jpeg'] or time.time() - (STATUS['frame_at'] or 0) > FRAME_STALE:
+                return self._send_error(404, '映像を待っています')
+            self._send_body(FRAME['jpeg'], 'image/jpeg')
         else:
             self._reply()
 
@@ -201,6 +222,8 @@ class OtaHandler(BaseHTTPRequestHandler):
             self._vision()
         elif path == '/photo':
             self._photo()
+        elif path == FRAME_PATH:
+            self._frame()
         else:
             self._reply()
 
@@ -217,6 +240,20 @@ class OtaHandler(BaseHTTPRequestHandler):
         set_status(photo_at=time.time())
         log(f'写真: {len(jpeg) // 1024} KB')
         self._send_json({'success': True, 'result': 'ダッシュボードに出しました'})
+
+    def _frame(self):
+        """スタックちゃんが続けて送ってくる映像の 1 コマ（image/jpeg）。返事の「1」で次を送ってもらう。"""
+        try:
+            jpeg = self._read_body(PHOTO_MAX_BYTES)
+        except ValueError as e:
+            return self._send_error(413, str(e))
+        now = time.time()
+        if jpeg.startswith(b'\xff\xd8'):
+            FRAME['jpeg'] = jpeg
+            t = FRAME['times'] = [x for x in FRAME['times'][-9:] if now - x < FRAME_STALE] + [now]
+            fps = round((len(t) - 1) / (t[-1] - t[0]), 1) if len(t) > 1 else None
+            set_status(stream_at=now, frame_at=now, fps=fps)
+        self._send_body(want_frames(), 'text/plain')
 
     def _photo(self):
         """いちばん新しくつながったスタックちゃんに写真を撮ってもらう（終わるまで待つ）。"""

@@ -36,18 +36,20 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 
 ## スタックちゃんのファームウェア
 
-公式 https://github.com/m5stack/StackChan の `firmware`（ESP-IDF v5.5.4）に、ここの 2 つを足してビルドします。
+公式 https://github.com/m5stack/StackChan の `firmware`（ESP-IDF v5.5.4）に、ここの 3 つを足してビルドします。
 
 | ファイル | 置く所 | 中身 |
 | --- | --- | --- |
 | `firmware/sdkconfig.defaults.local` | `StackChan/firmware/` | `CONFIG_OTA_URL` を Jetson（`http://192.168.11.23:8003/xiaozhi/ota/`）にする |
 | `firmware/xiaozhi-no-auto-upgrade.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | AI Agent を開くたびの自動更新（`UpgradeFirmware`）をやめ、ログだけ出す（純正の版にもどらないように） |
+| `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 
 ```bash
 cd StackChan/firmware
 python3 ./fetch_repos.py                 # 依存の取得と公式のパッチ
 cp <このフォルダ>/firmware/sdkconfig.defaults.local .
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-no-auto-upgrade.patch
+git apply <このフォルダ>/firmware/stackchan-camera-stream.patch
 . ~/esp/esp-idf-v5.5.4/export.sh
 idf.py build
 # Jetson の USB-A につなぐと /dev/ttyACM0。Wi-Fi の設定（NVS）は消えない
@@ -57,6 +59,23 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 - 書き込むのは ota_0（0x20000）・assets（0xa00000）・otadata（0xd000）など。NVS（0x9000）の Wi-Fi の設定と、スマホのアプリの登録はそのまま
 - Jetson の IP アドレスが変わるとつながらない。ルーターで固定する（2026/10: Jetson 192.168.11.23、スタックちゃん 192.168.11.8）
 - スマホのアプリで変える AI の設定（声・性格）は使わなくなる。声の大きさは本体の設定の「Volume」（0〜100、最初は 70）でも変えられる
+
+## カメラの映像
+
+`stackchan-camera-stream.patch` を入れると、AI Agent の間、スタックちゃんが会話とは別に（画面をさわらなくても）
+`http://<OTA と同じ所>/camera/frame` に聞きに来ます。
+
+```
+スタックちゃん: GET  /camera/frame          → bridge: 「1」（ダッシュボードが 10 秒以内に見に来た）/「0」
+                「1」なら JPEG（320×240、品質 30、シャッターの音なし）を POST /camera/frame、返事が「1」の間くり返す
+                「0」なら 2 秒ごとに GET だけ（撮らない）、つながらないと 5 秒ごと
+ダッシュボード: GET /api/stackchan/frame.jpg（0.25 秒ごと、ページを見ている間だけ）→ bridge GET /camera/frame.jpg
+```
+
+- 映像はいちばん新しい 1 コマだけをメモリに置きます（保存しない）。3 秒より古いと 404
+- `/status` の `stream_at`（スタックちゃんが最後に聞きに来た時刻）・`frame_at`・`fps` をダッシュボードが出します。
+  `stream_at` がないときは、前のとおり「写真を撮る」（MCP の `self.camera.take_photo`）だけ
+- 「写真を撮る」と映像は同じカメラを使うので、ファームウェアの中で順番に使います（`frame_mutex_`）
 
 ## 純正にもどす
 
