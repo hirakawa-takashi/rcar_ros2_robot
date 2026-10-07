@@ -69,6 +69,7 @@
   .osline { font-size: 12px; margin: -4px 0 10px; color: #9fb0c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .scphoto[hidden] { display: none; }
   .scphoto { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
+  .scmsgs { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
   .scphoto input[type=text] { width: 9em; padding: 4px 6px; background: #0e1726; color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
@@ -603,11 +604,11 @@
       <div>
         <h3>顔の登録（カメラの映像）</h3>
         <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
-        <div class="scphoto"><span id="sc_photo_msg">-</span></div>
         <div class="scphoto" id="sc_enroll" title="「撮影するよ」と言うと、スタックちゃんが正面を向いて 5 秒数えて撮る。写っている顔 1 つを、名前を付けて Jetson の face_id に登録する">
-          <span id="sc_shot_msg">-</span>
+          <div class="scmsgs"><span id="sc_photo_msg">-</span><span id="sc_shot_msg">-</span></div>
+          <button id="sc_enroll_btn" style="white-space: nowrap">登録</button></div>
+        <div class="scphoto">
           <input id="sc_name" type="text" maxlength="20" placeholder="名前" autocomplete="off">
-          <button id="sc_enroll_btn">名前を登録</button>
           <span id="sc_enroll_msg"></span></div>
       </div>
     </div>

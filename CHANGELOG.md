@@ -27,6 +27,7 @@
 - 2 眼カメラで距離を出す `stereo_depth_node`（表示だけ）。`stereo_calib.yaml` で左右を平行にそろえ、SGBM で距離にして、通り道の中で床より 4 cm 以上高い物のいちばん近い距離を `/stereo/depth_status` に出す。`stereo_camera_node` は受けるノードがいるときだけ、左右を 640×360 の白黒にして `/stereo/pair_gray` に 3 Hz で出す（今の `/camera/image_raw/compressed` はそのまま）。ダッシュボードのカメラカードに「2眼の距離」の行と、映像を距離の色に切り替える「距離の画像」ボタン（`GET /api/camera/depth_stream`）を追加。launch に `use_stereo_depth`（既定 true）。走る・止まるの判断には使わない
 
 ### Changed
+- ダッシュボード: スタックちゃんのカードの「名前を登録」ボタンを「登録」にして、写真の時刻・顔の結果の 2 行の右に移す（名前の欄はその下）
 - ダッシュボード: スタックちゃんのカードの「聞き取り」「返事」を、カードのいちばん下（横いっぱい）に移す
 - ダッシュボード: スタックちゃんのカードから「映像を撮る」「写真を撮る」のボタンを消す。写真は「撮影して」と言って撮ったものだけを出す（`POST /api/stackchan/photo`・`/api/stackchan/stream` は残す）。撮影の首を 15 度から 30 度上へ（`--shot-pitch`）、数えているあいだ 1 秒ごとに送り直す
 - ダッシュボード: いちばん上の電圧の警告を「ラズパイの 5V が足りない（電源の力不足）」にする（前は「電池の電圧」「電池の残りを見て」で、電池の残りと取りちがえやすかった）。直近 10 分の回数を出し、10 分出ていなければ橙をやめて灰色にする（`power.under_voltage.recent_10min`）。CPU カードの「PD対応（5A）」（設定 `usb_max_current_enable` を見ていただけ）を「電源の電流上限 [A]」にし、device tree の `chosen/power/max_current` と PD のやりとりの有無を出す（`power.supply`、5 A 未満は橙）
