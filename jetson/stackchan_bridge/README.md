@@ -18,6 +18,7 @@ M5Stack の純正ファームウェア（StackChan 1.5.1、中の会話は XiaoZ
 - 声の区切り: まわりの音の 3 倍（最低 RMS 300）より大きいと話し始め、0.8 秒静かなら話し終わり（`--ratio`・`--min-level`・`--end-silence`）。
   「(音楽)」のような文字だけの聞き取りは捨てる
 - 会話は 3 往復まで覚える（WebSocket が切れると忘れる）。今の日時をシステムの指示に入れる
+- `GET :8003/status`: つながり（`connected`）・今の様子（`state`: `listening` / `thinking` / `speaking` / `idle`）・最後の会話（`last`: 聞き取り・返事・かかった秒）・本体（`device`: MAC・IP・版）・会話の数（`turns`）を JSON で返す。AI-CAR のダッシュボードのスタックちゃんのカードが `GET /api/stackchan/status` 経由で 2 秒ごとに取る
 - 認証はしない（`token` は空）。家の LAN・Tailscale の中だけで使う
 
 ## Jetson に入れる

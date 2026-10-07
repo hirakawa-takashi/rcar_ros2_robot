@@ -7,6 +7,8 @@ XiaoZhi の 2 つの口をまねる:
 - WebSocket（--ws-port、既定 8000）`/xiaozhi/v1/`: マイクの声（Opus 16 kHz）を受け取り、
   声の区切りを音の大きさで見つける → whisper-server（声→文字）→ Ollama（返事、1 文ずつ）
   → Kokoro（文字→声）→ Opus 24 kHz でスタックちゃんへ返す。
+- HTTP（同じ --ota-port）`GET /status`: AI-CAR のダッシュボードのスタックちゃんのカード用。
+  つながり・今の様子（聞いている / 考えている / 話している）・最後の会話を JSON で返す。
 
 AI-CAR の走行・安全停止には何も送らない。
 """
@@ -39,6 +41,24 @@ FRAME_MS = 60
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
 NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
+
+STATUS_LOCK = threading.Lock()
+STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
+          'state': 'idle', 'last': None, 'turns': 0, 'engines': {}}
+
+
+def set_status(**kw):
+    with STATUS_LOCK:
+        STATUS.update(kw)
+        if STATUS['connected'] or 'last_ota' in kw:
+            STATUS['last_seen'] = time.time()
+        if not STATUS['connected']:
+            STATUS['state'] = 'idle'
+
+
+def set_device(**kw):
+    with STATUS_LOCK:
+        STATUS['device'] = {**STATUS['device'], **{k: v for k, v in kw.items() if v and v != '?'}}
 
 
 def log(msg):
@@ -102,6 +122,22 @@ class OtaHandler(BaseHTTPRequestHandler):
     """起動のたびの「新しい版はある？」に答える。WebSocket の行き先だけを返す。"""
     ws_port = 8000
 
+    def _send_json(self, obj):
+        body = json.dumps(obj, ensure_ascii=False).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.split('?')[0].rstrip('/') == '/status':
+            with STATUS_LOCK:
+                self._send_json({**STATUS, 'now': time.time()})
+        else:
+            self._reply()
+
     def _reply(self):
         n = int(self.headers.get('Content-Length') or 0)
         info = self.rfile.read(n) if n else b''
@@ -111,18 +147,15 @@ class OtaHandler(BaseHTTPRequestHandler):
         except (ValueError, AttributeError):
             pass
         host = (self.headers.get('Host') or '').rsplit(':', 1)[0] or self.server.server_address[0]
-        body = json.dumps({
+        dev = self.headers.get('Device-Id', '?')
+        set_device(id=dev, ip=self.client_address[0], version=version)
+        set_status(last_ota=time.time())
+        log(f'OTA: {dev} 版 {version or "?"} → ws://{host}:{self.ws_port}')
+        self._send_json({
             'server_time': {'timestamp': int(time.time() * 1000), 'timezone_offset': 540},
             'websocket': {'url': f'ws://{host}:{self.ws_port}/xiaozhi/v1/', 'token': '', 'version': 1},
-        }).encode()
-        log(f'OTA: {self.headers.get("Device-Id", "?")} 版 {version or "?"} → ws://{host}:{self.ws_port}')
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        })
 
-    do_GET = _reply
     do_POST = _reply
 
     def log_message(self, fmt, *a):
@@ -169,10 +202,14 @@ class Session:
                 self.mode = msg.get('mode', 'auto')
                 self.listening = True
                 self.reset_vad()
+                if not self.reply_task:
+                    set_status(state='listening')
             elif state == 'stop':
                 self.listening = False
                 if self.mode == 'manual' and self.speech:
                     self.start_reply(np.concatenate(self.speech))
+                elif not self.reply_task:
+                    set_status(state='idle')
                 self.reset_vad()
             elif state == 'detect':
                 log(f'ウェイクワード: {msg.get("text", "")}')
@@ -219,8 +256,10 @@ class Session:
         a = self.args
         try:
             t0 = time.time()
+            set_status(state='thinking')
             text = await asyncio.to_thread(stt, samples)
-            log(f'聞き取り（{time.time() - t0:.2f} 秒、声 {len(samples) / IN_RATE:.1f} 秒）: {text}')
+            stt_s = time.time() - t0
+            log(f'聞き取り（{stt_s:.2f} 秒、声 {len(samples) / IN_RATE:.1f} 秒）: {text}')
             if not text or NOISE_TEXT.fullmatch(text):
                 return
             await self.send(type='stt', text=text)
@@ -241,14 +280,16 @@ class Session:
                 q.put(None)
 
             threading.Thread(target=produce, daemon=True).start()
-            reply, first = [], True
+            reply, first, voice_s = [], True, None
             await self.send(type='tts', state='start')
             while (item := await asyncio.to_thread(q.get)) is not None:
                 if self.cancel.is_set():
                     continue
                 s, pcm = item
                 if first:
-                    log(f'声が出るまで {time.time() - t0:.2f} 秒')
+                    voice_s = time.time() - t0
+                    set_status(state='speaking')
+                    log(f'声が出るまで {voice_s:.2f} 秒')
                     await self.send(type='llm', emotion='happy', text='😊')
                     first = False
                 log(f'返事: {s}')
@@ -256,6 +297,10 @@ class Session:
                 await self.send(type='tts', state='sentence_start', text=s)
                 await self.play(pcm)
             await self.send(type='tts', state='stop')
+            with STATUS_LOCK:
+                STATUS['turns'] += 1
+                STATUS['last'] = {'at': time.time(), 'heard': text, 'reply': ''.join(reply),
+                                  'stt_s': round(stt_s, 2), 'voice_s': voice_s and round(voice_s, 2)}
             self.history = (self.history + [{'role': 'user', 'content': text},
                                             {'role': 'assistant', 'content': ''.join(reply)}])[-2 * a.turns:]
         except Exception as e:  # noqa: BLE001 - 1 回の失敗で止めない
@@ -263,6 +308,7 @@ class Session:
         finally:
             self.reply_task = None
             self.reset_vad()
+            set_status(state='listening' if self.listening else 'idle')
 
     async def play(self, pcm):
         """60 ms ずつ Opus にして、はじめの 5 枚のあとは実際の速さで送る。"""
@@ -282,6 +328,10 @@ async def handler(ws, args):
     peer = ws.remote_address[0] if ws.remote_address else '?'
     dev = ws.request.headers.get('Device-Id', '?')
     log(f'つながりました: {peer}（{dev}）{ws.request.path}')
+    set_device(id=dev, ip=peer)
+    with STATUS_LOCK:
+        STATUS['connected'] += 1
+    set_status()
     s = Session(ws, args)
     try:
         async for msg in ws:
@@ -294,6 +344,9 @@ async def handler(ws, args):
                     log(f'JSON でないメッセージ: {msg[:80]}')
     finally:
         s.cancel.set()
+        with STATUS_LOCK:
+            STATUS['connected'] = max(0, STATUS['connected'] - 1)
+        set_status(last_seen=time.time())
         log(f'切れました: {peer}')
 
 
@@ -316,6 +369,7 @@ async def main():
     args = p.parse_args()
 
     OtaHandler.ws_port = args.ws_port
+    set_status(engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
