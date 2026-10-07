@@ -2199,9 +2199,32 @@ function renderOverview(a) {
 }
 function renderSystemDiagram(a) {
   const s = a.system || {}, devices = s.devices || [], links = s.links || [];
-  const big = {w: 290, h: 215}, small = {w: 230, h: 58};
+  const charW = c => c.charCodeAt(0) > 0xff ? 12 : 6.8;
+  const textW = t => [...String(t || '')].reduce((w, c) => w + charW(c), 0);
+  const big = {w: 290, h: 215}, small = {w: 230, h: 58}, bigTop = 212;
+  const wrap = item => {
+    const lines = [''];
+    let width = 0;
+    [...String(item)].forEach(c => {
+      if (width + charW(c) > big.w - 44) { lines.push(''); width = 0; }
+      lines[lines.length - 1] += c;
+      width += charW(c);
+    });
+    return lines;
+  };
+  const wrapped = Object.fromEntries(devices.map(d => [d.id, (d.items || []).map(wrap)]));
+  const subLines = Object.fromEntries(devices.map(d => {
+    const sub = String(d.sub || ''), i = sub.indexOf(' / ');
+    return [d.id, textW(sub) > big.w - 24 && i > 0 ? [sub.slice(0, i), sub.slice(i + 3)] : [sub]];
+  }));
+  const itemTop = id => 66 + 14 * (subLines[id] || ['']).length;
+  ['ai_car', 'jetson', 'stackchan'].forEach(id => {
+    const items = wrapped[id] || [];
+    big.h = Math.max(big.h, itemTop(id) + items.reduce((t, ls) => t + ls.length * 17 + 3, 0));
+  });
+  const bigY = bigTop + big.h / 2;
   const layout = {
-    ai_car: [190, 320, big], jetson: [600, 320, big], stackchan: [1010, 320, big],
+    ai_car: [190, bigY, big], jetson: [600, bigY, big], stackchan: [1010, bigY, big],
     browser: [190, 70, small], person: [1010, 70, small],
   };
   const doneColor = '#35d6ff', planColor = '#f0b429';
@@ -2209,7 +2232,7 @@ function renderSystemDiagram(a) {
   const num = i => String.fromCharCode(0x2460 + i);
   const pairs = {};
   links.forEach(l => { const k = [l.from, l.to].sort().join('|'); (pairs[k] = pairs[k] || []).push(l); });
-  let svg = `<svg class="aboutsvg" viewBox="0 0 1200 450"><defs>` +
+  let svg = `<svg class="aboutsvg" viewBox="0 0 1200 ${bigTop + big.h + 20}"><defs>` +
     [['sys-done', doneColor], ['sys-plan', planColor]].map(([id, c]) =>
       `<marker id="${id}" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto-start-reverse"><path d="M0,0 L10,4 L0,8 z" fill="${c}"/></marker>`).join('') +
     '</defs>';
@@ -2241,17 +2264,10 @@ function renderSystemDiagram(a) {
       ` stroke="${planned ? planColor : '#64b5f6'}" stroke-width="2"${planned ? ' stroke-dasharray="8 5"' : ''}/>`;
     if (size === big) {
       svg += `<text x="${x}" y="${top + 30}" fill="#e8eaed" text-anchor="middle" font-size="18" font-weight="bold">${esc(d.label)}</text>` +
-        `<text x="${x}" y="${top + 52}" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(d.sub || '')}</text>`;
-      let ty = top + 80;
-      (d.items || []).forEach(item => {
-        const lines = [''];
-        let width = 0;
-        [...String(item)].forEach(c => {
-          const cw = c.charCodeAt(0) > 0xff ? 12 : 6.8;
-          if (width + cw > size.w - 44) { lines.push(''); width = 0; }
-          lines[lines.length - 1] += c;
-          width += cw;
-        });
+        subLines[d.id].map((line, j) => `<text x="${x}" y="${top + 52 + 15 * j}" fill="#9fb0c7" text-anchor="middle"` +
+          ` font-size="${Math.max(9, Math.min(12, 12 * (size.w - 24) / textW(line)))}">${esc(line)}</text>`).join('');
+      let ty = top + itemTop(d.id);
+      (wrapped[d.id] || []).forEach(lines => {
         lines.forEach((line, j) => {
           svg += `<text x="${left + 16}" y="${ty}" fill="#dbe4ef" font-size="12">${j ? '　' : '・'}${esc(line)}</text>`;
           ty += 17;
