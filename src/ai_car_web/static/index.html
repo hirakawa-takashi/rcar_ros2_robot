@@ -67,8 +67,7 @@
   .jcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
   @media (min-width: 900px) { .card.wide .jcols { grid-template-columns: repeat(2, 1fr); } }
   .osline { font-size: 12px; margin: -4px 0 10px; color: #9fb0c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .scface { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 10px; display: block; }
-  .scsay { min-height: 1.5em; margin-top: 6px; text-align: center; font-size: 13px; color: #bfe9ff; }
+  .scphoto[hidden] { display: none; }
   .scphoto { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
   .scphoto input[type=text] { width: 9em; padding: 4px 6px; background: #0e1726; color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
@@ -591,9 +590,6 @@
     <div class="osline" title="純正ファームウェア（1.5.1）の行き先を Jetson にかえ、自動更新をやめたもの">机の上で、Jetson（stackchan_bridge）と Wi-Fi でつながって、家の中だけで会話する</div>
     <div class="jcols">
       <div>
-        <h3>顔（今の様子）</h3>
-        <svg class="scface" id="sc_face" viewBox="0 0 320 240" role="img" aria-label="スタックちゃんの顔"></svg>
-        <div class="scsay" id="sc_say">-</div>
         <h3>カメラ（スタックちゃんの目）</h3>
         <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
         <div class="scphoto"><button id="sc_stream_btn" title="押したときだけ、スタックちゃんが映像を送る（もう一度押すか、ページを閉じて 10 秒で止まる）">映像を撮る</button>
@@ -612,6 +608,11 @@
           <tr><td class="k">聞き取り</td><td class="v wrap" id="sc_heard">-</td></tr>
           <tr><td class="k">返事</td><td class="v wrap" id="sc_reply">-</td></tr>
           <tr><td class="k">かかった時間</td><td class="v" id="sc_time" title="話し終わってから、文字になるまで / 声が出始めるまで">-</td></tr>
+        </table>
+        <h3>見守り</h3>
+        <table title="スタックちゃんが 2 秒に 1 枚カメラで顔を見て、登録した人に名前であいさつする（同じ人は 30 分に 1 回。会話がつながっているときだけ）">
+          <tr><td class="k">見えている人</td><td class="v wrap" id="sc_watch">-</td></tr>
+          <tr><td class="k">最後のあいさつ</td><td class="v wrap" id="sc_greet">-</td></tr>
         </table>
         <h3>本体</h3>
         <table>
@@ -1399,25 +1400,11 @@ let stackEnrollBusy = false;
 let stackStreamBusy = false;
 let stackFrameBusy = false;
 const STACK_STATE = {
-  listening: ['ok', '聞いています', 'normal', '（聞いているよ）'],
-  thinking: ['ok', '考えています', 'think', '（うーん…）'],
-  speaking: ['ok', '話しています', 'happy', null],
-  idle: ['', '待ち受け', 'sleep', '画面を 1 回さわると話せます'],
+  listening: ['ok', '聞いています'],
+  thinking: ['ok', '考えています'],
+  speaking: ['ok', '話しています'],
+  idle: ['', '待ち受け'],
 };
-
-function stackFace(mood, net) {
-  const ex = [100, 220], ey = 100;
-  const color = mood === 'off' ? '#555' : net ? '#0f0' : '#fff';
-  const line = d => `<path d="${d}" stroke="${color}" stroke-width="8" fill="none" stroke-linecap="round"/>`;
-  const eyes = ex.map(x => mood === 'sleep' ? line(`M${x - 16} ${ey} H${x + 16}`)
-    : mood === 'happy' ? line(`M${x - 16} ${ey + 6} Q${x} ${ey - 18} ${x + 16} ${ey + 6}`)
-      : `<circle cx="${x + (mood === 'think' ? 8 : 0)}" cy="${ey - (mood === 'think' ? 8 : 0)}" r="16" fill="${color}"/>`).join('');
-  const mouth = mood === 'happy' ? line('M130 170 Q160 196 190 170')
-    : mood === 'sleep' ? line('M150 170 H170')
-      : mood === 'think' ? line('M140 172 Q160 162 180 172')
-        : line('M134 170 H186');
-  scId('sc_face').innerHTML = eyes + mouth;
-}
 
 function stackTime(t) {
   if (!t) return '-';
@@ -1435,14 +1422,12 @@ function renderStackchan(r, err) {
   if (!r) {
     st.className = 'badge warn';
     st.textContent = '未接続';
-    stackFace('off');
-    scId('sc_say').textContent = err;
+    st.title = err;
   } else {
-    const [cls, label, mood, say] = STACK_STATE[r.connected ? r.state : 'idle'] || STACK_STATE.idle;
+    const [cls, label] = STACK_STATE[r.connected ? r.state : 'idle'] || STACK_STATE.idle;
     st.className = 'badge' + (cls ? ` ${cls}` : '');
     st.textContent = label;
-    stackFace(mood, r.mode === 'net');
-    scId('sc_say').textContent = say || last.reply || '-';
+    st.title = r.connected ? '' : '画面を 1 回さわると話せます';
   }
   scId('sc_at').textContent = stackTime(last.at);
   scId('sc_heard').textContent = last.heard || '-';
@@ -1480,6 +1465,12 @@ function renderStackchan(r, err) {
     stackPhotoAt = r.photo_at;
     loadStackPhoto();
   }
+  const watch = r && r.watch;
+  const greet = r && r.greet;
+  scId('sc_watch').textContent = !r ? '-' : !r.watch_on ? '止めています' : !watch ? 'まだ見ていません'
+    : `${watch.error ? watch.error : watch.names.length ? watch.names.map(n => `${n} さん`).join('・')
+      : watch.faces ? `知らない人 ${watch.faces} 人` : 'だれもいません'}（${stackTime(watch.at)}）`;
+  scId('sc_greet').textContent = greet ? `${greet.names.map(n => `${n} さん`).join('・')}（${stackTime(greet.at)}）` : '-';
   scId('sc_engine').innerHTML = net ? '<span class="nw">XiaoZhi（ネット）</span>' : r && eng.llm
     ? [eng.stt, eng.llm, eng.tts].map(x => `<span class="nw">${esc(x || '-')}</span>`).join(' → ') : '-';
 }
@@ -2060,7 +2051,6 @@ function loadGpio() {
 loadGpio();
 // 配線表は静的情報のため 30 秒ごとの再取得に留める
 setInterval(loadGpio, 30000);
-stackFace('off');
 pollStackchan();
 setInterval(pollStackchan, 2000);
 setInterval(pollStackFrame, 250);
