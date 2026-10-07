@@ -44,7 +44,7 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 | `firmware/xiaozhi-no-auto-upgrade.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | AI Agent を開くたびの自動更新（`UpgradeFirmware`）をやめ、ログだけ出す（純正の版にもどらないように） |
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 | `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
-| `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影するよ」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
+| `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
 
 ```bash
 cd StackChan/firmware
@@ -84,8 +84,8 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 ## 撮影と名前の登録
 
 ```
-「撮影するよ」「写真を撮って」（ローカルは whisper、ネットは XiaoZhi の stt を bridge が見る）
-  → bridge「撮影するよ。こっちを向いてね。」→ MCP self.camera.countdown_photo {seconds: 5}
+「撮影して」「写真を撮って」（ローカルは whisper、ネットは XiaoZhi の stt を bridge が見る）
+  → bridge「撮影します。こっちを向いてね。」→ MCP self.camera.countdown_photo {seconds: 5}
   → スタックちゃん: 首を正面（yaw 0）へ → bridge が self.robot.set_head_angles で上（pitch 30 度、--shot-pitch。数えているあいだ 1 秒ごとに送り直す）へ → 画面にカメラの映像と右上に 5〜1 の数字（1 秒ごとにピッ）
   → 0 でシャッターの音 → 撮った写真を 6 秒画面に出す → JPEG（320×240、品質 80）を POST /camera/shot
   → bridge: face_id の /api/face/recognize で顔を見る →「撮れたよ。ダッシュボードで名前を登録してね。」など

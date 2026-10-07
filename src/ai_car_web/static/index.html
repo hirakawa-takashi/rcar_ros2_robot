@@ -607,7 +607,7 @@
       <div>
         <h3>顔の登録（カメラの映像）</h3>
         <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
-        <div class="scphoto" id="sc_enroll" title="「撮影するよ」と言うと、スタックちゃんが正面を向いて 5 秒数えて撮る。写っている顔 1 つを、名前を付けて Jetson の face_id に登録する">
+        <div class="scphoto" id="sc_enroll" title="「撮影して」と言うと、スタックちゃんが正面を向いて 5 秒数えて撮る。写っている顔 1 つを、名前を付けて Jetson の face_id に登録する">
           <div class="scmsgs"><span id="sc_photo_msg">-</span><span id="sc_shot_msg">-</span></div>
           <button id="sc_enroll_btn" style="white-space: nowrap">登録</button></div>
         <div class="scphoto">
@@ -1427,7 +1427,7 @@ function renderStackchan(r, err) {
     : r && r.connected && !r.camera ? 'カメラの返事がありません' : r && !r.connected ? '画面を 1 回さわると撮れます' : '-';
   const shot = r && r.shot;
   scId('sc_shot_msg').textContent = r && r.shooting ? '数えています…'
-    : !(r && r.photo_at) ? '「撮影するよ」と言うと撮れます' : !shot ? '顔:' : shot.error ? `顔: ${shot.error}` : shot.faces === 0 ? '顔: 見つかりません'
+    : !(r && r.photo_at) ? '「撮影して」と言うと撮れます' : !shot ? '顔:' : shot.error ? `顔: ${shot.error}` : shot.faces === 0 ? '顔: 見つかりません'
     : shot.faces > 1 ? `顔: ${shot.faces} つ（1 人ずつ撮ってください）`
     : shot.name ? `顔: ${shot.name} さん` : '顔: 1 つ（まだ登録していない人）';
   scId('sc_enroll_btn').disabled = stackEnrollBusy || !(r && r.photo_at) || !!r.shooting;
