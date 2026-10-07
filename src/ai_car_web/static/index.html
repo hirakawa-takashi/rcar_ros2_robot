@@ -592,8 +592,6 @@
         <table>
           <tr><td class="k">IP アドレス</td><td class="v" id="sc_ip">-</td></tr>
           <tr><td class="k">ネット / ローカル</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる。ネットのときは顔が緑">-</td></tr>
-          <tr><td class="k">聞き取り</td><td class="v wrap" id="sc_heard">-</td></tr>
-          <tr><td class="k">返事</td><td class="v wrap" id="sc_reply">-</td></tr>
         </table>
         <h3 style="margin-top: 12px" title="画面を 1 回さわって、ランプが緑のときに言う">話しかける言葉</h3>
         <table>
@@ -613,6 +611,10 @@
           <span id="sc_enroll_msg"></span></div>
       </div>
     </div>
+    <table style="margin-top: 12px">
+      <tr><td class="k">聞き取り</td><td class="v wrap" id="sc_heard">-</td></tr>
+      <tr><td class="k">返事</td><td class="v wrap" id="sc_reply">-</td></tr>
+    </table>
     <div class="note">Jetson の受け口（jetson-stackchan.service）から 2 秒ごとに取る（API トークンが必要）。写真は「撮影して」と言ったときだけ撮り、Jetson にはいちばん新しい 1 枚だけを置く（保存しない）。表示だけで、AI-CAR の走行・安全には使わない。</div>
   </div>
 
