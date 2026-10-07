@@ -20,6 +20,9 @@ XiaoZhi の 2 つの口をまねる:
   XiaoZhi から呼んでもらう。その呼び出しはスタックちゃんへ流さず、この受け口がインターネット（Google ニュースの
   見出しと DuckDuckGo）で調べて答える。ローカルのときは調べない（Jetson の AI だけで答える）。
 - 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
+- 呼びかけ（ローカルのとき）: 画面をさわってからと、最後に話してから --awake-seconds（30 秒）たつと「呼びかけ待ち」になる。
+  スタックちゃんは聞いているままで、声は whisper で文字にするが、「スタックちゃん」（--wake-words）が入っているときだけ返事をする。
+  スタックちゃんの 120 秒の時間切れで会話が切れないように、60 秒ごとに `{"type": "ping"}` を送る。
 - 撮影: 「撮影して」と言うと、MCP の `self.camera.countdown_photo`（stackchan-countdown-shot.patch）で
   正面を向いて 5 秒数え、画面にカメラを出してから撮る。写真は `POST /camera/shot` に届く。face_id で顔を見て
   （`shot`）、ダッシュボードから `POST /enroll?name=` で名前を付けて face_id に登録する（ネットのときも同じ）。
@@ -90,6 +93,11 @@ SEARCH_DESC = ('Search the internet for up-to-date information: news, weather, p
                'about the present or recent events. Returns news headlines with dates and web snippets.')
 SEARCH_PARAMS = {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'search words'}},
                  'required': ['query']}
+# 呼びかけ: whisper の書き方のゆれ（スタックちゃん / スダックちゃん / スタッチャン / Stack-chan など）
+WAKE_WORDS = r'(?:ス[タダ]ッ?[クグ]?|す[ただ]っ?く?|stack)\s*[-ー・ ]?\s*(?:ちゃん?|チャン?|chan)'
+WAKE_FILLER = 2  # 呼びかけのほかが 2 文字まで（「ねえ」「に」など）なら、名前だけ呼ばれたとみなす
+WAKE_REPLY = 'はい、なあに？'
+KEEPALIVE = 60.0
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
@@ -594,6 +602,35 @@ class Session:
         self.search_added = False
         self.switching = False
         self.turn = {}
+        self.wake = re.compile(args.wake_words, re.I) if args.wake_words else None
+        self.awake_until = 0.0
+        self.keep_task = None
+
+    def asleep(self):
+        """呼びかけ待ち（ローカルで、さわってから・最後に話してから --awake-seconds たった）なら True。"""
+        return bool(self.wake) and not self.cloud and time.time() >= self.awake_until
+
+    def wake_up(self):
+        self.awake_until = time.time() + self.args.awake_seconds
+
+    def listen_state(self):
+        if not self.listening:
+            return 'idle'
+        return 'waiting' if self.asleep() else 'listening'
+
+    async def keepalive(self):
+        """呼びかけ待ちになったら /status に出し、60 秒ごとに 1 回送ってスタックちゃんの 120 秒の時間切れを防ぐ。"""
+        last = time.monotonic()
+        while True:
+            await asyncio.sleep(2)
+            if STATUS['state'] == 'listening' and not (self.reply_task or self.switching) and self.asleep():
+                set_status(state='waiting')
+            if not self.cloud and time.monotonic() - last >= KEEPALIVE:
+                last = time.monotonic()
+                try:
+                    await self.send(type='ping')
+                except ConnectionClosed:
+                    return
 
     async def send(self, **msg):
         msg['session_id'] = self.sid
@@ -661,6 +698,7 @@ class Session:
         await self.send(type='tts', state='sentence_start', text=text)
         await self.play(pcm)
         await self.send(type='tts', state='stop')
+        self.wake_up()
 
     def can_greet(self):
         """会話・撮影・切り替えのじゃまにならないときだけ True。"""
@@ -701,7 +739,7 @@ class Session:
             if self.listening:
                 await self.to_cloud({'type': 'listen', 'state': 'start', 'mode': self.mode})
             asyncio.create_task(self.relay_cloud(cloud))
-            set_status(state='listening' if self.listening else 'idle')
+            set_status(state=self.listen_state())
             log(f'ネットにつなぎました: {url}')
         except Exception as e:  # noqa: BLE001 - ネットにつながらなくてもローカルで話せるようにする
             log(f'ネットにつながりません: {e}')
@@ -727,7 +765,7 @@ class Session:
             log('ローカルにもどりました')
         finally:
             self.switching = False
-            set_status(state='listening' if self.listening else 'idle')
+            set_status(state=self.listen_state())
 
     async def to_cloud(self, msg):
         try:
@@ -825,7 +863,7 @@ class Session:
                                       'reply': ''.join(self.turn['reply']), 'stt_s': None,
                                       'voice_s': v and round(v, 2)}
             self.turn = {}
-            set_status(state='listening' if self.listening else 'idle')
+            set_status(state=self.listen_state())
 
     async def look_up(self):
         """撮影の首の向き。待ち受けの首ふりで動かされても、数えているあいだ 1 秒ごとにもどす。"""
@@ -916,6 +954,9 @@ class Session:
             if (msg.get('features') or {}).get('mcp'):
                 host = (self.ws.request.headers.get('Host') or '127.0.0.1').rsplit(':', 1)[0]
                 vision_url = f'http://{host}:{self.args.ota_port}/vision'
+            self.wake_up()
+            if self.wake and not self.keep_task:
+                self.keep_task = asyncio.create_task(self.keepalive())
             asyncio.create_task(self.after_hello(vision_url))
         elif t == 'listen':
             state = msg.get('state')
@@ -924,7 +965,7 @@ class Session:
                 self.listening = True
                 self.reset_vad()
                 if not self.reply_task:
-                    set_status(state='listening')
+                    set_status(state=self.listen_state())
             elif state == 'stop':
                 self.listening = False
                 if self.mode == 'manual' and self.speech:
@@ -936,6 +977,7 @@ class Session:
                 log(f'ウェイクワード: {msg.get("text", "")}')
         elif t == 'abort':
             self.cancel.set()
+            self.wake_up()
         elif t == 'mcp':
             pass
         else:
@@ -977,15 +1019,28 @@ class Session:
 
     async def reply(self, samples):
         a = self.args
+        heard = False
         try:
             t0 = time.time()
-            set_status(state='thinking')
+            asleep = self.asleep()
+            if not asleep:
+                set_status(state='thinking')
             text = await asyncio.to_thread(stt, samples)
             stt_s = time.time() - t0
             log(f'聞き取り（{stt_s:.2f} 秒、声 {len(samples) / IN_RATE:.1f} 秒）: {text}')
             if not text or NOISE_TEXT.fullmatch(text):
                 return
+            if asleep:
+                if not self.wake.search(text):
+                    log('呼びかけがないので返事しません')
+                    return
+                log('呼びかけ: スタックちゃん')
+                set_status(state='thinking')
+            heard = True
             await self.send(type='stt', text=text)
+            if asleep and len(re.sub(r'[\s\W]', '', self.wake.sub('', text))) <= WAKE_FILLER:
+                await self.say(WAKE_REPLY)
+                return
             if is_switch(TO_NET, text):
                 await self.to_net()
                 return
@@ -1038,9 +1093,11 @@ class Session:
         except Exception as e:  # noqa: BLE001 - 1 回の失敗で止めない
             log(f'エラー: {e}')
         finally:
+            if heard:
+                self.wake_up()
             self.reply_task = None
             self.reset_vad()
-            set_status(state='listening' if self.listening else 'idle')
+            set_status(state=self.listen_state())
 
     async def play(self, pcm):
         """60 ms ずつ Opus にして、はじめの 5 枚のあとは実際の速さで送る。"""
@@ -1080,6 +1137,8 @@ async def handler(ws, args):
                     log(f'JSON でないメッセージ: {msg[:80]}')
     finally:
         s.cancel.set()
+        if s.keep_task:
+            s.keep_task.cancel()
         cloud, s.cloud = s.cloud, None
         if cloud:
             await cloud.close()
@@ -1109,6 +1168,10 @@ async def main():
     p.add_argument('--min-seconds', type=float, default=0.4)
     p.add_argument('--max-seconds', type=float, default=15.0)
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
+    p.add_argument('--wake-words', default=WAKE_WORDS,
+                   help='呼びかけ待ちのとき、これ（正規表現）が聞き取りに入っているときだけ返事をする。空で呼びかけ待ちにしない')
+    p.add_argument('--awake-seconds', type=float, default=30.0,
+                   help='画面をさわってから・最後に話してから、呼びかけなしで話せる秒数')
     p.add_argument('--shot-pitch', type=int, default=30,
                    help='「撮影して」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
     p.add_argument('--watch-interval', type=float, default=2.0,
