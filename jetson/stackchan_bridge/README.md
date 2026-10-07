@@ -86,7 +86,7 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 ```
 「撮影するよ」「写真を撮って」（ローカルは whisper、ネットは XiaoZhi の stt を bridge が見る）
   → bridge「撮影するよ。こっちを向いてね。」→ MCP self.camera.countdown_photo {seconds: 5}
-  → スタックちゃん: 首を正面（yaw 0・pitch 0）へ → 画面にカメラの映像と右上に 5〜1 の数字（1 秒ごとにピッ）
+  → スタックちゃん: 首を正面（yaw 0）へ → bridge が self.robot.set_head_angles で少し上（pitch 15 度、--shot-pitch）へ → 画面にカメラの映像と右上に 5〜1 の数字（1 秒ごとにピッ）
   → 0 でシャッターの音 → 撮った写真を 6 秒画面に出す → JPEG（320×240、品質 80）を POST /camera/shot
   → bridge: face_id の /api/face/recognize で顔を見る →「撮れたよ。ダッシュボードで名前を登録してね。」など
 ダッシュボード: 写真の下の「名前」→「名前を登録」→ POST /api/stackchan/enroll?name= → bridge POST /enroll?name=
@@ -100,6 +100,20 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
   `AI_CAR_API_TOKEN` を使います。face_id の場所は `FACE_ID_URL`（既定 `http://127.0.0.1:8090`）
 - 顔の見分けは、あいさつや表示だけに使います。鍵・走行・安全停止には使いません
 - `/status` の `shot_tool`（ファームウェアに道具がある）・`shooting`（数えている）・`shot`（`faces`・`name`・`error`）
+
+## 見守りとあいさつ
+
+```
+スタックちゃんの映像の送り係が 2 秒ごとに GET /camera/frame で聞きに来る
+  → bridge が見守りの時刻なら「1」→ 次に 1 枚（320×240）を POST /camera/frame
+  → bridge: face_id の /api/face/recognize → 登録した人がいて、30 分あいさつしていなければ
+  → 「○○さん、こんにちは！」（4〜10 時 おはよう、17 時から こんばんは）
+```
+
+- 間隔は `--watch-interval`（既定 2 秒、0 で見守りをしない）。映像の 1 枚は約 4 KB で、2〜3 秒に 1 枚です。ファームウェアの書き換えはいりません
+- あいさつは、スタックちゃんが会話でつながっているときだけです（つながっていないと声を出せません）。会話・撮影・ネットとの切り替えの最中もしません
+- 撮影や名前の登録をした人は、そのときあいさつしたものとして数えます
+- `/status` の `watch_on`・`watch`（`at`・`faces`・`names`・`error`）・`greet`（`at`・`names`）
 
 ## ネットとローカルの切り替え
 

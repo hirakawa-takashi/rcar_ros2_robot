@@ -76,6 +76,9 @@ SHOOT = re.compile(r'(?:撮影|さつえい|写真(?:を|お)?(?:撮|と)(?:っ�
 FACE_ID_URL = os.environ.get('FACE_ID_URL', 'http://127.0.0.1:8090')
 FACE_ID_TIMEOUT = 10.0
 NAME_MAX = 20
+HEAD_TOOL = 'self.robot.set_head_angles'
+# 見守り: 映像を WATCH_INTERVAL 秒に 1 枚もらって顔を見て、登録した人に名前であいさつする（同じ人は GREET_HOLD 秒に 1 回）
+GREET_HOLD = 30 * 60
 VIEWER_HOLD = 10.0
 FRAME_STALE = 3.0
 CLOUD_OTA_URL = 'https://api.tenclass.net/xiaozhi/ota/'
@@ -97,10 +100,11 @@ STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
-          'shot_tool': False, 'shooting': False, 'shot': None}
+          'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
+WATCH = {'interval': 0.0, 'next': 0.0, 'busy': False, 'greeted': {}}
 SESSIONS = []
 LOOP = None
 
@@ -115,11 +119,13 @@ def set_status(**kw):
 
 
 def want_frames():
-    """「映像を撮る」が押されていて、ダッシュボードが 10 秒以内に取りに来ていれば '1'（送り続けてもらう）。"""
-    if FRAME['on'] and time.time() - FRAME['viewer_at'] >= VIEWER_HOLD:
+    """「映像を撮る」が押されていて、ダッシュボードが 10 秒以内に取りに来ているか、見守りの次の 1 枚の時刻なら '1'。"""
+    now = time.time()
+    if FRAME['on'] and now - FRAME['viewer_at'] >= VIEWER_HOLD:
         FRAME['on'] = False
         set_status(stream_on=False)
-    return '1' if FRAME['on'] else '0'
+    watch = WATCH['interval'] > 0 and not WATCH['busy'] and now >= WATCH['next']
+    return '1' if FRAME['on'] or watch else '0'
 
 
 def jpeg_from_multipart(body, ctype):
@@ -208,6 +214,39 @@ def face_check(jpeg):
     if shot['name']:
         return shot, f'撮れたよ。{shot["name"]}さんだね。'
     return shot, '撮れたよ。ダッシュボードで名前を登録してね。'
+
+
+def greeting_word():
+    h = time.localtime().tm_hour
+    return 'おはよう' if 4 <= h < 10 else 'こんにちは' if h < 17 else 'こんばんは'
+
+
+def mark_greeted(name):
+    if name:
+        WATCH['greeted'][name] = time.time()
+
+
+def watch_check(jpeg):
+    """見守りの 1 枚の顔を見て、まだあいさつしていない登録した人がいれば、つながっているスタックちゃんにあいさつしてもらう。"""
+    try:
+        watch = {'at': time.time(), 'faces': None, 'names': [], 'error': None}
+        try:
+            faces = face_id('/api/face/recognize', jpeg).get('faces') or []
+        except (ValueError, OSError) as e:
+            watch['error'] = str(e) if isinstance(e, ValueError) else '顔の見分け（face_id）につながりません'
+            set_status(watch=watch)
+            return
+        watch.update(faces=len(faces), names=sorted({f['name'] for f in faces if f.get('name')}))
+        set_status(watch=watch)
+        now = time.time()
+        new = [n for n in watch['names'] if now - WATCH['greeted'].get(n, 0) >= GREET_HOLD]
+        sess = SESSIONS[-1] if SESSIONS else None
+        if new and sess and sess.can_greet():
+            asyncio.run_coroutine_threadsafe(sess.greet(new), LOOP).result(30)
+    except Exception as e:  # noqa: BLE001 - 見守りの失敗で受け口を止めない
+        log(f'見守りのエラー: {e}')
+    finally:
+        WATCH['busy'] = False
 
 
 def cloud_ota(device_id, client_id):
@@ -440,6 +479,9 @@ class OtaHandler(BaseHTTPRequestHandler):
             t = FRAME['times'] = [x for x in FRAME['times'][-9:] if now - x < FRAME_STALE] + [now]
             fps = round((len(t) - 1) / (t[-1] - t[0]), 1) if len(t) > 1 else None
             set_status(stream_at=now, frame_at=now, fps=fps)
+            if WATCH['interval'] > 0 and not WATCH['busy'] and now >= WATCH['next']:
+                WATCH.update(busy=True, next=now + WATCH['interval'])
+                threading.Thread(target=watch_check, args=(jpeg,), daemon=True).start()
         self._send_body(want_frames(), 'text/plain')
 
     def _shot(self):
@@ -472,6 +514,7 @@ class OtaHandler(BaseHTTPRequestHandler):
         with STATUS_LOCK:
             if STATUS['shot']:
                 STATUS['shot'] = {**STATUS['shot'], 'name': name}
+        mark_greeted(name)
         log(f'顔を登録: {name}（{res.get("samples")} 枚目）')
         self._send_json({'ok': True, 'name': name, 'samples': res.get('samples')})
 
@@ -618,6 +661,21 @@ class Session:
         await self.send(type='tts', state='sentence_start', text=text)
         await self.play(pcm)
         await self.send(type='tts', state='stop')
+
+    def can_greet(self):
+        """会話・撮影・切り替えのじゃまにならないときだけ True。"""
+        return not (self.reply_task or self.shooting or self.switching or self.turn
+                    or STATUS['state'] in ('thinking', 'speaking'))
+
+    async def greet(self, names):
+        if not self.can_greet():
+            return
+        for n in names:
+            mark_greeted(n)
+        words = f'{"、".join(n + "さん" for n in names)}、{greeting_word()}！'
+        log(f'あいさつ: {words}')
+        set_status(greet={'at': time.time(), 'names': names})
+        await self.say(words)
 
     async def to_net(self, announce=True):
         """ネットの XiaoZhi につなぎ、このセッションの声と文字を中継する。だめならローカルのまま。"""
@@ -781,6 +839,10 @@ class Session:
             before = STATUS['photo_at']
             fut, sending = self.mcp_call('tools/call', {'name': SHOT_TOOL, 'arguments': {'seconds': SHOT_SECONDS}})
             await sending
+            head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': {
+                'yaw': 0, 'pitch': self.args.shot_pitch, 'speed': 300}})
+            await sending
+            head.cancel()
             deadline = time.time() + SHOT_SECONDS + PHOTO_TIMEOUT
             while STATUS['photo_at'] == before and time.time() < deadline:
                 await asyncio.sleep(0.2)
@@ -792,6 +854,7 @@ class Session:
                 return
             shot, words = await asyncio.to_thread(face_check, PHOTO['jpeg'])
             set_status(shot=shot)
+            mark_greeted(shot['name'])
             log(f'撮影: 顔 {shot["faces"]} 個、{shot["name"] or shot["error"] or "知らない人"}')
             await self.say(words)
         finally:
@@ -1036,13 +1099,19 @@ async def main():
     p.add_argument('--min-seconds', type=float, default=0.4)
     p.add_argument('--max-seconds', type=float, default=15.0)
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
+    p.add_argument('--shot-pitch', type=int, default=15,
+                   help='「撮影するよ」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
+    p.add_argument('--watch-interval', type=float, default=2.0,
+                   help='見守りで顔を見る間隔（秒）。0 で見守りをしない')
     args = p.parse_args()
 
     global LOOP
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
+    WATCH['interval'] = max(0.0, args.watch_interval)
     load_device_ota()
-    set_status(mode=load_mode(), engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
+    set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0,
+               engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
