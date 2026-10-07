@@ -595,7 +595,8 @@
         <div class="scsay" id="sc_say">-</div>
         <h3>カメラ（スタックちゃんの目）</h3>
         <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
-        <div class="scphoto"><button id="sc_photo_btn" title="撮るたびにスタックちゃんからシャッターの音が鳴る">写真を撮る</button>
+        <div class="scphoto"><button id="sc_stream_btn" title="押したときだけ、スタックちゃんが映像を送る（もう一度押すか、ページを閉じて 10 秒で止まる）">映像を撮る</button>
+          <button id="sc_photo_btn" title="撮るたびにスタックちゃんからシャッターの音が鳴る">写真を撮る</button>
           <span id="sc_photo_msg">-</span></div>
       </div>
       <div>
@@ -1388,6 +1389,7 @@ let stackPhotoAt = null;
 let stackPhotoUrl = null;
 let stackPhotoBusy = false;
 let stackLive = false;
+let stackStreamBusy = false;
 let stackFrameBusy = false;
 const STACK_STATE = {
   listening: ['ok', '聞いています', 'normal', '（聞いているよ）'],
@@ -1447,7 +1449,9 @@ function renderStackchan(r, err) {
   scId('sc_fw').textContent = dev.version ? `純正 ${dev.version}（Jetson 経由）` : '-';
   scId('sc_seen').textContent = r ? (r.connected ? '今つながっています' : stackTime(r.last_seen)) : '-';
   scId('sc_turns').textContent = r ? `${r.turns} 回` : '-';
-  stackLive = !!(r && r.stream_at && r.now - r.stream_at < 10);
+  if (!stackStreamBusy) stackLive = !!(r && r.stream_on);
+  scId('sc_stream_btn').textContent = stackLive ? '映像を止める' : '映像を撮る';
+  scId('sc_stream_btn').disabled = stackStreamBusy || !(r && r.connected && r.camera);
   scId('sc_photo_btn').hidden = stackLive;
   scId('sc_photo_btn').disabled = stackPhotoBusy || !(r && r.connected && r.camera);
   if (stackLive) {
@@ -1489,6 +1493,15 @@ function pollStackFrame() {
     .catch(() => {})
     .finally(() => { stackFrameBusy = false; });
 }
+
+scId('sc_stream_btn').addEventListener('click', () => {
+  const on = !stackLive;
+  stackStreamBusy = true;
+  scId('sc_stream_btn').disabled = true;
+  apiPost(`/api/stackchan/stream?on=${on ? 1 : 0}`).then(r => {
+    if (r && r.ok) stackLive = on;
+  }).finally(() => { stackStreamBusy = false; pollStackchan(); });
+});
 
 scId('sc_photo_btn').addEventListener('click', () => {
   const btn = scId('sc_photo_btn');

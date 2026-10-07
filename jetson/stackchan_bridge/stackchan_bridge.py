@@ -16,11 +16,16 @@ XiaoZhi の 2 つの口をまねる:
   （api.tenclass.net）につなぎ、声と文字をそのまま中継する。「ローカルにして」で Jetson の会話にもどる。
   今の行き先は mode.txt に残す（起動し直しても同じ）。ネットのあいだは顔（目と口）を緑にする
   （ファームウェアの MCP `self.robot.set_face_color`、stackchan-face-color.patch）。
+- 調べもの: ニュース・天気・今の役職など新しいことは、Jetson がインターネット（Google ニュースの見出しと
+  DuckDuckGo）で調べて答える。ローカルは Ollama の tools、ネットは MCP の道具 `self.web.search` を足して
+  XiaoZhi から呼んでもらう（その呼び出しはスタックちゃんへ流さず、この受け口が答える）。
+- 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
 
 AI-CAR の走行・安全停止には何も送らない。
 """
 import argparse
 import asyncio
+import html
 import io
 import json
 import os
@@ -29,9 +34,11 @@ import re
 import subprocess
 import threading
 import time
+import urllib.parse
 import urllib.request
 import uuid
 import wave
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
@@ -44,23 +51,34 @@ WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
 SYSTEM_PROMPT = ('あなたは家庭用ロボット「スタックちゃん」です。日本語で、やさしく、1〜2文で短く答えてください。'
-                 '中国語や英語は使わず、日本語だけで話してください。')
+                 '中国語や英語は使わず、日本語だけで話してください。'
+                 'ニュース・天気・今の役職や値段など新しいことや、知らないことは web_search で調べてから答えてください。')
 IN_RATE = 16000
 OUT_RATE = 24000
 FRAME_MS = 60
 CLOUD_HOLD = 6  # ネットの声は出はじめを 6 枚（0.36 秒）ためてから流す。Wi-Fi のゆれで途切れないように
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
+CHINESE = re.compile(r'[^ぁ-んァ-ヶー]*[，们这为让吗呢么哪您该样过][^ぁ-んァ-ヶー]*')  # かながなく、中国語だけの字がある文
 NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
 PHOTO_TOOL = 'self.camera.take_photo'
 PHOTO_TIMEOUT = 15.0
 PHOTO_MAX_BYTES = 2 * 2 ** 20
 FRAME_PATH = '/camera/frame'
+STREAM_PATH = '/camera/stream'
 VIEWER_HOLD = 10.0
 FRAME_STALE = 3.0
 CLOUD_OTA_URL = 'https://api.tenclass.net/xiaozhi/ota/'
 FACE_TOOL = 'self.robot.set_face_color'
 FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00}
+SEARCH_TOOL = 'self.web.search'
+SEARCH_DESC = ('Search the internet for up-to-date information: news, weather, prices, who currently holds a '
+               'position, and anything that may have changed after your training. Always use it for questions '
+               'about the present or recent events. Returns news headlines with dates and web snippets.')
+SEARCH_PARAMS = {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'search words'}},
+                 'required': ['query']}
+SEARCH_FN = {'type': 'function', 'function': {'name': 'web_search', 'description': SEARCH_DESC,
+                                              'parameters': SEARCH_PARAMS}}
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
@@ -70,10 +88,10 @@ TO_LOCAL = re.compile(r'(?:ローカル|ジェットソン|local|jetson)' + _SWI
 STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
-          'stream_at': None, 'frame_at': None, 'fps': None, 'mode': 'local'}
+          'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local'}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
-FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0}
+FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
 SESSIONS = []
 LOOP = None
 
@@ -88,8 +106,11 @@ def set_status(**kw):
 
 
 def want_frames():
-    """ダッシュボードが 10 秒以内に映像を取りに来ていれば '1'（スタックちゃんに送り続けてもらう）。"""
-    return '1' if time.time() - FRAME['viewer_at'] < VIEWER_HOLD else '0'
+    """「映像を撮る」が押されていて、ダッシュボードが 10 秒以内に取りに来ていれば '1'（送り続けてもらう）。"""
+    if FRAME['on'] and time.time() - FRAME['viewer_at'] >= VIEWER_HOLD:
+        FRAME['on'] = False
+        set_status(stream_on=False)
+    return '1' if FRAME['on'] else '0'
 
 
 def jpeg_from_multipart(body, ctype):
@@ -190,19 +211,62 @@ def stt(samples):
         return json.loads(r.read())['text'].strip().replace('\n', '')
 
 
-def llm_sentences(model, messages):
-    body = json.dumps({'model': model, 'stream': True, 'keep_alive': -1, 'messages': messages,
-                       'options': {'num_predict': 120}}).encode()
-    buf = ''
-    with urllib.request.urlopen(urllib.request.Request(OLLAMA_URL, body), timeout=60) as r:
+def _get(url, timeout=8):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def _plain(s):
+    return html.unescape(re.sub(r'<[^>]+>', '', s)).strip()
+
+
+def web_search(query, n=5):
+    """インターネットで調べる（Google ニュースの見出しと日付・DuckDuckGo の説明）。文字にして返す。"""
+    q = urllib.parse.quote(query)
+    out = []
+    try:
+        root = ET.fromstring(_get(f'https://news.google.com/rss/search?q={q}&hl=ja&gl=JP&ceid=JP:ja'))
+        for item in root.iter('item'):
+            if len(out) >= n:
+                break
+            out.append(f'ニュース（{item.findtext("pubDate", "")[:16]}）: {item.findtext("title", "")}')
+    except Exception as e:  # noqa: BLE001 - 片方だけでも答える
+        log(f'調べもの（ニュース）のエラー: {e}')
+    try:
+        page = _get(f'https://html.duckduckgo.com/html/?q={q}').decode('utf-8', 'replace')
+        titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', page, re.S)
+        snips = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', page, re.S)
+        out += [f'ウェブ: {_plain(t)}: {_plain(x)}' for t, x in zip(titles, snips)][:n]
+    except Exception as e:  # noqa: BLE001
+        log(f'調べもの（ウェブ）のエラー: {e}')
+    log(f'調べもの「{query}」: {len(out)} 件')
+    return '\n'.join(out) if out else '見つかりませんでした'
+
+
+def llm_sentences(model, messages, search=True):
+    """返事を 1 文ずつ返す。新しいことを聞かれたら「調べますね」と言ってから調べて答える。"""
+    body = {'model': model, 'stream': True, 'keep_alive': -1, 'messages': messages, 'options': {'num_predict': 120}}
+    if search:
+        body['tools'] = [SEARCH_FN]
+    buf, calls = '', []
+    with urllib.request.urlopen(urllib.request.Request(OLLAMA_URL, json.dumps(body).encode()), timeout=60) as r:
         for line in r:
-            buf += json.loads(line).get('message', {}).get('content', '')
+            m = json.loads(line).get('message', {})
+            calls += m.get('tool_calls') or []
+            buf += m.get('content', '')
             while (m := SENTENCE_END.search(buf)):
                 s, buf = buf[:m.end()].strip(), buf[m.end():]
-                if s:
+                if s and not CHINESE.fullmatch(s):
                     yield s
-    if buf.strip():
+    if buf.strip() and not CHINESE.fullmatch(buf.strip()):
         yield buf.strip()
+    if calls:
+        yield '調べますね。'
+        query = (calls[0].get('function', {}).get('arguments') or {}).get('query') or messages[-1]['content']
+        found = web_search(str(query))
+        yield from llm_sentences(model, messages + [{'role': 'assistant', 'content': '', 'tool_calls': calls[:1]},
+                                                    {'role': 'tool', 'content': found}], search=False)
 
 
 def tts_pcm(text, voice, pitch, peak_db):
@@ -305,6 +369,12 @@ class OtaHandler(BaseHTTPRequestHandler):
             self._photo()
         elif path == FRAME_PATH:
             self._frame()
+        elif path == STREAM_PATH:
+            on = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('on', ['0'])[0] == '1'
+            FRAME.update(on=on, viewer_at=time.time())
+            set_status(stream_on=on)
+            log(f'映像: {"撮る" if on else "止める"}')
+            self._send_json({'ok': True, 'stream_on': on})
         else:
             self._reply()
 
@@ -407,6 +477,7 @@ class Session:
         self.hello = None
         self.cloud = None
         self.cloud_sid = ''
+        self.search_added = False
         self.switching = False
         self.turn = {}
 
@@ -493,6 +564,7 @@ class Session:
             if hello.get('type') != 'hello' or rate not in (None, OUT_RATE):
                 raise RuntimeError(f'ネットの hello がちがいます: {hello}')
             self.cloud_sid = hello.get('session_id', '')
+            self.search_added = False
             self.cloud = cloud
             save_mode('net')
             await self.set_face('net')
@@ -562,6 +634,10 @@ class Session:
                     continue
                 if msg.get('type') == 'hello':
                     continue
+                call = (msg.get('payload') or {}) if msg.get('type') == 'mcp' else {}
+                if call.get('method') == 'tools/call' and (call.get('params') or {}).get('name') == SEARCH_TOOL:
+                    asyncio.create_task(self.cloud_search(call))
+                    continue
                 if msg.get('type') == 'tts' and msg.get('state') == 'start':
                     hold = []
                 elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
@@ -582,6 +658,13 @@ class Session:
             log('ネットの会話が切れました（画面を 1 回さわると、またつながります）')
             self.cloud = None
             await self.ws.close()
+
+    async def cloud_search(self, call):
+        """ネットの XiaoZhi が呼んだ調べものに、スタックちゃんのかわりに答える。"""
+        query = str(((call.get('params') or {}).get('arguments') or {}).get('query', ''))
+        found = await asyncio.to_thread(web_search, query)
+        await self.to_cloud({'type': 'mcp', 'payload': {'jsonrpc': '2.0', 'id': call.get('id'), 'result': {
+            'content': [{'type': 'text', 'text': found}], 'isError': False}}})
 
     def note_cloud(self, msg):
         """ネットの会話の様子をダッシュボード用に残す。"""
@@ -631,6 +714,10 @@ class Session:
         if t == 'mcp' and self.on_mcp(msg.get('payload')):
             return
         if self.cloud and t != 'hello':
+            tools = ((msg.get('payload') or {}).get('result') or {}).get('tools') if t == 'mcp' else None
+            if isinstance(tools, list) and not self.search_added:
+                tools.append({'name': SEARCH_TOOL, 'description': SEARCH_DESC, 'inputSchema': SEARCH_PARAMS})
+                self.search_added = True
             if t == 'listen' and msg.get('state') in ('start', 'stop'):
                 self.listening = msg['state'] == 'start'
                 self.mode = msg.get('mode', self.mode)
