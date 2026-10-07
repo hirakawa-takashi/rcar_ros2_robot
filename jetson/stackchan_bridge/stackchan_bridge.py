@@ -7,6 +7,11 @@ XiaoZhi の 2 つの口をまねる:
 - WebSocket（--ws-port、既定 8000）`/xiaozhi/v1/`: マイクの声（Opus 16 kHz）を受け取り、
   声の区切りを音の大きさで見つける → whisper-server（声→文字）→ Ollama（返事、1 文ずつ）
   → Kokoro（文字→声）→ Opus 24 kHz でスタックちゃんへ返す。
+- HTTP（同じ --ota-port）`GET /status`: AI-CAR のダッシュボードのスタックちゃんのカード用。
+  つながり・今の様子（聞いている / 考えている / 話している）・最後の会話を JSON で返す。
+- カメラ: つながったら MCP の initialize で写真の送り先（`POST /vision`）を教える。`POST /photo` で
+  MCP の `self.camera.take_photo` を呼ぶと、スタックちゃんが JPEG を `/vision` へ送ってくるので、
+  いちばん新しい 1 枚を `GET /photo.jpg` で返す（撮るたびにシャッターの音が鳴る）。
 
 AI-CAR の走行・安全停止には何も送らない。
 """
@@ -39,6 +44,53 @@ FRAME_MS = 60
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
 NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
+PHOTO_TOOL = 'self.camera.take_photo'
+PHOTO_TIMEOUT = 15.0
+PHOTO_MAX_BYTES = 2 * 2 ** 20
+FRAME_PATH = '/camera/frame'
+VIEWER_HOLD = 10.0
+FRAME_STALE = 3.0
+
+STATUS_LOCK = threading.Lock()
+STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
+          'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
+          'stream_at': None, 'frame_at': None, 'fps': None}
+PHOTO = {'jpeg': None}
+FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0}
+SESSIONS = []
+LOOP = None
+
+
+def set_status(**kw):
+    with STATUS_LOCK:
+        STATUS.update(kw)
+        if STATUS['connected'] or 'last_ota' in kw:
+            STATUS['last_seen'] = time.time()
+        if not STATUS['connected']:
+            STATUS['state'] = 'idle'
+
+
+def want_frames():
+    """ダッシュボードが 10 秒以内に映像を取りに来ていれば '1'（スタックちゃんに送り続けてもらう）。"""
+    return '1' if time.time() - FRAME['viewer_at'] < VIEWER_HOLD else '0'
+
+
+def jpeg_from_multipart(body, ctype):
+    """multipart/form-data の file の中身（JPEG）を取り出す。なければ None。"""
+    m = re.search(r'boundary="?([^";]+)"?', ctype or '')
+    if not m:
+        return None
+    for part in body.split(b'--' + m.group(1).encode()):
+        head, _, data = part.partition(b'\r\n\r\n')
+        if b'name="file"' in head:
+            data = data[:-2] if data.endswith(b'\r\n') else data
+            return data if data.startswith(b'\xff\xd8') else None
+    return None
+
+
+def set_device(**kw):
+    with STATUS_LOCK:
+        STATUS['device'] = {**STATUS['device'], **{k: v for k, v in kw.items() if v and v != '?'}}
 
 
 def log(msg):
@@ -101,6 +153,133 @@ def tts_pcm(text, voice, pitch, peak_db):
 class OtaHandler(BaseHTTPRequestHandler):
     """起動のたびの「新しい版はある？」に答える。WebSocket の行き先だけを返す。"""
     ws_port = 8000
+    # スタックちゃんの HttpClient は相手から先に切られると落ちることがあるので、
+    # スタックちゃんとの通信は「Connection: close」でも向こうが切るのを待つ。
+    protocol_version = 'HTTP/1.1'
+    timeout = 30
+
+    def parse_request(self):
+        ok = super().parse_request()
+        if ok and self.headers.get('Device-Id'):
+            self.close_connection = False
+        return ok
+
+    def _send_json(self, obj):
+        body = json.dumps(obj, ensure_ascii=False).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_body(self, body, ctype):
+        body = body.encode() if isinstance(body, str) else body
+        self.send_response(200)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_error(self, code, detail):
+        body = json.dumps({'detail': detail}, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_body(self, limit):
+        if self.headers.get('Transfer-Encoding', '').lower() == 'chunked':
+            out = b''
+            while (size := int(self.rfile.readline().split(b';')[0].strip() or b'0', 16)):
+                out += self.rfile.read(size)
+                self.rfile.readline()
+                if len(out) > limit:
+                    raise ValueError('大きすぎます')
+            while self.rfile.readline() not in (b'\r\n', b'\n', b''):
+                pass
+            return out
+        n = int(self.headers.get('Content-Length') or 0)
+        if n > limit:
+            raise ValueError('大きすぎます')
+        return self.rfile.read(n) if n else b''
+
+    def do_GET(self):
+        path = self.path.split('?')[0].rstrip('/')
+        if path == '/status':
+            with STATUS_LOCK:
+                self._send_json({**STATUS, 'now': time.time()})
+        elif path == '/photo.jpg':
+            if not PHOTO['jpeg']:
+                return self._send_error(404, 'まだ写真がありません')
+            self._send_body(PHOTO['jpeg'], 'image/jpeg')
+        elif path == FRAME_PATH:
+            set_status(stream_at=time.time())
+            self._send_body(want_frames(), 'text/plain')
+        elif path == FRAME_PATH + '.jpg':
+            FRAME['viewer_at'] = time.time()
+            if not FRAME['jpeg'] or time.time() - (STATUS['frame_at'] or 0) > FRAME_STALE:
+                return self._send_error(404, '映像を待っています')
+            self._send_body(FRAME['jpeg'], 'image/jpeg')
+        else:
+            self._reply()
+
+    def do_POST(self):
+        path = self.path.split('?')[0].rstrip('/')
+        if path == '/vision':
+            self._vision()
+        elif path == '/photo':
+            self._photo()
+        elif path == FRAME_PATH:
+            self._frame()
+        else:
+            self._reply()
+
+    def _vision(self):
+        """スタックちゃんが撮った写真（multipart の file）を受け取る。"""
+        try:
+            jpeg = jpeg_from_multipart(self._read_body(PHOTO_MAX_BYTES), self.headers.get('Content-Type'))
+        except ValueError as e:
+            return self._send_error(413, str(e))
+        if not jpeg:
+            log('写真: JPEG がありません')
+            return self._send_json({'success': False, 'message': 'no jpeg'})
+        PHOTO['jpeg'] = jpeg
+        set_status(photo_at=time.time())
+        log(f'写真: {len(jpeg) // 1024} KB')
+        self._send_json({'success': True, 'result': 'ダッシュボードに出しました'})
+
+    def _frame(self):
+        """スタックちゃんが続けて送ってくる映像の 1 コマ（image/jpeg）。返事の「1」で次を送ってもらう。"""
+        try:
+            jpeg = self._read_body(PHOTO_MAX_BYTES)
+        except ValueError as e:
+            return self._send_error(413, str(e))
+        now = time.time()
+        if jpeg.startswith(b'\xff\xd8'):
+            FRAME['jpeg'] = jpeg
+            t = FRAME['times'] = [x for x in FRAME['times'][-9:] if now - x < FRAME_STALE] + [now]
+            fps = round((len(t) - 1) / (t[-1] - t[0]), 1) if len(t) > 1 else None
+            set_status(stream_at=now, frame_at=now, fps=fps)
+        self._send_body(want_frames(), 'text/plain')
+
+    def _photo(self):
+        """いちばん新しくつながったスタックちゃんに写真を撮ってもらう（終わるまで待つ）。"""
+        sess = SESSIONS[-1] if SESSIONS else None
+        if not sess or not sess.camera:
+            return self._send_error(409, 'スタックちゃんがつながっていません（画面を 1 回さわってください）')
+        before = STATUS['photo_at']
+        try:
+            err = asyncio.run_coroutine_threadsafe(sess.take_photo(), LOOP).result(PHOTO_TIMEOUT + 2)
+        except Exception as e:  # noqa: BLE001 - 返事がない・切れた
+            err = f'返事がありません（{type(e).__name__}）'
+        if STATUS['photo_at'] == before:
+            log(f'写真に失敗: {err}')
+            return self._send_error(502, err or '写真が届きませんでした')
+        with STATUS_LOCK:
+            self._send_json({'ok': True, 'photo_at': STATUS['photo_at']})
 
     def _reply(self):
         n = int(self.headers.get('Content-Length') or 0)
@@ -111,19 +290,14 @@ class OtaHandler(BaseHTTPRequestHandler):
         except (ValueError, AttributeError):
             pass
         host = (self.headers.get('Host') or '').rsplit(':', 1)[0] or self.server.server_address[0]
-        body = json.dumps({
+        dev = self.headers.get('Device-Id', '?')
+        set_device(id=dev, ip=self.client_address[0], version=version)
+        set_status(last_ota=time.time())
+        log(f'OTA: {dev} 版 {version or "?"} → ws://{host}:{self.ws_port}')
+        self._send_json({
             'server_time': {'timestamp': int(time.time() * 1000), 'timezone_offset': 540},
             'websocket': {'url': f'ws://{host}:{self.ws_port}/xiaozhi/v1/', 'token': '', 'version': 1},
-        }).encode()
-        log(f'OTA: {self.headers.get("Device-Id", "?")} 版 {version or "?"} → ws://{host}:{self.ws_port}')
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    do_GET = _reply
-    do_POST = _reply
+        })
 
     def log_message(self, fmt, *a):
         pass
@@ -148,10 +322,56 @@ class Session:
         self.history = []
         self.reply_task = None
         self.cancel = threading.Event()
+        self.camera = False
+        self.mcp_id = 0
+        self.mcp_wait = {}
 
     async def send(self, **msg):
         msg['session_id'] = self.sid
         await self.ws.send(json.dumps(msg, ensure_ascii=False))
+
+    def mcp_call(self, method, params):
+        self.mcp_id += 1
+        fut = asyncio.get_running_loop().create_future()
+        self.mcp_wait[self.mcp_id] = fut
+        payload = {'jsonrpc': '2.0', 'id': self.mcp_id, 'method': method, 'params': params}
+        return fut, self.send(type='mcp', payload=payload)
+
+    async def mcp_init(self, vision_url):
+        fut, sending = self.mcp_call('initialize', {
+            'protocolVersion': '2024-11-05', 'capabilities': {'vision': {'url': vision_url, 'token': ''}},
+            'clientInfo': {'name': 'stackchan_bridge', 'version': '1'}})
+        await sending
+        try:
+            await asyncio.wait_for(fut, 10)
+        except asyncio.TimeoutError:
+            log('MCP: initialize の返事がありません（カメラは使えません）')
+            return
+        fut, sending = self.mcp_call('tools/list', {})
+        await sending
+        try:
+            tools = (await asyncio.wait_for(fut, 10)).get('result', {}).get('tools', [])
+        except asyncio.TimeoutError:
+            tools = []
+        self.camera = any(t.get('name') == PHOTO_TOOL for t in tools)
+        set_status(camera=self.camera)
+        log(f'MCP: カメラ {"あり" if self.camera else "なし"} → {vision_url}')
+
+    async def take_photo(self):
+        """写真を撮ってもらう。うまくいけば None、だめなら理由。"""
+        fut, sending = self.mcp_call('tools/call', {'name': PHOTO_TOOL,
+                                                    'arguments': {'question': 'ダッシュボードに写真を出す'}})
+        await sending
+        res = await asyncio.wait_for(fut, PHOTO_TIMEOUT)
+        if 'error' in res:
+            return str(res['error'].get('message', res['error']))
+        r = res.get('result') or {}
+        return ''.join(c.get('text', '') for c in r.get('content', [])) if r.get('isError') else None
+
+    def on_mcp(self, payload):
+        fut = self.mcp_wait.pop(payload.get('id'), None) if isinstance(payload, dict) else None
+        if fut and not fut.done():
+            fut.set_result(payload)
 
     def reset_vad(self):
         self.speech, self.pre, self.started, self.silent = [], [], False, 0.0
@@ -163,22 +383,31 @@ class Session:
                 'type': 'hello', 'transport': 'websocket', 'session_id': self.sid,
                 'audio_params': {'format': 'opus', 'sample_rate': OUT_RATE, 'channels': 1,
                                  'frame_duration': FRAME_MS}}))
+            if (msg.get('features') or {}).get('mcp'):
+                host = (self.ws.request.headers.get('Host') or '127.0.0.1').rsplit(':', 1)[0]
+                asyncio.create_task(self.mcp_init(f'http://{host}:{self.args.ota_port}/vision'))
         elif t == 'listen':
             state = msg.get('state')
             if state == 'start':
                 self.mode = msg.get('mode', 'auto')
                 self.listening = True
                 self.reset_vad()
+                if not self.reply_task:
+                    set_status(state='listening')
             elif state == 'stop':
                 self.listening = False
                 if self.mode == 'manual' and self.speech:
                     self.start_reply(np.concatenate(self.speech))
+                elif not self.reply_task:
+                    set_status(state='idle')
                 self.reset_vad()
             elif state == 'detect':
                 log(f'ウェイクワード: {msg.get("text", "")}')
         elif t == 'abort':
             self.cancel.set()
-        elif t != 'mcp':
+        elif t == 'mcp':
+            self.on_mcp(msg.get('payload'))
+        else:
             log(f'未対応のメッセージ: {msg}')
 
     def on_audio(self, data):
@@ -219,8 +448,10 @@ class Session:
         a = self.args
         try:
             t0 = time.time()
+            set_status(state='thinking')
             text = await asyncio.to_thread(stt, samples)
-            log(f'聞き取り（{time.time() - t0:.2f} 秒、声 {len(samples) / IN_RATE:.1f} 秒）: {text}')
+            stt_s = time.time() - t0
+            log(f'聞き取り（{stt_s:.2f} 秒、声 {len(samples) / IN_RATE:.1f} 秒）: {text}')
             if not text or NOISE_TEXT.fullmatch(text):
                 return
             await self.send(type='stt', text=text)
@@ -241,14 +472,16 @@ class Session:
                 q.put(None)
 
             threading.Thread(target=produce, daemon=True).start()
-            reply, first = [], True
+            reply, first, voice_s = [], True, None
             await self.send(type='tts', state='start')
             while (item := await asyncio.to_thread(q.get)) is not None:
                 if self.cancel.is_set():
                     continue
                 s, pcm = item
                 if first:
-                    log(f'声が出るまで {time.time() - t0:.2f} 秒')
+                    voice_s = time.time() - t0
+                    set_status(state='speaking')
+                    log(f'声が出るまで {voice_s:.2f} 秒')
                     await self.send(type='llm', emotion='happy', text='😊')
                     first = False
                 log(f'返事: {s}')
@@ -256,6 +489,10 @@ class Session:
                 await self.send(type='tts', state='sentence_start', text=s)
                 await self.play(pcm)
             await self.send(type='tts', state='stop')
+            with STATUS_LOCK:
+                STATUS['turns'] += 1
+                STATUS['last'] = {'at': time.time(), 'heard': text, 'reply': ''.join(reply),
+                                  'stt_s': round(stt_s, 2), 'voice_s': voice_s and round(voice_s, 2)}
             self.history = (self.history + [{'role': 'user', 'content': text},
                                             {'role': 'assistant', 'content': ''.join(reply)}])[-2 * a.turns:]
         except Exception as e:  # noqa: BLE001 - 1 回の失敗で止めない
@@ -263,6 +500,7 @@ class Session:
         finally:
             self.reply_task = None
             self.reset_vad()
+            set_status(state='listening' if self.listening else 'idle')
 
     async def play(self, pcm):
         """60 ms ずつ Opus にして、はじめの 5 枚のあとは実際の速さで送る。"""
@@ -282,7 +520,12 @@ async def handler(ws, args):
     peer = ws.remote_address[0] if ws.remote_address else '?'
     dev = ws.request.headers.get('Device-Id', '?')
     log(f'つながりました: {peer}（{dev}）{ws.request.path}')
+    set_device(id=dev, ip=peer)
+    with STATUS_LOCK:
+        STATUS['connected'] += 1
+    set_status()
     s = Session(ws, args)
+    SESSIONS.append(s)
     try:
         async for msg in ws:
             if isinstance(msg, bytes):
@@ -294,6 +537,13 @@ async def handler(ws, args):
                     log(f'JSON でないメッセージ: {msg[:80]}')
     finally:
         s.cancel.set()
+        SESSIONS.remove(s)
+        for fut in s.mcp_wait.values():
+            fut.cancel()
+        set_status(camera=any(x.camera for x in SESSIONS))
+        with STATUS_LOCK:
+            STATUS['connected'] = max(0, STATUS['connected'] - 1)
+        set_status(last_seen=time.time())
         log(f'切れました: {peer}')
 
 
@@ -315,7 +565,10 @@ async def main():
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
     args = p.parse_args()
 
+    global LOOP
+    LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
+    set_status(engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
