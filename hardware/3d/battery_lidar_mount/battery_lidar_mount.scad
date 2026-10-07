@@ -164,6 +164,10 @@ wcam_vfov = 67;
 wcam_win_clr = 1.5;               // カバーの窓の、レンズの先のまわりのすき間
 wcam_win_deg = 4;                 // カバーの窓の、画角の線の外へ足す角度（片側）
 fpc_w = 16;                       // フラットケーブルの幅（15 ピンの側）
+wcam_nut_af = 4.4;                // 板の裏の M2 ナット（二面幅 4 mm、厚さ 1.6 mm）のくぼみの二面幅
+wcam_nut_d = 1.8;                 // くぼみの深さ（ナットが板の裏から出ない）
+wcam_relief_d = 6.5;              // 板の裏の M2 の後ろの、ふた・箱の逃げ穴の太さ（ナットの角 4.6 mm + すき間）
+wcam_relief_l = 4;                // 逃げ穴の深さ（板の裏から後ろへ。M2 x 10 mm の先 2.4 mm も入る）
 
 tie_w = 4.5;              // 結束バンド（幅 3.6 mm まで）を通すトンネル
 tie_h = 2;
@@ -417,6 +421,7 @@ module box() {
         // ふた固定用の下穴
         for (p = boss_pts) translate([p[0], p[1], box_h]) screw_hole(3, 12);
         motor_recess();
+        wcam_back_relief(0);
     }
 }
 
@@ -442,6 +447,7 @@ module lid() {
             translate([q[0], q[1], 0]) clear_hole(2.5, lid_t + lidar_tower_h, lid_t + lidar_tower_h - lidar_floor);
         }
         scam_lid_post_cut();
+        wcam_back_relief(box_h);
         // バッテリーの残量表示の窓
         d = disp_rect();
         translate([d[0] - disp_lid_m, d[1] - disp_lid_m, -1]) cube([d[2] - d[0] + 2 * disp_lid_m, d[3] - d[1] + 2 * disp_lid_m, lid_t + 2]);
@@ -462,6 +468,12 @@ module scam_lid_post_cut() {
         translate([0, 0, -scam_nut_d]) rotate([0, 0, 30]) cylinder(d = scam_nut_af / cos(30), h = scam_nut_d + 0.01, $fn = 6);
         translate([0, 0, -scam_lpost_d - 1]) cylinder(d = clear_d(2), h = scam_lpost_d + 2);
     }
+}
+
+// Camera Module 3 Wide の板の裏の M2 の後ろ（ナットとネジの先）の逃げ。zoff は部品の Z の原点（ふたは box_h）
+module wcam_back_relief(zoff) {
+    for (h = wcam_holes) translate([h[0], scam_mnt_y0 + 0.01, h[1] - zoff]) rotate([90, 0, 0])
+        cylinder(d = wcam_relief_d, h = wcam_relief_l + 0.01);
 }
 
 // 2 眼カメラの板（組み立ての座標）。基板は前から M2 × 6 mm を 4 本、板は耳を M3 × 8 mm で 2 本
@@ -489,6 +501,8 @@ module wcam_mount() {
             for (h = wcam_holes) translate([h[0], y1 - 0.01, h[1]]) rotate([-90, 0, 0]) cylinder(d = scam_so_d, h = wcam_so + 0.01);
         }
         for (h = wcam_holes) translate([h[0], wcam_back_y, h[1]]) rotate([-90, 0, 0]) screw_hole(2, wcam_so + scam_mnt_t + 1, scam_hole_d);
+        for (h = wcam_holes) translate([h[0], scam_mnt_y0 - 0.01, h[1]]) rotate([-90, 0, 0]) rotate([0, 0, 30])
+            cylinder(d = wcam_nut_af / cos(30), h = wcam_nut_d + 0.01, $fn = 6);
         for (x = scam_ear_x) translate([x + scam_ear_w / 2, scam_mnt_y0, scam_ear_scr_z]) rotate([-90, 0, 0]) clear_hole(3, scam_mnt_t);
     }
 }
@@ -940,6 +954,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x - end_fill, in_y, in_z]
      scam_board_y = [scam_back_y, scam_front], scam_mnt_x = scam_mnt_x, scam_mnt_y = [scam_mnt_y0, scam_mnt_y0 + scam_mnt_t], scam_ear_top_z = scam_ear_top,
      cov_scam_slots = [cov_scam_slot(-scam_baseline / 2), cov_scam_slot(scam_baseline / 2)], cov_front_outer_y = cov_oy1,
      front_cam = front_cam, wcam_board_xz = [wcam_cx - wcam_board[0] / 2, wcam_cx + wcam_board[0] / 2, wcam_z0, wcam_z1], wcam_holes = wcam_holes,
+     wcam_relief_y = [scam_mnt_y0 - wcam_relief_l, scam_mnt_y0], box_front_wall_left = wall_y - (box_y0 + box_y - (scam_mnt_y0 - wcam_relief_l)),
      wcam_board_y = [wcam_back_y, wcam_front], wcam_lens_tip = [wcam_cx, wcam_tip_y, wcam_lens_zc], wcam_tip_to_cover_in = cov_y1 - wcam_tip_y,
      wcam_win_in = 2 * wcam_win(cov_y1), wcam_win_out = 2 * wcam_win(cov_oy1), wfpc_len = wfpc_len, pi_holes = pi_pts, pi_board_x = [pi_cx - pi_board[0] / 2, pi_cx + pi_board[0] / 2],
      pi_btn_hole_yz = [pi_cy - pi_board[1] / 2 + pi_btn_y[0], pi_cy - pi_board[1] / 2 + pi_btn_y[1], pi_z + pi_btn_z[0], pi_z + pi_btn_z[1]], cov_inner_x = [-cov_clr, plate_w + cov_clr],
