@@ -1,0 +1,13 @@
+[Unit]
+Description=StackChan local AI bridge (XiaoZhi OTA + WebSocket -> whisper / Ollama / Kokoro)
+After=network-online.target whisper-server.service ollama.service docker.service
+Wants=network-online.target
+
+[Service]
+User=jetson
+ExecStart=/usr/bin/python3 -u /home/jetson/stackchan_bridge/stackchan_bridge.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
