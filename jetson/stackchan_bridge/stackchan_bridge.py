@@ -640,6 +640,7 @@ class Session:
                     self.awake = False
                     log(f'{self.args.awake_seconds:.0f} 秒話さなかったので、呼びかけ待ちにもどります')
                     await self.say(BYE_REPLY, wake=False)
+                    await self.close_cloud()
                     set_status(state=self.listen_state())
                 if STATUS['state'] == 'listening' and not self.busy() and self.asleep():
                     set_status(state='waiting')
@@ -687,10 +688,10 @@ class Session:
         self.vision_url = vision_url
         if vision_url:
             await self.mcp_init(vision_url)
-        if STATUS['mode'] == 'net':
+        if STATUS['mode'] == 'net' and not self.wake:
             await self.to_net(announce=False)
         else:
-            await self.set_face('local')
+            await self.set_face(STATUS['mode'])
 
     async def set_face(self, mode):
         if not self.face:
@@ -785,6 +786,18 @@ class Session:
             self.switching = False
             set_status(state=self.listen_state())
 
+    async def close_cloud(self):
+        """呼びかけ待ちのあいだはネットの会話を閉じておく（ネットは 1 分ほどだまると自分で「じゃあな」と言って切る）。"""
+        cloud, self.cloud = self.cloud, None
+        if cloud:
+            await cloud.close()
+
+    async def need_cloud(self):
+        """ネットのモードで呼ばれたら、ネットの会話を開く。開けたら True。"""
+        if STATUS['mode'] == 'net' and not self.cloud:
+            await self.to_net(announce=False)
+        return bool(self.cloud)
+
     async def to_cloud(self, msg):
         try:
             await self.cloud.send(json.dumps({**msg, 'session_id': self.cloud_sid}, ensure_ascii=False))
@@ -861,9 +874,14 @@ class Session:
         except Exception as e:  # noqa: BLE001 - 中継の失敗はつなぎ直しで直す
             log(f'ネットの中継のエラー: {e}')
         if cloud is self.cloud:
-            log('ネットの会話が切れました（画面を 1 回さわると、またつながります）')
+            log('ネットの会話が切れました（次に呼ばれたら、つなぎ直します）')
             self.cloud = None
-            await self.ws.close()
+            if self.cloud_tts:
+                self.cloud_tts = False
+                try:
+                    await self.send(type='tts', state='stop')
+                except ConnectionClosed:
+                    pass
 
     async def cloud_search(self, call):
         """ネットの XiaoZhi が呼んだ調べものに、スタックちゃんのかわりに答える。"""
@@ -1074,8 +1092,9 @@ class Session:
             if asleep and len(re.sub(r'[\s\W]', '', self.wake.sub('', text))) <= WAKE_FILLER:
                 await self.send(type='stt', text=text)
                 await self.say(WAKE_REPLY)
+                await self.need_cloud()
                 return
-            if self.cloud:
+            if await self.need_cloud():
                 await self.cloud_speech(samples)
                 return
             await self.send(type='stt', text=text)
