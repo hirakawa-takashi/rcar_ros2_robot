@@ -1262,7 +1262,7 @@ async def handler(ws, args):
     set_device(id=dev, ip=peer)
     with STATUS_LOCK:
         STATUS['connected'] += 1
-    set_status()
+    set_status(dozing=False)
     s = Session(ws, args)
     SESSIONS.append(s)
     try:
