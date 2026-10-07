@@ -1390,13 +1390,13 @@ let stackBusy = false;
 let stackPhotoAt = null;
 let stackPhotoUrl = null;
 let stackEnrollBusy = false;
-const STACK_STATE = {
-  listening: ['ok', '聞いています'],
-  thinking: ['ok', '考えています'],
-  speaking: ['ok', '話しています'],
-  waiting: ['', '呼びかけ待ち'],
-  idle: ['', '待ち受け'],
-};
+// 待っている（waiting・idle）は呼び掛け待ち、それ以外（聞く・考える・話す）は会話モード
+function stackState(r) {
+  if (!r.connected) return ['warn', '未接続', '画面を 1 回さわると話せます'];
+  if (r.dozing) return ['', 'おやすみ中', '「スタックちゃん」と呼ぶと起きます'];
+  if (r.state === 'waiting' || r.state === 'idle') return ['ok', '接続中（呼び掛け待ち）', '「スタックちゃん」と呼ぶと会話モード'];
+  return ['ok', '接続中（会話モード）', '30 秒だまると「じゃあ、またね。」'];
+}
 
 function stackTime(t) {
   if (!t) return '-';
@@ -1415,10 +1415,10 @@ function renderStackchan(r, err) {
     st.textContent = '未接続';
     st.title = err;
   } else {
-    const [cls, label] = STACK_STATE[r.connected ? r.state : 'idle'] || STACK_STATE.idle;
+    const [cls, label, title] = stackState(r);
     st.className = 'badge' + (cls ? ` ${cls}` : '');
     st.textContent = label;
-    st.title = r.connected ? '' : '画面を 1 回さわると話せます';
+    st.title = title;
   }
   scId('sc_heard').textContent = last.heard || '-';
   scId('sc_reply').textContent = last.reply || '-';
