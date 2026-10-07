@@ -605,9 +605,7 @@
       <div>
         <h3>顔の登録（カメラの映像）</h3>
         <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
-        <div class="scphoto"><button id="sc_stream_btn" title="押したときだけ、スタックちゃんが映像を送る（もう一度押すか、ページを閉じて 10 秒で止まる）">映像を撮る</button>
-          <button id="sc_photo_btn" title="撮るたびにスタックちゃんからシャッターの音が鳴る">写真を撮る</button>
-          <span id="sc_photo_msg">-</span></div>
+        <div class="scphoto"><span id="sc_photo_msg">-</span></div>
         <div class="scphoto" id="sc_enroll" title="「撮影するよ」と言うと、スタックちゃんが正面を向いて 5 秒数えて撮る。写っている顔 1 つを、名前を付けて Jetson の face_id に登録する">
           <span id="sc_shot_msg">-</span>
           <input id="sc_name" type="text" maxlength="20" placeholder="名前" autocomplete="off">
@@ -615,7 +613,7 @@
           <span id="sc_enroll_msg"></span></div>
       </div>
     </div>
-    <div class="note">Jetson の受け口（jetson-stackchan.service）から 2 秒ごとに取る（API トークンが必要）。写真はボタンを押したときだけ撮り、Jetson にはいちばん新しい 1 枚だけを置く（保存しない）。表示だけで、AI-CAR の走行・安全には使わない。</div>
+    <div class="note">Jetson の受け口（jetson-stackchan.service）から 2 秒ごとに取る（API トークンが必要）。写真は「撮影して」と言ったときだけ撮り、Jetson にはいちばん新しい 1 枚だけを置く（保存しない）。表示だけで、AI-CAR の走行・安全には使わない。</div>
   </div>
 
   <div class="card wide">
@@ -1384,11 +1382,7 @@ const scId = id => document.getElementById(id);
 let stackBusy = false;
 let stackPhotoAt = null;
 let stackPhotoUrl = null;
-let stackPhotoBusy = false;
-let stackLive = false;
 let stackEnrollBusy = false;
-let stackStreamBusy = false;
-let stackFrameBusy = false;
 const STACK_STATE = {
   listening: ['ok', '聞いています'],
   thinking: ['ok', '考えています'],
@@ -1423,27 +1417,16 @@ function renderStackchan(r, err) {
   scId('sc_ip').textContent = dev.ip || '-';
   const net = !!(r && r.mode === 'net');
   scId('sc_mode').textContent = r ? (net ? 'ネット（顔が緑）' : 'ローカル（Jetson）') : '-';
-  if (!stackStreamBusy) stackLive = !!(r && r.stream_on);
-  scId('sc_stream_btn').textContent = stackLive ? '映像を止める' : '映像を撮る';
-  scId('sc_stream_btn').disabled = stackStreamBusy || !(r && r.connected && r.camera);
-  scId('sc_photo_btn').hidden = stackLive;
-  scId('sc_photo_btn').disabled = stackPhotoBusy || !(r && r.connected && r.camera);
-  if (stackLive) {
-    scId('sc_photo_msg').textContent = r.frame_at && r.now - r.frame_at < 3 && r.fps
-      ? `映像: 1 秒に ${fmt(r.fps, 1)} 枚` : '映像を待っています…';
-  } else if (!stackPhotoBusy) {
-    scId('sc_photo_msg').textContent = r && r.photo_at ? `写真: ${stackTime(r.photo_at)}`
-      : r && r.connected && !r.camera ? 'カメラの返事がありません' : r && !r.connected ? '画面を 1 回さわると撮れます' : '-';
-  }
+  scId('sc_photo_msg').textContent = r && r.photo_at ? `写真: ${stackTime(r.photo_at)}`
+    : r && r.connected && !r.camera ? 'カメラの返事がありません' : r && !r.connected ? '画面を 1 回さわると撮れます' : '-';
   const shot = r && r.shot;
-  scId('sc_enroll').hidden = stackLive;
   scId('sc_shot_msg').textContent = r && r.shooting ? '数えています…'
     : !(r && r.photo_at) ? '「撮影するよ」と言うと撮れます' : !shot ? '顔:' : shot.error ? `顔: ${shot.error}` : shot.faces === 0 ? '顔: 見つかりません'
     : shot.faces > 1 ? `顔: ${shot.faces} つ（1 人ずつ撮ってください）`
     : shot.name ? `顔: ${shot.name} さん` : '顔: 1 つ（まだ登録していない人）';
   scId('sc_enroll_btn').disabled = stackEnrollBusy || !(r && r.photo_at) || !!r.shooting;
   if (r && r.photo_at && r.photo_at !== stackPhotoAt) scId('sc_enroll_msg').textContent = '';
-  if (!stackLive && r && r.photo_at && r.photo_at !== stackPhotoAt) {
+  if (r && r.photo_at && r.photo_at !== stackPhotoAt) {
     stackPhotoAt = r.photo_at;
     loadStackPhoto();
   }
@@ -1462,40 +1445,6 @@ function loadStackPhoto() {
     .then(showStackImage)
     .catch(() => {});
 }
-
-// 映像はこのページが開いている間だけ取りに行く（10 秒来ないと、スタックちゃんは送るのをやめる）
-function pollStackFrame() {
-  if (!stackLive || stackFrameBusy || document.visibilityState !== 'visible') return;
-  stackFrameBusy = true;
-  fetch('/api/stackchan/frame.jpg', {headers: authHeaders()})
-    .then(f => f.ok ? f.blob() : null)
-    .then(showStackImage)
-    .catch(() => {})
-    .finally(() => { stackFrameBusy = false; });
-}
-
-scId('sc_stream_btn').addEventListener('click', () => {
-  const on = !stackLive;
-  stackStreamBusy = true;
-  scId('sc_stream_btn').disabled = true;
-  apiPost(`/api/stackchan/stream?on=${on ? 1 : 0}`).then(r => {
-    if (r && r.ok) stackLive = on;
-  }).finally(() => { stackStreamBusy = false; pollStackchan(); });
-});
-
-scId('sc_photo_btn').addEventListener('click', () => {
-  const btn = scId('sc_photo_btn');
-  const out = scId('sc_photo_msg');
-  stackPhotoBusy = true;
-  btn.disabled = true;
-  out.textContent = '撮っています…';
-  apiPost('/api/stackchan/photo').then(r => r && r.json().then(j => [r, j])).then(res => {
-    if (!res) { out.textContent = ''; return; }
-    const [r, j] = res;
-    out.innerHTML = r.ok ? badge('ok', '撮りました') : badge('warn', esc(j.detail || '撮れませんでした'));
-    if (r.ok && j.photo_at) { stackPhotoAt = j.photo_at; loadStackPhoto(); }
-  }).catch(() => { out.textContent = ''; }).finally(() => { stackPhotoBusy = false; btn.disabled = false; });
-});
 
 scId('sc_enroll_btn').addEventListener('click', () => {
   const name = scId('sc_name').value.trim();
@@ -2027,7 +1976,6 @@ loadGpio();
 setInterval(loadGpio, 30000);
 pollStackchan();
 setInterval(pollStackchan, 2000);
-setInterval(pollStackFrame, 250);
 
 // ---- Motor HAT 接続図 ----
 function wireHex(c, fallback) {

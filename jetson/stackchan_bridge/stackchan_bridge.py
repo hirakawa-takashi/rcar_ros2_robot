@@ -827,6 +827,13 @@ class Session:
             self.turn = {}
             set_status(state='listening' if self.listening else 'idle')
 
+    async def look_up(self):
+        """撮影の首の向き。待ち受けの首ふりで動かされても、数えているあいだ 1 秒ごとにもどす。"""
+        head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': {
+            'yaw': 0, 'pitch': self.args.shot_pitch, 'speed': 300}})
+        await sending
+        head.cancel()
+
     async def countdown_shot(self):
         """「撮影するよ」: 正面を向いて SHOT_SECONDS 秒数えて撮ってもらい、だれの顔かを見る。"""
         self.shooting = True
@@ -839,12 +846,15 @@ class Session:
             before = STATUS['photo_at']
             fut, sending = self.mcp_call('tools/call', {'name': SHOT_TOOL, 'arguments': {'seconds': SHOT_SECONDS}})
             await sending
-            head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': {
-                'yaw': 0, 'pitch': self.args.shot_pitch, 'speed': 300}})
-            await sending
-            head.cancel()
-            deadline = time.time() + SHOT_SECONDS + PHOTO_TIMEOUT
+            start = time.time()
+            deadline = start + SHOT_SECONDS + PHOTO_TIMEOUT
+            next_head = start
             while STATUS['photo_at'] == before and time.time() < deadline:
+                if next_head is not None and time.time() >= next_head:
+                    await self.look_up()
+                    next_head += 1.0
+                    if next_head > start + SHOT_SECONDS:
+                        next_head = None
                 await asyncio.sleep(0.2)
             fut.cancel()
             self.mcp_wait = {k: v for k, v in self.mcp_wait.items() if v is not fut}
@@ -1099,7 +1109,7 @@ async def main():
     p.add_argument('--min-seconds', type=float, default=0.4)
     p.add_argument('--max-seconds', type=float, default=15.0)
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
-    p.add_argument('--shot-pitch', type=int, default=15,
+    p.add_argument('--shot-pitch', type=int, default=30,
                    help='「撮影するよ」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
     p.add_argument('--watch-interval', type=float, default=2.0,
                    help='見守りで顔を見る間隔（秒）。0 で見守りをしない')
