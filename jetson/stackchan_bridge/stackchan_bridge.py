@@ -153,6 +153,16 @@ def tts_pcm(text, voice, pitch, peak_db):
 class OtaHandler(BaseHTTPRequestHandler):
     """起動のたびの「新しい版はある？」に答える。WebSocket の行き先だけを返す。"""
     ws_port = 8000
+    # スタックちゃんの HttpClient は相手から先に切られると落ちることがあるので、
+    # スタックちゃんとの通信は「Connection: close」でも向こうが切るのを待つ。
+    protocol_version = 'HTTP/1.1'
+    timeout = 30
+
+    def parse_request(self):
+        ok = super().parse_request()
+        if ok and self.headers.get('Device-Id'):
+            self.close_connection = False
+        return ok
 
     def _send_json(self, obj):
         body = json.dumps(obj, ensure_ascii=False).encode()
