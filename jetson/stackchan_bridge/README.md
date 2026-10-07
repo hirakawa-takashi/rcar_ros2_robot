@@ -17,7 +17,8 @@ M5Stack の純正ファームウェア（StackChan 1.5.1、中の会話は XiaoZ
 - 返事の声: Kokoro のままだといちばん大きい所が上限の約 4 割（-7 dB）で小さかったので、文ごとに -1 dB にそろえる（`--peak-db`）
 - 声の区切り: まわりの音の 3 倍（最低 RMS 300）より大きいと話し始め、0.8 秒静かなら話し終わり（`--ratio`・`--min-level`・`--end-silence`）。
   「(音楽)」のような文字だけの聞き取りは捨てる
-- whisper の見回り: whisper-server は長く動かすと、どの声も「チャンネル登録をお願いします」のような決まった言葉にすることがある。5 分ごとに Kokoro の「スタックちゃん」を聞き取らせ、呼びかけが出なければ `pkill -KILL -x whisper-server` で止める（`Restart=on-failure` で起動し直る）
+- whisper の聞き取り: 毎回 `no_context=true` を送る（前の聞き取りを手がかりにすると、一度まちがえたあと、どの声も「(スタックちゃん)」のような決まった言葉になる）。5 分ごとに Kokoro の「スタックちゃん」（呼びかけが出るはず）と「今日の天気はどうですか」（出ないはず）を聞き取らせ、ちがえば `pkill -KILL -x whisper-server` で止める（`Restart=on-failure` で起動し直る）
+- 呼びかけ待ちの首ふり: スタックちゃんはいつも聞いている（listening）ので、純正の待ち受けの首ふりは動かない。bridge が 5〜10 秒ごとに `self.robot.set_head_angles` で首を動かす（純正の 4 種類をまねる）。動かしてから 1.2 秒は新しい声の区切りを始めない。居眠り中・会話中・撮影中は動かさない
 - 会話は 3 往復まで覚える（WebSocket が切れると忘れる）。今の日時をシステムの指示に入れる
 - `GET :8003/status`: つながり（`connected`）・今の様子（`state`: `listening` / `thinking` / `speaking` / `idle`）・最後の会話（`last`: 聞き取り・返事・かかった秒）・本体（`device`: MAC・IP・版）・会話の数（`turns`）を JSON で返す。AI-CAR のダッシュボードのスタックちゃんのカードが `GET /api/stackchan/status` 経由で 2 秒ごとに取る
 - カメラ: つながると MCP の `initialize` で写真の送り先（`http://<Jetson>:8003/vision`）を教え、`tools/list` に `self.camera.take_photo` があれば `camera: true`。`POST :8003/photo` でその道具を呼ぶと、スタックちゃんが 320×240 の JPEG（約 12 KB）を `/vision` へ送り、`GET :8003/photo.jpg` でいちばん新しい 1 枚を返す（`photo_at` は撮った時刻）。ファイルには保存しない。撮るたびにスタックちゃんでシャッターの音が鳴る。ダッシュボードの「写真を撮る」が `POST /api/stackchan/photo` 経由で呼ぶ

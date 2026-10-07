@@ -38,6 +38,7 @@ import io
 import json
 import os
 import queue
+import random
 import re
 import subprocess
 import threading
@@ -102,12 +103,17 @@ WAKE_FILLER = 2  # 呼びかけのほかが 2 文字まで（「ねえ」「に�
 WAKE_REPLY = 'はい、なあに？'
 BYE_REPLY = 'じゃあ、またね。'
 KEEPALIVE = 60.0
-# whisper-server は長く動かすと、どの声も「チャンネル登録をお願いします」のような決まった言葉にすることがある。
-# 5 分ごとに Kokoro の「スタックちゃん」を聞き取らせ、呼びかけが出なければ止めて systemd に起動し直させる
+# whisper-server は前の聞き取りを次の手がかりにすると、どの声も「(スタックちゃん)」のような決まった言葉にしてしまう。
+# no_context を送って毎回まっさらに聞かせ、5 分ごとに Kokoro の声で試して、おかしければ止めて systemd に起動し直させる
 STT_CHECK_EVERY = 300.0
-STT_CHECK_TEXT = 'スタックちゃん'
+STT_CHECK = (('スタックちゃん', True), ('今日の天気はどうですか', False))  # (言葉, 呼びかけが出るはずか)
 # 居眠り: 「じゃあ、またね。」から --doze-seconds たつと、居眠りの顔（llm の emotion sleepy）にして首をホーム（正面・水平）へ
 HOME_HEAD = {'yaw': 0, 'pitch': 0, 'speed': 150}
+# 呼びかけ待ちの首ふり: スタックちゃんはいつも聞いている（listening）ので、純正の待ち受け（idle）の首ふりが動かない。
+# 純正の IdleMotionModifier（4〜8 秒ごと）をまねて、少し間をあけて、bridge から首を動かす
+# 首のモーターの音を声とまちがえないよう、動かしてから IDLE_HEAD_QUIET 秒は新しい声の区切りを始めない
+IDLE_HEAD_EVERY = (5.0, 10.0)
+IDLE_HEAD_QUIET = 1.2
 # 画面の明るさ: 見守りの映像の明るさ（0〜255 の平均）の 1 分の中央値で、画面の明るさ（0〜100）を決める
 BRIGHT_TOOL = 'self.screen.set_brightness'
 BRIGHT_LEVELS = ((30, 10), (70, 35), (256, 75))  # 映像の明るさがこれ未満なら、この画面の明るさ（75 はもとの明るさ）
@@ -323,7 +329,8 @@ def stt(samples):
     b = uuid.uuid4().hex
     body = (f'--{b}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
             'Content-Type: audio/wav\r\n\r\n').encode() + wav + \
-        (f'\r\n--{b}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson\r\n--{b}--\r\n').encode()
+        (f'\r\n--{b}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson'
+         f'\r\n--{b}\r\nContent-Disposition: form-data; name="no_context"\r\n\r\ntrue\r\n--{b}--\r\n').encode()
     req = urllib.request.Request(WHISPER_URL, body, {'Content-Type': f'multipart/form-data; boundary={b}'})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())['text'].strip().replace('\n', '')
@@ -396,21 +403,22 @@ def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE):
 async def stt_watchdog(voice, wake_words):
     """whisper-server が決まった言葉しか返さなくなったら、プロセスを止める（Restart=on-failure で起動し直る）。"""
     wake = re.compile(wake_words or WAKE_WORDS, re.I)
-    probe = None
+    probes = {}
     while True:
         await asyncio.sleep(STT_CHECK_EVERY)
-        try:
-            if probe is None:
-                pcm = await asyncio.to_thread(tts_pcm, STT_CHECK_TEXT, voice, 0, -3.0, IN_RATE)
-                probe = np.frombuffer(pcm, np.int16).astype(np.float32)
-            text = await asyncio.to_thread(stt, probe)
-        except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as e:
-            log(f'whisper の見回り: 試せませんでした（{e}）')
-            continue
-        if wake.search(text):
-            continue
-        log(f'whisper がおかしいので起動し直します（「{STT_CHECK_TEXT}」→「{text}」）')
-        subprocess.run(['pkill', '-KILL', '-x', 'whisper-server'], check=False)
+        for said, expect in STT_CHECK:
+            try:
+                if said not in probes:
+                    pcm = await asyncio.to_thread(tts_pcm, said, voice, 0, -3.0, IN_RATE)
+                    probes[said] = np.frombuffer(pcm, np.int16).astype(np.float32)
+                text = await asyncio.to_thread(stt, probes[said])
+            except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as e:
+                log(f'whisper の見回り: 試せませんでした（{e}）')
+                break
+            if bool(wake.search(text)) != expect or NOISE_TEXT.fullmatch(text):
+                log(f'whisper がおかしいので起動し直します（「{said}」→「{text}」）')
+                subprocess.run(['pkill', '-KILL', '-x', 'whisper-server'], check=False)
+                break
 
 
 class OtaHandler(BaseHTTPRequestHandler):
@@ -663,6 +671,9 @@ class Session:
         self.bright = None
         self.dozing = False
         self.doze_at = 0.0
+        self.head = [0, 0]
+        self.idle_head_at = 0.0
+        self.head_quiet_until = 0.0
 
     def asleep(self):
         """呼びかけ待ち（呼ばれていないか、最後に話してから --awake-seconds たった）なら True。"""
@@ -703,6 +714,9 @@ class Session:
                     await self.doze()
                 if self.dozing and not self.asleep():
                     await self.wake_face()
+                if self.asleep() and not self.dozing and not self.busy() and time.monotonic() >= self.idle_head_at:
+                    self.idle_head_at = time.monotonic() + random.uniform(*IDLE_HEAD_EVERY)
+                    await self.idle_head()
                 if time.monotonic() - bright_last >= BRIGHT_EVERY:
                     bright_last = time.monotonic()
                     await self.adjust_brightness()
@@ -719,8 +733,29 @@ class Session:
         self.dozing = True
         log('居眠りします（顔を居眠りにして、首をホームへ）')
         set_status(dozing=True)
+        self.head = [0, 0]
         await self.send(type='llm', emotion='sleepy')
         head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': HOME_HEAD})
+        await sending
+        head.cancel()
+
+    async def idle_head(self):
+        """純正の待ち受けの首ふりと同じ 4 種類（見回す・少し動く・ちらっと見る・正面にもどす）から 1 つ。"""
+        r = random.random()
+        if r < 0.5:
+            yaw, pitch, speed = random.randint(-30, 30), random.randint(0, 20), random.randint(150, 300)
+        elif r < 0.8:
+            yaw = max(-80, min(80, self.head[0] + random.randint(-15, 15)))
+            pitch = max(0, min(60, self.head[1] + random.randint(-8, 8)))
+            speed = random.randint(100, 250)
+        elif r < 0.9:
+            yaw, pitch, speed = random.randint(-50, 50), random.randint(10, 40), random.randint(250, 400)
+        else:
+            yaw, pitch, speed = 0, random.randint(5, 40), random.randint(100, 300)
+        self.head = [yaw, pitch]
+        self.head_quiet_until = time.monotonic() + IDLE_HEAD_QUIET
+        head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': {
+            'yaw': yaw, 'pitch': pitch, 'speed': speed}})
         await sending
         head.cancel()
 
@@ -1159,6 +1194,8 @@ class Session:
         rms = float(np.sqrt(np.mean(chunk ** 2))) if len(chunk) else 0.0
         thr = max(a.min_level, self.noise * a.ratio)
         if not self.started:
+            if time.monotonic() < self.head_quiet_until:
+                return
             self.noise = 0.95 * self.noise + 0.05 * min(rms, thr)
             self.pre = (self.pre + [chunk])[-5:]
             if rms > thr:
