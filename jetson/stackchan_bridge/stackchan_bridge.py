@@ -9,6 +9,9 @@ XiaoZhi の 2 つの口をまねる:
   → Kokoro（文字→声）→ Opus 24 kHz でスタックちゃんへ返す。
 - HTTP（同じ --ota-port）`GET /status`: AI-CAR のダッシュボードのスタックちゃんのカード用。
   つながり・今の様子（聞いている / 考えている / 話している）・最後の会話を JSON で返す。
+- カメラ: つながったら MCP の initialize で写真の送り先（`POST /vision`）を教える。`POST /photo` で
+  MCP の `self.camera.take_photo` を呼ぶと、スタックちゃんが JPEG を `/vision` へ送ってくるので、
+  いちばん新しい 1 枚を `GET /photo.jpg` で返す（撮るたびにシャッターの音が鳴る）。
 
 AI-CAR の走行・安全停止には何も送らない。
 """
@@ -41,10 +44,16 @@ FRAME_MS = 60
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
 NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
+PHOTO_TOOL = 'self.camera.take_photo'
+PHOTO_TIMEOUT = 15.0
+PHOTO_MAX_BYTES = 2 * 2 ** 20
 
 STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
-          'state': 'idle', 'last': None, 'turns': 0, 'engines': {}}
+          'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None}
+PHOTO = {'jpeg': None}
+SESSIONS = []
+LOOP = None
 
 
 def set_status(**kw):
@@ -54,6 +63,19 @@ def set_status(**kw):
             STATUS['last_seen'] = time.time()
         if not STATUS['connected']:
             STATUS['state'] = 'idle'
+
+
+def jpeg_from_multipart(body, ctype):
+    """multipart/form-data の file の中身（JPEG）を取り出す。なければ None。"""
+    m = re.search(r'boundary="?([^";]+)"?', ctype or '')
+    if not m:
+        return None
+    for part in body.split(b'--' + m.group(1).encode()):
+        head, _, data = part.partition(b'\r\n\r\n')
+        if b'name="file"' in head:
+            data = data[:-2] if data.endswith(b'\r\n') else data
+            return data if data.startswith(b'\xff\xd8') else None
+    return None
 
 
 def set_device(**kw):
@@ -131,12 +153,86 @@ class OtaHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_error(self, code, detail):
+        body = json.dumps({'detail': detail}, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_body(self, limit):
+        if self.headers.get('Transfer-Encoding', '').lower() == 'chunked':
+            out = b''
+            while (size := int(self.rfile.readline().split(b';')[0].strip() or b'0', 16)):
+                out += self.rfile.read(size)
+                self.rfile.readline()
+                if len(out) > limit:
+                    raise ValueError('大きすぎます')
+            while self.rfile.readline() not in (b'\r\n', b'\n', b''):
+                pass
+            return out
+        n = int(self.headers.get('Content-Length') or 0)
+        if n > limit:
+            raise ValueError('大きすぎます')
+        return self.rfile.read(n) if n else b''
+
     def do_GET(self):
-        if self.path.split('?')[0].rstrip('/') == '/status':
+        path = self.path.split('?')[0].rstrip('/')
+        if path == '/status':
             with STATUS_LOCK:
                 self._send_json({**STATUS, 'now': time.time()})
+        elif path == '/photo.jpg':
+            jpeg = PHOTO['jpeg']
+            if not jpeg:
+                return self._send_error(404, 'まだ写真がありません')
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/jpeg')
+            self.send_header('Content-Length', str(len(jpeg)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(jpeg)
         else:
             self._reply()
+
+    def do_POST(self):
+        path = self.path.split('?')[0].rstrip('/')
+        if path == '/vision':
+            self._vision()
+        elif path == '/photo':
+            self._photo()
+        else:
+            self._reply()
+
+    def _vision(self):
+        """スタックちゃんが撮った写真（multipart の file）を受け取る。"""
+        try:
+            jpeg = jpeg_from_multipart(self._read_body(PHOTO_MAX_BYTES), self.headers.get('Content-Type'))
+        except ValueError as e:
+            return self._send_error(413, str(e))
+        if not jpeg:
+            log('写真: JPEG がありません')
+            return self._send_json({'success': False, 'message': 'no jpeg'})
+        PHOTO['jpeg'] = jpeg
+        set_status(photo_at=time.time())
+        log(f'写真: {len(jpeg) // 1024} KB')
+        self._send_json({'success': True, 'result': 'ダッシュボードに出しました'})
+
+    def _photo(self):
+        """いちばん新しくつながったスタックちゃんに写真を撮ってもらう（終わるまで待つ）。"""
+        sess = SESSIONS[-1] if SESSIONS else None
+        if not sess or not sess.camera:
+            return self._send_error(409, 'スタックちゃんがつながっていません（画面を 1 回さわってください）')
+        before = STATUS['photo_at']
+        try:
+            err = asyncio.run_coroutine_threadsafe(sess.take_photo(), LOOP).result(PHOTO_TIMEOUT + 2)
+        except Exception as e:  # noqa: BLE001 - 返事がない・切れた
+            err = f'返事がありません（{type(e).__name__}）'
+        if STATUS['photo_at'] == before:
+            log(f'写真に失敗: {err}')
+            return self._send_error(502, err or '写真が届きませんでした')
+        with STATUS_LOCK:
+            self._send_json({'ok': True, 'photo_at': STATUS['photo_at']})
 
     def _reply(self):
         n = int(self.headers.get('Content-Length') or 0)
@@ -155,8 +251,6 @@ class OtaHandler(BaseHTTPRequestHandler):
             'server_time': {'timestamp': int(time.time() * 1000), 'timezone_offset': 540},
             'websocket': {'url': f'ws://{host}:{self.ws_port}/xiaozhi/v1/', 'token': '', 'version': 1},
         })
-
-    do_POST = _reply
 
     def log_message(self, fmt, *a):
         pass
@@ -181,10 +275,56 @@ class Session:
         self.history = []
         self.reply_task = None
         self.cancel = threading.Event()
+        self.camera = False
+        self.mcp_id = 0
+        self.mcp_wait = {}
 
     async def send(self, **msg):
         msg['session_id'] = self.sid
         await self.ws.send(json.dumps(msg, ensure_ascii=False))
+
+    def mcp_call(self, method, params):
+        self.mcp_id += 1
+        fut = asyncio.get_running_loop().create_future()
+        self.mcp_wait[self.mcp_id] = fut
+        payload = {'jsonrpc': '2.0', 'id': self.mcp_id, 'method': method, 'params': params}
+        return fut, self.send(type='mcp', payload=payload)
+
+    async def mcp_init(self, vision_url):
+        fut, sending = self.mcp_call('initialize', {
+            'protocolVersion': '2024-11-05', 'capabilities': {'vision': {'url': vision_url, 'token': ''}},
+            'clientInfo': {'name': 'stackchan_bridge', 'version': '1'}})
+        await sending
+        try:
+            await asyncio.wait_for(fut, 10)
+        except asyncio.TimeoutError:
+            log('MCP: initialize の返事がありません（カメラは使えません）')
+            return
+        fut, sending = self.mcp_call('tools/list', {})
+        await sending
+        try:
+            tools = (await asyncio.wait_for(fut, 10)).get('result', {}).get('tools', [])
+        except asyncio.TimeoutError:
+            tools = []
+        self.camera = any(t.get('name') == PHOTO_TOOL for t in tools)
+        set_status(camera=self.camera)
+        log(f'MCP: カメラ {"あり" if self.camera else "なし"} → {vision_url}')
+
+    async def take_photo(self):
+        """写真を撮ってもらう。うまくいけば None、だめなら理由。"""
+        fut, sending = self.mcp_call('tools/call', {'name': PHOTO_TOOL,
+                                                    'arguments': {'question': 'ダッシュボードに写真を出す'}})
+        await sending
+        res = await asyncio.wait_for(fut, PHOTO_TIMEOUT)
+        if 'error' in res:
+            return str(res['error'].get('message', res['error']))
+        r = res.get('result') or {}
+        return ''.join(c.get('text', '') for c in r.get('content', [])) if r.get('isError') else None
+
+    def on_mcp(self, payload):
+        fut = self.mcp_wait.pop(payload.get('id'), None) if isinstance(payload, dict) else None
+        if fut and not fut.done():
+            fut.set_result(payload)
 
     def reset_vad(self):
         self.speech, self.pre, self.started, self.silent = [], [], False, 0.0
@@ -196,6 +336,9 @@ class Session:
                 'type': 'hello', 'transport': 'websocket', 'session_id': self.sid,
                 'audio_params': {'format': 'opus', 'sample_rate': OUT_RATE, 'channels': 1,
                                  'frame_duration': FRAME_MS}}))
+            if (msg.get('features') or {}).get('mcp'):
+                host = (self.ws.request.headers.get('Host') or '127.0.0.1').rsplit(':', 1)[0]
+                asyncio.create_task(self.mcp_init(f'http://{host}:{self.args.ota_port}/vision'))
         elif t == 'listen':
             state = msg.get('state')
             if state == 'start':
@@ -215,7 +358,9 @@ class Session:
                 log(f'ウェイクワード: {msg.get("text", "")}')
         elif t == 'abort':
             self.cancel.set()
-        elif t != 'mcp':
+        elif t == 'mcp':
+            self.on_mcp(msg.get('payload'))
+        else:
             log(f'未対応のメッセージ: {msg}')
 
     def on_audio(self, data):
@@ -333,6 +478,7 @@ async def handler(ws, args):
         STATUS['connected'] += 1
     set_status()
     s = Session(ws, args)
+    SESSIONS.append(s)
     try:
         async for msg in ws:
             if isinstance(msg, bytes):
@@ -344,6 +490,10 @@ async def handler(ws, args):
                     log(f'JSON でないメッセージ: {msg[:80]}')
     finally:
         s.cancel.set()
+        SESSIONS.remove(s)
+        for fut in s.mcp_wait.values():
+            fut.cancel()
+        set_status(camera=any(x.camera for x in SESSIONS))
         with STATUS_LOCK:
             STATUS['connected'] = max(0, STATUS['connected'] - 1)
         set_status(last_seen=time.time())
@@ -368,6 +518,8 @@ async def main():
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
     args = p.parse_args()
 
+    global LOOP
+    LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     set_status(engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)

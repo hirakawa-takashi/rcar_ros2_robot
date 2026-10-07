@@ -130,6 +130,7 @@ JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
 STACKCHAN_BRIDGE_PORT = 8003
 STACKCHAN_TIMEOUT = 2.0
+STACKCHAN_PHOTO_TIMEOUT = 20.0
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
@@ -863,20 +864,31 @@ class DashboardNode(Node):
         ips.sort(key=lambda ip: ip.get('iface') != 'tailscale0')
         return f"http://{ips[0]['addr']}:{STACKCHAN_BRIDGE_PORT}" if ips else ''
 
-    def stackchan_status(self):
-        """Jetson の stackchan_bridge の /status をそのまま返す（スタックちゃんのカード用、表示だけ）。"""
+    def stackchan_request(self, path, method='GET', timeout=STACKCHAN_TIMEOUT):
+        """Jetson の stackchan_bridge に聞いて、(中身, Content-Type) を返す（スタックちゃんのカード用、表示だけ）。"""
         base = self._stackchan_base()
         if not base:
             raise HTTPException(status_code=503, detail='Jetson の IP アドレスがまだ届いていません')
+        req = urllib.request.Request(base + path, data=b'' if method == 'POST' else None, method=method)
         try:
-            with urllib.request.urlopen(base + '/status', timeout=STACKCHAN_TIMEOUT) as res:
-                return json.loads(res.read())
+            with urllib.request.urlopen(req, timeout=timeout) as res:
+                return res.read(), res.headers.get('Content-Type')
         except urllib.error.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f'Jetson の stackchan_bridge が {exc.code} を返しました')
-        except ValueError:
-            raise HTTPException(status_code=502, detail='Jetson の stackchan_bridge の返事を読めません')
+            try:
+                detail = json.loads(exc.read()).get('detail')
+            except (ValueError, AttributeError):
+                detail = None
+            raise HTTPException(status_code=exc.code if exc.code in (404, 409) else 502,
+                                detail=detail or f'Jetson の stackchan_bridge が {exc.code} を返しました')
         except (urllib.error.URLError, OSError):
             raise HTTPException(status_code=503, detail='Jetson の stackchan_bridge につながりません')
+
+    def stackchan_json(self, path, method='GET', timeout=STACKCHAN_TIMEOUT):
+        body, _ = self.stackchan_request(path, method, timeout)
+        try:
+            return json.loads(body)
+        except ValueError:
+            raise HTTPException(status_code=502, detail='Jetson の stackchan_bridge の返事を読めません')
 
     def request_jetson_poweroff(self):
         """次に Jetson から状態が届いたときの返事で、電源を切ることを頼む。"""
@@ -1209,7 +1221,16 @@ def create_app(node: DashboardNode) -> FastAPI:
 
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():
-        return node.stackchan_status()
+        return node.stackchan_json('/status')
+
+    @app.post('/api/stackchan/photo', dependencies=[Depends(require_token)])
+    def stackchan_photo():
+        return node.stackchan_json('/photo', 'POST', STACKCHAN_PHOTO_TIMEOUT)
+
+    @app.get('/api/stackchan/photo.jpg', dependencies=[Depends(require_token)])
+    def stackchan_photo_jpg():
+        body, ctype = node.stackchan_request('/photo.jpg')
+        return Response(content=body, media_type=ctype or 'image/jpeg', headers={'Cache-Control': 'no-store'})
 
     @app.get('/api/camera/snapshot')
     def snapshot():

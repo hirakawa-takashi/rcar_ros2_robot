@@ -69,6 +69,7 @@
   .osline { font-size: 12px; margin: -4px 0 10px; color: #9fb0c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .scface { width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 10px; display: block; }
   .scsay { min-height: 1.5em; margin-top: 6px; text-align: center; font-size: 13px; color: #bfe9ff; }
+  .scphoto { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
               border-radius: 8px; margin-bottom: 10px; }
@@ -592,6 +593,10 @@
         <h3>顔（今の様子）</h3>
         <svg class="scface" id="sc_face" viewBox="0 0 320 240" role="img" aria-label="スタックちゃんの顔"></svg>
         <div class="scsay" id="sc_say">-</div>
+        <h3>カメラ（スタックちゃんの目）</h3>
+        <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
+        <div class="scphoto"><button id="sc_photo_btn" title="撮るたびにスタックちゃんからシャッターの音が鳴る">写真を撮る</button>
+          <span id="sc_photo_msg">-</span></div>
       </div>
       <div>
         <h3>最後の会話</h3>
@@ -611,7 +616,7 @@
         </table>
       </div>
     </div>
-    <div class="note">Jetson の受け口（jetson-stackchan.service）から 2 秒ごとに取る（API トークンが必要）。表示だけで、AI-CAR の走行・安全には使わない。</div>
+    <div class="note">Jetson の受け口（jetson-stackchan.service）から 2 秒ごとに取る（API トークンが必要）。写真はボタンを押したときだけ撮り、Jetson にはいちばん新しい 1 枚だけを置く（保存しない）。表示だけで、AI-CAR の走行・安全には使わない。</div>
   </div>
 
   <div class="card wide">
@@ -1378,6 +1383,9 @@ let latestTelemetry = {};
 // Jetson（jetson/status_reporter）が 1 秒ごとに送る状態。5 秒以上届かないと未接続
 const scId = id => document.getElementById(id);
 let stackBusy = false;
+let stackPhotoAt = null;
+let stackPhotoUrl = null;
+let stackPhotoBusy = false;
 const STACK_STATE = {
   listening: ['ok', '聞いています', 'normal', '（聞いているよ）'],
   thinking: ['ok', '考えています', 'think', '（うーん…）'],
@@ -1434,9 +1442,44 @@ function renderStackchan(r, err) {
   scId('sc_fw').textContent = dev.version ? `純正 ${dev.version}（行き先: Jetson）` : '-';
   scId('sc_seen').textContent = r ? (r.connected ? '今つながっています' : stackTime(r.last_seen)) : '-';
   scId('sc_turns').textContent = r ? `${r.turns} 回` : '-';
+  scId('sc_photo_btn').disabled = stackPhotoBusy || !(r && r.connected && r.camera);
+  if (!stackPhotoBusy) {
+    scId('sc_photo_msg').textContent = r && r.photo_at ? `写真: ${stackTime(r.photo_at)}`
+      : r && r.connected && !r.camera ? 'カメラの返事がありません' : r && !r.connected ? '画面を 1 回さわると撮れます' : '-';
+  }
+  if (r && r.photo_at && r.photo_at !== stackPhotoAt) {
+    stackPhotoAt = r.photo_at;
+    loadStackPhoto();
+  }
   scId('sc_engine').innerHTML = r && eng.llm
     ? [eng.stt, eng.llm, eng.tts].map(x => `<span class="nw">${esc(x || '-')}</span>`).join(' → ') : '-';
 }
+
+function loadStackPhoto() {
+  fetch('/api/stackchan/photo.jpg', {headers: authHeaders()})
+    .then(f => f.ok ? f.blob() : null)
+    .then(b => {
+      if (!b) return;
+      if (stackPhotoUrl) URL.revokeObjectURL(stackPhotoUrl);
+      stackPhotoUrl = URL.createObjectURL(b);
+      scId('sc_cam').src = stackPhotoUrl;
+    })
+    .catch(() => {});
+}
+
+scId('sc_photo_btn').addEventListener('click', () => {
+  const btn = scId('sc_photo_btn');
+  const out = scId('sc_photo_msg');
+  stackPhotoBusy = true;
+  btn.disabled = true;
+  out.textContent = '撮っています…';
+  apiPost('/api/stackchan/photo').then(r => r && r.json().then(j => [r, j])).then(res => {
+    if (!res) { out.textContent = ''; return; }
+    const [r, j] = res;
+    out.innerHTML = r.ok ? badge('ok', '撮りました') : badge('warn', esc(j.detail || '撮れませんでした'));
+    if (r.ok && j.photo_at) { stackPhotoAt = j.photo_at; loadStackPhoto(); }
+  }).catch(() => { out.textContent = ''; }).finally(() => { stackPhotoBusy = false; btn.disabled = false; });
+});
 
 function pollStackchan() {
   if (stackBusy || document.visibilityState !== 'visible') return;
