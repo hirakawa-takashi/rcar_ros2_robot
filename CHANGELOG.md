@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- `lidar_watchdog_node`: USB をつなぎ直しても `/scan` が戻らなければ、4 回目から 2 回、USB の電気（VBUS）を 3 秒切って入れ直し（`systemd/ai-car-usb-power-cycle.sh` → `/usr/local/sbin/ai-car-usb-power-cycle`、uhubctl で xHCI の 4 つのハブを全部切る。ラズパイ 5 の USB の電気はひとまとめなので、ゲームパッドも数秒切れる）、7 回目でラズパイを再起動する（`sudo -n systemctl reboot`）。再起動は、この起動で `/scan` が一度でも来ていて、起動から 30 分（`reboot_min_uptime`）たっているときだけ。2026-10-08 07:08 に CP2102 が固まり（`failed set request 0x12 status: -110`）、USBDEVFS_RESET をくり返しても、ダッシュボードから再起動する 17:53 まで約 10 時間 45 分 `/scan` が来なかった（そのあいだ電圧低下はなく、ラズパイは CPU 約 85 % 空き）。sudoers は `systemd/ai-car-usb-power.sudoers`（`install_service.sh` で uhubctl と一緒に入れる）
 - スタックちゃん: 呼びかけ待ちのあいだ、`stackchan_bridge` が 5〜10 秒ごとに首を動かす（純正の待ち受けの首ふり `IdleMotionModifier` の 4 種類をまねて MCP `self.robot.set_head_angles`）。呼びかけのためにスタックちゃんはいつも聞いている（listening）ので、純正の首ふり（待ち受け idle のときだけ動く）が止まっていた。動かしてから 1.2 秒は、モーターの音を声とまちがえないよう新しい声の区切りを始めない。居眠り中・会話中・撮影中は動かさない
 - スタックちゃん: whisper に毎回 `no_context=true` を送る。前の聞き取りを手がかりにするので、一度まちがえると、どの声も「(スタックちゃん)」「チャンネル登録をお願いします」にしてしまっていた（起動し直して 4 分でまたなった）。whisper の見回りは「今日の天気はどうですか」も試し、呼びかけが出たら・かっこだけになったら起動し直す
 - スタックちゃん: `stackchan_bridge` が 5 分ごとに Kokoro の「スタックちゃん」を whisper-server に聞き取らせ、呼びかけが出なければ whisper-server を止める（`Restart=on-failure` で約 15 秒で起動し直る）。06:06〜06:43 に whisper-server が、どの声も「(字幕を押して)」「チャンネル登録をお願いします」にして、呼んでも居眠りのままだった（起動し直すと同じ録音が「スタックちゃん」と聞き取れた）

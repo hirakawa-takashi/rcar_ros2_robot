@@ -22,6 +22,11 @@ sudo install -m 440 "$DIR/ai-car-upgrade.sudoers" /etc/sudoers.d/ai-car-upgrade
 # lidar_watchdog_node が LiDAR の USB をつなぎ直せるようにする
 sudo install -m 644 "$DIR/99-ai-car-lidar-usb.rules" /etc/udev/rules.d/99-ai-car-lidar-usb.rules
 sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=usb
+# lidar_watchdog_node が、固まった LiDAR のために USB の電気を切って入れ直せるようにする
+sudo apt-get install -y uhubctl
+sudo install -m 755 "$DIR/ai-car-usb-power-cycle.sh" /usr/local/sbin/ai-car-usb-power-cycle
+sudo visudo -cf "$DIR/ai-car-usb-power.sudoers"
+sudo install -m 440 "$DIR/ai-car-usb-power.sudoers" /etc/sudoers.d/ai-car-usb-power
 sudo systemctl daemon-reload
 sudo systemctl enable --now ai-car-dashboard.service
 systemctl status ai-car-dashboard.service --no-pager

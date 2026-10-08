@@ -254,6 +254,16 @@ lidar_watchdog_node:
     usb_reset_after: 2
     usb_vendor_id: "10c4"
     usb_product_id: "ea60"
+    # つなぎ直しでも戻らないと、power_cycle_after 回目から power_cycles 回、USB の電気を 3 秒切って入れ直す
+    # （/usr/local/sbin/ai-car-usb-power-cycle、uhubctl。4 つの口が全部切れるのでゲームパッドも数秒切れる）。
+    # CP2102 が固まると USBDEVFS_RESET では戻らず、2026-10-08 は約 10 時間 45 分 /scan が来なかった。
+    # 1 回あたり 約 22 秒なので、固まってから 約 1.5 分で電気の入れ直し、約 2.5 分で再起動
+    power_cycle_after: 4
+    power_cycles: 2
+    # それでも reboot_after 回続けばラズパイを再起動する。この起動で /scan が一度でも来ていて、
+    # 起動から reboot_min_uptime 秒たっているときだけ（LiDAR がない・再起動でも直らないときにくり返さない）。0 でしない
+    reboot_after: 7
+    reboot_min_uptime: 1800.0
 
 # USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo（既定）で起動
 stereo_camera_node:
