@@ -244,6 +244,11 @@ perception_node:
     # Camera Module 3 Wide のレンズは車の真ん中より 8 mm 左
     mono_corridor_center_y_m: -0.008
     mono_corridor_half_width_m: 0.15
+    # 物の出たり消えたりをおさえる。0.5 秒に 2 回見えたら出し、見えなくなっても 0.4 秒は出す。
+    # 距離は最近 5 回の中央値（今のほうが近ければ今の値）
+    mono_confirm_count: 2
+    mono_confirm_window_s: 0.5
+    mono_hold_s: 0.4
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0

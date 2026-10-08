@@ -6,6 +6,7 @@ AI の奥行きは「何倍か」がわからず（縮尺なし）、遠くほ�
 """
 
 import math
+from collections import deque
 
 import cv2
 import numpy as np
@@ -125,6 +126,74 @@ def in_corridor(objects, center_y, half_width):
         if lo <= center_y + half_width and hi >= center_y - half_width:
             return obj
     return None
+
+
+class ObjectTracker:
+    """何枚かの結果を合わせて、物の出たり消えたりと距離のゆれをおさえる。
+
+    同じ物（横の範囲が重なり、距離が近い）を前の枚と結ぶ。window_s 秒の中で confirm 回
+    見えたら出し、見えなくなっても hold_s 秒は前の値で出しつづける。距離は最近 history 回の
+    中央値とし、今の値のほうが近ければ今の値を使う（近づいた物はすぐ近く出す）。
+    """
+
+    def __init__(self, confirm=2, window_s=0.5, hold_s=0.4, history=5):
+        self.confirm = confirm
+        self.window_s = window_s
+        self.hold_s = hold_s
+        self.history = history
+        self._tracks = []
+
+    def _match(self, track, obj):
+        last = track['obj']
+        if obj['x_min'] > last['x_max'] + 0.02 or obj['x_max'] < last['x_min'] - 0.02:
+            return False
+        d = obj['distance_m']
+        return abs(d - track['dists'][-1]) <= max(0.08, 0.2 * d)
+
+    def update(self, objects, now):
+        free = list(self._tracks)
+        for obj in objects:
+            best = None
+            for t in free:
+                if self._match(t, obj) and (best is None or abs(
+                        t['dists'][-1] - obj['distance_m']) < abs(
+                        best['dists'][-1] - obj['distance_m'])):
+                    best = t
+            if best is None:
+                best = {'dists': deque(maxlen=self.history), 'seen': deque()}
+                self._tracks.append(best)
+            else:
+                free.remove(best)
+            best['obj'] = obj
+            best['dists'].append(obj['distance_m'])
+            best['seen'].append(now)
+            best['fresh'] = True
+        for t in free:
+            t['fresh'] = False
+        out = []
+        keep = []
+        for t in self._tracks:
+            if now - t['seen'][-1] > self.hold_s:
+                continue
+            keep.append(t)
+            while t['seen'] and now - t['seen'][0] > self.window_s:
+                t['seen'].popleft()
+            if len(t['seen']) < self.confirm and not t.get('shown'):
+                continue
+            t['shown'] = True
+            smooth = float(np.median(t['dists']))
+            d = min(smooth, t['dists'][-1]) if t['fresh'] else smooth
+            obj = dict(t['obj'])
+            if d != obj['distance_m']:
+                k = d / obj['distance_m']
+                obj['lateral_m'] = round(obj['lateral_m'] * k, 3)
+                obj['width_m'] = round(obj['width_m'] * k, 3)
+                obj['distance_m'] = round(d, 3)
+            obj['held'] = not t['fresh']
+            out.append(obj)
+        self._tracks = keep
+        out.sort(key=lambda o: o['distance_m'])
+        return out
 
 
 def colorize(disp, obst, size):

@@ -209,6 +209,10 @@ class PerceptionNode(Node):
         self.declare_parameter('mono_min_columns', 3)
         self.declare_parameter('mono_corridor_center_y_m', 0.0)
         self.declare_parameter('mono_corridor_half_width_m', 0.15)
+        # 物の出たり消えたりをおさえる: window 秒に confirm 回見えたら出し、見えなくても hold 秒は出す
+        self.declare_parameter('mono_confirm_count', 2)
+        self.declare_parameter('mono_confirm_window_s', 0.5)
+        self.declare_parameter('mono_hold_s', 0.4)
         self.declare_parameter('stereo_grid_min_ratio', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
@@ -318,6 +322,9 @@ class PerceptionNode(Node):
             self.mono_min_cols = int(g('mono_min_columns').value)
             self.mono_center_y = float(g('mono_corridor_center_y_m').value)
             self.mono_half_width = float(g('mono_corridor_half_width_m').value)
+            self._mono_tracker = mono_depth.ObjectTracker(
+                int(g('mono_confirm_count').value), float(g('mono_confirm_window_s').value),
+                float(g('mono_hold_s').value))
             self._mono_down, self._mono_left = mono_depth.camera_rays(
                 self._depth.input_height, self._depth.input_width,
                 float(g('camera_hfov_deg').value), CAMERA_ASPECT,
@@ -732,6 +739,9 @@ class PerceptionNode(Node):
             objects = mono_depth.group_objects(
                 bottom, top, down, left, self.mono_height, self.mono_max_range,
                 self.mono_min_cols)
+            raw_nearest = mono_depth.in_corridor(
+                objects, self.mono_center_y, self.mono_half_width)
+            objects = self._mono_tracker.update(objects, time.monotonic())
             nearest = mono_depth.in_corridor(objects, self.mono_center_y, self.mono_half_width)
             ms = (time.perf_counter() - t0) * 1000.0
             if self._detector is None:
@@ -760,6 +770,7 @@ class PerceptionNode(Node):
                 'reason': '',
                 'source': 'mono',
                 'nearest': nearest,
+                'nearest_raw': raw_nearest,
                 'objects': objects[:5],
                 'ms': round(ms, 1),
                 'infer_ms': round(infer_ms, 1),
