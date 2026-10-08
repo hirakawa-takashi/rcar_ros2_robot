@@ -202,20 +202,25 @@ class PerceptionNode(Node):
         self.declare_parameter('mono_depth_guard', False)
         self.declare_parameter('mono_camera_height_m', 0.112)
         self.declare_parameter('mono_camera_pitch_deg', 0.0)
-        self.declare_parameter('mono_nearer_ratio', 1.1)
+        self.declare_parameter('mono_nearer_ratio', 1.07)
         self.declare_parameter('mono_min_height_m', 0.02)
         self.declare_parameter('mono_fill_ratio', 0.5)
         self.declare_parameter('mono_max_range_m', 1.0)
         self.declare_parameter('mono_min_columns', 3)
         self.declare_parameter('mono_corridor_center_y_m', 0.0)
         self.declare_parameter('mono_corridor_half_width_m', 0.15)
+        # 物の出たり消えたりをおさえる: window 秒に confirm 回見えたら出し、見えなくても hold 秒は出す
+        self.declare_parameter('mono_confirm_count', 2)
+        self.declare_parameter('mono_confirm_window_s', 0.5)
+        self.declare_parameter('mono_hold_s', 0.4)
         self.declare_parameter('stereo_grid_min_ratio', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
         self.declare_parameter('hailo_temp_crit', 85.0)
         # 実効スループット算出用。model_gops は 1 推論あたりの演算量 [GOP]
-        # （YOLOv8m 640x640 = 78.9 GOP）、peak_tops は Hailo-8 の公称性能。
+        # （YOLOv8m 640x640 = 78.9 GOP、YOLO なしのときは SC-Depth v3 = 10.7 GOP）、
+        # peak_tops は Hailo-8 の公称性能。
         self.declare_parameter('model_gops', 28.6)
         self.declare_parameter('hailo_peak_tops', 26.0)
 
@@ -317,6 +322,9 @@ class PerceptionNode(Node):
             self.mono_min_cols = int(g('mono_min_columns').value)
             self.mono_center_y = float(g('mono_corridor_center_y_m').value)
             self.mono_half_width = float(g('mono_corridor_half_width_m').value)
+            self._mono_tracker = mono_depth.ObjectTracker(
+                int(g('mono_confirm_count').value), float(g('mono_confirm_window_s').value),
+                float(g('mono_hold_s').value))
             self._mono_down, self._mono_left = mono_depth.camera_rays(
                 self._depth.input_height, self._depth.input_width,
                 float(g('camera_hfov_deg').value), CAMERA_ASPECT,
@@ -731,8 +739,16 @@ class PerceptionNode(Node):
             objects = mono_depth.group_objects(
                 bottom, top, down, left, self.mono_height, self.mono_max_range,
                 self.mono_min_cols)
+            raw_nearest = mono_depth.in_corridor(
+                objects, self.mono_center_y, self.mono_half_width)
+            objects = self._mono_tracker.update(objects, time.monotonic())
             nearest = mono_depth.in_corridor(objects, self.mono_center_y, self.mono_half_width)
             ms = (time.perf_counter() - t0) * 1000.0
+            if self._detector is None:
+                with self._lock:
+                    self._inference_ms = round(infer_ms, 1)
+                    self._inference_times.append(time.time())
+                    self._inference_ms_recent.append(infer_ms)
             times = self._depth_times
             times.append(time.monotonic())
             fps = ((len(times) - 1) / (times[-1] - times[0])
@@ -754,6 +770,7 @@ class PerceptionNode(Node):
                 'reason': '',
                 'source': 'mono',
                 'nearest': nearest,
+                'nearest_raw': raw_nearest,
                 'objects': objects[:5],
                 'ms': round(ms, 1),
                 'infer_ms': round(infer_ms, 1),

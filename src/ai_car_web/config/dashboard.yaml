@@ -188,7 +188,8 @@ perception_node:
     front_angle_deg: 60.0
     stop_distance: 0.35
     slow_distance: 0.8
-    hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
+    # 物の名前を当てる YOLO（yolov8m.hef）は使わない。AI HAT+ は 1 眼の奥行きの AI だけに使う
+    hef_path: ""
     # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）
     inference_rate: 15.0
     score_threshold: 0.5
@@ -225,16 +226,16 @@ perception_node:
     # stereo_depth_node は約 3 回/秒なので、1 回分ぬけても切れないように
     stereo_max_age: 1.5
     # 1 眼の奥行きの AI（Hailo Model Zoo の SC-Depth v3、320x256、Hailo-8 で約 5.5 ms）。
-    # 床の行の真ん中より 1.1 倍手前に見える所を物とし、物が床につく行から距離を出す。
+    # 床の行の真ん中より 1.07 倍手前に見える所を物とし、物が床につく行から距離を出す。
     # 2 眼と同じ /stereo/depth_status・/stereo/depth/compressed に出す。空で無効
     # 取得: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/scdepthv3.hef
     mono_depth_hef: "/home/super/AI-CAR_ws/models/scdepthv3.hef"
-    mono_depth_rate: 10.0
+    mono_depth_rate: 15.0
     # まずは表示だけ（減速・停止には使わない）
     mono_depth_guard: false
     mono_camera_height_m: 0.112
     mono_camera_pitch_deg: 0.0
-    mono_nearer_ratio: 1.1
+    mono_nearer_ratio: 1.07
     mono_min_height_m: 0.02
     mono_fill_ratio: 0.5
     # 遠いと AI の奥行きが縮んで、床と物の差が小さくなるので 1 m まで
@@ -243,12 +244,17 @@ perception_node:
     # Camera Module 3 Wide のレンズは車の真ん中より 8 mm 左
     mono_corridor_center_y_m: -0.008
     mono_corridor_half_width_m: 0.15
+    # 物の出たり消えたりをおさえる。0.5 秒に 2 回見えたら出し、見えなくなっても 0.4 秒は出す。
+    # 距離は最近 5 回の中央値（今のほうが近ければ今の値）
+    mono_confirm_count: 2
+    mono_confirm_window_s: 0.5
+    mono_hold_s: 0.4
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
     hailo_temp_crit: 85.0
-    # 実効スループット表示用（YOLOv8m 640x640 = 78.9 GOP / Hailo-8 公称 26 TOPS）
-    model_gops: 78.9
+    # 実効スループット表示用（SC-Depth v3 320x256 = 10.7 GOP / Hailo-8 公称 26 TOPS）
+    model_gops: 10.7
     hailo_peak_tops: 26.0
 
 rplidar:
@@ -365,6 +371,9 @@ camera:
     height: 540
     jpeg_quality: 80
     camera: 0
+    # センサーの読み方を 2304x1296（2x2 まとめ・全体）に決める。決めないと、960x540 には
+    # 1536x864（真ん中だけ切り取り）が選ばれ、横の画角が 102° → 約 79° に狭くなる
+    sensor_mode: "2304:1296"
     # フレーム間隔の下限 / 上限（µs）。両方 66666 で 15fps 固定
     FrameDurationLimits: [33333, 33333]
     # 室内だと AE が露光を 33ms（1 フレーム分）まで伸ばして動体がぶれるため、
