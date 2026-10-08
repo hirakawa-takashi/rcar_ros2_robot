@@ -225,7 +225,7 @@ perception_node:
     # stereo_depth_node は約 3 回/秒なので、1 回分ぬけても切れないように
     stereo_max_age: 1.5
     # 1 眼の奥行きの AI（Hailo Model Zoo の SC-Depth v3、320x256、Hailo-8 で約 5.5 ms）。
-    # 床の行の真ん中より 1.1 倍手前に見える所を物とし、物が床につく行から距離を出す。
+    # 床の行の真ん中より 1.07 倍手前に見える所を物とし、物が床につく行から距離を出す。
     # 2 眼と同じ /stereo/depth_status・/stereo/depth/compressed に出す。空で無効
     # 取得: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/scdepthv3.hef
     mono_depth_hef: "/home/super/AI-CAR_ws/models/scdepthv3.hef"
@@ -234,7 +234,7 @@ perception_node:
     mono_depth_guard: false
     mono_camera_height_m: 0.112
     mono_camera_pitch_deg: 0.0
-    mono_nearer_ratio: 1.1
+    mono_nearer_ratio: 1.07
     mono_min_height_m: 0.02
     mono_fill_ratio: 0.5
     # 遠いと AI の奥行きが縮んで、床と物の差が小さくなるので 1 m まで

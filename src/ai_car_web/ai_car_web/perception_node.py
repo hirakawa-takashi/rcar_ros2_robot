@@ -202,7 +202,7 @@ class PerceptionNode(Node):
         self.declare_parameter('mono_depth_guard', False)
         self.declare_parameter('mono_camera_height_m', 0.112)
         self.declare_parameter('mono_camera_pitch_deg', 0.0)
-        self.declare_parameter('mono_nearer_ratio', 1.1)
+        self.declare_parameter('mono_nearer_ratio', 1.07)
         self.declare_parameter('mono_min_height_m', 0.02)
         self.declare_parameter('mono_fill_ratio', 0.5)
         self.declare_parameter('mono_max_range_m', 1.0)

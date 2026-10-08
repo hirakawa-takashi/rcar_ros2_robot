@@ -35,7 +35,8 @@ def obstacle_columns(disp, down, camera_height, nearer=1.15, min_height=0.02, fi
 
     同じ行の中央値（ほとんど床）の nearer 倍より手前（disp が大きい）の画素を「物」とする。
     一番下の行 v の床の距離 D で、高さ min_height までの行（下向きの tan が v の
-    (1 - min_height / カメラの高さ) 倍）の fill 以上が物なら、その列の物の一番下とする。
+    (1 - min_height / カメラの高さ) 倍）の fill 以上が物なら、その列の物とする。
+    物の一番下は、物の画素の奥行きの中央値に、床（行の中央値）が追いつく行とする。
     """
     rows, cols = disp.shape
     ok_rows = down > min_down
@@ -53,6 +54,13 @@ def obstacle_columns(disp, down, camera_height, nearer=1.15, min_height=0.02, fi
     for c in np.nonzero(has)[0]:
         free = np.nonzero(~obst[:bottom[c], c])[0]
         top[c] = free[-1] + 1 if len(free) else 0
+        # AI は物の下のはしを床にとけこませるので、物の奥行きと同じ値になる床の行まで下げる
+        lo = max(top[c], bottom[c] - 3)
+        col = disp[lo:bottom[c] + 1, c]
+        level = np.median(col[obst[lo:bottom[c] + 1, c]])
+        below = np.nonzero(ref[bottom[c]:, 0] >= level)[0]
+        if len(below):
+            bottom[c] += below[0]
     return bottom, top, obst
 
 
