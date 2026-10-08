@@ -1,0 +1,2 @@
+# lidar_watchdog_node（ai-car-dashboard.service、ユーザー super）がパスワードなしで USB の電気を切って入れ直すことだけできる
+super ALL=(root) NOPASSWD: /usr/local/sbin/ai-car-usb-power-cycle

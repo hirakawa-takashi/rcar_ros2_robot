@@ -10,12 +10,19 @@ startup_grace 秒待ってから監視する。
 電池の電圧が下がった後などに CP2102 が返事をしなくなると、起動し直しても
 /scan は戻らない。usb_reset_after 回続けて戻らなければ、rplidar を止めた後に
 LiDAR の USB をつなぎ直す（USBDEVFS_RESET。/dev/bus/usb の書き込み権限は udev ルールで付ける）。
+
+CP2102 が固まると USBDEVFS_RESET でも戻らない（2026-10-08 は約 10 時間 45 分）。
+power_cycle_after 回続けば、USB の電気を切って入れ直す（power_cycle_cmd、power_cycles 回まで）。
+reboot_after 回続けば、ラズパイを再起動する（reboot_cmd）。再起動は、この起動で /scan が
+一度でも来ていて、起動から reboot_min_uptime 秒たっているときだけ（LiDAR がないときや、
+再起動しても直らないときに、くり返さない）。
 """
 
 import fcntl
 import glob
 import os
 import signal
+import subprocess
 import time
 
 import rclpy
@@ -60,6 +67,14 @@ def find_usb_device(vendor: str, product: str):
     return None
 
 
+def uptime_seconds():
+    try:
+        with open('/proc/uptime') as f:
+            return float(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return 0.0
+
+
 def reset_usb(path: str):
     fd = os.open(path, os.O_WRONLY)
     try:
@@ -79,6 +94,12 @@ class LidarWatchdogNode(Node):
         self.declare_parameter('usb_reset_after', 2)
         self.declare_parameter('usb_vendor_id', '10c4')
         self.declare_parameter('usb_product_id', 'ea60')
+        self.declare_parameter('power_cycle_after', 4)
+        self.declare_parameter('power_cycles', 2)
+        self.declare_parameter('power_cycle_cmd', ['sudo', '-n', '/usr/local/sbin/ai-car-usb-power-cycle'])
+        self.declare_parameter('reboot_after', 7)
+        self.declare_parameter('reboot_min_uptime', 1800.0)
+        self.declare_parameter('reboot_cmd', ['sudo', '-n', '/usr/bin/systemctl', 'reboot'])
 
         self.scan_timeout = float(self.get_parameter('scan_timeout').value)
         self.startup_grace = float(self.get_parameter('startup_grace').value)
@@ -87,6 +108,12 @@ class LidarWatchdogNode(Node):
         self.usb_reset_after = int(self.get_parameter('usb_reset_after').value)
         self.usb_id = (str(self.get_parameter('usb_vendor_id').value),
                        str(self.get_parameter('usb_product_id').value))
+        self.power_cycle_after = int(self.get_parameter('power_cycle_after').value)
+        self.power_cycles = int(self.get_parameter('power_cycles').value)
+        self.power_cycle_cmd = list(self.get_parameter('power_cycle_cmd').value)
+        self.reboot_after = int(self.get_parameter('reboot_after').value)
+        self.reboot_min_uptime = float(self.get_parameter('reboot_min_uptime').value)
+        self.reboot_cmd = list(self.get_parameter('reboot_cmd').value)
 
         self._last_scan = None
         self._watch_from = time.monotonic() + self.startup_grace
@@ -94,6 +121,8 @@ class LidarWatchdogNode(Node):
         self._term_at = None
         self._restarts = 0
         self._fails = 0
+        self._scan_seen = False
+        self._rebooting = False
 
         self.create_subscription(
             LaserScan, str(self.get_parameter('scan_topic').value),
@@ -103,6 +132,7 @@ class LidarWatchdogNode(Node):
     def _scan_cb(self, _msg):
         self._last_scan = time.monotonic()
         self._fails = 0
+        self._scan_seen = True
 
     def _tick(self):
         now = time.monotonic()
@@ -113,8 +143,7 @@ class LidarWatchdogNode(Node):
             for pid in alive:
                 self.get_logger().warn(f'rplidar（pid {pid}）が終わらないので SIGKILL を送ります')
                 self._signal(pid, signal.SIGKILL)
-            if 0 < self.usb_reset_after <= self._fails:
-                self._reset_usb()
+            self._recover()
             self._term_pids, self._term_at = [], None
             self._last_scan = None
             self._watch_from = now + self.startup_grace
@@ -135,6 +164,45 @@ class LidarWatchdogNode(Node):
         for pid in pids:
             self._signal(pid, signal.SIGTERM)
         self._term_pids, self._term_at = pids, now
+
+    def _recover(self):
+        if 0 < self.reboot_after <= self._fails and self._reboot():
+            return
+        if (0 < self.power_cycle_after <= self._fails < self.power_cycle_after + self.power_cycles
+                and self._power_cycle()):
+            return
+        if 0 < self.usb_reset_after <= self._fails:
+            self._reset_usb()
+
+    def _run(self, cmd, what):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            self.get_logger().error(f'{what}できません: {e}')
+            return False
+        if r.returncode != 0:
+            self.get_logger().error(
+                f'{what}できません（{r.returncode}）: {(r.stderr or r.stdout).strip()[:200]}')
+            return False
+        return True
+
+    def _power_cycle(self):
+        if find_usb_device(*self.usb_id) is None:
+            return False
+        self.get_logger().warn(
+            f'起動し直しても /scan が {self._fails} 回戻らないので、USB の電気を切って入れ直します'
+            '（ゲームパッドも数秒切れます）')
+        return self._run(self.power_cycle_cmd, 'USB の電気を切って入れ直し')
+
+    def _reboot(self):
+        if self._rebooting:
+            return True
+        if not self._scan_seen or uptime_seconds() < self.reboot_min_uptime:
+            return False
+        self.get_logger().error(
+            f'USB の電気を入れ直しても /scan が {self._fails} 回戻らないので、ラズパイを再起動します')
+        self._rebooting = self._run(self.reboot_cmd, 'ラズパイを再起動')
+        return self._rebooting
 
     def _reset_usb(self):
         path = find_usb_device(*self.usb_id)
