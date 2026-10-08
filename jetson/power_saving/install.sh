@@ -1,15 +1,16 @@
 #!/bin/bash
-# Jetson の SSD（NVMe）の深いねむり（APST）と Wi-Fi の省電力を切る。sudo で実行する。
+# Jetson の SSD（NVMe）の深いねむり（APST）・Jetson のメモリを SSD に貸すこと（HMB）と Wi-Fi の省電力を切る。sudo で実行する。
 # SSD の設定は次の起動から効く（再起動がいる）。
 set -eu
 cd "$(dirname "$0")"
 
-ARG='nvme_core.default_ps_max_latency_us=0'
 CONF=/boot/extlinux/extlinux.conf
-if ! grep -q "$ARG" "$CONF"; then
-    cp -n "$CONF" "$CONF.orig-apst"
-    sed -i "/^[[:space:]]*APPEND /s/\$/ $ARG/" "$CONF"
-fi
+cp -n "$CONF" "$CONF.orig-apst"
+for ARG in nvme_core.default_ps_max_latency_us=0 nvme.max_host_mem_size_mb=0; do
+    if ! grep -q "$ARG" "$CONF"; then
+        sed -i "/^[[:space:]]*APPEND /s/\$/ $ARG/" "$CONF"
+    fi
+done
 grep -n "APPEND" "$CONF"
 
 install -m 644 zz-ai-car-wifi-powersave-off.conf /etc/NetworkManager/conf.d/

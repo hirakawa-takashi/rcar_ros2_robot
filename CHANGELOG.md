@@ -45,6 +45,7 @@
 - 2 眼カメラで距離を出す `stereo_depth_node`（表示だけ）。`stereo_calib.yaml` で左右を平行にそろえ、SGBM で距離にして、通り道の中で床より 4 cm 以上高い物のいちばん近い距離を `/stereo/depth_status` に出す。`stereo_camera_node` は受けるノードがいるときだけ、左右を 640×360 の白黒にして `/stereo/pair_gray` に 3 Hz で出す（今の `/camera/image_raw/compressed` はそのまま）。ダッシュボードのカメラカードに「2眼の距離」の行と、映像を距離の色に切り替える「距離の画像」ボタン（`GET /api/camera/depth_stream`）を追加。launch に `use_stereo_depth`（既定 true）。走る・止まるの判断には使わない
 
 ### Changed
+- Jetson `power_saving/install.sh`: SSD に Jetson のメモリを貸す HMB も切る（`nvme.max_host_mem_size_mb=0`）。10/9、APST を切っても、SSD を差し直しても、SSD が起動から約 52・60 分で返事をしなくなった（ramoops に `I/O timeout` → `reset controller` → `CSTS=0x1`）ため、次の手として試す。
 - プロジェクト説明「システム構成」の図: 3 台の箱の高さを、中の文字に合わせて伸ばす（Jetson の文字が箱の下からはみ出していた）。長い仕様の行は「 / 」で 2 行に分ける。スタックちゃんの「カメラ（GC0308）: …」が YAML で辞書になって「[object Object]」と出ていたのを直し、⑧ の説明が「Hi, StackChan」の「,」で切れていたのを今の呼び方（「スタックちゃん」）に直す
 - ダッシュボードの手動運転のカードの API トークンの欄に「APIキー」と出し、ふだんは読むだけにする。「変更」→ 確認 → 入力 →「保存」（または Enter）で保存する（うっかり書き換えないように）
 - ダッシュボードのスタックちゃんのカードの状態を「未接続」「接続中（呼び掛け待ち）」「接続中（会話モード）」「おやすみ中」の 4 つにする（`/status` の `connected`・`state`・`dozing`）。`stackchan_bridge` はつながったときに `dozing` をもどす
