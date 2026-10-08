@@ -385,7 +385,7 @@ nodes:
     params:
       - {name: stop_distance, ref: perception_node.stop_distance, unit: m, desc: 停止判定}
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
-      - {name: danger_distance, ref: perception_node.danger_distance, unit: m, desc: 検出枠を赤にする距離}
+      - {name: danger_distance, ref: perception_node.danger_distance, unit: m, desc: 検出枠・LiDAR の点を「危険」の色にする距離}
       - {name: living_guard, ref: perception_node.living_guard, unit: '', desc: 人・動物の検出で減速・停止する（false は表示のみ）}
       - {name: living_slow_distance, ref: perception_node.living_slow_distance, unit: m, desc: 人・動物がこの距離以内で減速}
       - {name: living_stop_distance, ref: perception_node.living_stop_distance, unit: m, desc: 人・動物がこの距離以内で停止}

@@ -1096,6 +1096,11 @@ function scanBands(danger, stopD, slowD) {
   ];
 }
 
+// 距離の色（LiDAR の図の点と同じ）。距離がわからないときは灰色。
+function bandColor(bands, dist) {
+  return dist == null ? '#8a94a6' : bands.find(b => dist <= b.max).color;
+}
+
 const SCAN_RANGE_M = 3;  // LiDAR 点群の表示範囲 [m]（固定）
 
 // 車体の上から見た形 [m]。原点は LiDAR の回転中心、x は前、y は左。
@@ -1184,10 +1189,7 @@ function drawCameraView(ctx, cx, cy, scale, range, o, bands) {
   const items = [];
   const jt = o.jetson;
   for (const d of (jt && jt.alive && jt.detections) || []) items.push([d, '#3fb8f0']);
-  const danger = o.danger_distance || 0.3;
-  for (const d of o.detections || []) {
-    items.push([d, d.distance != null && d.distance <= danger ? '#e04b4b' : '#5cb85c']);
-  }
+  for (const d of o.detections || []) items.push([d, bandColor(bands, d.distance)]);
   for (const [d, color] of items) {
     const cxImg = d.center_x ?? (d.box[0] + d.box[2]) / 2;
     const t = (0.5 - cxImg) * 2 * tanHalf;
@@ -1213,7 +1215,7 @@ function drawCameraView(ctx, cx, cy, scale, range, o, bands) {
     if (it.distance == null || it.lateral == null || it.distance > reach) continue;
     const [qx, qy] = toPx(ox + it.distance, oy + it.lateral);
     const r = Math.max(2.5, (it.width || 0) * scale);
-    ctx.fillStyle = bands.find(b => it.distance <= b.max).color;
+    ctx.fillStyle = bandColor(bands, it.distance);
     ctx.beginPath(); ctx.arc(qx, qy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   ctx.textAlign = 'center';
@@ -1625,7 +1627,7 @@ function renderAll(d) {
   renderJoy(d.joy);
   renderDriveMode(d.drive_mode);
   renderAutonomy(d.autonomy);
-  drawDetections(obs);
+  drawDetections(obs, scanBands(danger, stopD, slowD));
 
   const i = freshMsg(d.imu, d.stamp, 2.0);
   document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';
@@ -1767,24 +1769,23 @@ function camLabel(d) {
   return d.distance == null ? `${d.label} 距離不明` : `${d.label} ${d.distance.toFixed(2)}`;
 }
 
-// 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑。Jetson の検出は水色）。
-function drawDetections(o) {
+// 検出枠をカメラ映像に重畳する（色は LiDAR の図と同じ距離の色。Jetson の検出は水色）。
+function drawDetections(o, bands) {
   const canvas = document.getElementById('cam_overlay');
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
-  const danger = (o && o.danger_distance) || 0.3;
   for (const d of (o && o.detections) || []) {
     const [x1, y1, x2, y2] = d.box;
-    const near = d.distance != null && d.distance <= danger;
-    ctx.strokeStyle = near ? '#e04b4b' : '#5cb85c';
-    ctx.lineWidth = near ? 3 : 2;
+    const color = bandColor(bands, d.distance);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
     ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
     const text = camLabel(d);
     ctx.font = 'bold 32px sans-serif';
     const tw = ctx.measureText(text).width + 16;
     const ty = Math.max(0, y1 * h - 40);
-    ctx.fillStyle = near ? '#e04b4b' : '#5cb85c';
+    ctx.fillStyle = color;
     ctx.fillRect(x1 * w, ty, tw, 40);
     ctx.fillStyle = '#0e1116';
     ctx.fillText(text, x1 * w + 8, ty + 30);
@@ -1808,13 +1809,12 @@ function drawDetections(o) {
   const stItems = st ? (st.objects && st.objects.length ? st.objects : [st]) : [];
   for (const it of stItems) {
     if (!it.box || it.distance == null) continue;
-    drawStereoBox(ctx, w, h, it);
+    drawStereoBox(ctx, w, h, it, bandColor(bands, it.distance));
   }
 }
 
-function drawStereoBox(ctx, w, h, st) {
+function drawStereoBox(ctx, w, h, st, color) {
   const [x1, y1, x2, y2] = st.box;
-  const color = st.low ? '#f0a030' : '#8a94a6';
   ctx.strokeStyle = color;
   ctx.lineWidth = 3;
   ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
