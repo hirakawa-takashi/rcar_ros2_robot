@@ -215,7 +215,8 @@ class PerceptionNode(Node):
         self.declare_parameter('hailo_temp_warn', 75.0)
         self.declare_parameter('hailo_temp_crit', 85.0)
         # 実効スループット算出用。model_gops は 1 推論あたりの演算量 [GOP]
-        # （YOLOv8m 640x640 = 78.9 GOP）、peak_tops は Hailo-8 の公称性能。
+        # （YOLOv8m 640x640 = 78.9 GOP、YOLO なしのときは SC-Depth v3 = 10.7 GOP）、
+        # peak_tops は Hailo-8 の公称性能。
         self.declare_parameter('model_gops', 28.6)
         self.declare_parameter('hailo_peak_tops', 26.0)
 
@@ -733,6 +734,11 @@ class PerceptionNode(Node):
                 self.mono_min_cols)
             nearest = mono_depth.in_corridor(objects, self.mono_center_y, self.mono_half_width)
             ms = (time.perf_counter() - t0) * 1000.0
+            if self._detector is None:
+                with self._lock:
+                    self._inference_ms = round(infer_ms, 1)
+                    self._inference_times.append(time.time())
+                    self._inference_ms_recent.append(infer_ms)
             times = self._depth_times
             times.append(time.monotonic())
             fps = ((len(times) - 1) / (times[-1] - times[0])

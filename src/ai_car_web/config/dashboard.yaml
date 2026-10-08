@@ -188,7 +188,8 @@ perception_node:
     front_angle_deg: 60.0
     stop_distance: 0.35
     slow_distance: 0.8
-    hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
+    # 物の名前を当てる YOLO（yolov8m.hef）は使わない。AI HAT+ は 1 眼の奥行きの AI だけに使う
+    hef_path: ""
     # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）
     inference_rate: 15.0
     score_threshold: 0.5
@@ -229,7 +230,7 @@ perception_node:
     # 2 眼と同じ /stereo/depth_status・/stereo/depth/compressed に出す。空で無効
     # 取得: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/scdepthv3.hef
     mono_depth_hef: "/home/super/AI-CAR_ws/models/scdepthv3.hef"
-    mono_depth_rate: 10.0
+    mono_depth_rate: 15.0
     # まずは表示だけ（減速・停止には使わない）
     mono_depth_guard: false
     mono_camera_height_m: 0.112
@@ -247,8 +248,8 @@ perception_node:
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
     hailo_temp_crit: 85.0
-    # 実効スループット表示用（YOLOv8m 640x640 = 78.9 GOP / Hailo-8 公称 26 TOPS）
-    model_gops: 78.9
+    # 実効スループット表示用（SC-Depth v3 320x256 = 10.7 GOP / Hailo-8 公称 26 TOPS）
+    model_gops: 10.7
     hailo_peak_tops: 26.0
 
 rplidar:
