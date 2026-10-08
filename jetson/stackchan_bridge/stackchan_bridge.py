@@ -19,6 +19,9 @@ XiaoZhi の 2 つの口をまねる:
 - 調べもの（ネットのときだけ）: MCP の道具 `self.web.search` を足して、ニュース・天気・今の役職など新しいことを
   XiaoZhi から呼んでもらう。その呼び出しはスタックちゃんへ流さず、この受け口がインターネット（Google ニュースの
   見出しと DuckDuckGo）で調べて答える。ローカルのときは調べない（Jetson の AI だけで答える）。
+- AI-CAR のようす: ダッシュボード（ラズパイの `GET /api/status`、--car-url）の今の値を短い文にして答えに使う。
+  ローカルのときは、聞き取りに「ラズパイ」「ダッシュボード」「LiDAR」などが入っていたら、その文を Ollama に渡す。
+  ネットのときは、MCP の道具 `self.car.status` を足して XiaoZhi から呼んでもらい、この受け口が答える。
 - 映像: ダッシュボードの「映像を撮る」（`POST /camera/stream?on=1`）を押したときだけ送ってもらう。
 - 呼びかけ（ネットもローカルも）: つながったときは「呼びかけ待ち」。スタックちゃんは聞いているままで、声は whisper で
   文字にするが、「スタックちゃん」（--wake-words）が入っているときだけ返事をする（会話モード）。ネットのときは、呼ばれて
@@ -97,6 +100,16 @@ SEARCH_DESC = ('Search the internet for up-to-date information: news, weather, p
                'about the present or recent events. Returns news headlines with dates and web snippets.')
 SEARCH_PARAMS = {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'search words'}},
                  'required': ['query']}
+CAR_TOOL = 'self.car.status'
+CAR_DESC = ("Get the current dashboard of the user's robot car AI-CAR (Raspberry Pi 5) and its Jetson: drive mode, "
+            'LiDAR distance ahead, obstacle state, CPU load and temperature, memory, 5 V power and undervoltage, '
+            'uptime, updates, gamepad, camera. Always use it when the user asks about the car, the Raspberry Pi '
+            '(ラズパイ), the Jetson, LiDAR or the dashboard. Returns Japanese text with numbers.')
+CAR_PARAMS = {'type': 'object', 'properties': {}}
+CAR_ASK = re.compile(r'ダッシュボード|ラズパイ|ラズベリー|ジェットソン|jetson|ai-?car|エーアイカー|車|くるま|'
+                     r'ライダー|lidar|障害物|cpu|シーピーユー|メモリ|電圧|電源|ゲームパッド', re.I)
+CAR_PROMPT = ('\n下は AI-CAR（ラズパイの車）のダッシュボードの今の値です。車・ラズパイ・Jetson のことを聞かれたら、'
+              '聞かれたことだけを、この数字で短く答えてください。\n')
 # 呼びかけ: whisper の書き方のゆれ（スタックちゃん / スダックちゃん / スタッチャン / Stack-chan など）
 WAKE_WORDS = r'(?:ス[タダ]ッ?[クグ]?|す[ただ]っ?く?|stack)\s*[-ー・ ]?\s*(?:ちゃん?|チャン?|chan)'
 WAKE_FILLER = 2  # 呼びかけのほかが 2 文字まで（「ねえ」「に」など）なら、名前だけ呼ばれたとみなす
@@ -367,6 +380,48 @@ def web_search(query, n=5):
         log(f'調べもの（ウェブ）のエラー: {e}')
     log(f'調べもの「{query}」: {len(out)} 件')
     return '\n'.join(out) if out else '見つかりませんでした'
+
+
+def _num(v, fmt='{:.0f}'):
+    return '不明' if v is None else fmt.format(v)
+
+
+def car_status(url):
+    """AI-CAR のダッシュボードの今の値を、短い日本語の文にする。"""
+    try:
+        d = json.loads(_get(f'{url}/api/status', timeout=3))
+    except Exception as e:  # noqa: BLE001 - つながらなくても会話は続ける
+        log(f'AI-CAR のようすのエラー: {e}')
+        return 'AI-CAR のダッシュボードにつながりません（ラズパイが止まっているかもしれません）。'
+    s = d.get('system') or {}
+    cpu, mem, pw = s.get('cpu') or {}, s.get('memory') or {}, s.get('power') or {}
+    uv, ob, sc = pw.get('under_voltage') or {}, d.get('obstacle') or {}, d.get('scan') or {}
+    up = int(s.get('uptime_s') or 0)
+    fresh = sc.get('front') is not None and (d.get('stamp') or 0) - (sc.get('stamp') or 0) < 3
+    lines = [
+        f"走行モード: {(d.get('drive_mode') or {}).get('label') or '不明'}"
+        f"（自動運転の動き: {(d.get('autonomy') or {}).get('behavior_label') or '不明'}）",
+        'LiDAR: ' + (f"前の物まで {sc['front']:.2f} m" if fresh else '距離のデータが来ていない'),
+        f"障害物: {ob.get('reason') or 'なし'}",
+        f"ラズパイ: CPU {_num(cpu.get('percent'))} %、温度 {_num(cpu.get('temperature_c'))} 度、"
+        f"メモリ {_num(mem.get('percent'))} %、ディスク {_num(mem.get('disk_percent'))} %、"
+        f'起動から {up // 3600} 時間 {up % 3600 // 60} 分',
+        f"ラズパイの電源: 5V が {_num(pw.get('input_volt'), '{:.2f}')} V、{_num(pw.get('total_w'), '{:.1f}')} W、"
+        f"電圧低下は直近 10 分で {uv.get('recent_10min') or 0} 回" + ('（今、電圧が足りない）' if uv.get('now') else ''),
+        f"AI HAT+: 温度 {_num((s.get('hailo') or {}).get('temperature_c'))} 度",
+        f"ラズパイの更新: {_num((s.get('updates') or {}).get('updates_pending'))} 件",
+        'ゲームパッド: ' + ('つながっている' if (d.get('joy') or {}).get('connected') else 'つながっていない'),
+        'カメラ: ' + ('映っている' if (d.get('camera') or {}).get('available') else '映像が来ていない'),
+    ]
+    j = d.get('jetson_host') or {}
+    if j.get('alive'):
+        t = j.get('temperatures_c') or {}
+        lines.append(f"Jetson: CPU {_num(j.get('cpu_percent'))} %、GPU {_num(j.get('gpu_percent'))} %、"
+                     f"温度 {_num(t.get('tj'))} 度、メモリ {_num(j.get('mem_used_mb'))} / "
+                     f"{_num(j.get('mem_total_mb'))} MB、電力 {_num(j.get('power_w'), '{:.1f}')} W")
+    else:
+        lines.append('Jetson: 未接続')
+    return '\n'.join(lines)
 
 
 def llm_sentences(model, messages):
@@ -990,8 +1045,9 @@ class Session:
                 if msg.get('type') == 'hello':
                     continue
                 call = (msg.get('payload') or {}) if msg.get('type') == 'mcp' else {}
-                if call.get('method') == 'tools/call' and (call.get('params') or {}).get('name') == SEARCH_TOOL:
-                    asyncio.create_task(self.cloud_search(call))
+                if call.get('method') == 'tools/call' and \
+                        (call.get('params') or {}).get('name') in (SEARCH_TOOL, CAR_TOOL):
+                    asyncio.create_task(self.cloud_tool(call))
                     continue
                 if self.shooting and msg.get('type') in ('tts', 'llm'):
                     continue
@@ -1026,10 +1082,14 @@ class Session:
                 except ConnectionClosed:
                     pass
 
-    async def cloud_search(self, call):
-        """ネットの XiaoZhi が呼んだ調べものに、スタックちゃんのかわりに答える。"""
-        query = str(((call.get('params') or {}).get('arguments') or {}).get('query', ''))
-        found = await asyncio.to_thread(web_search, query)
+    async def cloud_tool(self, call):
+        """ネットの XiaoZhi が呼んだ調べもの・AI-CAR のようすに、スタックちゃんのかわりに答える。"""
+        params = call.get('params') or {}
+        if params.get('name') == CAR_TOOL:
+            found = await asyncio.to_thread(car_status, self.args.car_url)
+            log(f'AI-CAR のようす（ネット）: {found.splitlines()[0]}')
+        else:
+            found = await asyncio.to_thread(web_search, str((params.get('arguments') or {}).get('query', '')))
         await self.to_cloud({'type': 'mcp', 'payload': {'jsonrpc': '2.0', 'id': call.get('id'), 'result': {
             'content': [{'type': 'text', 'text': found}], 'isError': False}}})
 
@@ -1132,6 +1192,7 @@ class Session:
             tools = ((msg.get('payload') or {}).get('result') or {}).get('tools') if t == 'mcp' else None
             if isinstance(tools, list) and not self.search_added:
                 tools.append({'name': SEARCH_TOOL, 'description': SEARCH_DESC, 'inputSchema': SEARCH_PARAMS})
+                tools.append({'name': CAR_TOOL, 'description': CAR_DESC, 'inputSchema': CAR_PARAMS})
                 self.search_added = True
             if t == 'listen' and msg.get('state') in ('start', 'stop'):
                 self.listening = msg['state'] == 'start'
@@ -1255,7 +1316,12 @@ class Session:
                 return
             await self.send(type='llm', emotion='thinking', text='🤔')
             now = time.strftime('今は %Y年%m月%d日 %H時%M分です。')
-            messages = [{'role': 'system', 'content': SYSTEM_PROMPT + now}] + self.history + \
+            system = SYSTEM_PROMPT + now
+            if CAR_ASK.search(text):
+                car = await asyncio.to_thread(car_status, a.car_url)
+                log(f'AI-CAR のようすを渡します: {car.splitlines()[0]}')
+                system += CAR_PROMPT + car
+            messages = [{'role': 'system', 'content': system}] + self.history + \
                 [{'role': 'user', 'content': text}]
             q = queue.Queue(maxsize=4)
 
@@ -1370,6 +1436,8 @@ async def main():
     p.add_argument('--end-silence', type=float, default=0.8, help='この秒数静かなら話し終わり')
     p.add_argument('--min-seconds', type=float, default=0.4)
     p.add_argument('--max-seconds', type=float, default=15.0)
+    p.add_argument('--car-url', default=os.environ.get('AI_CAR_URL', 'http://100.70.35.31:8080'),
+                   help='AI-CAR のダッシュボード（ラズパイ）。ここの /api/status の値を答えに使う')
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
     p.add_argument('--wake-words', default=WAKE_WORDS,
                    help='呼びかけ待ちのとき、これ（正規表現）が聞き取りに入っているときだけ返事をする。空で呼びかけ待ちにしない')
