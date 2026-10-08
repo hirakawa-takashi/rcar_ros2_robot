@@ -24,6 +24,8 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import CompressedImage, LaserScan
 from std_msgs.msg import String
 
+from ai_car_web import mono_depth
+
 # COCO 80 クラス（YOLOv8 の class_id 順）。表示用に日本語名を持つ。
 COCO_CLASSES = [
     '人', '自転車', '車', 'バイク', '飛行機', 'バス', '電車', 'トラック', 'ボート',
@@ -104,19 +106,24 @@ def _confirm_detections(history, confirm):
     return confirmed
 
 
-class HailoDetector:
-    """Hailo-8 上で YOLO HEF を実行する最小ラッパー。"""
+def make_hailo_vdevice():
+    """YOLO と奥行きの AI を順番に回せる（ROUND_ROBIN）Hailo-8 の VDevice。"""
+    from hailo_platform import HailoSchedulingAlgorithm, VDevice
+    params = VDevice.create_params()
+    params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
+    return VDevice(params)
 
-    def __init__(self, hef_path: str):
+
+class HailoDetector:
+    """Hailo-8 上で HEF（YOLO・奥行きの AI）を実行する最小ラッパー。"""
+
+    def __init__(self, hef_path: str, vdevice):
         from hailo_platform import (HEF, ConfigureParams, FormatType, HailoStreamInterface,
-                                    InferVStreams, InputVStreamParams, OutputVStreamParams,
-                                    VDevice)
+                                    InferVStreams, InputVStreamParams, OutputVStreamParams)
         self._hef = HEF(hef_path)
-        self._vdevice = VDevice()
         configure_params = ConfigureParams.create_from_hef(
             self._hef, interface=HailoStreamInterface.PCIe)
-        self._network_group = self._vdevice.configure(self._hef, configure_params)[0]
-        self._network_group_params = self._network_group.create_params()
+        self._network_group = vdevice.configure(self._hef, configure_params)[0]
         self._input_params = InputVStreamParams.make(
             self._network_group, format_type=FormatType.UINT8)
         self._output_params = OutputVStreamParams.make(
@@ -126,20 +133,18 @@ class HailoDetector:
         self.input_height = info.shape[0]
         self.input_width = info.shape[1]
 
-        # パイプラインとアクティベートは毎回作ると高コストなので保持する
+        # パイプラインは毎回作ると高コストなので保持する。切り替えは VDevice のスケジューラが行う
         self._stack = ExitStack()
         self._pipeline = self._stack.enter_context(InferVStreams(
             self._network_group, self._input_params, self._output_params))
-        self._stack.enter_context(self._network_group.activate(self._network_group_params))
 
     def infer(self, image: np.ndarray):
-        """NHWC uint8 画像 1 枚を推論し、NMS 出力（クラス別の配列）を返す。"""
+        """NHWC uint8 画像 1 枚を推論し、最初の出力（YOLO は NMS のクラス別の配列）を返す。"""
         results = self._pipeline.infer({self.input_name: np.expand_dims(image, axis=0)})
         return next(iter(results.values()))
 
     def close(self):
         self._stack.close()
-        self._vdevice.release()
 
 
 class PerceptionNode(Node):
@@ -189,6 +194,21 @@ class PerceptionNode(Node):
         # 物の枠の距離: 2 眼のマスの距離（/stereo/depth_grid）で測れればそれを使い、
         # 測れない所（左はしなど）は LiDAR の距離にする。空で 2 眼を使わない
         self.declare_parameter('stereo_grid_topic', '/stereo/depth_grid')
+        # 1 眼の奥行きの AI（SC-Depth v3 の HEF）で床から出っぱった低い物を見つけ、
+        # 2 眼と同じ形で stereo_topic・mono_depth_image_topic に出す。空で無効
+        self.declare_parameter('mono_depth_hef', '')
+        self.declare_parameter('mono_depth_rate', 10.0)
+        self.declare_parameter('mono_depth_image_topic', '/stereo/depth/compressed')
+        self.declare_parameter('mono_depth_guard', False)
+        self.declare_parameter('mono_camera_height_m', 0.112)
+        self.declare_parameter('mono_camera_pitch_deg', 0.0)
+        self.declare_parameter('mono_nearer_ratio', 1.1)
+        self.declare_parameter('mono_min_height_m', 0.02)
+        self.declare_parameter('mono_fill_ratio', 0.5)
+        self.declare_parameter('mono_max_range_m', 1.0)
+        self.declare_parameter('mono_min_columns', 3)
+        self.declare_parameter('mono_corridor_center_y_m', 0.0)
+        self.declare_parameter('mono_corridor_half_width_m', 0.15)
         self.declare_parameter('stereo_grid_min_ratio', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
@@ -255,16 +275,58 @@ class PerceptionNode(Node):
 
         self._detector = None
         self._detector_lock = threading.Lock()
+        self._vdevice = None
         hef_path = self.get_parameter('hef_path').value
-        if hef_path:
+        mono_hef = self.get_parameter('mono_depth_hef').value
+        if hef_path or mono_hef:
             try:
-                self._detector = HailoDetector(hef_path)
+                self._vdevice = make_hailo_vdevice()
+            except Exception as exc:  # noqa: BLE001 - 実機依存のため握りつぶして通知する
+                self._detector_note = f'Hailo を開けません: {exc}'
+                self.get_logger().warning(self._detector_note)
+        if hef_path and self._vdevice is not None:
+            try:
+                self._detector = HailoDetector(hef_path, self._vdevice)
                 self.get_logger().info(f'Hailo 推論を初期化しました: {hef_path}')
             except Exception as exc:  # noqa: BLE001 - 実機依存のため握りつぶして通知する
                 self._detector_note = f'Hailo 推論を初期化できません: {exc}'
                 self.get_logger().warning(self._detector_note)
-        else:
+        elif not hef_path:
             self._detector_note = 'hef_path が未設定のためカメラ推論は無効です'
+
+        self._depth = None
+        self._depth_busy = False
+        self._depth_started = 0.0
+        self._depth_frame_stamp = 0.0
+        self._depth_times = deque(maxlen=20)
+        if mono_hef and self._vdevice is not None:
+            try:
+                self._depth = HailoDetector(mono_hef, self._vdevice)
+                self.get_logger().info(f'1 眼の奥行きの AI を初期化しました: {mono_hef}')
+            except Exception as exc:  # noqa: BLE001 - 実機依存のため握りつぶして通知する
+                self.get_logger().warning(f'1 眼の奥行きの AI を初期化できません: {exc}')
+        if self._depth is not None:
+            g = self.get_parameter
+            self.mono_rate = float(g('mono_depth_rate').value)
+            self.mono_guard = bool(g('mono_depth_guard').value)
+            self.mono_height = float(g('mono_camera_height_m').value)
+            self.mono_nearer = float(g('mono_nearer_ratio').value)
+            self.mono_min_height = float(g('mono_min_height_m').value)
+            self.mono_fill = float(g('mono_fill_ratio').value)
+            self.mono_max_range = float(g('mono_max_range_m').value)
+            self.mono_min_cols = int(g('mono_min_columns').value)
+            self.mono_center_y = float(g('mono_corridor_center_y_m').value)
+            self.mono_half_width = float(g('mono_corridor_half_width_m').value)
+            self._mono_down, self._mono_left = mono_depth.camera_rays(
+                self._depth.input_height, self._depth.input_width,
+                float(g('camera_hfov_deg').value), CAMERA_ASPECT,
+                float(g('mono_camera_pitch_deg').value))
+            self._depth_status_pub = self.create_publisher(String, stereo_topic, 10)
+            self._depth_image_pub = self.create_publisher(
+                CompressedImage, g('mono_depth_image_topic').value, sensor_qos)
+            self.create_timer(0.02, self._depth_tick)
+        else:
+            self.mono_guard = False
 
         self._infer_busy = False
         self._infer_started = 0.0
@@ -630,6 +692,83 @@ class PerceptionNode(Node):
         finally:
             self._infer_busy = False
 
+    def _depth_tick(self):
+        scale = self._update_thermal()
+        if self._depth_busy or scale <= 0.0:
+            return
+        interval = 1.0 / max(0.2, self.mono_rate * scale)
+        with self._lock:
+            frame = self._frame
+            frame_stamp = self._frame_stamp
+        now = time.time()
+        if frame is None or now - self._depth_started < interval:
+            return
+        if frame_stamp == self._depth_frame_stamp or now - frame_stamp > 2.0:
+            return
+        self._depth_busy = True
+        self._depth_started = now
+        self._depth_frame_stamp = frame_stamp
+        threading.Thread(target=self._run_depth, args=(frame,), daemon=True).start()
+
+    def _run_depth(self, frame: bytes):
+        """1 眼の奥行きの AI で床から出っぱった物を探し、2 眼と同じ形の状態と色の画像を出す。"""
+        try:
+            import cv2
+            image = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if image is None:
+                return
+            t0 = time.perf_counter()
+            w, h = self._depth.input_width, self._depth.input_height
+            rgb = cv2.cvtColor(cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA),
+                               cv2.COLOR_BGR2RGB)
+            raw = self._depth.infer(rgb)
+            infer_ms = (time.perf_counter() - t0) * 1000.0
+            disp = mono_depth.sc_disparity(np.asarray(raw, dtype=np.float32)[0, :, :, 0])
+            down, left = self._mono_down, self._mono_left
+            bottom, top, obst = mono_depth.obstacle_columns(
+                disp, down, self.mono_height, self.mono_nearer, self.mono_min_height,
+                self.mono_fill)
+            objects = mono_depth.group_objects(
+                bottom, top, down, left, self.mono_height, self.mono_max_range,
+                self.mono_min_cols)
+            nearest = mono_depth.in_corridor(objects, self.mono_center_y, self.mono_half_width)
+            ms = (time.perf_counter() - t0) * 1000.0
+            times = self._depth_times
+            times.append(time.monotonic())
+            fps = ((len(times) - 1) / (times[-1] - times[0])
+                   if len(times) >= 2 and times[-1] > times[0] else None)
+            if self._depth_image_pub.get_subscription_count() > 0:
+                img = mono_depth.colorize(disp, obst, (480, 270))
+                if nearest:
+                    x0, x1 = int(nearest['x_min'] * 480), int(nearest['x_max'] * 480)
+                    cv2.rectangle(img, (x0, 0), (x1, 269), (255, 255, 255), 2)
+                ok, jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                if ok:
+                    out = CompressedImage()
+                    out.format = 'jpeg'
+                    out.data = jpeg.tobytes()
+                    self._depth_image_pub.publish(out)
+            msg = String()
+            msg.data = json.dumps({
+                'ok': True,
+                'reason': '',
+                'source': 'mono',
+                'nearest': nearest,
+                'objects': objects[:5],
+                'ms': round(ms, 1),
+                'infer_ms': round(infer_ms, 1),
+                'fps': round(fps, 1) if fps else None,
+                'size': [w, h],
+                'max_range_m': self.mono_max_range,
+                'corridor_half_width_m': self.mono_half_width,
+                'min_height_m': self.mono_min_height,
+            }, ensure_ascii=False)
+            self._depth_status_pub.publish(msg)
+        except Exception as exc:  # noqa: BLE001 - 推論失敗でノードを落とさない
+            self.get_logger().warning(f'1 眼の奥行きの推論エラー: {exc}')
+        finally:
+            self._depth_busy = False
+
     def _parse_detections(self, raw, geom):
         """HAILO NMS BY CLASS 出力（正規化座標）を検出リストへ変換する。"""
         r, pad_x, pad_y, img_w, img_h = geom
@@ -703,7 +842,7 @@ class PerceptionNode(Node):
         if self.living_guard and LEVEL_RANK[living['level']] > LEVEL_RANK.get(level, 0):
             level, reason = living['level'], living['reason']
         stereo = self._stereo_assessment(now)
-        if self.stereo_guard and LEVEL_RANK[stereo['level']] > LEVEL_RANK.get(level, 0):
+        if stereo['enabled'] and LEVEL_RANK[stereo['level']] > LEVEL_RANK.get(level, 0):
             level, reason = stereo['level'], stereo['reason']
 
         # 前方セクターに写っている物体のみ障害物種別として扱う
@@ -778,8 +917,9 @@ class PerceptionNode(Node):
         with self._lock:
             stereo = self._stereo
             age = now - self._stereo_stamp if self._stereo_stamp else None
+        mono = bool(stereo and stereo.get('source') == 'mono')
         result = {
-            'enabled': self.stereo_guard,
+            'enabled': self.stereo_guard and (not mono or self.mono_guard),
             'ready': False,
             'level': 'clear',
             'reason': '',
@@ -805,7 +945,7 @@ class PerceptionNode(Node):
         result.update(item)
         distance, low = item['distance'], item['low']
         if low:
-            where = f'低い障害物 {distance:.2f} m（2 眼）'
+            where = f"低い障害物 {distance:.2f} m（{'1' if mono else '2'} 眼）"
             if distance <= self.stereo_stop_distance:
                 result['level'], result['reason'] = 'stop', f'前方 {where} で停止'
             elif distance <= self.stereo_slow_distance:
@@ -882,6 +1022,10 @@ def main(args=None):
     finally:
         if node._detector is not None:
             node._detector.close()
+        if node._depth is not None:
+            node._depth.close()
+        if node._vdevice is not None:
+            node._vdevice.release()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
