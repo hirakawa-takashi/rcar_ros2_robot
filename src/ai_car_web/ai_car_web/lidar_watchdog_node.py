@@ -142,6 +142,8 @@ class LidarWatchdogNode(Node):
             alive = [p for p in self._term_pids if p in find_pids(self.pattern)]
             for pid in alive:
                 self.get_logger().warn(f'rplidar（pid {pid}）が終わらないので SIGKILL を送ります')
+                if self._fails <= 1:
+                    self.get_logger().warn(f'rplidar（pid {pid}）のスレッドの待ち先: {thread_waits(pid)}')
                 self._signal(pid, signal.SIGKILL)
             self._recover()
             self._term_pids, self._term_at = [], None
@@ -224,6 +226,22 @@ class LidarWatchdogNode(Node):
             pass
         except PermissionError as e:
             self.get_logger().error(f'rplidar（pid {pid}）を止められません: {e}')
+
+
+def thread_waits(pid):
+    """プロセスの各スレッドが kernel のどこで待っているか（wchan）を「名前:待ち先×数」にする。"""
+    counts = {}
+    for task in sorted(glob.glob(f'/proc/{pid}/task/*')):
+        try:
+            with open(f'{task}/comm') as f:
+                name = f.read().strip()
+            with open(f'{task}/wchan') as f:
+                wchan = f.read().strip() or '-'
+        except OSError:
+            continue
+        key = f'{name}:{wchan}'
+        counts[key] = counts.get(key, 0) + 1
+    return ', '.join(f'{k}×{n}' for k, n in counts.items()) or '不明'
 
 
 def main(args=None):
