@@ -369,7 +369,7 @@
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
       <tr>
-        <td class="k">2眼の距離</td>
+        <td class="k" id="sd_label">2眼の距離</td>
         <td class="v wrap"><span id="sd_val" title="-">-</span> <button id="sd_view">距離の画像</button></td>
       </tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
@@ -1842,6 +1842,8 @@ document.getElementById('sd_view').addEventListener('click', () => {
 // 2 眼カメラの距離（stereo_depth_node、表示だけ）
 function renderStereoDepth(sd, judge) {
   const cell = document.getElementById('sd_val');
+  const mono = !!(sd && sd.source === 'mono');
+  document.getElementById('sd_label').textContent = mono ? '1眼の距離' : '2眼の距離';
   if (!sd || !sd.alive) {
     cell.textContent = sd ? '止まっている' : '-';
     cell.title = 'stereo_depth_node から届いていません';
@@ -1865,9 +1867,10 @@ function renderStereoDepth(sd, judge) {
     : `${fmt(sd.max_range_m, 1)} m 以内になし`;
   cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
     `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
-    `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。` +
+    (mono ? `1 眼の奥行きの AI（推論 ${fmt(sd.infer_ms, 1)} ms）。`
+      : `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。`) +
     (judge ? `LiDAR ${fmt(judge.lidar_distance)} m。減速 ${fmt(judge.slow_distance)} m / 停止 ${fmt(judge.stop_distance)} m` +
-      (judge.enabled ? '' : '。stereo_guard が false なので速度制限には使わない') : '');
+      (judge.enabled ? '' : `。${mono ? 'mono_depth_guard' : 'stereo_guard'} が false なので速度制限には使わない`) : '');
 }
 
 function renderCamera(cam) {
