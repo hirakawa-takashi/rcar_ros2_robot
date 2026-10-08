@@ -21,8 +21,8 @@
   <xacro:property name="laser_y" value="0.008"/>
   <xacro:property name="laser_yaw_deg" value="-1.7"/>  <!-- 前方カメラの正面に合わせた LiDAR の向き（dashboard.yaml の scan_angle_offset_deg と同じ） -->
   <xacro:property name="laser_h" value="0.175"/>   <!-- 光の高さ（床から）。取付面 162 mm + ヘッド内の発光部（推定） -->
-  <xacro:property name="camera_x" value="0.122"/>  <!-- 2 眼カメラの左目のレンズの先: LiDAR から前 79 mm・左 30 mm -->
-  <xacro:property name="camera_y" value="0.038"/>
+  <xacro:property name="camera_x" value="0.106"/>  <!-- Camera Module 3 Wide のレンズの先: LiDAR の回転中心の真ん前 63 mm -->
+  <xacro:property name="camera_y" value="0.008"/>
   <xacro:property name="camera_h" value="0.112"/>  <!-- レンズの高さ（床から） -->
   <xacro:property name="imu_x" value="0.045"/>     <!-- IMU の基板の中心: ふたの上、LiDAR のヘッドの下（天板の中心から前 45 mm・右 13 mm） -->
   <xacro:property name="imu_y" value="-0.013"/>
@@ -143,22 +143,22 @@
     <origin xyz="${laser_x} ${laser_y} ${laser_h - wheel_radius}" rpy="0 0 ${radians(laser_yaw_deg)}"/>
   </joint>
 
-  <!-- カメラ: USB 2 眼カメラ（3D USB Camera）の左目 -->
+  <!-- カメラ: Camera Module 3 Wide（IMX708） -->
   <link name="camera_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.01 0.08 0.017"/>
+        <box size="0.01 0.025 0.024"/>
       </geometry>
       <material name="sensor_green"/>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.01 0.08 0.017"/>
+        <box size="0.01 0.025 0.024"/>
       </geometry>
     </collision>
-    <xacro:box_inertia m="0.045" x="0.01" y="0.08" z="0.017"/>
+    <xacro:box_inertia m="0.004" x="0.01" y="0.025" z="0.024"/>
   </link>
 
   <joint name="camera_joint" type="fixed">

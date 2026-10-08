@@ -194,14 +194,13 @@ perception_node:
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
-    # 2 眼カメラ（ELP、片目 1280x720 → 640x360）の横の画角。仮の値（広角レンズでゆがみがあるので実測して直す）。
-    # Camera Module 3 に戻すときは 66.0
-    camera_hfov_deg: 120.0
+    # Camera Module 3 Wide の横の画角（公称 102°。ふつうの Camera Module 3 は 66.0、2 眼カメラは 120.0）
+    camera_hfov_deg: 102.0
     scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
-    # LiDAR の回転中心から見たカメラのレンズ（使っている左目）の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（左 30 mm、前 79 mm。
-    # 前はレンズの先、レンズの長さ 26 mm は実測）。LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
-    camera_offset_x_m: 0.079
-    camera_offset_y_m: 0.030
+    # LiDAR の回転中心から見たカメラのレンズの先の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（Camera Module 3 Wide は真ん前 63 mm。
+    # 2 眼カメラの左目は前 0.079・左 0.030）。LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
+    camera_offset_x_m: 0.063
+    camera_offset_y_m: 0.0
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
@@ -265,7 +264,7 @@ lidar_watchdog_node:
     reboot_after: 7
     reboot_min_uptime: 1800.0
 
-# USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo（既定）で起動
+# USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo のときだけ使う（今は外してある）
 stereo_camera_node:
   ros__parameters:
     device: "/dev/v4l/by-id/usb-3D_USB_Camera_3D_USB_Camera_01.00.00-video-index0"
@@ -337,7 +336,7 @@ stereo_depth_node:
     display_far_m: 3.0
     jpeg_quality: 70
 
-# Camera Module 3（camera_ros）。camera_type:=picam のときだけ使う
+# Camera Module 3 Wide（camera_ros）。dashboard.launch.py の camera_type:=picam（既定）で起動
 camera:
   ros__parameters:
     format: "RGB888"

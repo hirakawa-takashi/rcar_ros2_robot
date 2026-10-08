@@ -116,7 +116,7 @@ def generate_launch_description():
                               description='システム監視ノードを起動する'),
         DeclareLaunchArgument('use_camera', default_value='true',
                               description='カメラノードを起動する'),
-        DeclareLaunchArgument('camera_type', default_value='stereo',
+        DeclareLaunchArgument('camera_type', default_value='picam',
                               description='stereo: USB 2 眼カメラ（stereo_camera_node）/ '
                                           'picam: Camera Module 3（camera_ros）'),
         DeclareLaunchArgument('use_lidar', default_value='true',
