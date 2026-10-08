@@ -10,6 +10,10 @@ Group=super
 WorkingDirectory=/home/super/AI-CAR_ws
 Environment=HOME=/home/super
 Environment=ROS_DOMAIN_ID=0
+# ROS の通信に共有メモリ（/dev/shm）を使わず、UDP だけにする。共有メモリだと、SSH の中の ROS の
+# プログラムが急に消えたときの取り残しで rplidar が固まることがある（見込み。10/7・10/8 に 3 回、
+# SSH が切れて約 10 秒後に /scan が止まった）
+Environment=FASTDDS_BUILTIN_TRANSPORTS=UDPv4
 # USB LiDAR / カメラ / Hailo デバイスが揃うまで待つ
 ExecStartPre=/bin/sleep 10
 # 前回の LiDAR プロセスがシリアルポートを手放すまで待つ（掴んだままだと初期化がタイムアウトする）
