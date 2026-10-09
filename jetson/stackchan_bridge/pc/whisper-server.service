@@ -1,0 +1,13 @@
+[Unit]
+Description=whisper.cpp server (CUDA, large-v3) for StackChan
+After=network-online.target
+
+[Service]
+User=super
+WorkingDirectory=/home/super/ai/whisper.cpp
+ExecStart=/home/super/ai/whisper.cpp/build/bin/whisper-server -m models/ggml-large-v3.bin -l ja -t 4 -bs 1 -fa --prompt "台所、段ボール箱、スタックちゃん、AI-CAR。" --host 0.0.0.0 --port 8178
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
