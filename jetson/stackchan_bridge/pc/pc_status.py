@@ -175,7 +175,16 @@ def services():
     active = {k: run(['systemctl', 'is-active', unit]).strip() == 'active'
               for k, unit in (('whisper', 'whisper-server'), ('ollama', 'ollama'))}
     active['whisper'] = active['whisper'] and http_ok('http://127.0.0.1:8178/')[0]
+    active['voicevox'] = http_ok('http://127.0.0.1:50021/version')[0]
     return active
+
+
+def tts_engine():
+    ok, body = http_ok('http://127.0.0.1:50021/version')
+    try:
+        return f'VOICEVOX {json.loads(body)}（CPU）' if ok else ''
+    except ValueError:
+        return ''
 
 
 def stt_engine():
@@ -232,6 +241,7 @@ def collect(win, slow, updates):
         'power_w': g.get('power'),
         'services': services(),
         'stt_engine': slow['stt'],
+        'tts_engine': slow['tts'],
         'ips': slow['ips'],
         'can_reboot': slow['can_wsl'],
         'can_upgrade': slow['can_upgrade'],
@@ -274,7 +284,7 @@ def main():
     win.start()
     updates = Updates()
     updates.start()
-    slow = {'os': wsl_os(), 'stt': stt_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
+    slow = {'os': wsl_os(), 'stt': stt_engine(), 'tts': tts_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
             'can_wsl': os.access(POWERSHELL, os.X_OK), 'can_upgrade': can_sudo(UPGRADE_CMD)}
     if args.once:
         time.sleep(25)
@@ -286,7 +296,7 @@ def main():
     while True:
         time.sleep(args.interval)
         if time.monotonic() - slow['stamp'] > 60:
-            slow.update(stt=stt_engine(), ips=ip_addresses(), can_upgrade=can_sudo(UPGRADE_CMD),
+            slow.update(stt=stt_engine(), tts=tts_engine(), ips=ip_addresses(), can_upgrade=can_sudo(UPGRADE_CMD),
                         stamp=time.monotonic())
         status = collect(win, slow, updates)
         if upgrading and not status['upgrade_running']:

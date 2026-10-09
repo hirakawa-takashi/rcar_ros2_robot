@@ -477,7 +477,7 @@
           <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
           <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
-          <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="Kokoro（GPU、Docker。API の題名と版）">-</td></tr>
+          <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="ミニコンは Kokoro（GPU、Docker）、パソコンは VOICEVOX（CPU）。仕組みの名前と版">-</td></tr>
         </table>
       </div>
       <div>
@@ -1474,10 +1474,11 @@ function renderAiRows(v, pc) {
     : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
   const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
   byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
-  const jsvc = aiJetson.services || {};
-  byId('jt_svc_kokoro').innerHTML = jsvc.kokoro == null ? '-'
-    : (jsvc.kokoro && aiJetson.tts_engine ? `<span class="nw">${esc(aiJetson.tts_engine)}</span> / ` : '')
-      + (jsvc.kokoro ? badge('ok', '稼働中') : badge('warn', '停止'));
+  const tts = pc ? {on: svc.voicevox, name: v.tts_engine}
+    : {on: (aiJetson.services || {}).kokoro, name: aiJetson.tts_engine};
+  byId('jt_svc_kokoro').innerHTML = tts.on == null ? '-'
+    : (tts.on && tts.name ? `<span class="nw">${esc(tts.name)}</span> / ` : '')
+      + (tts.on ? badge('ok', '稼働中') : badge('warn', '停止'));
 }
 
 ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
@@ -1622,7 +1623,7 @@ function renderJetsonHost() {
   if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
   if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
   byId('jt_note').textContent = pc
-    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はいつもミニコン（Jetson）の Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
+    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はパソコンの VOICEVOX（ずんだもん）、止まっているときはミニコンの Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
     : 'ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
 }
 
