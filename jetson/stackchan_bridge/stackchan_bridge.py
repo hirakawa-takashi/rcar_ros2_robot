@@ -65,9 +65,10 @@ WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
 # パソコン（WSL の Ubuntu、RTX 4080 SUPER）の whisper-server・Ollama。want が pc で動いていればこちらを使い、だめなら Jetson
-PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None, 'tts': False}
+PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None, 'tts': False, 'speaker': 3}
 PC_WAKE = threading.Event()
 BACKENDS = ('jetson', 'pc')
+PC_VOICES = {3: 'ずんだもん', 2: '四国めたん', 8: '春日部つむぎ', 14: '冥鳴ひまり', 20: 'もち子さん'}  # VOICEVOX のノーマル
 PC_WHISPER_PORT = 8178
 PC_OLLAMA_PORT = 11434
 # パソコンの VOICEVOX ENGINE（CPU）。パソコンを使っているあいだの声。だめならミニコンの Kokoro
@@ -159,6 +160,7 @@ BRIGHT_EVERY = 60.0
 BRIGHT_MIN_FRAMES = 5
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend.txt')
+PC_VOICE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pc_voice.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
 TO_NET = re.compile(r'(?:インターネット|ネット|クラウド|net)' + _SWITCH, re.I)
@@ -172,7 +174,7 @@ STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': N
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None, 'backend': None}
+          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc_voice': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
@@ -250,6 +252,15 @@ def load_backend():
             return 'jetson' if f.read().strip() == 'jetson' else 'pc'
     except OSError:
         return 'pc'
+
+
+def load_pc_voice(default):
+    try:
+        with open(PC_VOICE_FILE) as f:
+            speaker = int(f.read().strip())
+    except (OSError, ValueError):
+        return default
+    return speaker if speaker in PC_VOICES else default
 
 
 def load_device_ota():
@@ -517,7 +528,7 @@ def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE, use_pc=True):
     wav = None
     if use_pc and PC['up'] and PC['tts']:
         try:
-            wav = voicevox_wav(text, PC['args'].pc_speaker)
+            wav = voicevox_wav(text, PC['speaker'])
         except (OSError, ValueError) as e:
             PC['tts'] = False
             log(f'パソコンの声が作れないので Kokoro にします（{e}）')
@@ -557,7 +568,19 @@ def pc_url(port, path):
 
 def show_engines():
     set_status(engines=engines(PC['args']),
-               backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']})
+               backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']},
+               pc_voice={'speaker': PC['speaker'],
+                         'choices': [{'speaker': k, 'name': v} for k, v in PC_VOICES.items()]})
+
+
+def set_pc_voice(speaker):
+    """ダッシュボードの声の選択（パソコンの VOICEVOX）。次の文から変わる。"""
+    PC['speaker'] = speaker
+    with open(PC_VOICE_FILE, 'w') as f:
+        f.write(f'{speaker}\n')
+    log(f'パソコンの声: {PC_VOICES[speaker]}（{speaker}）')
+    PC_WAKE.set()
+    show_engines()
 
 
 def set_backend(want):
@@ -587,7 +610,7 @@ def switch_backend(want):
 
 def engines(args):
     if PC['up']:
-        tts = f'VOICEVOX {args.pc_voice_name}（パソコン）' if PC['tts'] else f'Kokoro {args.voice}'
+        tts = f"VOICEVOX {PC_VOICES[PC['speaker']]}（パソコン）" if PC['tts'] else f'Kokoro {args.voice}'
         return {'stt': 'whisper-server large-v3（パソコン）', 'llm': f"{PC['model']}（パソコン）", 'tts': tts}
     return {'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'}
 
@@ -610,7 +633,7 @@ def pc_check():
     body = json.dumps({'model': PC['model'], 'keep_alive': -1}).encode()
     urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
                            timeout=PC_WARM_TIMEOUT).read()
-    url = pc_url(PC_VOICEVOX_PORT, f"/initialize_speaker?speaker={PC['args'].pc_speaker}&skip_reinit=true")
+    url = pc_url(PC_VOICEVOX_PORT, f"/initialize_speaker?speaker={PC['speaker']}&skip_reinit=true")
     try:
         urllib.request.urlopen(urllib.request.Request(url, b'', method='POST'), timeout=PC_WARM_TIMEOUT).read()
         tts = True
@@ -756,6 +779,16 @@ class OtaHandler(BaseHTTPRequestHandler):
             set_backend(want)
             with STATUS_LOCK:
                 self._send_json({'ok': True, 'backend': STATUS['backend']})
+        elif path == '/pc_voice':
+            try:
+                speaker = int(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('speaker', [''])[0])
+            except ValueError:
+                speaker = None
+            if speaker not in PC_VOICES:
+                return self._send_error(400, f'speaker は {list(PC_VOICES)} のどれか')
+            set_pc_voice(speaker)
+            with STATUS_LOCK:
+                self._send_json({'ok': True, 'pc_voice': STATUS['pc_voice']})
         elif path == STREAM_PATH:
             on = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('on', ['0'])[0] == '1'
             FRAME.update(on=on, viewer_at=time.time())
@@ -1642,7 +1675,6 @@ async def main():
     p.add_argument('--pc-model', default='qwen2.5:14b', help='パソコンの Ollama で返事に使う会話の AI')
     p.add_argument('--pc-speaker', type=int, default=3,
                    help='パソコンの VOICEVOX の声（スタイルの番号。3 = ずんだもん ノーマル）')
-    p.add_argument('--pc-voice-name', default='ずんだもん', help='--pc-speaker の名前（ダッシュボードに出す）')
     p.add_argument('--voice', default='jf_alpha')
     p.add_argument('--pitch', type=int, default=300, help='声の高さを上げる量（セント、100 で半音。0 でそのまま）')
     p.add_argument('--peak-db', type=float, default=-1.0,
@@ -1671,7 +1703,7 @@ async def main():
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     WATCH['interval'] = max(0.0, args.watch_interval)
-    PC.update(host=args.pc_host, model=args.pc_model, args=args,
+    PC.update(host=args.pc_host, model=args.pc_model, args=args, speaker=load_pc_voice(args.pc_speaker),
               want=load_backend() if args.pc_host else 'jetson')
     load_device_ota()
     set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0)

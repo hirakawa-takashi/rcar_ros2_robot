@@ -255,6 +255,7 @@
   button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
   button.reboot:disabled { opacity: .4; }
   .aiswitch { margin-left: 8px; }
+  td.aiswitch { margin-left: 0; text-align: right; line-height: 2; }
   .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
   .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
   .aiswitch button:disabled { opacity: .4; }
@@ -478,6 +479,7 @@
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
           <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
           <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="ミニコンは Kokoro（GPU、Docker）、パソコンは VOICEVOX（CPU）。仕組みの名前と版">-</td></tr>
+          <tr id="jt_voice_row" style="display:none"><td class="k">　声</td><td class="v aiswitch" id="jt_voice_btns" title="パソコンの VOICEVOX の声。次の文から変わる（ミニコンにもどったときは Kokoro）"></td></tr>
         </table>
       </div>
       <div>
@@ -1477,6 +1479,31 @@ function renderAiRows(v, pc) {
   byId('jt_svc_kokoro').innerHTML = tts.on == null ? '-'
     : (tts.on && tts.name ? `<span class="nw">${esc(tts.name)}</span> / ` : '')
       + (tts.on ? badge('ok', '稼働中') : badge('warn', '停止'));
+  renderVoiceBtns(pc);
+}
+
+let voiceBusy = false;
+
+function renderVoiceBtns(pc) {
+  const v = aiStack && aiStack.pc_voice;
+  const row = document.getElementById('jt_voice_row'), box = document.getElementById('jt_voice_btns');
+  row.style.display = pc && v ? '' : 'none';
+  if (!pc || !v) return;
+  const key = v.choices.map(c => c.speaker).join(',');
+  if (box.dataset.key !== key) {
+    box.dataset.key = key;
+    box.innerHTML = v.choices.map(c => `<button data-speaker="${c.speaker}">${esc(c.name)}</button>`).join(' ');
+    box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      voiceBusy = true;
+      apiPost(`/api/stackchan/pc_voice?speaker=${b.dataset.speaker}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+        if (res && !res[0].ok) alert(res[1].detail || '声を変えられませんでした');
+      }).finally(() => { voiceBusy = false; pollStackchan(); });
+    }));
+  }
+  box.querySelectorAll('button').forEach(b => {
+    b.disabled = voiceBusy;
+    b.classList.toggle('active', Number(b.dataset.speaker) === v.speaker);
+  });
 }
 
 ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
