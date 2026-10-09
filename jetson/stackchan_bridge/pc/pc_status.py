@@ -2,7 +2,8 @@
 
 CPU・メモリ・ページファイル（スワップの欄）・C: ドライブ・起動時刻は Windows の値（PowerShell を 1 つ動かしたまま 1 秒ごとに読む）、
 GPU は nvidia-smi、声の AI（whisper-server・Ollama）は WSL の中を見る。標準ライブラリだけで動く（pc-status.service）。
-CPU の温度は LibreHardwareMonitor（管理者で動かしたまま）の WMI の「CPU Package」。更新の数は 1 時間ごと
+CPU の温度は LibreHardwareMonitor（管理者で動かしたまま）の「CPU Package」。0.9.6 は WMI がないので、その Web サーバー
+（http://localhost:8085/data.json）から読み、古い版のために WMI も見る。更新の数は 1 時間ごと
 （Ubuntu は apt、Windows は Windows Update）。返事で頼まれたら、Ubuntu（WSL）の再起動・止める（Windows の WMI から wsl.exe）と、
 Ubuntu の更新（pc-upgrade.service）をする。Windows Update の入れ込みは管理者がいるのでしない。
 """
@@ -28,9 +29,12 @@ WIN_LOOP = (
     "$o=Get-CimInstance Win32_OperatingSystem;"
     "$d=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\";"
     "$p=@(Get-CimInstance Win32_PageFileUsage|Measure-Object -Property AllocatedBaseSize,CurrentUsage -Sum);"
-    "$t=$null;foreach($ns in 'root/LibreHardwareMonitor','root/OpenHardwareMonitor'){try{"
+    "$t=$null;try{$q=@(Invoke-RestMethod http://localhost:8085/data.json -UseBasicParsing -TimeoutSec 2);"
+    "while($q.Count -and -not $t){$n,$q=$q;if($n.Type -eq 'Temperature' -and $n.Text -eq 'CPU Package'){"
+    "$t=[double]($n.Value -replace '[^0-9.].*$','')};if($n.Children){$q+=@($n.Children)}}}catch{};"
+    "if(-not $t){foreach($ns in 'root/LibreHardwareMonitor','root/OpenHardwareMonitor'){try{"
     "$t=(Get-CimInstance -Namespace $ns -ClassName Sensor -Filter \"SensorType='Temperature' AND Name='CPU Package'\" "
-    "-ErrorAction Stop|Select-Object -First 1).Value;if($t){break}}catch{}};"
+    "-ErrorAction Stop|Select-Object -First 1).Value;if($t){break}}catch{}}};"
     "$k='HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion';"
     "$rb=(Test-Path \"$k\\WindowsUpdate\\Auto Update\\RebootRequired\") -or "
     "(Test-Path \"$k\\Component Based Servicing\\RebootPending\");"

@@ -1442,10 +1442,8 @@ function renderBackend(r) {
     btn.classList.toggle('active', !!b && b.want === k);
   });
   const msg = document.getElementById('ai_be_msg');
-  msg.innerHTML = !b ? '-'
-    : b.active === 'pc' ? badge('ok', 'パソコンで動作中')
-    : b.want === 'pc' ? badge('warn', b.error ? 'パソコンにつながらないのでミニコン' : 'パソコンを準備中（今はミニコン）')
-    : badge('ok', 'ミニコンで動作中');
+  msg.innerHTML = b && b.want === 'pc' && b.active !== 'pc'
+    ? badge('warn', b.error ? 'パソコンにつながらないのでミニコン' : 'パソコンを準備中（今はミニコン）') : '';
   msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
   aiStack = r;
   renderJetsonHost();

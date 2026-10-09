@@ -73,6 +73,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now whisper-server && su
 ollama pull qwen2.5:14b
 # VOICEVOX ENGINE 0.25.2（linux-cpu-x64）を https://github.com/VOICEVOX/voicevox_engine/releases から ~/ai/voicevox に展開
 sudo install -m 644 pc/voicevox.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now voicevox
+# CPU 温度: Windows に LibreHardwareMonitor 0.9.6 を置き、管理者で 1 回起動して Options の「Run On Windows Startup」「Start Minimized」「Remote Web Server → Run」を入れる
+#   （設定ファイルでは runWebServerMenuItem=true。pc_status.py は Windows の PowerShell から http://localhost:8085/data.json の CPU Package を読む）
 ```
 
 WSL は PowerShell の画面を閉じるとしばらくして止まるので、`pc/wsl-ubuntu-keepalive.vbs` を Windows の
