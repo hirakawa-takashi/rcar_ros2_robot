@@ -1,0 +1,14 @@
+[Unit]
+Description=Send MyPC (Windows + WSL) status to the AI-CAR dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=super
+EnvironmentFile=/etc/pc-status.env
+ExecStart=/usr/bin/python3 -u /home/super/ai/pc_status.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

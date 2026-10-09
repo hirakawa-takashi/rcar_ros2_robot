@@ -46,7 +46,7 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
   その回から Jetson（whisper small・qwen2.5:3b）にもどす。返事の途中で切れたときは、その返事はやめる
 - 行き先は `--pc-host`（既定は環境変数 `AI_PC_HOST`、なければ Tailscale の taka3-wsl `100.86.172.21`）。空でパソコンを使わない
 - 使っているほうは `GET :8003/status` の `engines` に出る（「（パソコン）」がつく）。`backend` は `want`（選んだ所 `jetson` / `pc`）・`active`（今使っている所）・`error`（パソコンにつながらない理由）
-- `pc` はパソコンの様子（`services` {whisper, ollama}・`stt_engine`・`llm_models`・`llm_size_mb`・`llm_vram_mb`、jetson-status と同じ形）。パソコンを選んでいるあいだ 10 秒ごとに更新
+- パソコンの状態（ダッシュボードで MyPC を選んだときの Jetson のカード）: `pc/pc_status.py` を `/home/super/ai/` に置き、`pc/pc-status.service` を入れる（`/etc/pc-status.env` に `AI_CAR_API_TOKEN=...`）。1 秒ごとに `POST /api/mypc/status`（jetson-status と同じ形 ＋ `gpu_name`・`gpu_driver`）
 - 切り替え: `POST :8003/backend?to=jetson|pc`（ダッシュボードの Jetson のカードの 1 行目の Jetson / MyPC ボタンが `POST /api/stackchan/backend` 経由で呼ぶ）。`backend.txt` に書いて、起動し直してもそのまま。`jetson` ならパソコンを見ない。`pc` にするとすぐパソコンを見て、動いていれば使う（つながらないあいだは Jetson）
 - whisper の見回り（5 分ごと）は Jetson の whisper-server だけを試す
 - 2026/10/10 の実機（Jetson から同じ声 4 つ）: 聞き取り Jetson 0.53〜0.74 秒 → パソコン 0.29〜0.44 秒（Tailscale の中継込み）。

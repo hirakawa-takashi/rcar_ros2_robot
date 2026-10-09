@@ -166,7 +166,7 @@ STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': N
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc': None}
+          'dozing': False, 'light': None, 'screen': None, 'backend': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
@@ -560,30 +560,15 @@ def pc_down(e):
 
 
 def pc_check():
-    """パソコンの whisper-server が返事をし、Ollama に PC['model'] があれば読み込ませる（読み込み済みならすぐ返る）。だめなら OSError。
-    わかった様子は STATUS['pc'] に、Jetson の jetson-status と同じ形（services・stt_engine・llm_*）で入れる。"""
-    info = {'services': {'whisper': False, 'ollama': False}, 'stt_engine': 'whisper.cpp large-v3（GPU）',
-            'llm_models': [], 'llm_size_mb': None, 'llm_vram_mb': None, 'at': time.time()}
-    try:
-        try:
-            urllib.request.urlopen(pc_url(PC_WHISPER_PORT, '/'), timeout=PC_CHECK_TIMEOUT).read()
-            info['services']['whisper'] = True
-        finally:
-            with urllib.request.urlopen(pc_url(PC_OLLAMA_PORT, '/api/tags'), timeout=PC_CHECK_TIMEOUT) as r:
-                names = {m.get('name') for m in json.loads(r.read()).get('models', [])}
-            info['services']['ollama'] = True
-        if PC['model'] not in names:
-            raise OSError(f"Ollama に {PC['model']} がない")
-        body = json.dumps({'model': PC['model'], 'keep_alive': -1}).encode()
-        urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
-                               timeout=PC_WARM_TIMEOUT).read()
-        with urllib.request.urlopen(pc_url(PC_OLLAMA_PORT, '/api/ps'), timeout=PC_CHECK_TIMEOUT) as r:
-            models = json.loads(r.read()).get('models', [])[:4]
-        info.update(llm_models=[str(m.get('name', '')) for m in models],
-                    llm_size_mb=round(sum(int(m.get('size', 0)) for m in models) / 2 ** 20),
-                    llm_vram_mb=round(sum(int(m.get('size_vram', 0)) for m in models) / 2 ** 20))
-    finally:
-        set_status(pc=info)
+    """パソコンの whisper-server が返事をし、Ollama に PC['model'] があれば読み込ませる（読み込み済みならすぐ返る）。だめなら OSError。"""
+    urllib.request.urlopen(pc_url(PC_WHISPER_PORT, '/'), timeout=PC_CHECK_TIMEOUT).read()
+    with urllib.request.urlopen(pc_url(PC_OLLAMA_PORT, '/api/tags'), timeout=PC_CHECK_TIMEOUT) as r:
+        names = {m.get('name') for m in json.loads(r.read()).get('models', [])}
+    if PC['model'] not in names:
+        raise OSError(f"Ollama に {PC['model']} がない")
+    body = json.dumps({'model': PC['model'], 'keep_alive': -1}).encode()
+    urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
+                           timeout=PC_WARM_TIMEOUT).read()
 
 
 async def pc_watch(args):

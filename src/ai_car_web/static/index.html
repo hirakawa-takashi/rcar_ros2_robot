@@ -434,7 +434,7 @@
   </div>
 
   <div class="card wide">
-    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span>
+    <h2><span id="jt_title">Jetson Orin Nano Super — AI 担当</span> <span class="badge" id="jt_state">-</span>
       <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）を Jetson でする">Jetson</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだは Jetson">MyPC</button></span>
       <span id="ai_be_msg"></span></h2>
     <div class="osline" id="jt_os">-</div>
@@ -491,17 +491,17 @@
         <table>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
-          <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
+          <tr><td class="k" id="jt_l4t_k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
-          <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
-          <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
-          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
-          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
-          <tr><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">Jetson の電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
+          <tr class="jtonly"><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
+          <tr class="jtonly"><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
+          <tr class="jtonly"><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
+          <tr class="jtonly"><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+          <tr class="jtonly"><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">Jetson の電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
         </table>
       </div>
     </div>
-    <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
+    <div class="note" id="jt_note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
   </div>
 
   <div class="stack">
@@ -1447,17 +1447,15 @@ function renderBackend(r) {
     : badge('ok', 'Jetson で動作中');
   msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
   aiStack = r;
-  renderAiRows();
+  renderJetsonHost();
 }
 
 let aiStack = null;
 let aiJetson = {};
+let aiHosts = {jetson: null, pc: null};
 
-function renderAiRows() {
+function renderAiRows(v, pc) {
   const byId = id => document.getElementById(id);
-  const b = aiStack && aiStack.backend;
-  const pc = !!b && b.want === 'pc';
-  const v = pc ? (aiStack.pc || {}) : aiJetson;
   byId('ai_side').textContent = pc ? '（MyPC）' : '（Jetson）';
   const svc = v.services || {};
   const svcBadge = (key, offCls) => svc[key] == null ? '-'
@@ -1563,12 +1561,15 @@ function pollStackchan() {
     .finally(() => { stackBusy = false; });
 }
 
-function renderJetsonHost(j) {
+function renderJetsonHost() {
   const byId = id => document.getElementById(id);
+  const pc = !!(aiStack && aiStack.backend && aiStack.backend.want === 'pc');
+  const j = pc ? aiHosts.pc : aiHosts.jetson;
+  aiJetson = aiHosts.jetson && aiHosts.jetson.alive ? aiHosts.jetson : {};
   const alive = !!(j && j.alive);
   byId('jt_state').className = 'badge' + (alive ? ' ok' : j ? ' warn' : '');
   byId('jt_state').textContent = alive ? '接続中' : '未接続';
-  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : '/api/jetson/status 未受信';
+  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : (pc ? '/api/mypc/status 未受信（パソコンの pc-status.service）' : '/api/jetson/status 未受信');
   const v = alive ? j : {};
   const t = v.temperatures_c || {};
   setTempBar(byId('jt_cpu_temp_bar'), byId('jt_cpu_temp'), t.cpu);
@@ -1588,8 +1589,7 @@ function renderJetsonHost(j) {
   byId('jt_power').textContent = fmt(v.power_w, 1);
   byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
 
-  aiJetson = v;
-  renderAiRows();
+  renderAiRows(v, pc);
 
   renderUpdates(v, 'jt_');
   byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +
@@ -1609,6 +1609,14 @@ function renderJetsonHost(j) {
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
   byId('jt_poweroff_btn').disabled = !alive;
+  byId('jt_title').textContent = pc ? `MyPC${v.gpu_name ? `（${v.gpu_name}）` : ''} — AI 担当` : 'Jetson Orin Nano Super — AI 担当';
+  byId('jt_l4t_k').textContent = pc ? 'GPU' : 'JetPack（L4T）';
+  if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
+  if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
+  document.querySelectorAll('.jtonly').forEach(tr => { tr.style.display = pc ? 'none' : ''; });
+  byId('jt_note').textContent = pc
+    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はいつも Jetson の Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
+    : 'Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
 }
 
 function setLink(id, cls, text, title) {
@@ -1691,7 +1699,8 @@ function renderAll(d) {
   renderCliff(d.cliff);
   renderSlam(d.slam);
   renderSystem(freshMsg(d.system, d.stamp, 3.0));
-  renderJetsonHost(d.jetson_host);
+  aiHosts = {jetson: d.jetson_host, pc: d.mypc_host};
+  renderJetsonHost();
   renderCamera(d.camera);
   renderStereoDepth(d.stereo_depth, obs && obs.stereo);
   renderLinks(d);
