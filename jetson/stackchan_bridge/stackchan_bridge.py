@@ -113,6 +113,16 @@ CAR_PROMPT = ('\n下は AI-CAR（ラズパイの車）のダッシュボード�
 # 呼びかけ: whisper の書き方のゆれ（スタックちゃん / スダックちゃん / スタッチャン / Stack-chan など）
 WAKE_WORDS = r'(?:ス[タダ]ッ?[クグ]?|す[ただ]っ?く?|stack)\s*[-ー・ ]?\s*(?:ちゃん?|チャン?|chan)'
 WAKE_FILLER = 2  # 呼びかけのほかが 2 文字まで（「ねえ」「に」など）なら、名前だけ呼ばれたとみなす
+# テレビの声で起きないように、呼びかけは「文の頭で名前を呼んだ」ときだけにする:
+# - whisper の音の注釈（「(音楽)」「(スタックちゃん)」）がある声は、話し声でないとみなす
+# - 名前の前は WAKE_LEAD 文字まで（「ねえ」「おーい」）。「段ボール箱、スタックちゃん」のような文の途中はとらない
+# - 名前のすぐあとが「の・は・が」など（「スタックちゃんの研究」）は、名前を話題にしているだけとみなす
+# - whisper-server の --prompt「台所、段ボール箱、スタックちゃん、AI-CAR。」を雑音でそのまま返したもの
+#   （「スタックちゃん、AI-CAR。」）はとらない
+WAKE_LEAD = 3
+WAKE_ANNOTATION = re.compile(r'\(.*?\)|（.*?）|\[.*?\]')
+WAKE_TOPIC = re.compile(r'[のはがをともにへ]')
+STT_PROMPT_WORDS = re.compile(r'台所|段ボール箱?|ai-?car', re.I)
 WAKE_REPLY = 'はい、なあに？'
 BYE_REPLY = 'じゃあ、またね。'
 KEEPALIVE = 60.0
@@ -453,6 +463,19 @@ def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE):
     wav = subprocess.run(sox, input=wav, capture_output=True, check=True).stdout
     with wave.open(io.BytesIO(wav)) as w:
         return w.readframes(w.getnframes())
+
+
+def is_call(wake, text):
+    """呼びかけ待ちで聞いた文字が、スタックちゃんを呼んだものなら True。"""
+    if WAKE_ANNOTATION.search(text):
+        return False
+    m = wake.search(text)
+    if not m or len(re.sub(r'[\s\W]', '', text[:m.start()])) > WAKE_LEAD:
+        return False
+    if WAKE_TOPIC.match(text, m.end()):
+        return False
+    rest = wake.sub('', text)
+    return not (STT_PROMPT_WORDS.search(rest) and not re.sub(r'[\s\W]', '', STT_PROMPT_WORDS.sub('', rest)))
 
 
 async def stt_watchdog(voice, wake_words):
@@ -1289,7 +1312,7 @@ class Session:
             if not text or NOISE_TEXT.fullmatch(text):
                 return
             if asleep:
-                if not self.wake.search(text):
+                if not is_call(self.wake, text):
                     log('呼びかけがないので返事しません')
                     return
                 log('呼びかけ: スタックちゃん')
