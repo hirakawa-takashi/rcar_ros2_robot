@@ -1619,7 +1619,7 @@ function renderJetsonHost() {
   byId('jt_upgrade_btn').title = pc ? 'WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
   byId('jt_reboot_btn').textContent = pc ? 'Ubuntu を再起動' : 'Jetson を再起動';
   byId('jt_poweroff_btn').textContent = pc ? 'Ubuntu を止める' : 'Jetson の電源を切る';
-  if (pc) byId('jt_reboot_req').title = `Ubuntu の再起動。Windows の再起動は${v.win_reboot_required ? 'いる' : 'いらない'}`;
+  byId('jt_reboot').title = pc ? `Ubuntu の再起動。Windows の再起動は${v.win_reboot_required ? 'いる' : 'いらない'}` : '';
   if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
   if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
   byId('jt_note').textContent = pc
