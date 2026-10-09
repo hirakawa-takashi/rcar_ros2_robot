@@ -159,7 +159,10 @@ BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
 TO_NET = re.compile(r'(?:インターネット|ネット|クラウド|net)' + _SWITCH, re.I)
-TO_LOCAL = re.compile(r'(?:ローカル|ジェットソン|local|jetson)' + _SWITCH, re.I)
+TO_LOCAL = re.compile(r'(?:ローカル|local)' + _SWITCH, re.I)
+# 家の AI（ローカル）の聞き取り・返事をする所。ネット / ローカルとは別に切りかえる
+TO_MINI = re.compile(r'(?:ミニコン|ミニ・?コン|ジェットソン|jetson)' + _SWITCH, re.I)
+TO_PC = re.compile(r'(?:パソコン|ピーシー|pc)' + _SWITCH, re.I)
 
 STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
@@ -542,6 +545,19 @@ def set_backend(want):
         PC.update(up=False, error=None)
     PC_WAKE.set()
     show_engines()
+
+
+def switch_backend(want):
+    """「ミニコンにして」「パソコンにして」。返事の文を返す。"""
+    if want == 'pc' and not PC['host']:
+        return 'パソコンが決められていないので、ミニコンで話します。'
+    was = PC['want']
+    set_backend(want)
+    if want == 'jetson':
+        return '今はミニコンです。' if was == want else 'ミニコンにしました。'
+    if PC['up']:
+        return '今はパソコンです。'
+    return 'パソコンにします。つながるまでは、ミニコンで話します。'
 
 
 def engines(args):
@@ -1451,6 +1467,9 @@ class Session:
                 return
             if is_switch(TO_LOCAL, text):
                 await self.say('今はローカルです。')
+                return
+            if is_switch(TO_MINI, text) or is_switch(TO_PC, text):
+                await self.say(switch_backend('pc' if is_switch(TO_PC, text) else 'jetson'))
                 return
             if is_switch(SHOOT, text):
                 await self.countdown_shot()

@@ -154,7 +154,7 @@ def host_status(req: JetsonStatusRequest):
 
 
 JETSON_STATUS_TIMEOUT = 5.0
-MYPC_ACTIONS = ('reboot', 'poweroff', 'upgrade')
+MYPC_ACTIONS = ('reboot', 'upgrade')
 JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
 STACKCHAN_BRIDGE_PORT = 8003

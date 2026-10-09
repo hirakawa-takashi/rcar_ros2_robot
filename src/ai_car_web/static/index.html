@@ -428,8 +428,8 @@
   </div>
 
   <div class="card wide">
-    <h2><span id="jt_title">Jetson Orin Nano Super — AI 担当</span> <span class="badge" id="jt_state">-</span>
-      <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）を Jetson でする">Jetson</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだは Jetson">MyPC</button></span>
+    <h2><span id="jt_title">ミニコン（Jetson Orin Nano Super） — AI 担当</span> <span class="badge" id="jt_state">-</span>
+      <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）をミニコン（Jetson）でする。「ミニコンにして」でも切りかわる">ミニコン</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだはミニコン。「パソコンにして」でも切りかわる">パソコン</button></span>
       <span id="ai_be_msg"></span></h2>
     <div class="osline" id="jt_os">-</div>
     <div class="jcols">
@@ -489,13 +489,13 @@
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
           <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
-          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
-          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
-          <tr><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">Jetson の電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
+          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">ミニコンを更新</button> <span id="jt_upgrade_msg"></span></td></tr>
+          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">ミニコンを再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+          <tr id="jt_poweroff_row"><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">ミニコンの電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
         </table>
       </div>
     </div>
-    <div class="note" id="jt_note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
+    <div class="note" id="jt_note">ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
   </div>
 
   <div class="stack">
@@ -596,13 +596,15 @@
       <div>
         <table>
           <tr><td class="k">IP アドレス</td><td class="v" id="sc_ip">-</td></tr>
-          <tr><td class="k">ネット / ローカル</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる。ネットのときは顔が緑">-</td></tr>
+          <tr><td class="k">ネット / ローカル</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる（ミニコンでもパソコンでも）。ネットのときは顔が緑">-</td></tr>
         </table>
         <h3 style="margin-top: 12px" title="画面を 1 回さわって、ランプが緑のときに言う">話しかける言葉</h3>
         <table>
           <tr><td class="k">「スタックちゃん」</td><td class="v wrap" title="ネットもローカルも。名前を呼ぶと会話モード、30 秒だまると「じゃあ、またね。」で呼びかけ待ちにもどる">呼びかけ（30 秒で終わり）</td></tr>
           <tr><td class="k">「ネットにして」</td><td class="v wrap">ネットの AI（顔が緑）</td></tr>
-          <tr><td class="k">「ローカルにして」</td><td class="v wrap">Jetson の AI（顔が白）</td></tr>
+          <tr><td class="k">「ローカルにして」</td><td class="v wrap">家の AI（顔が白）</td></tr>
+          <tr><td class="k">「ミニコンにして」</td><td class="v wrap">家の AI をミニコンで</td></tr>
+          <tr><td class="k">「パソコンにして」</td><td class="v wrap">家の AI をパソコンで</td></tr>
           <tr><td class="k">「撮影して」</td><td class="v wrap">5 秒数えて撮る</td></tr>
         </table>
       </div>
@@ -954,7 +956,7 @@ function renderIps(el, ips) {
     ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
 const jtTarget = () => aiStack && aiStack.backend && aiStack.backend.want === 'pc'
-  ? {name: 'Ubuntu ', path: k => `/api/mypc/${k}`} : {name: 'Jetson ', path: k => `/api/jetson/${k}`};
+  ? {name: 'Ubuntu ', path: k => `/api/mypc/${k}`} : {name: 'ミニコン', path: k => `/api/jetson/${k}`};
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
     if (btnId === 'jt_reboot_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('reboot')});
@@ -967,22 +969,19 @@ function rebootButton(btnId, msgId, name, path, when) {
   });
 }
 rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot', '10 秒後に');
-rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
+rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'ミニコン', '/api/jetson/reboot', '');
 function poweroffButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
-    if (btnId === 'jt_poweroff_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('poweroff')});
-    if (!confirm(name === 'Ubuntu '
-      ? 'Ubuntu（WSL）を止めますか？\nWindows は動いたままです。もう一度動かすには、Windows にサインインし直すか、Ubuntu を開いてください。ダッシュボードからは動かせません。'
-      : `${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
+    if (!confirm(`${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
     apiPost(path).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
-      msg.textContent = ok ? (name === 'Ubuntu ' ? '止めます' : `${when}電源を切ります`) : (j.detail || '送れませんでした');
+      msg.textContent = ok ? `${when}電源を切ります` : (j.detail || '送れませんでした');
     }).catch(() => { msg.textContent = '送れませんでした'; });
   });
 }
 poweroffButton('pi_poweroff_btn', 'pi_poweroff_msg', 'ラズパイ', '/api/system/poweroff', '10 秒後に');
-poweroffButton('jt_poweroff_btn', 'jt_poweroff_msg', 'Jetson ', '/api/jetson/poweroff', '');
+poweroffButton('jt_poweroff_btn', 'jt_poweroff_msg', 'ミニコン', '/api/jetson/poweroff', '');
 document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   const n = latestTelemetry.system?.updates?.updates_pending;
   if (!confirm(`ラズパイを更新しますか？（ROS 2 も含めて ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだは走らせないでください。`)) return;
@@ -996,7 +995,7 @@ document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
   const pc = jtTarget().name === 'Ubuntu ';
   const n = pc ? latestTelemetry.mypc_host?.ubuntu_updates_pending : latestTelemetry.jetson_host?.updates_pending;
   if (!confirm(pc ? `Ubuntu（WSL）を更新しますか？（${n ?? '?'} 個）\nWindows Update はしません。終わるまで数分かかります。`
-    : `Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
+    : `ミニコンを更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
   const msg = document.getElementById('jt_upgrade_msg');
   msg.textContent = '送っています…';
   apiPost(jtTarget().path('upgrade')).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
@@ -1444,9 +1443,9 @@ function renderBackend(r) {
   });
   const msg = document.getElementById('ai_be_msg');
   msg.innerHTML = !b ? '-'
-    : b.active === 'pc' ? badge('ok', 'MyPC で動作中')
-    : b.want === 'pc' ? badge('warn', b.error ? 'MyPC につながらないので Jetson' : 'MyPC を準備中（今は Jetson）')
-    : badge('ok', 'Jetson で動作中');
+    : b.active === 'pc' ? badge('ok', 'パソコンで動作中')
+    : b.want === 'pc' ? badge('warn', b.error ? 'パソコンにつながらないのでミニコン' : 'パソコンを準備中（今はミニコン）')
+    : badge('ok', 'ミニコンで動作中');
   msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
   aiStack = r;
   renderJetsonHost();
@@ -1458,7 +1457,7 @@ let aiHosts = {jetson: null, pc: null};
 
 function renderAiRows(v, pc) {
   const byId = id => document.getElementById(id);
-  byId('ai_side').textContent = pc ? '（MyPC）' : '（Jetson）';
+  byId('ai_side').textContent = pc ? '（パソコン）' : '（ミニコン）';
   const svc = v.services || {};
   const svcBadge = (key, offCls) => svc[key] == null ? '-'
     : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
@@ -1611,20 +1610,20 @@ function renderJetsonHost() {
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
   byId('jt_poweroff_btn').disabled = !alive;
-  byId('jt_title').textContent = pc ? `MyPC${v.gpu_name ? `（${v.gpu_name}）` : ''} — AI 担当` : 'Jetson Orin Nano Super — AI 担当';
+  byId('jt_title').textContent = pc ? `パソコン${v.gpu_name ? `（${v.gpu_name}）` : ''} — AI 担当` : 'ミニコン（Jetson Orin Nano Super） — AI 担当';
   byId('jt_l4t_k').textContent = pc ? 'GPU' : 'JetPack（L4T）';
   if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
   if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
-  byId('jt_upgrade_btn').textContent = pc ? 'Ubuntu を更新' : 'Jetson を更新';
+  byId('jt_upgrade_btn').textContent = pc ? 'Ubuntu を更新' : 'ミニコンを更新';
   byId('jt_upgrade_btn').title = pc ? 'WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
-  byId('jt_reboot_btn').textContent = pc ? 'Ubuntu を再起動' : 'Jetson を再起動';
-  byId('jt_poweroff_btn').textContent = pc ? 'Ubuntu を止める' : 'Jetson の電源を切る';
+  byId('jt_reboot_btn').textContent = pc ? 'Ubuntu を再起動' : 'ミニコンを再起動';
+  byId('jt_poweroff_row').style.display = pc ? 'none' : '';
   byId('jt_reboot').title = pc ? `Ubuntu の再起動。Windows の再起動は${v.win_reboot_required ? 'いる' : 'いらない'}` : '';
   if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
   if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
   byId('jt_note').textContent = pc
-    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はいつも Jetson の Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
-    : 'Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
+    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はいつもミニコン（Jetson）の Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
+    : 'ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
 }
 
 function setLink(id, cls, text, title) {

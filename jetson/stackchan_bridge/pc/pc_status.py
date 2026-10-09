@@ -45,7 +45,6 @@ WIN_UPDATES = (
     "[pscustomobject]@{n=$u.Count;sec=@($u|Where-Object{$_.MsrcSeverity}).Count}|ConvertTo-Json -Compress"
 )
 WSL_RESTART = 'wsl.exe --terminate Ubuntu; Start-Sleep 5; wsl.exe -d Ubuntu --exec /bin/sleep infinity'
-WSL_STOP = 'wsl.exe --terminate Ubuntu'
 UPGRADE_UNIT = 'pc-upgrade.service'
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', UPGRADE_UNIT]
 IP_SKIP = ('lo', 'docker', 'br-', 'veth')
@@ -235,7 +234,6 @@ def collect(win, slow, updates):
         'stt_engine': slow['stt'],
         'ips': slow['ips'],
         'can_reboot': slow['can_wsl'],
-        'can_poweroff': slow['can_wsl'],
         'can_upgrade': slow['can_upgrade'],
         'reboot_required': os.path.exists('/var/run/reboot-required'),
         'win_reboot_required': bool(w['reboot']) if 'reboot' in w else None,
@@ -306,10 +304,7 @@ def main():
             if reply_flag(reply, 'upgrade'):
                 print('ダッシュボードから更新を頼まれたので pc-upgrade.service を始めます', flush=True)
                 subprocess.run(UPGRADE_CMD, timeout=30, check=False)
-            if reply_flag(reply, 'poweroff'):
-                print('ダッシュボードから止めることを頼まれたので Ubuntu を止めます', flush=True)
-                windows_detached(WSL_STOP)
-            elif reply_flag(reply, 'reboot'):
+            if reply_flag(reply, 'reboot'):
                 print('ダッシュボードから再起動を頼まれたので Ubuntu を再起動します', flush=True)
                 windows_detached(WSL_RESTART)
         except (urllib.error.URLError, OSError, subprocess.TimeoutExpired) as e:
