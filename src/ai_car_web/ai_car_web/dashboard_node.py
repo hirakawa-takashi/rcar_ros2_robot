@@ -126,7 +126,35 @@ class JetsonStatusRequest(BaseModel):
     upgrade_phase: str = ''
 
 
+class MyPCStatusRequest(JetsonStatusRequest):
+    """パソコン（jetson/stackchan_bridge/pc/pc_status.py）から受け取る状態。Jetson と同じ形に GPU の名前を足す。"""
+
+    gpu_name: str = ''
+    gpu_driver: str = ''
+    ubuntu_updates_pending: int | None = None
+    ubuntu_security_pending: int | None = None
+    win_updates_pending: int | None = None
+    win_security_pending: int | None = None
+    win_reboot_required: bool | None = None
+
+
+def host_status(req: JetsonStatusRequest):
+    """Jetson・パソコンから届いた状態の、文字の長さと項目の数を絞る。"""
+    status = req.model_dump()
+    for key, value in status.items():
+        if isinstance(value, str):
+            status[key] = value[:64]
+    status['temperatures_c'] = {k[:16]: round(v, 1)
+                                for k, v in list(req.temperatures_c.items())[:8]}
+    status['services'] = {k[:16]: v for k, v in list(req.services.items())[:8]}
+    status['llm_models'] = [m[:64] for m in req.llm_models[:4]]
+    status['ips'] = [{'iface': str(ip.get('iface', ''))[:16], 'addr': str(ip.get('addr', ''))[:64]}
+                     for ip in req.ips[:8]]
+    return status
+
+
 JETSON_STATUS_TIMEOUT = 5.0
+MYPC_ACTIONS = ('reboot', 'upgrade')
 JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
 STACKCHAN_BRIDGE_PORT = 8003
@@ -388,6 +416,9 @@ class DashboardNode(Node):
         self._depth_frame_count = 0
         self._jetson_host = None
         self._jetson_host_stamp = 0.0
+        self._mypc_host = None
+        self._mypc_host_stamp = 0.0
+        self._mypc_asked = {}
         self._jetson_reboot_at = None
         self._jetson_poweroff_at = None
         self._jetson_upgrade_at = None
@@ -794,16 +825,7 @@ class DashboardNode(Node):
 
     def update_jetson_status(self, req: JetsonStatusRequest):
         """Jetson の状態を、文字の長さと項目の数を絞ってから覚える。"""
-        status = req.model_dump()
-        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result', 'upgrade_phase',
-                    'stt_engine', 'tts_engine'):
-            status[key] = status[key][:64]
-        status['temperatures_c'] = {k[:16]: round(v, 1)
-                                    for k, v in list(req.temperatures_c.items())[:8]}
-        status['services'] = {k[:16]: v for k, v in list(req.services.items())[:8]}
-        status['llm_models'] = [m[:64] for m in req.llm_models[:4]]
-        status['ips'] = [{'iface': str(ip.get('iface', ''))[:16], 'addr': str(ip.get('addr', ''))[:64]}
-                         for ip in req.ips[:8]]
+        status = host_status(req)
         now = self.get_clock().now().nanoseconds * 1e-9
         with self._lock:
             self._jetson_host = status
@@ -824,6 +846,43 @@ class DashboardNode(Node):
         if upgrade:
             self.get_logger().info('Jetson に更新を伝えました')
         return {'ok': True, 'reboot': reboot, 'poweroff': poweroff, 'upgrade': upgrade}
+
+    def update_mypc_status(self, req: MyPCStatusRequest):
+        """パソコンの状態を覚える（ダッシュボードの Jetson のカードで MyPC を選んだときに出す）。"""
+        status = host_status(req)
+        now = self.get_clock().now().nanoseconds * 1e-9
+        with self._lock:
+            self._mypc_host = status
+            self._mypc_host_stamp = now
+            asked = {k: now - t < JETSON_REBOOT_WINDOW for k, t in self._mypc_asked.items()}
+            self._mypc_asked = {}
+        for key, yes in asked.items():
+            if yes:
+                self.get_logger().warn(f'パソコンに {key} を伝えました')
+        return {'ok': True, **{k: asked.get(k, False) for k in MYPC_ACTIONS}}
+
+    def request_mypc(self, action: str):
+        """次にパソコンから状態が届いたときの返事で、Windows の再起動・電源を切る、Ubuntu の更新を頼む。"""
+        if action not in MYPC_ACTIONS:
+            raise HTTPException(status_code=404, detail='reboot・poweroff・upgrade のどれかです')
+        with self._lock:
+            state = self._mypc_host_state()
+            if not state or not state['alive']:
+                raise HTTPException(status_code=409, detail='パソコンが未接続です')
+            if not state.get(f'can_{action}'):
+                raise HTTPException(status_code=503, detail=f'パソコンで {action} ができません')
+            if action == 'upgrade' and state.get('upgrade_running'):
+                raise HTTPException(status_code=409, detail='パソコンは更新中です')
+            self._mypc_asked[action] = self.get_clock().now().nanoseconds * 1e-9
+        self.get_logger().warn(f'ダッシュボードからパソコンの {action} を受け付けました')
+        return {'ok': True}
+
+    def _mypc_host_state(self):
+        if self._mypc_host is None:
+            return None
+        age = self.get_clock().now().nanoseconds * 1e-9 - self._mypc_host_stamp
+        return dict(self._mypc_host, alive=age < JETSON_STATUS_TIMEOUT, age_s=round(age, 1),
+                    **{f'{k}_pending': k in self._mypc_asked for k in MYPC_ACTIONS})
 
     def request_jetson_upgrade(self):
         """次に Jetson から状態が届いたときの返事で、更新（NVIDIA の部品以外）を頼む。"""
@@ -1058,6 +1117,7 @@ class DashboardNode(Node):
                 'stereo_depth': self._stereo_depth_state(),
                 'slam': self._slam_state(),
                 'jetson_host': self._jetson_host_state(),
+                'mypc_host': self._mypc_host_state(),
                 'joy': {
                     'connected': (self.get_clock().now().nanoseconds * 1e-9
                                   - self._joy_stamp) < self.joy_timeout,
@@ -1172,6 +1232,14 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/jetson/status', dependencies=[Depends(require_token)])
     def jetson_status(req: JetsonStatusRequest):
         return node.update_jetson_status(req)
+
+    @app.post('/api/mypc/status', dependencies=[Depends(require_token)])
+    def mypc_status(req: MyPCStatusRequest):
+        return node.update_mypc_status(req)
+
+    @app.post('/api/mypc/{action}', dependencies=[Depends(require_token)])
+    def mypc_action(action: str):
+        return node.request_mypc(action)
 
     @app.post('/api/jetson/reboot', dependencies=[Depends(require_token)])
     def jetson_reboot():

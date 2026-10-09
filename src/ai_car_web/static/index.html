@@ -254,7 +254,8 @@
   button:hover { filter: brightness(1.12); }
   button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
   button.reboot:disabled { opacity: .4; }
-  .aiswitch button { padding: 3px 10px; font-size: 12px; }
+  .aiswitch { margin-left: 8px; }
+  .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
   .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
   .aiswitch button:disabled { opacity: .4; }
   button:active { background: #16284a; transform: translateY(2px); box-shadow: 0 1px 0 #0a1425, 0 2px 6px rgba(0, 0, 0, .4); }
@@ -373,19 +374,13 @@
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
       <tr>
         <td class="k" id="sd_label">2眼の距離</td>
-        <td class="v wrap"><span id="sd_val" title="-">-</span> <button id="sd_view">距離の画像</button></td>
+        <td class="v"><span id="sd_val" title="-" style="display:inline-block; max-width:calc(100% - 7em); overflow:hidden; text-overflow:ellipsis; vertical-align:middle">-</span> <button id="sd_view" style="padding:3px 10px; font-size:12px">距離の画像</button></td>
       </tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
       <tr>
         <td class="k">推論 [ms]</td>
         <td class="v" id="o_infer" title="括弧内は AI HAT+ のサーマル状態と推論レート係数">-</td>
-      </tr>
-      <tr>
-        <td class="k">キャリブレーション</td>
-        <td class="v wrap" title="市松模様をカメラに向けて押す。左右とも見つかった組だけ保存（20 組が目安）">
-          <button id="cal_capture">撮影</button> <span id="cal_result"></span>
-        </td>
       </tr>
     </table>
     <div class="note" id="cam_note"></div>
@@ -433,7 +428,9 @@
   </div>
 
   <div class="card wide">
-    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span></h2>
+    <h2><span id="jt_title">ミニコン（Jetson Orin Nano Super） — AI 担当</span> <span class="badge" id="jt_state">-</span>
+      <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）をミニコン（Jetson）でする。「ミニコンにして」でも切りかわる">ミニコン</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだはミニコン。「パソコンにして」でも切りかわる">パソコン</button></span>
+      <span id="ai_be_msg"></span></h2>
     <div class="osline" id="jt_os">-</div>
     <div class="jcols">
       <div>
@@ -474,9 +471,8 @@
         </table>
       </div>
       <div>
-        <h3>AI の部品</h3>
+        <h3>AI の部品<span id="ai_side"></span></h3>
         <table>
-          <tr><td class="k">動かす所</td><td class="v wrap"><span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）を Jetson でする">Jetson</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだは Jetson">MyPC</button></span> <span id="ai_be_msg">-</span></td></tr>
           <tr><td class="k">声→文字</td><td class="v wrap" id="jt_svc_whisper" title="whisper-server（whisper-server.service の -m のモデル）">-</td></tr>
           <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
@@ -489,17 +485,17 @@
         <table>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
-          <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
+          <tr><td class="k" id="jt_l4t_k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
           <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
-          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
-          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
-          <tr><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">Jetson の電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
+          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">ミニコンを更新</button> <span id="jt_upgrade_msg"></span></td></tr>
+          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">ミニコンを再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+          <tr id="jt_poweroff_row"><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">ミニコンの電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
         </table>
       </div>
     </div>
-    <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
+    <div class="note" id="jt_note">ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
   </div>
 
   <div class="stack">
@@ -600,13 +596,15 @@
       <div>
         <table>
           <tr><td class="k">IP アドレス</td><td class="v" id="sc_ip">-</td></tr>
-          <tr><td class="k">ネット / ローカル</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる。ネットのときは顔が緑">-</td></tr>
+          <tr><td class="k">ネット / ローカル</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる（ミニコンでもパソコンでも）。ネットのときは顔が緑">-</td></tr>
         </table>
         <h3 style="margin-top: 12px" title="画面を 1 回さわって、ランプが緑のときに言う">話しかける言葉</h3>
         <table>
           <tr><td class="k">「スタックちゃん」</td><td class="v wrap" title="ネットもローカルも。名前を呼ぶと会話モード、30 秒だまると「じゃあ、またね。」で呼びかけ待ちにもどる">呼びかけ（30 秒で終わり）</td></tr>
           <tr><td class="k">「ネットにして」</td><td class="v wrap">ネットの AI（顔が緑）</td></tr>
-          <tr><td class="k">「ローカルにして」</td><td class="v wrap">Jetson の AI（顔が白）</td></tr>
+          <tr><td class="k">「ローカルにして」</td><td class="v wrap">家の AI（顔が白）</td></tr>
+          <tr><td class="k">「ミニコンにして」</td><td class="v wrap">家の AI をミニコンで</td></tr>
+          <tr><td class="k">「パソコンにして」</td><td class="v wrap">家の AI をパソコンで</td></tr>
           <tr><td class="k">「撮影して」</td><td class="v wrap">5 秒数えて撮る</td></tr>
         </table>
       </div>
@@ -957,8 +955,11 @@ function renderIps(el, ips) {
   el.innerHTML = ips && ips.length
     ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
+const jtTarget = () => aiStack && aiStack.backend && aiStack.backend.want === 'pc'
+  ? {name: 'Ubuntu ', path: k => `/api/mypc/${k}`} : {name: 'ミニコン', path: k => `/api/jetson/${k}`};
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
+    if (btnId === 'jt_reboot_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('reboot')});
     if (!confirm(`${name}を再起動しますか？\n${when ? when + '再起動します。' : ''}戻るまで 1〜2 分かかります。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
@@ -968,7 +969,7 @@ function rebootButton(btnId, msgId, name, path, when) {
   });
 }
 rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot', '10 秒後に');
-rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
+rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'ミニコン', '/api/jetson/reboot', '');
 function poweroffButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
     if (!confirm(`${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
@@ -980,7 +981,7 @@ function poweroffButton(btnId, msgId, name, path, when) {
   });
 }
 poweroffButton('pi_poweroff_btn', 'pi_poweroff_msg', 'ラズパイ', '/api/system/poweroff', '10 秒後に');
-poweroffButton('jt_poweroff_btn', 'jt_poweroff_msg', 'Jetson ', '/api/jetson/poweroff', '');
+poweroffButton('jt_poweroff_btn', 'jt_poweroff_msg', 'ミニコン', '/api/jetson/poweroff', '');
 document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   const n = latestTelemetry.system?.updates?.updates_pending;
   if (!confirm(`ラズパイを更新しますか？（ROS 2 も含めて ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだは走らせないでください。`)) return;
@@ -991,11 +992,13 @@ document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
-  const n = latestTelemetry.jetson_host?.updates_pending;
-  if (!confirm(`Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
+  const pc = jtTarget().name === 'Ubuntu ';
+  const n = pc ? latestTelemetry.mypc_host?.ubuntu_updates_pending : latestTelemetry.jetson_host?.updates_pending;
+  if (!confirm(pc ? `Ubuntu（WSL）を更新しますか？（${n ?? '?'} 個）\nWindows Update はしません。終わるまで数分かかります。`
+    : `ミニコンを更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
   const msg = document.getElementById('jt_upgrade_msg');
   msg.textContent = '送っています…';
-  apiPost('/api/jetson/upgrade').then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+  apiPost(jtTarget().path('upgrade')).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
     msg.textContent = ok ? '頼みました' : (j.detail || '送れませんでした');
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
@@ -1440,10 +1443,41 @@ function renderBackend(r) {
   });
   const msg = document.getElementById('ai_be_msg');
   msg.innerHTML = !b ? '-'
-    : b.active === 'pc' ? badge('ok', 'MyPC で動作中')
-    : b.want === 'pc' ? badge('warn', b.error ? 'MyPC につながらないので Jetson' : 'MyPC を準備中（今は Jetson）')
-    : badge('ok', 'Jetson で動作中');
+    : b.active === 'pc' ? badge('ok', 'パソコンで動作中')
+    : b.want === 'pc' ? badge('warn', b.error ? 'パソコンにつながらないのでミニコン' : 'パソコンを準備中（今はミニコン）')
+    : badge('ok', 'ミニコンで動作中');
   msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
+  aiStack = r;
+  renderJetsonHost();
+}
+
+let aiStack = null;
+let aiJetson = {};
+let aiHosts = {jetson: null, pc: null};
+
+function renderAiRows(v, pc) {
+  const byId = id => document.getElementById(id);
+  byId('ai_side').textContent = pc ? '（パソコン）' : '（ミニコン）';
+  const svc = v.services || {};
+  const svcBadge = (key, offCls) => svc[key] == null ? '-'
+    : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
+  const engine = (key, name) => svc[key] == null ? '-'
+    : (svc[key] && name ? `<span class="nw">${esc(name)}</span> / ` : '') + svcBadge(key, 'warn');
+  byId('jt_svc_whisper').innerHTML = engine('whisper', v.stt_engine);
+  const models = v.llm_models || [];
+  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-'
+    : (svc.ollama ? `${esc(models.length ? models.join(', ') : 'なし')} / ` : '') + svcBadge('ollama', 'warn');
+  const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
+  const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
+  const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
+  byId('jt_llm_split').innerHTML = gpuPct == null ? '-'
+    : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
+  const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
+  byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
+  const jsvc = aiJetson.services || {};
+  byId('jt_svc_kokoro').innerHTML = jsvc.kokoro == null ? '-'
+    : (jsvc.kokoro && aiJetson.tts_engine ? `<span class="nw">${esc(aiJetson.tts_engine)}</span> / ` : '')
+      + (jsvc.kokoro ? badge('ok', '稼働中') : badge('warn', '停止'));
 }
 
 ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
@@ -1528,12 +1562,15 @@ function pollStackchan() {
     .finally(() => { stackBusy = false; });
 }
 
-function renderJetsonHost(j) {
+function renderJetsonHost() {
   const byId = id => document.getElementById(id);
+  const pc = !!(aiStack && aiStack.backend && aiStack.backend.want === 'pc');
+  const j = pc ? aiHosts.pc : aiHosts.jetson;
+  aiJetson = aiHosts.jetson && aiHosts.jetson.alive ? aiHosts.jetson : {};
   const alive = !!(j && j.alive);
   byId('jt_state').className = 'badge' + (alive ? ' ok' : j ? ' warn' : '');
   byId('jt_state').textContent = alive ? '接続中' : '未接続';
-  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : '/api/jetson/status 未受信';
+  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : (pc ? '/api/mypc/status 未受信（パソコンの pc-status.service）' : '/api/jetson/status 未受信');
   const v = alive ? j : {};
   const t = v.temperatures_c || {};
   setTempBar(byId('jt_cpu_temp_bar'), byId('jt_cpu_temp'), t.cpu);
@@ -1553,23 +1590,7 @@ function renderJetsonHost(j) {
   byId('jt_power').textContent = fmt(v.power_w, 1);
   byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
 
-  const svc = v.services || {};
-  const svcBadge = (key, offCls) => svc[key] == null ? '-'
-    : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
-  const engine = (key, name) => svc[key] == null ? '-'
-    : (svc[key] && name ? `<span class="nw">${esc(name)}</span> / ` : '') + svcBadge(key, 'warn');
-  byId('jt_svc_whisper').innerHTML = engine('whisper', v.stt_engine);
-  const models = v.llm_models || [];
-  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-'
-    : (svc.ollama ? `${esc(models.length ? models.join(', ') : 'なし')} / ` : '') + svcBadge('ollama', 'warn');
-  const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
-  const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
-  const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
-  byId('jt_llm_split').innerHTML = gpuPct == null ? '-'
-    : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
-  const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
-  byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
-  byId('jt_svc_kokoro').innerHTML = engine('kokoro', v.tts_engine);
+  renderAiRows(v, pc);
 
   renderUpdates(v, 'jt_');
   byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +
@@ -1589,6 +1610,20 @@ function renderJetsonHost(j) {
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
   byId('jt_poweroff_btn').disabled = !alive;
+  byId('jt_title').textContent = pc ? `パソコン${v.gpu_name ? `（${v.gpu_name}）` : ''} — AI 担当` : 'ミニコン（Jetson Orin Nano Super） — AI 担当';
+  byId('jt_l4t_k').textContent = pc ? 'GPU' : 'JetPack（L4T）';
+  if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
+  if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
+  byId('jt_upgrade_btn').textContent = pc ? 'Ubuntu を更新' : 'ミニコンを更新';
+  byId('jt_upgrade_btn').title = pc ? 'WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
+  byId('jt_reboot_btn').textContent = pc ? 'Ubuntu を再起動' : 'ミニコンを再起動';
+  byId('jt_poweroff_row').style.display = pc ? 'none' : '';
+  byId('jt_reboot').title = pc ? `Ubuntu の再起動。Windows の再起動は${v.win_reboot_required ? 'いる' : 'いらない'}` : '';
+  if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
+  if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
+  byId('jt_note').textContent = pc
+    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はいつもミニコン（Jetson）の Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
+    : 'ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
 }
 
 function setLink(id, cls, text, title) {
@@ -1671,7 +1706,8 @@ function renderAll(d) {
   renderCliff(d.cliff);
   renderSlam(d.slam);
   renderSystem(freshMsg(d.system, d.stamp, 3.0));
-  renderJetsonHost(d.jetson_host);
+  aiHosts = {jetson: d.jetson_host, pc: d.mypc_host};
+  renderJetsonHost();
   renderCamera(d.camera);
   renderStereoDepth(d.stereo_depth, obs && obs.stereo);
   renderLinks(d);
@@ -1735,19 +1771,6 @@ document.getElementById('sl_save').addEventListener('click', () => {
   apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;
   }).catch(() => {});
-});
-
-document.getElementById('cal_capture').addEventListener('click', () => {
-  const btn = document.getElementById('cal_capture');
-  const out = document.getElementById('cal_result');
-  btn.disabled = true;
-  out.textContent = '確かめ中…';
-  apiPost('/api/camera/calib_capture').then(r => r && r.json()).then(j => {
-    if (!j) { out.textContent = ''; return; }
-    out.innerHTML = j.ok
-      ? badge('ok', `保存 ${esc(j.count)} 組目`) + ' <span class="nw">20 組が目安</span>'
-      : badge('warn', esc(j.reason || '失敗')) + (j.count != null ? ` <span class="nw">保存済み ${esc(j.count)} 組</span>` : '');
-  }).catch(() => { out.textContent = ''; }).finally(() => { btn.disabled = false; });
 });
 
 const CLIFF_BADGE = {
