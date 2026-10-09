@@ -374,19 +374,13 @@
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
       <tr>
         <td class="k" id="sd_label">2眼の距離</td>
-        <td class="v wrap"><span id="sd_val" title="-">-</span> <button id="sd_view">距離の画像</button></td>
+        <td class="v"><span id="sd_val" title="-" style="display:inline-block; max-width:calc(100% - 7em); overflow:hidden; text-overflow:ellipsis; vertical-align:middle">-</span> <button id="sd_view">距離の画像</button></td>
       </tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
       <tr>
         <td class="k">推論 [ms]</td>
         <td class="v" id="o_infer" title="括弧内は AI HAT+ のサーマル状態と推論レート係数">-</td>
-      </tr>
-      <tr>
-        <td class="k">キャリブレーション</td>
-        <td class="v wrap" title="市松模様をカメラに向けて押す。左右とも見つかった組だけ保存（20 組が目安）">
-          <button id="cal_capture">撮影</button> <span id="cal_result"></span>
-        </td>
       </tr>
     </table>
     <div class="note" id="cam_note"></div>
@@ -960,7 +954,7 @@ function renderIps(el, ips) {
     ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
 const jtTarget = () => aiStack && aiStack.backend && aiStack.backend.want === 'pc'
-  ? {name: 'パソコン', path: k => `/api/mypc/${k}`} : {name: 'Jetson ', path: k => `/api/jetson/${k}`};
+  ? {name: 'Ubuntu ', path: k => `/api/mypc/${k}`} : {name: 'Jetson ', path: k => `/api/jetson/${k}`};
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
     if (btnId === 'jt_reboot_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('reboot')});
@@ -977,11 +971,13 @@ rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', 
 function poweroffButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
     if (btnId === 'jt_poweroff_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('poweroff')});
-    if (!confirm(`${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
+    if (!confirm(name === 'Ubuntu '
+      ? 'Ubuntu（WSL）を止めますか？\nWindows は動いたままです。もう一度動かすには、Windows にサインインし直すか、Ubuntu を開いてください。ダッシュボードからは動かせません。'
+      : `${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
     apiPost(path).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
-      msg.textContent = ok ? `${when}電源を切ります` : (j.detail || '送れませんでした');
+      msg.textContent = ok ? (name === 'Ubuntu ' ? '止めます' : `${when}電源を切ります`) : (j.detail || '送れませんでした');
     }).catch(() => { msg.textContent = '送れませんでした'; });
   });
 }
@@ -997,9 +993,9 @@ document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
-  const pc = jtTarget().name === 'パソコン';
+  const pc = jtTarget().name === 'Ubuntu ';
   const n = pc ? latestTelemetry.mypc_host?.ubuntu_updates_pending : latestTelemetry.jetson_host?.updates_pending;
-  if (!confirm(pc ? `パソコンの Ubuntu（WSL）を更新しますか？（${n ?? '?'} 個）\nWindows Update はしません。終わるまで数分かかります。`
+  if (!confirm(pc ? `Ubuntu（WSL）を更新しますか？（${n ?? '?'} 個）\nWindows Update はしません。終わるまで数分かかります。`
     : `Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
   const msg = document.getElementById('jt_upgrade_msg');
   msg.textContent = '送っています…';
@@ -1620,9 +1616,10 @@ function renderJetsonHost() {
   if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
   if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
   byId('jt_upgrade_btn').textContent = pc ? 'Ubuntu を更新' : 'Jetson を更新';
-  byId('jt_upgrade_btn').title = pc ? 'パソコンの WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
-  byId('jt_reboot_btn').textContent = pc ? 'パソコンを再起動' : 'Jetson を再起動';
-  byId('jt_poweroff_btn').textContent = pc ? 'パソコンの電源を切る' : 'Jetson の電源を切る';
+  byId('jt_upgrade_btn').title = pc ? 'WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
+  byId('jt_reboot_btn').textContent = pc ? 'Ubuntu を再起動' : 'Jetson を再起動';
+  byId('jt_poweroff_btn').textContent = pc ? 'Ubuntu を止める' : 'Jetson の電源を切る';
+  if (pc) byId('jt_reboot_req').title = `Ubuntu の再起動。Windows の再起動は${v.win_reboot_required ? 'いる' : 'いらない'}`;
   if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
   if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
   byId('jt_note').textContent = pc
@@ -1775,19 +1772,6 @@ document.getElementById('sl_save').addEventListener('click', () => {
   apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;
   }).catch(() => {});
-});
-
-document.getElementById('cal_capture').addEventListener('click', () => {
-  const btn = document.getElementById('cal_capture');
-  const out = document.getElementById('cal_result');
-  btn.disabled = true;
-  out.textContent = '確かめ中…';
-  apiPost('/api/camera/calib_capture').then(r => r && r.json()).then(j => {
-    if (!j) { out.textContent = ''; return; }
-    out.innerHTML = j.ok
-      ? badge('ok', `保存 ${esc(j.count)} 組目`) + ' <span class="nw">20 組が目安</span>'
-      : badge('warn', esc(j.reason || '失敗')) + (j.count != null ? ` <span class="nw">保存済み ${esc(j.count)} 組</span>` : '');
-  }).catch(() => { out.textContent = ''; }).finally(() => { btn.disabled = false; });
 });
 
 const CLIFF_BADGE = {

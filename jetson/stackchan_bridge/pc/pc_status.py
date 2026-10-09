@@ -3,7 +3,7 @@
 CPU・メモリ・ページファイル（スワップの欄）・C: ドライブ・起動時刻は Windows の値（PowerShell を 1 つ動かしたまま 1 秒ごとに読む）、
 GPU は nvidia-smi、声の AI（whisper-server・Ollama）は WSL の中を見る。標準ライブラリだけで動く（pc-status.service）。
 CPU の温度は LibreHardwareMonitor（管理者で動かしたまま）の WMI の「CPU Package」。更新の数は 1 時間ごと
-（Ubuntu は apt、Windows は Windows Update）。返事で頼まれたら、Windows の再起動・電源を切る（shutdown.exe）と、
+（Ubuntu は apt、Windows は Windows Update）。返事で頼まれたら、Ubuntu（WSL）の再起動・止める（Windows の WMI から wsl.exe）と、
 Ubuntu の更新（pc-upgrade.service）をする。Windows Update の入れ込みは管理者がいるのでしない。
 """
 
@@ -44,7 +44,8 @@ WIN_UPDATES = (
     ".Search('IsInstalled=0 and IsHidden=0').Updates);"
     "[pscustomobject]@{n=$u.Count;sec=@($u|Where-Object{$_.MsrcSeverity}).Count}|ConvertTo-Json -Compress"
 )
-SHUTDOWN = '/mnt/c/Windows/System32/shutdown.exe'
+WSL_RESTART = 'wsl.exe --terminate Ubuntu; Start-Sleep 5; wsl.exe -d Ubuntu --exec /bin/sleep infinity'
+WSL_STOP = 'wsl.exe --terminate Ubuntu'
 UPGRADE_UNIT = 'pc-upgrade.service'
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', UPGRADE_UNIT]
 IP_SKIP = ('lo', 'docker', 'br-', 'veth')
@@ -124,6 +125,13 @@ def upgrade_state():
     started = props.get('ExecMainStartTimestampMonotonic', '0') not in ('', '0')
     return {'upgrade_running': running,
             'upgrade_result': props.get('Result', '') if started and not running else ''}
+
+
+def windows_detached(command):
+    """Windows の WMI に PowerShell を起こさせる（WSL を止めても消えない）。"""
+    line = f'powershell.exe -NoProfile -WindowStyle Hidden -Command "{command}"'
+    run([POWERSHELL, '-NoProfile', '-Command',
+         f"Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{{CommandLine='{line}'}}"], timeout=30)
 
 
 def reply_flag(reply, key):
@@ -226,10 +234,11 @@ def collect(win, slow, updates):
         'services': services(),
         'stt_engine': slow['stt'],
         'ips': slow['ips'],
-        'can_reboot': slow['can_shutdown'],
-        'can_poweroff': slow['can_shutdown'],
+        'can_reboot': slow['can_wsl'],
+        'can_poweroff': slow['can_wsl'],
         'can_upgrade': slow['can_upgrade'],
-        'reboot_required': (bool(w['reboot']) or os.path.exists('/var/run/reboot-required')) if 'reboot' in w else None,
+        'reboot_required': os.path.exists('/var/run/reboot-required'),
+        'win_reboot_required': bool(w['reboot']) if 'reboot' in w else None,
     }
     if 'ubuntu_updates' in u:
         status.update(updates_pending=u['ubuntu_updates'] + u.get('win_updates_pending', 0),
@@ -268,7 +277,7 @@ def main():
     updates = Updates()
     updates.start()
     slow = {'os': wsl_os(), 'stt': stt_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
-            'can_shutdown': os.access(SHUTDOWN, os.X_OK), 'can_upgrade': can_sudo(UPGRADE_CMD)}
+            'can_wsl': os.access(POWERSHELL, os.X_OK), 'can_upgrade': can_sudo(UPGRADE_CMD)}
     if args.once:
         time.sleep(25)
         print(json.dumps(collect(win, slow, updates), ensure_ascii=False, indent=1))
@@ -298,11 +307,11 @@ def main():
                 print('ダッシュボードから更新を頼まれたので pc-upgrade.service を始めます', flush=True)
                 subprocess.run(UPGRADE_CMD, timeout=30, check=False)
             if reply_flag(reply, 'poweroff'):
-                print('ダッシュボードから電源を切ることを頼まれたので Windows の電源を切ります', flush=True)
-                subprocess.run([SHUTDOWN, '/s', '/t', '5'], timeout=30, check=False)
+                print('ダッシュボードから止めることを頼まれたので Ubuntu を止めます', flush=True)
+                windows_detached(WSL_STOP)
             elif reply_flag(reply, 'reboot'):
-                print('ダッシュボードから再起動を頼まれたので Windows を再起動します', flush=True)
-                subprocess.run([SHUTDOWN, '/r', '/t', '5'], timeout=30, check=False)
+                print('ダッシュボードから再起動を頼まれたので Ubuntu を再起動します', flush=True)
+                windows_detached(WSL_RESTART)
         except (urllib.error.URLError, OSError, subprocess.TimeoutExpired) as e:
             if not failing:
                 print(f'送れません: {e}', file=sys.stderr, flush=True)

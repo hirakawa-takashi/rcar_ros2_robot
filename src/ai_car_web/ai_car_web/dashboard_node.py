@@ -135,6 +135,7 @@ class MyPCStatusRequest(JetsonStatusRequest):
     ubuntu_security_pending: int | None = None
     win_updates_pending: int | None = None
     win_security_pending: int | None = None
+    win_reboot_required: bool | None = None
 
 
 def host_status(req: JetsonStatusRequest):
