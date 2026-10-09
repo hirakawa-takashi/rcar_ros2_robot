@@ -57,7 +57,7 @@ system:
       state: done
       items:
         - 声→文字（whisper-server、whisper.cpp small・GPU）・会話（Ollama の qwen2.5:3b）・文字→声（Kokoro・GPU）。スタックちゃんの会話に使う（jetson-stackchan.service。AI-CAR にはまだつないでいない）
-        - スタックちゃんの受け口（stackchan_bridge）。「ミニコンにして」「パソコンにして」で考える所を、「ネットにして」「ローカルにして」で会話の AI（ネットの XiaoZhi か家の AI）を切り替える。2 つは別々に選べる
+        - スタックちゃんの受け口（stackchan_bridge）。「ミニコンにして」「パソコンにして」で考える所を、「ネットにして」「ローカルにして」で会話の AI（ネットの XiaoZhi か家の AI）を切り替える。2 つは別々に選べる。パソコンのときの「ネット」は、会話はパソコンの AI のまま、天気・ニュースなど新しいことだけミニコンがネットで調べて渡す。声を選ぶと話し方・性格もその声のキャラクターになる
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
         - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 1 秒ごとに AI-CAR へ送る（jetson-status.service）
         - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
