@@ -255,7 +255,10 @@
   button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
   button.reboot:disabled { opacity: .4; }
   .aiswitch { margin-left: 8px; }
-  td.aiswitch { margin-left: 0; text-align: right; line-height: 2; }
+  td.voicebtns { white-space: normal; overflow: visible; }
+  td.voicebtns button { margin-left: 4px; padding: 3px 6px; font-size: 12px; letter-spacing: 0; }
+  td.voicebtns button.active { background: #2b5d9e; border-color: #4a90d9; }
+  td.voicebtns button:disabled { opacity: .4; }
   .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
   .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
   .aiswitch button:disabled { opacity: .4; }
@@ -479,7 +482,7 @@
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
           <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
           <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="ミニコンは Kokoro（GPU、Docker）、パソコンは VOICEVOX（CPU）。仕組みの名前と版">-</td></tr>
-          <tr id="jt_voice_row" style="display:none"><td class="k">　声</td><td class="v aiswitch" id="jt_voice_btns" title="パソコンの VOICEVOX の声。次の文から変わる（ミニコンにもどったときは Kokoro）"></td></tr>
+          <tr id="jt_voice_row" style="display:none"><td class="k">　声</td><td class="v voicebtns" id="jt_voice_btns" title="パソコンの VOICEVOX の声。次の文から変わる（ミニコンにもどったときは Kokoro）"></td></tr>
         </table>
       </div>
       <div>
@@ -1492,7 +1495,7 @@ function renderVoiceBtns(pc) {
   const key = v.choices.map(c => c.speaker).join(',');
   if (box.dataset.key !== key) {
     box.dataset.key = key;
-    box.innerHTML = v.choices.map(c => `<button data-speaker="${c.speaker}">${esc(c.name)}</button>`).join(' ');
+    box.innerHTML = v.choices.map(c => `<button data-speaker="${c.speaker}">${esc(c.name)}</button>`).join('');
     box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
       voiceBusy = true;
       apiPost(`/api/stackchan/pc_voice?speaker=${b.dataset.speaker}`).then(r => r && r.json().then(j => [r, j])).then(res => {
