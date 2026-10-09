@@ -254,7 +254,8 @@
   button:hover { filter: brightness(1.12); }
   button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
   button.reboot:disabled { opacity: .4; }
-  .aiswitch button { padding: 3px 10px; font-size: 12px; }
+  .aiswitch { margin-left: 8px; }
+  .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
   .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
   .aiswitch button:disabled { opacity: .4; }
   button:active { background: #16284a; transform: translateY(2px); box-shadow: 0 1px 0 #0a1425, 0 2px 6px rgba(0, 0, 0, .4); }
@@ -433,7 +434,9 @@
   </div>
 
   <div class="card wide">
-    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span></h2>
+    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span>
+      <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）を Jetson でする">Jetson</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだは Jetson">MyPC</button></span>
+      <span id="ai_be_msg"></span></h2>
     <div class="osline" id="jt_os">-</div>
     <div class="jcols">
       <div>
@@ -474,9 +477,8 @@
         </table>
       </div>
       <div>
-        <h3>AI の部品</h3>
+        <h3>AI の部品<span id="ai_side"></span></h3>
         <table>
-          <tr><td class="k">動かす所</td><td class="v wrap"><span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）を Jetson でする">Jetson</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだは Jetson">MyPC</button></span> <span id="ai_be_msg">-</span></td></tr>
           <tr><td class="k">声→文字</td><td class="v wrap" id="jt_svc_whisper" title="whisper-server（whisper-server.service の -m のモデル）">-</td></tr>
           <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
@@ -1444,6 +1446,39 @@ function renderBackend(r) {
     : b.want === 'pc' ? badge('warn', b.error ? 'MyPC につながらないので Jetson' : 'MyPC を準備中（今は Jetson）')
     : badge('ok', 'Jetson で動作中');
   msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
+  aiStack = r;
+  renderAiRows();
+}
+
+let aiStack = null;
+let aiJetson = {};
+
+function renderAiRows() {
+  const byId = id => document.getElementById(id);
+  const b = aiStack && aiStack.backend;
+  const pc = !!b && b.want === 'pc';
+  const v = pc ? (aiStack.pc || {}) : aiJetson;
+  byId('ai_side').textContent = pc ? '（MyPC）' : '（Jetson）';
+  const svc = v.services || {};
+  const svcBadge = (key, offCls) => svc[key] == null ? '-'
+    : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
+  const engine = (key, name) => svc[key] == null ? '-'
+    : (svc[key] && name ? `<span class="nw">${esc(name)}</span> / ` : '') + svcBadge(key, 'warn');
+  byId('jt_svc_whisper').innerHTML = engine('whisper', v.stt_engine);
+  const models = v.llm_models || [];
+  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-'
+    : (svc.ollama ? `${esc(models.length ? models.join(', ') : 'なし')} / ` : '') + svcBadge('ollama', 'warn');
+  const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
+  const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
+  const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
+  byId('jt_llm_split').innerHTML = gpuPct == null ? '-'
+    : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
+  const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
+  byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
+  const jsvc = aiJetson.services || {};
+  byId('jt_svc_kokoro').innerHTML = jsvc.kokoro == null ? '-'
+    : (jsvc.kokoro && aiJetson.tts_engine ? `<span class="nw">${esc(aiJetson.tts_engine)}</span> / ` : '')
+      + (jsvc.kokoro ? badge('ok', '稼働中') : badge('warn', '停止'));
 }
 
 ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
@@ -1553,23 +1588,8 @@ function renderJetsonHost(j) {
   byId('jt_power').textContent = fmt(v.power_w, 1);
   byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
 
-  const svc = v.services || {};
-  const svcBadge = (key, offCls) => svc[key] == null ? '-'
-    : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
-  const engine = (key, name) => svc[key] == null ? '-'
-    : (svc[key] && name ? `<span class="nw">${esc(name)}</span> / ` : '') + svcBadge(key, 'warn');
-  byId('jt_svc_whisper').innerHTML = engine('whisper', v.stt_engine);
-  const models = v.llm_models || [];
-  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-'
-    : (svc.ollama ? `${esc(models.length ? models.join(', ') : 'なし')} / ` : '') + svcBadge('ollama', 'warn');
-  const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
-  const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
-  const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
-  byId('jt_llm_split').innerHTML = gpuPct == null ? '-'
-    : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
-  const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
-  byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
-  byId('jt_svc_kokoro').innerHTML = engine('kokoro', v.tts_engine);
+  aiJetson = v;
+  renderAiRows();
 
   renderUpdates(v, 'jt_');
   byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +

@@ -6,6 +6,7 @@
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
 ### Added
+- ダッシュボード: Jetson / MyPC の切り替えボタンを Jetson のカードの 1 行目（タイトルの行）へ移し、「AI の部品」の声→文字・会話の AI・GPU / CPU・GPU / 全体を、選んだほう（MyPC ならパソコンの whisper large-v3・Ollama `/api/ps`）の中身で出す（文字→声はいつも Jetson の Kokoro）。`stackchan_bridge` の `/status` に `pc`（jetson-status と同じ形）を足す
 - ダッシュボードの Jetson のカード「AI の部品」に「動かす所」の Jetson / MyPC ボタンを追加。スタックちゃんの聞き取りと返事を、選んだほうでする（`POST /api/stackchan/backend?to=jetson|pc` → Jetson の `stackchan_bridge` `POST :8003/backend`、`backend.txt` に覚える）。MyPC を選んでもパソコンにつながらないあいだは Jetson で動き、「MyPC につながらないので Jetson」と出す
 - スタックちゃん: パソコン（WSL の Ubuntu、RTX 4080 SUPER）が動いているあいだは、聞き取りを whisper large-v3、返事を Ollama qwen2.5:14b でパソコンにさせ、止まっていれば Jetson（whisper small・qwen2.5:3b）にもどす（`stackchan_bridge` の `pc_watch`、`--pc-host`・`--pc-model`）。10 秒ごとにパソコンを見て、聞き取り・返事が 10 秒でつながらなければその回から Jetson にする。文字→声（Kokoro）は Jetson のまま。パソコン側の入れ方は `jetson/stackchan_bridge/pc/` と README。実機（10/10）: 聞き取り 0.53〜0.74 → 0.29〜0.44 秒、返事の速さ 約 16 → 約 62 文字片/秒、GPU のメモリ 16 GB のうち約 13.9 GB
 - スタックちゃん: テレビの声で起きないように、呼びかけ待ちの「スタックちゃん」を「文の頭で名前を呼んだ」ときだけにする（`stackchan_bridge.is_call`）。whisper の音の注釈（「(音楽)」「(スタックちゃん)」）がある声、名前の前が 4 文字以上の声、名前のすぐあとが「の・は・が」などの声、whisper-server の `--prompt`（「台所、段ボール箱、スタックちゃん、AI-CAR。」）をそのまま返した声は呼びかけにしない。これまでの記録（呼びかけ待ちの聞き取り 348 回、うち起きた 29 回）で試すと、テレビ・雑音で起きた 16 回は 0 回になり、「スタックちゃん」「スタックちゃん。」「スタックちゃん1+1はいくつ」の 13 回はそのまま起きる
