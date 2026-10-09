@@ -69,6 +69,7 @@ PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None, 'tts': 
 PC_WAKE = threading.Event()
 BACKENDS = ('jetson', 'pc')
 PC_VOICES = {3: 'ずんだもん', 2: '四国めたん', 8: '春日部つむぎ', 14: '冥鳴ひまり', 20: 'もち子さん'}  # VOICEVOX のノーマル
+PC_VOICE_SHORT = {2: 'めたん', 8: 'つむぎ', 14: 'ひまり', 20: 'もち子'}  # ダッシュボードのボタン
 PC_WHISPER_PORT = 8178
 PC_OLLAMA_PORT = 11434
 # パソコンの VOICEVOX ENGINE（CPU）。パソコンを使っているあいだの声。だめならミニコンの Kokoro
@@ -570,7 +571,8 @@ def show_engines():
     set_status(engines=engines(PC['args']),
                backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']},
                pc_voice={'speaker': PC['speaker'],
-                         'choices': [{'speaker': k, 'name': v} for k, v in PC_VOICES.items()]})
+                         'choices': [{'speaker': k, 'name': v, 'short': PC_VOICE_SHORT.get(k, v)}
+                                     for k, v in PC_VOICES.items()]})
 
 
 def set_pc_voice(speaker):
