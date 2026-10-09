@@ -1238,6 +1238,12 @@ def create_app(node: DashboardNode) -> FastAPI:
         return node.stackchan_json('/enroll?name=' + urllib.parse.quote(name.strip()), 'POST',
                                    STACKCHAN_PHOTO_TIMEOUT)
 
+    @app.post('/api/stackchan/backend', dependencies=[Depends(require_token)])
+    def stackchan_backend(to: str):
+        if to not in ('jetson', 'pc'):
+            raise HTTPException(status_code=400, detail='to は jetson か pc')
+        return node.stackchan_json(f'/backend?to={to}', 'POST')
+
     @app.post('/api/stackchan/stream', dependencies=[Depends(require_token)])
     def stackchan_stream(on: int = 0):
         return node.stackchan_json(f'/camera/stream?on={1 if on else 0}', 'POST')

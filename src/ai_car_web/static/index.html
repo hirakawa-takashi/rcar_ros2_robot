@@ -254,6 +254,9 @@
   button:hover { filter: brightness(1.12); }
   button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
   button.reboot:disabled { opacity: .4; }
+  .aiswitch button { padding: 3px 10px; font-size: 12px; }
+  .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
+  .aiswitch button:disabled { opacity: .4; }
   button:active { background: #16284a; transform: translateY(2px); box-shadow: 0 1px 0 #0a1425, 0 2px 6px rgba(0, 0, 0, .4); }
   button.joy-on { background: linear-gradient(180deg, #1e7a56, #145a3f); border-color: var(--ok); box-shadow: 0 3px 0 #0a1425, 0 0 12px rgba(53, 227, 154, .35); }
   button.stop { background: linear-gradient(180deg, #8a2534, #5c1622); border-color: var(--crit);
@@ -473,6 +476,7 @@
       <div>
         <h3>AI の部品</h3>
         <table>
+          <tr><td class="k">動かす所</td><td class="v wrap"><span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）を Jetson でする">Jetson</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだは Jetson">MyPC</button></span> <span id="ai_be_msg">-</span></td></tr>
           <tr><td class="k">声→文字</td><td class="v wrap" id="jt_svc_whisper" title="whisper-server（whisper-server.service の -m のモデル）">-</td></tr>
           <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
@@ -1424,7 +1428,33 @@ function stackTime(t) {
   return `${d.toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'})}（${rel}）`;
 }
 
+let backendBusy = false;
+
+function renderBackend(r) {
+  const b = r && r.backend;
+  const e = (r && r.engines) || {};
+  ['jetson', 'pc'].forEach(k => {
+    const btn = document.getElementById(`ai_be_${k}`);
+    btn.disabled = !b || backendBusy;
+    btn.classList.toggle('active', !!b && b.want === k);
+  });
+  const msg = document.getElementById('ai_be_msg');
+  msg.innerHTML = !b ? '-'
+    : b.active === 'pc' ? badge('ok', 'MyPC で動作中')
+    : b.want === 'pc' ? badge('warn', b.error ? 'MyPC につながらないので Jetson' : 'MyPC を準備中（今は Jetson）')
+    : badge('ok', 'Jetson で動作中');
+  msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
+}
+
+['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
+  backendBusy = true;
+  apiPost(`/api/stackchan/backend?to=${k}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+    if (res && !res[0].ok) alert(res[1].detail || '切り替えられませんでした');
+  }).finally(() => { backendBusy = false; pollStackchan(); });
+}));
+
 function renderStackchan(r, err) {
+  renderBackend(r);
   const st = scId('sc_state');
   const last = (r && r.last) || {};
   const dev = (r && r.device) || {};
