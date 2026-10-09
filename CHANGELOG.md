@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Jetson: 家族の顔を見分ける `jetson/face_id/`（`jetson-face.service`、8090 番に登録の画面と API）。OpenCV の YuNet で顔を見つけ、SFace の特ちょう（128 個）を登録した人と比べる（近さ 0.40 以上で同じ人、低いと「知らない人」）。CPU だけで 1 回 約 15〜40 ms。顔の画像は保存せず、名前と特ちょうだけを Jetson に残す。今は AI-CAR のカメラ（画面を開いているあいだだけ 1 秒に 2 回）で試し、あとでスタックちゃんから `POST /api/face/recognize` で受け取る。表示とあいさつ用で、AI-CAR の速度には使わない
+
 ### Known Issues
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 
