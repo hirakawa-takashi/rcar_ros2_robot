@@ -1212,14 +1212,15 @@ class Session:
             pass
 
     async def relay_cloud(self, cloud):
-        """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。"""
-        hold = None
+        """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。
+        パソコンの声（VOICEVOX）が使えるときは、ネットの声は捨てて、返事の文をパソコンの声で読む。"""
+        hold, own = None, False
         try:
             async for m in cloud:
                 if cloud is not self.cloud:
                     return
                 if isinstance(m, bytes):
-                    if self.shooting:
+                    if self.shooting or own:
                         continue
                     if hold is None:
                         await self.ws.send(m)
@@ -1244,7 +1245,9 @@ class Session:
                 if self.shooting and msg.get('type') in ('tts', 'llm'):
                     continue
                 if msg.get('type') == 'tts' and msg.get('state') == 'start':
-                    hold = []
+                    own = PC['up'] and PC['tts']
+                    hold = None if own else []
+                    self.cancel.clear()
                 elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
                     for f in hold:
                         await self.ws.send(f)
@@ -1252,6 +1255,8 @@ class Session:
                 msg['session_id'] = self.sid
                 await self.ws.send(json.dumps(msg, ensure_ascii=False))
                 self.note_cloud(msg)
+                if own and msg.get('type') == 'tts' and msg.get('state') == 'sentence_start' and msg.get('text'):
+                    await self.speak_own(msg['text'])
                 if msg.get('type') == 'stt' and is_switch(TO_LOCAL, msg.get('text')):
                     await self.to_local(cloud)
                     return
@@ -1273,6 +1278,16 @@ class Session:
                     await self.send(type='tts', state='stop')
                 except ConnectionClosed:
                     pass
+
+    async def speak_own(self, text):
+        """ネットの返事の 1 文を、こちらの声（パソコンの VOICEVOX、だめなら Kokoro）で読む。"""
+        a = self.args
+        try:
+            pcm = await asyncio.to_thread(tts_pcm, text, a.voice, a.pitch, a.peak_db)
+        except Exception as e:  # noqa: BLE001 - 声が作れなくても中継は続ける
+            log(f'声のエラー: {e}')
+            return
+        await self.play(pcm)
 
     async def cloud_tool(self, call):
         """ネットの XiaoZhi が呼んだ調べもの・AI-CAR のようすに、スタックちゃんのかわりに答える。"""
