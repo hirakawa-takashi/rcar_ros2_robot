@@ -64,6 +64,15 @@ from websockets.exceptions import ConnectionClosed
 WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
+# パソコン（WSL の Ubuntu、RTX 4080 SUPER）の whisper-server・Ollama。動いていればこちらを使い、だめなら Jetson
+PC = {'host': '', 'model': '', 'up': False}
+PC_WHISPER_PORT = 8178
+PC_OLLAMA_PORT = 11434
+PC_CHECK_EVERY = 10.0
+PC_CHECK_TIMEOUT = 2.0
+PC_WARM_TIMEOUT = 120.0
+PC_STT_TIMEOUT = 10.0
+PC_LLM_TIMEOUT = 10.0
 SYSTEM_PROMPT = ('あなたは家庭用ロボット「スタックちゃん」です。日本語で、やさしく、1〜2文で短く答えてください。'
                  '中国語や英語は使わず、日本語だけで話してください。')
 IN_RATE = 16000
@@ -346,7 +355,8 @@ def to_wav(samples, rate):
     return buf.getvalue()
 
 
-def stt(samples):
+def stt(samples, url=None):
+    """声を文字にする。url を決めなければ、パソコンが動いていればパソコン、だめなら Jetson の whisper-server。"""
     peak = float(np.max(np.abs(samples))) or 1.0
     wav = to_wav(np.clip(samples * (0.7 * 32767 / peak), -32767, 32767), IN_RATE)
     b = uuid.uuid4().hex
@@ -354,7 +364,15 @@ def stt(samples):
             'Content-Type: audio/wav\r\n\r\n').encode() + wav + \
         (f'\r\n--{b}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson'
          f'\r\n--{b}\r\nContent-Disposition: form-data; name="no_context"\r\n\r\ntrue\r\n--{b}--\r\n').encode()
-    req = urllib.request.Request(WHISPER_URL, body, {'Content-Type': f'multipart/form-data; boundary={b}'})
+    headers = {'Content-Type': f'multipart/form-data; boundary={b}'}
+    if url is None and PC['up']:
+        try:
+            req = urllib.request.Request(pc_url(PC_WHISPER_PORT, '/inference'), body, headers)
+            with urllib.request.urlopen(req, timeout=PC_STT_TIMEOUT) as r:
+                return json.loads(r.read())['text'].strip().replace('\n', '')
+        except OSError as e:
+            pc_down(e)
+    req = urllib.request.Request(url or WHISPER_URL, body, headers)
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())['text'].strip().replace('\n', '')
 
@@ -435,10 +453,26 @@ def car_status(url):
 
 
 def llm_sentences(model, messages):
+    """返事を 1 文ずつ出す。パソコンが動いていればパソコンの PC['model']、だめなら Jetson の model。"""
+    if PC['up']:
+        said = False
+        try:
+            for x in _llm_sentences(pc_url(PC_OLLAMA_PORT, '/api/chat'), PC['model'], messages, PC_LLM_TIMEOUT):
+                said = True
+                yield x
+            return
+        except OSError as e:
+            if said:
+                raise
+            pc_down(e)
+    yield from _llm_sentences(OLLAMA_URL, model, messages)
+
+
+def _llm_sentences(url, model, messages, timeout=60):
     body = json.dumps({'model': model, 'stream': True, 'keep_alive': -1, 'messages': messages,
                        'options': {'num_predict': 120}}).encode()
     buf = ''
-    with urllib.request.urlopen(urllib.request.Request(OLLAMA_URL, body), timeout=60) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, body), timeout=timeout) as r:
         for line in r:
             buf += json.loads(line).get('message', {}).get('content', '')
             while (m := SENTENCE_END.search(buf)):
@@ -478,8 +512,52 @@ def is_call(wake, text):
     return not (STT_PROMPT_WORDS.search(rest) and not re.sub(r'[\s\W]', '', STT_PROMPT_WORDS.sub('', rest)))
 
 
+def pc_url(port, path):
+    return f"http://{PC['host']}:{port}{path}"
+
+
+def engines(args):
+    if PC['up']:
+        return {'stt': 'whisper-server large-v3（パソコン）', 'llm': f"{PC['model']}（パソコン）",
+                'tts': f'Kokoro {args.voice}'}
+    return {'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'}
+
+
+def pc_down(e):
+    if PC['up']:
+        PC['up'] = False
+        log(f'パソコンにつながらないので Jetson に戻します（{e}）')
+        set_status(engines=engines(PC['args']))
+
+
+def pc_check():
+    """パソコンの whisper-server が返事をし、Ollama に PC['model'] があれば読み込ませる（読み込み済みならすぐ返る）。だめなら OSError。"""
+    urllib.request.urlopen(pc_url(PC_WHISPER_PORT, '/'), timeout=PC_CHECK_TIMEOUT).read()
+    with urllib.request.urlopen(pc_url(PC_OLLAMA_PORT, '/api/tags'), timeout=PC_CHECK_TIMEOUT) as r:
+        names = {m.get('name') for m in json.loads(r.read()).get('models', [])}
+    if PC['model'] not in names:
+        raise OSError(f"Ollama に {PC['model']} がない")
+    body = json.dumps({'model': PC['model'], 'keep_alive': -1}).encode()
+    urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
+                           timeout=PC_WARM_TIMEOUT).read()
+
+
+async def pc_watch(args):
+    """PC_CHECK_EVERY 秒ごとにパソコンを見て、聞き取りと返事の行き先を切り替える。"""
+    while True:
+        try:
+            await asyncio.to_thread(pc_check)
+            if not PC['up']:
+                PC['up'] = True
+                log(f"パソコン（{PC['host']}）を使います: whisper large-v3・{PC['model']}")
+                set_status(engines=engines(args))
+        except (OSError, ValueError) as e:
+            pc_down(e)
+        await asyncio.sleep(PC_CHECK_EVERY)
+
+
 async def stt_watchdog(voice, wake_words):
-    """whisper-server が決まった言葉しか返さなくなったら、プロセスを止める（Restart=on-failure で起動し直る）。"""
+    """Jetson の whisper-server が決まった言葉しか返さなくなったら、プロセスを止める（Restart=on-failure で起動し直る）。"""
     wake = re.compile(wake_words or WAKE_WORDS, re.I)
     probes = {}
     while True:
@@ -489,7 +567,7 @@ async def stt_watchdog(voice, wake_words):
                 if said not in probes:
                     pcm = await asyncio.to_thread(tts_pcm, said, voice, 0, -3.0, IN_RATE)
                     probes[said] = np.frombuffer(pcm, np.int16).astype(np.float32)
-                text = await asyncio.to_thread(stt, probes[said])
+                text = await asyncio.to_thread(stt, probes[said], WHISPER_URL)
             except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as e:
                 log(f'whisper の見回り: 試せませんでした（{e}）')
                 break
@@ -1450,6 +1528,9 @@ async def main():
     p.add_argument('--ws-port', type=int, default=8000)
     p.add_argument('--ota-port', type=int, default=8003)
     p.add_argument('--model', default='qwen2.5:3b')
+    p.add_argument('--pc-host', default=os.environ.get('AI_PC_HOST', '100.86.172.21'),
+                   help='聞き取りと返事に使うパソコン（whisper-server :8178・Ollama :11434）。空でパソコンを使わない')
+    p.add_argument('--pc-model', default='qwen2.5:14b', help='パソコンの Ollama で返事に使う会話の AI')
     p.add_argument('--voice', default='jf_alpha')
     p.add_argument('--pitch', type=int, default=300, help='声の高さを上げる量（セント、100 で半音。0 でそのまま）')
     p.add_argument('--peak-db', type=float, default=-1.0,
@@ -1478,16 +1559,20 @@ async def main():
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     WATCH['interval'] = max(0.0, args.watch_interval)
+    PC.update(host=args.pc_host, model=args.pc_model, args=args)
     load_device_ota()
     set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0,
-               engines={'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'})
+               engines=engines(args))
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
     watchdog = asyncio.create_task(stt_watchdog(args.voice, args.wake_words))
+    pc = asyncio.create_task(pc_watch(args)) if args.pc_host else None
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
         log(f'待ち受け: OTA http://{args.host}:{args.ota_port}/xiaozhi/ota/  WebSocket :{args.ws_port}/xiaozhi/v1/')
         await asyncio.Future()
     watchdog.cancel()
+    if pc:
+        pc.cancel()
 
 
 if __name__ == '__main__':

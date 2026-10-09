@@ -36,6 +36,43 @@ sudo systemctl enable --now jetson-stackchan.service
 journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒数が出る
 ```
 
+## パソコンで聞き取りと返事（WSL の Ubuntu、RTX 4080 SUPER）
+
+パソコンが動いているあいだは、聞き取り（whisper large-v3）と返事（Ollama qwen2.5:14b）をパソコンでする。
+文字→声（Kokoro）・呼びかけの見分け・カメラ・見守りは Jetson のまま。
+
+- bridge が 10 秒ごとに `http://<パソコン>:8178/` と `:11434/api/tags` を見て（2 秒で時間切れ）、どちらも返事をして
+  `--pc-model` があれば、モデルを読み込ませてからパソコンを使う。聞き取り（10 秒）・返事（10 秒）でつながらなければ、
+  その回から Jetson（whisper small・qwen2.5:3b）にもどす。返事の途中で切れたときは、その返事はやめる
+- 行き先は `--pc-host`（既定は環境変数 `AI_PC_HOST`、なければ Tailscale の taka3-wsl `100.86.172.21`）。空でパソコンを使わない
+- 使っているほうは `GET :8003/status` の `engines` に出る（「（パソコン）」がつく）
+- whisper の見回り（5 分ごと）は Jetson の whisper-server だけを試す
+- 2026/10/10 の実機（Jetson から同じ声 4 つ）: 聞き取り Jetson 0.53〜0.74 秒 → パソコン 0.29〜0.44 秒（Tailscale の中継込み）。
+  返事は Jetson qwen2.5:3b 15〜17 文字片/秒 → パソコン qwen2.5:14b 約 62 文字片/秒（読み込みは最初の 1 回 約 31 秒）。
+  GPU のメモリは whisper large-v3 と 14b で 16 GB のうち約 13.9 GB
+
+パソコンに入れる（WSL 3.0.1 の Ubuntu 26.04、ユーザー `super`、Tailscale と openssh-server 入り）:
+
+```bash
+sudo apt install -y build-essential cmake git
+# CUDA（WSL 用。Windows の NVIDIA ドライバーはそのまま）
+curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb && sudo apt update && sudo apt install -y cuda-toolkit-13-3
+mkdir -p ~/ai && cd ~/ai && git clone --depth 1 https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
+curl -fL -o models/ggml-large-v3.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin
+PATH=/usr/local/cuda/bin:$PATH cmake -B build -DGGML_CUDA=1 -DCMAKE_CUDA_ARCHITECTURES=89 -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j 24 --target whisper-server
+sudo install -m 644 pc/whisper-server.service /etc/systemd/system/   # このフォルダの pc/
+curl -fsSL https://ollama.com/install.sh | sh
+sudo install -D -m 644 pc/ollama-override.conf /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload && sudo systemctl enable --now whisper-server && sudo systemctl restart ollama
+ollama pull qwen2.5:14b
+```
+
+WSL は PowerShell の画面を閉じるとしばらくして止まるので、`pc/wsl-ubuntu-keepalive.vbs` を Windows の
+スタートアップ（`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`）に置き、ログインしたら
+`wsl.exe -d Ubuntu --exec /bin/sleep infinity` を見えないまま動かしておく（消せば元にもどる）。
+
 ## スタックちゃんのファームウェア
 
 公式 https://github.com/m5stack/StackChan の `firmware`（ESP-IDF v5.5.4）に、ここの 4 つを足してビルドします。
