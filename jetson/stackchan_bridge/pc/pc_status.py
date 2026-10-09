@@ -2,7 +2,8 @@
 
 CPU・メモリ・ページファイル（スワップの欄）・C: ドライブ・起動時刻は Windows の値（PowerShell を 1 つ動かしたまま 1 秒ごとに読む）、
 GPU は nvidia-smi、声の AI（whisper-server・Ollama）は WSL の中を見る。標準ライブラリだけで動く（pc-status.service）。
-CPU の温度は LibreHardwareMonitor（管理者で動かしたまま）の WMI の「CPU Package」。更新の数は 1 時間ごと
+CPU の温度は LibreHardwareMonitor（管理者で動かしたまま）の「CPU Package」。0.9.6 は WMI がないので、その Web サーバー
+（http://localhost:8085/data.json）から読み、古い版のために WMI も見る。更新の数は 1 時間ごと
 （Ubuntu は apt、Windows は Windows Update）。返事で頼まれたら、Ubuntu（WSL）の再起動・止める（Windows の WMI から wsl.exe）と、
 Ubuntu の更新（pc-upgrade.service）をする。Windows Update の入れ込みは管理者がいるのでしない。
 """
@@ -28,9 +29,12 @@ WIN_LOOP = (
     "$o=Get-CimInstance Win32_OperatingSystem;"
     "$d=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\";"
     "$p=@(Get-CimInstance Win32_PageFileUsage|Measure-Object -Property AllocatedBaseSize,CurrentUsage -Sum);"
-    "$t=$null;foreach($ns in 'root/LibreHardwareMonitor','root/OpenHardwareMonitor'){try{"
+    "$t=$null;try{$q=@(Invoke-RestMethod http://localhost:8085/data.json -UseBasicParsing -TimeoutSec 2);"
+    "while($q.Count -and -not $t){$n,$q=$q;if($n.Type -eq 'Temperature' -and $n.Text -eq 'CPU Package'){"
+    "$t=[double]($n.Value -replace '[^0-9.].*$','')};if($n.Children){$q+=@($n.Children)}}}catch{};"
+    "if(-not $t){foreach($ns in 'root/LibreHardwareMonitor','root/OpenHardwareMonitor'){try{"
     "$t=(Get-CimInstance -Namespace $ns -ClassName Sensor -Filter \"SensorType='Temperature' AND Name='CPU Package'\" "
-    "-ErrorAction Stop|Select-Object -First 1).Value;if($t){break}}catch{}};"
+    "-ErrorAction Stop|Select-Object -First 1).Value;if($t){break}}catch{}}};"
     "$k='HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion';"
     "$rb=(Test-Path \"$k\\WindowsUpdate\\Auto Update\\RebootRequired\") -or "
     "(Test-Path \"$k\\Component Based Servicing\\RebootPending\");"
@@ -175,7 +179,16 @@ def services():
     active = {k: run(['systemctl', 'is-active', unit]).strip() == 'active'
               for k, unit in (('whisper', 'whisper-server'), ('ollama', 'ollama'))}
     active['whisper'] = active['whisper'] and http_ok('http://127.0.0.1:8178/')[0]
+    active['voicevox'] = http_ok('http://127.0.0.1:50021/version')[0]
     return active
+
+
+def tts_engine():
+    ok, body = http_ok('http://127.0.0.1:50021/version')
+    try:
+        return f'VOICEVOX {json.loads(body)}（CPU）' if ok else ''
+    except ValueError:
+        return ''
 
 
 def stt_engine():
@@ -232,6 +245,7 @@ def collect(win, slow, updates):
         'power_w': g.get('power'),
         'services': services(),
         'stt_engine': slow['stt'],
+        'tts_engine': slow['tts'],
         'ips': slow['ips'],
         'can_reboot': slow['can_wsl'],
         'can_upgrade': slow['can_upgrade'],
@@ -274,7 +288,7 @@ def main():
     win.start()
     updates = Updates()
     updates.start()
-    slow = {'os': wsl_os(), 'stt': stt_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
+    slow = {'os': wsl_os(), 'stt': stt_engine(), 'tts': tts_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
             'can_wsl': os.access(POWERSHELL, os.X_OK), 'can_upgrade': can_sudo(UPGRADE_CMD)}
     if args.once:
         time.sleep(25)
@@ -286,7 +300,7 @@ def main():
     while True:
         time.sleep(args.interval)
         if time.monotonic() - slow['stamp'] > 60:
-            slow.update(stt=stt_engine(), ips=ip_addresses(), can_upgrade=can_sudo(UPGRADE_CMD),
+            slow.update(stt=stt_engine(), tts=tts_engine(), ips=ip_addresses(), can_upgrade=can_sudo(UPGRADE_CMD),
                         stamp=time.monotonic())
         status = collect(win, slow, updates)
         if upgrading and not status['upgrade_running']:

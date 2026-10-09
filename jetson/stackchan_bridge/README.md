@@ -50,6 +50,7 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 - 声でも切りかえる（ローカルのときの会話モードで）: 「ミニコン / ジェットソン」→ `jetson`、「パソコン / PC」のあとに「にして」など（ネット / ローカルと同じ言い方）。ネット / ローカルとは別で、どちらの組み合わせでも使える。ネットのあいだの言葉は XiaoZhi が聞くので、先に「ローカルにして」
 - 切り替え: `POST :8003/backend?to=jetson|pc`（ダッシュボードの Jetson のカードの 1 行目のミニコン / パソコンボタンが `POST /api/stackchan/backend` 経由で呼ぶ）。`backend.txt` に書いて、起動し直してもそのまま。`jetson` ならパソコンを見ない。`pc` にするとすぐパソコンを見て、動いていれば使う（つながらないあいだは Jetson）
 - whisper の見回り（5 分ごと）は Jetson の whisper-server だけを試す
+- 文字→声: パソコンを使っているあいだは、パソコンの VOICEVOX ENGINE（CPU、`:50021`）の `--pc-speaker`（既定 3 = ずんだもん ノーマル）。高さはそのまま（Kokoro だけ `--pitch` で上げる）。パソコンを見るときに `POST /initialize_speaker` で読み込ませ、だめならその回から Kokoro。2026/10 の実機（ミニコンから）: 「こんにちは。」0.27 秒、26 文字の文 0.75 秒。家の中だけで使う（外に出すときは「VOICEVOX:ずんだもん」と書く決まり）
 - 2026/10/10 の実機（Jetson から同じ声 4 つ）: 聞き取り Jetson 0.53〜0.74 秒 → パソコン 0.29〜0.44 秒（Tailscale の中継込み）。
   返事は Jetson qwen2.5:3b 15〜17 文字片/秒 → パソコン qwen2.5:14b 約 62 文字片/秒（読み込みは最初の 1 回 約 31 秒）。
   GPU のメモリは whisper large-v3 と 14b で 16 GB のうち約 13.9 GB
@@ -70,6 +71,10 @@ curl -fsSL https://ollama.com/install.sh | sh
 sudo install -D -m 644 pc/ollama-override.conf /etc/systemd/system/ollama.service.d/override.conf
 sudo systemctl daemon-reload && sudo systemctl enable --now whisper-server && sudo systemctl restart ollama
 ollama pull qwen2.5:14b
+# VOICEVOX ENGINE 0.25.2（linux-cpu-x64）を https://github.com/VOICEVOX/voicevox_engine/releases から ~/ai/voicevox に展開
+sudo install -m 644 pc/voicevox.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now voicevox
+# CPU 温度: Windows に LibreHardwareMonitor 0.9.6 を置き、管理者で 1 回起動して Options の「Run On Windows Startup」「Start Minimized」「Remote Web Server → Run」を入れる
+#   （設定ファイルでは runWebServerMenuItem=true。pc_status.py は Windows の PowerShell から http://localhost:8085/data.json の CPU Package を読む）
 ```
 
 WSL は PowerShell の画面を閉じるとしばらくして止まるので、`pc/wsl-ubuntu-keepalive.vbs` を Windows の

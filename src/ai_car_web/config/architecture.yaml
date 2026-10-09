@@ -34,11 +34,12 @@ overview:
 
 system:
   summary:
-    - AI-CAR（Raspberry Pi 5）・Jetson Orin Nano Super・M5 スタックちゃんの 3 台を、家の Wi-Fi と Tailscale でつなぐ。クラウドを使わず、家の中で動かす
+    - AI-CAR（Raspberry Pi 5）・ミニコン（Jetson Orin Nano Super）・パソコン（Windows 11 の WSL Ubuntu、RTX 4080 SUPER）・M5 スタックちゃんを、家の Wi-Fi と Tailscale でつなぐ。ローカルのときはクラウドを使わず、家の中で動かす
     - AI-CAR は走る・測る・止まるを受け持つ。安全の判定（LiDAR・AI HAT+ の YOLO・段差）は AI-CAR の中だけで行い、ほかの機械が止まっても安全に止まる
-    - Jetson は重い AI（声→文字・会話・文字→声、言葉で物を探す NanoOWL）を受け持つ。結果は表示と命令だけで、AI-CAR の安全の判定は変えない
-    - M5 スタックちゃんは顔・耳・口（画面・マイク・スピーカー・首振り）。考えるのは Jetson で行う（jetson-stackchan.service）
-  network: 家の Wi-Fi と Tailscale（AI-CAR 100.70.35.31、Jetson 100.111.231.54）。AI-CAR のダッシュボードは 8080 番
+    - ミニコンは重い AI（声→文字・会話・文字→声、言葉で物を探す NanoOWL）を受け持つ。結果は表示と命令だけで、AI-CAR の安全の判定は変えない
+    - パソコンを選ぶと（ダッシュボードのボタンか「パソコンにして」）、声→文字・会話・文字→声をもっと大きい AI でパソコンがする。パソコンが止まっていれば、自動でミニコンにもどる
+    - M5 スタックちゃんは顔・耳・口（画面・マイク・スピーカー・首振り）。つなぐ先はミニコン（jetson-stackchan.service）で、考えるのはミニコンかパソコン
+  network: 家の Wi-Fi と Tailscale（AI-CAR 100.70.35.31、ミニコン 100.111.231.54、パソコン 100.86.172.21）。AI-CAR のダッシュボードは 8080 番
   devices:
     - id: ai_car
       label: AI-CAR
@@ -51,11 +52,12 @@ system:
         - 運転モード・自律走行・安全ガード
         - ダッシュボード（8080 番）
     - id: jetson
-      label: Jetson Orin Nano Super
+      label: ミニコン（Jetson Orin Nano Super）
       sub: JetPack 6.2 / メモリ 8GB / 25W
       state: done
       items:
         - 声→文字（whisper-server、whisper.cpp small・GPU）・会話（Ollama の qwen2.5:3b）・文字→声（Kokoro・GPU）。スタックちゃんの会話に使う（jetson-stackchan.service。AI-CAR にはまだつないでいない）
+        - スタックちゃんの受け口（stackchan_bridge）。「ミニコンにして」「パソコンにして」で考える所を、「ネットにして」「ローカルにして」で会話の AI（ネットの XiaoZhi か家の AI）を切り替える。2 つは別々に選べる
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
         - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 1 秒ごとに AI-CAR へ送る（jetson-status.service）
         - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
@@ -68,6 +70,13 @@ system:
         - 会話の AI Agent は Jetson の受け口（OTA 8003・WebSocket 8000）につなぐ。自動更新はしない
         - ダッシュボードのスタックちゃんのカードに、今の様子・最後の会話・IP アドレスを出す
         - "カメラ（GC0308）: 「撮影して」で 5 秒数えて撮り、320×240 の JPEG をダッシュボードに出す（見守りでも 2 秒に 1 枚もらって顔を見る）"
+    - id: pc
+      label: パソコン
+      sub: WSL Ubuntu 26.04 / RTX 4080 SUPER 16GB
+      state: done
+      items:
+        - 声→文字 whisper large-v3・会話 qwen2.5:14b（GPU）・文字→声 VOICEVOX ずんだもん（CPU）
+        - 温度・負荷率・メモリ・更新を 1 秒ごとに AI-CAR へ送る（pc-status.service）
     - {id: browser, label: ブラウザ（PC・スマホ）, sub: ダッシュボード・手動操作, state: done}
     - {id: person, label: 家の人, sub: 声で話しかける, state: planned}
   links:
@@ -77,6 +86,8 @@ system:
     - {from: stackchan, to: jetson, short: 声, desc: マイクの声（Opus 16 kHz）。カメラの映像はダッシュボードを見ている間だけ（HTTP 8003 /camera/frame）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: stackchan, short: 返事, desc: 返事の声（Opus 24 kHz）と顔の表情（考え中・笑顔）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（5 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
+    - {from: jetson, to: pc, short: 聞き取り・返事・声, desc: パソコンを選んでいて、動いているときだけ。マイクの声を文字にし（whisper large-v3）、返事を作り（qwen2.5:14b）、返事の声を作る（VOICEVOX ずんだもん。ネットの会話のときも、ネットの声のかわりに読む）。10 秒ごとに見て、だめならミニコン, via: 'HTTP 8178・11434・50021（Tailscale）', state: done, both: true}
+    - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・AI の部品・更新の状況。パソコンを選んでいるとき、ダッシュボードのミニコンのカードをパソコンの値で出す, via: 'POST /api/mypc/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
     - {from: person, to: stackchan, short: 話す, desc: 「スタックちゃん」と呼んで会話モードにし、声で話しかけて返事を聞く（30 秒だまると「じゃあ、またね。」）, via: 声, state: done, both: true}
 

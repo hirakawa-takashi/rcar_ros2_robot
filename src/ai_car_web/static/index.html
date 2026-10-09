@@ -255,6 +255,11 @@
   button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
   button.reboot:disabled { opacity: .4; }
   .aiswitch { margin-left: 8px; }
+  .voicebtns { display: flex; justify-content: space-between; align-items: center; }
+  .voicebtns .k { color: #9fb0c7; font-family: system-ui, sans-serif; font-size: 14px; }
+  .voicebtns button { margin-left: 3px; padding: 3px 5px; font-size: 12px; letter-spacing: 0; }
+  .voicebtns button.active { background: #2b5d9e; border-color: #4a90d9; }
+  .voicebtns button:disabled { opacity: .4; }
   .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
   .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
   .aiswitch button:disabled { opacity: .4; }
@@ -428,7 +433,7 @@
   </div>
 
   <div class="card wide">
-    <h2><span id="jt_title">ミニコン（Jetson Orin Nano Super） — AI 担当</span> <span class="badge" id="jt_state">-</span>
+    <h2><span id="jt_title">ミニコン（Orin Nano Super） — AI 担当</span> <span class="badge" id="jt_state">-</span>
       <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）をミニコン（Jetson）でする。「ミニコンにして」でも切りかわる">ミニコン</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだはミニコン。「パソコンにして」でも切りかわる">パソコン</button></span>
       <span id="ai_be_msg"></span></h2>
     <div class="osline" id="jt_os">-</div>
@@ -477,7 +482,8 @@
           <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
           <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
-          <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="Kokoro（GPU、Docker。API の題名と版）">-</td></tr>
+          <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="ミニコンは Kokoro（GPU、Docker）、パソコンは VOICEVOX（CPU）。仕組みの名前と版">-</td></tr>
+          <tr id="jt_voice_row" style="display:none"><td class="v" colspan="2"><div class="voicebtns"><span class="k">　声</span><span id="jt_voice_btns" title="パソコンの VOICEVOX の声。次の文から変わる（ミニコンにもどったときは Kokoro）"></span></div></td></tr>
         </table>
       </div>
       <div>
@@ -1442,10 +1448,8 @@ function renderBackend(r) {
     btn.classList.toggle('active', !!b && b.want === k);
   });
   const msg = document.getElementById('ai_be_msg');
-  msg.innerHTML = !b ? '-'
-    : b.active === 'pc' ? badge('ok', 'パソコンで動作中')
-    : b.want === 'pc' ? badge('warn', b.error ? 'パソコンにつながらないのでミニコン' : 'パソコンを準備中（今はミニコン）')
-    : badge('ok', 'ミニコンで動作中');
+  msg.innerHTML = b && b.want === 'pc' && b.active !== 'pc'
+    ? badge('warn', b.error ? 'パソコンにつながらないのでミニコン' : 'パソコンを準備中（今はミニコン）') : '';
   msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
   aiStack = r;
   renderJetsonHost();
@@ -1474,10 +1478,36 @@ function renderAiRows(v, pc) {
     : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
   const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
   byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
-  const jsvc = aiJetson.services || {};
-  byId('jt_svc_kokoro').innerHTML = jsvc.kokoro == null ? '-'
-    : (jsvc.kokoro && aiJetson.tts_engine ? `<span class="nw">${esc(aiJetson.tts_engine)}</span> / ` : '')
-      + (jsvc.kokoro ? badge('ok', '稼働中') : badge('warn', '停止'));
+  const tts = pc ? {on: svc.voicevox, name: v.tts_engine}
+    : {on: (aiJetson.services || {}).kokoro, name: aiJetson.tts_engine};
+  byId('jt_svc_kokoro').innerHTML = tts.on == null ? '-'
+    : (tts.on && tts.name ? `<span class="nw">${esc(tts.name)}</span> / ` : '')
+      + (tts.on ? badge('ok', '稼働中') : badge('warn', '停止'));
+  renderVoiceBtns(pc);
+}
+
+let voiceBusy = false;
+
+function renderVoiceBtns(pc) {
+  const v = aiStack && aiStack.pc_voice;
+  const row = document.getElementById('jt_voice_row'), box = document.getElementById('jt_voice_btns');
+  row.style.display = pc && v ? '' : 'none';
+  if (!pc || !v) return;
+  const key = v.choices.map(c => c.speaker).join(',');
+  if (box.dataset.key !== key) {
+    box.dataset.key = key;
+    box.innerHTML = v.choices.map(c => `<button data-speaker="${c.speaker}" title="${esc(c.name)}">${esc(c.short || c.name)}</button>`).join('');
+    box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      voiceBusy = true;
+      apiPost(`/api/stackchan/pc_voice?speaker=${b.dataset.speaker}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+        if (res && !res[0].ok) alert(res[1].detail || '声を変えられませんでした');
+      }).finally(() => { voiceBusy = false; pollStackchan(); });
+    }));
+  }
+  box.querySelectorAll('button').forEach(b => {
+    b.disabled = voiceBusy;
+    b.classList.toggle('active', Number(b.dataset.speaker) === v.speaker);
+  });
 }
 
 ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
@@ -1610,7 +1640,7 @@ function renderJetsonHost() {
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
   byId('jt_poweroff_btn').disabled = !alive;
-  byId('jt_title').textContent = pc ? `パソコン${v.gpu_name ? `（${v.gpu_name}）` : ''} — AI 担当` : 'ミニコン（Jetson Orin Nano Super） — AI 担当';
+  byId('jt_title').textContent = pc ? `パソコン${v.gpu_name ? `（${v.gpu_name}）` : ''} — AI 担当` : 'ミニコン（Orin Nano Super） — AI 担当';
   byId('jt_l4t_k').textContent = pc ? 'GPU' : 'JetPack（L4T）';
   if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
   if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
@@ -1622,7 +1652,7 @@ function renderJetsonHost() {
   if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
   if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
   byId('jt_note').textContent = pc
-    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はいつもミニコン（Jetson）の Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
+    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はパソコンの VOICEVOX（ずんだもん）、止まっているときはミニコンの Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
     : 'ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
 }
 
@@ -2281,7 +2311,7 @@ function renderSystemDiagram(a) {
   const bigY = bigTop + big.h / 2;
   const layout = {
     ai_car: [190, bigY, big], jetson: [600, bigY, big], stackchan: [1010, bigY, big],
-    browser: [190, 70, small], person: [1010, 70, small],
+    browser: [190, 70, small], pc: [600, 70, small], person: [1010, 70, small],
   };
   const doneColor = '#35d6ff', planColor = '#f0b429';
   const byId = Object.fromEntries(devices.map(d => [d.id, d]));

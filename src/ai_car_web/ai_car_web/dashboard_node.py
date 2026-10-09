@@ -1312,6 +1312,10 @@ def create_app(node: DashboardNode) -> FastAPI:
             raise HTTPException(status_code=400, detail='to は jetson か pc')
         return node.stackchan_json(f'/backend?to={to}', 'POST')
 
+    @app.post('/api/stackchan/pc_voice', dependencies=[Depends(require_token)])
+    def stackchan_pc_voice(speaker: int):
+        return node.stackchan_json(f'/pc_voice?speaker={speaker}', 'POST')
+
     @app.post('/api/stackchan/stream', dependencies=[Depends(require_token)])
     def stackchan_stream(on: int = 0):
         return node.stackchan_json(f'/camera/stream?on={1 if on else 0}', 'POST')

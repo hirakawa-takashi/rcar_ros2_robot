@@ -65,11 +65,16 @@ WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
 # パソコン（WSL の Ubuntu、RTX 4080 SUPER）の whisper-server・Ollama。want が pc で動いていればこちらを使い、だめなら Jetson
-PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None}
+PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None, 'tts': False, 'speaker': 3}
 PC_WAKE = threading.Event()
 BACKENDS = ('jetson', 'pc')
+PC_VOICES = {3: 'ずんだもん', 2: '四国めたん', 8: '春日部つむぎ', 14: '冥鳴ひまり', 20: 'もち子さん'}  # VOICEVOX のノーマル
+PC_VOICE_SHORT = {2: 'めたん', 8: 'つむぎ', 14: 'ひまり', 20: 'もち子'}  # ダッシュボードのボタン
 PC_WHISPER_PORT = 8178
 PC_OLLAMA_PORT = 11434
+# パソコンの VOICEVOX ENGINE（CPU）。パソコンを使っているあいだの声。だめならミニコンの Kokoro
+PC_VOICEVOX_PORT = 50021
+PC_TTS_TIMEOUT = 10.0
 PC_CHECK_EVERY = 10.0
 PC_CHECK_TIMEOUT = 2.0
 PC_WARM_TIMEOUT = 120.0
@@ -156,6 +161,7 @@ BRIGHT_EVERY = 60.0
 BRIGHT_MIN_FRAMES = 5
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend.txt')
+PC_VOICE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pc_voice.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
 TO_NET = re.compile(r'(?:インターネット|ネット|クラウド|net)' + _SWITCH, re.I)
@@ -169,7 +175,7 @@ STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': N
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None, 'backend': None}
+          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc_voice': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
@@ -247,6 +253,15 @@ def load_backend():
             return 'jetson' if f.read().strip() == 'jetson' else 'pc'
     except OSError:
         return 'pc'
+
+
+def load_pc_voice(default):
+    try:
+        with open(PC_VOICE_FILE) as f:
+            speaker = int(f.read().strip())
+    except (OSError, ValueError):
+        return default
+    return speaker if speaker in PC_VOICES else default
 
 
 def load_device_ota():
@@ -497,15 +512,37 @@ def _llm_sentences(url, model, messages, timeout=60):
         yield buf.strip()
 
 
-def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE):
-    """文字を rate（ふつうは 24 kHz）・16 bit・1 ch の PCM（bytes）にする。いちばん大きい所を peak_db（dBFS）にそろえる。"""
-    body = json.dumps({'model': 'kokoro', 'input': text, 'voice': voice, 'response_format': 'wav',
-                       'lang_code': 'j', 'speed': 1.0}).encode()
-    req = urllib.request.Request(KOKORO_URL, body, {'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        wav = r.read()
+def voicevox_wav(text, speaker):
+    """パソコンの VOICEVOX で文字を声（wav）にする。"""
+    url = pc_url(PC_VOICEVOX_PORT, '/audio_query?' + urllib.parse.urlencode({'text': text, 'speaker': speaker}))
+    with urllib.request.urlopen(urllib.request.Request(url, b'', method='POST'), timeout=PC_TTS_TIMEOUT) as r:
+        query = r.read()
+    req = urllib.request.Request(pc_url(PC_VOICEVOX_PORT, f'/synthesis?speaker={speaker}'), query,
+                                 {'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=PC_TTS_TIMEOUT) as r:
+        return r.read()
+
+
+def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE, use_pc=True):
+    """文字を rate（ふつうは 24 kHz）・16 bit・1 ch の PCM（bytes）にする。いちばん大きい所を peak_db（dBFS）にそろえる。
+    パソコンを使っていて VOICEVOX が動いていれば VOICEVOX（高さはそのまま）、ほかは Kokoro（pitch だけ上げる）。"""
+    wav = None
+    if use_pc and PC['up'] and PC['tts']:
+        try:
+            wav = voicevox_wav(text, PC['speaker'])
+        except (OSError, ValueError) as e:
+            PC['tts'] = False
+            log(f'パソコンの声が作れないので Kokoro にします（{e}）')
+            show_engines()
+    pc_voice = wav is not None
+    if wav is None:
+        body = json.dumps({'model': 'kokoro', 'input': text, 'voice': voice, 'response_format': 'wav',
+                           'lang_code': 'j', 'speed': 1.0}).encode()
+        req = urllib.request.Request(KOKORO_URL, body, {'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            wav = r.read()
     sox = ['sox', '-t', 'wav', '-', '-t', 'wav', '-r', str(rate), '-c', '1', '-b', '16', '-']
-    if pitch:
+    if pitch and not pc_voice:
         sox += ['pitch', str(pitch)]
     sox += ['norm', str(peak_db)]
     wav = subprocess.run(sox, input=wav, capture_output=True, check=True).stdout
@@ -532,7 +569,20 @@ def pc_url(port, path):
 
 def show_engines():
     set_status(engines=engines(PC['args']),
-               backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']})
+               backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']},
+               pc_voice={'speaker': PC['speaker'],
+                         'choices': [{'speaker': k, 'name': v, 'short': PC_VOICE_SHORT.get(k, v)}
+                                     for k, v in PC_VOICES.items()]})
+
+
+def set_pc_voice(speaker):
+    """ダッシュボードの声の選択（パソコンの VOICEVOX）。次の文から変わる。"""
+    PC['speaker'] = speaker
+    with open(PC_VOICE_FILE, 'w') as f:
+        f.write(f'{speaker}\n')
+    log(f'パソコンの声: {PC_VOICES[speaker]}（{speaker}）')
+    PC_WAKE.set()
+    show_engines()
 
 
 def set_backend(want):
@@ -562,8 +612,8 @@ def switch_backend(want):
 
 def engines(args):
     if PC['up']:
-        return {'stt': 'whisper-server large-v3（パソコン）', 'llm': f"{PC['model']}（パソコン）",
-                'tts': f'Kokoro {args.voice}'}
+        tts = f"VOICEVOX {PC_VOICES[PC['speaker']]}（パソコン）" if PC['tts'] else f'Kokoro {args.voice}'
+        return {'stt': 'whisper-server large-v3（パソコン）', 'llm': f"{PC['model']}（パソコン）", 'tts': tts}
     return {'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'}
 
 
@@ -585,6 +635,16 @@ def pc_check():
     body = json.dumps({'model': PC['model'], 'keep_alive': -1}).encode()
     urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
                            timeout=PC_WARM_TIMEOUT).read()
+    url = pc_url(PC_VOICEVOX_PORT, f"/initialize_speaker?speaker={PC['speaker']}&skip_reinit=true")
+    try:
+        urllib.request.urlopen(urllib.request.Request(url, b'', method='POST'), timeout=PC_WARM_TIMEOUT).read()
+        tts = True
+    except OSError:
+        tts = False
+    if tts != PC['tts']:
+        PC['tts'] = tts
+        log(f"パソコンの声（VOICEVOX）: {'使います' if tts else 'つながらないので Kokoro'}")
+        show_engines()
 
 
 async def pc_watch(args):
@@ -612,7 +672,7 @@ async def stt_watchdog(voice, wake_words):
         for said, expect in STT_CHECK:
             try:
                 if said not in probes:
-                    pcm = await asyncio.to_thread(tts_pcm, said, voice, 0, -3.0, IN_RATE)
+                    pcm = await asyncio.to_thread(tts_pcm, said, voice, 0, -3.0, IN_RATE, False)
                     probes[said] = np.frombuffer(pcm, np.int16).astype(np.float32)
                 text = await asyncio.to_thread(stt, probes[said], WHISPER_URL)
             except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as e:
@@ -721,6 +781,16 @@ class OtaHandler(BaseHTTPRequestHandler):
             set_backend(want)
             with STATUS_LOCK:
                 self._send_json({'ok': True, 'backend': STATUS['backend']})
+        elif path == '/pc_voice':
+            try:
+                speaker = int(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('speaker', [''])[0])
+            except ValueError:
+                speaker = None
+            if speaker not in PC_VOICES:
+                return self._send_error(400, f'speaker は {list(PC_VOICES)} のどれか')
+            set_pc_voice(speaker)
+            with STATUS_LOCK:
+                self._send_json({'ok': True, 'pc_voice': STATUS['pc_voice']})
         elif path == STREAM_PATH:
             on = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('on', ['0'])[0] == '1'
             FRAME.update(on=on, viewer_at=time.time())
@@ -1177,14 +1247,15 @@ class Session:
             pass
 
     async def relay_cloud(self, cloud):
-        """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。"""
-        hold = None
+        """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。
+        パソコンの声（VOICEVOX）が使えるときは、ネットの声は捨てて、返事の文をパソコンの声で読む。"""
+        hold, own = None, False
         try:
             async for m in cloud:
                 if cloud is not self.cloud:
                     return
                 if isinstance(m, bytes):
-                    if self.shooting:
+                    if self.shooting or own:
                         continue
                     if hold is None:
                         await self.ws.send(m)
@@ -1209,7 +1280,9 @@ class Session:
                 if self.shooting and msg.get('type') in ('tts', 'llm'):
                     continue
                 if msg.get('type') == 'tts' and msg.get('state') == 'start':
-                    hold = []
+                    own = PC['up'] and PC['tts']
+                    hold = None if own else []
+                    self.cancel.clear()
                 elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
                     for f in hold:
                         await self.ws.send(f)
@@ -1217,6 +1290,8 @@ class Session:
                 msg['session_id'] = self.sid
                 await self.ws.send(json.dumps(msg, ensure_ascii=False))
                 self.note_cloud(msg)
+                if own and msg.get('type') == 'tts' and msg.get('state') == 'sentence_start' and msg.get('text'):
+                    await self.speak_own(msg['text'])
                 if msg.get('type') == 'stt' and is_switch(TO_LOCAL, msg.get('text')):
                     await self.to_local(cloud)
                     return
@@ -1238,6 +1313,16 @@ class Session:
                     await self.send(type='tts', state='stop')
                 except ConnectionClosed:
                     pass
+
+    async def speak_own(self, text):
+        """ネットの返事の 1 文を、こちらの声（パソコンの VOICEVOX、だめなら Kokoro）で読む。"""
+        a = self.args
+        try:
+            pcm = await asyncio.to_thread(tts_pcm, text, a.voice, a.pitch, a.peak_db)
+        except Exception as e:  # noqa: BLE001 - 声が作れなくても中継は続ける
+            log(f'声のエラー: {e}')
+            return
+        await self.play(pcm)
 
     async def cloud_tool(self, call):
         """ネットの XiaoZhi が呼んだ調べもの・AI-CAR のようすに、スタックちゃんのかわりに答える。"""
@@ -1590,6 +1675,8 @@ async def main():
     p.add_argument('--pc-host', default=os.environ.get('AI_PC_HOST', '100.86.172.21'),
                    help='聞き取りと返事に使うパソコン（whisper-server :8178・Ollama :11434）。空でパソコンを使わない')
     p.add_argument('--pc-model', default='qwen2.5:14b', help='パソコンの Ollama で返事に使う会話の AI')
+    p.add_argument('--pc-speaker', type=int, default=3,
+                   help='パソコンの VOICEVOX の声（スタイルの番号。3 = ずんだもん ノーマル）')
     p.add_argument('--voice', default='jf_alpha')
     p.add_argument('--pitch', type=int, default=300, help='声の高さを上げる量（セント、100 で半音。0 でそのまま）')
     p.add_argument('--peak-db', type=float, default=-1.0,
@@ -1618,7 +1705,7 @@ async def main():
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     WATCH['interval'] = max(0.0, args.watch_interval)
-    PC.update(host=args.pc_host, model=args.pc_model, args=args,
+    PC.update(host=args.pc_host, model=args.pc_model, args=args, speaker=load_pc_voice(args.pc_speaker),
               want=load_backend() if args.pc_host else 'jetson')
     load_device_ota()
     set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0)
