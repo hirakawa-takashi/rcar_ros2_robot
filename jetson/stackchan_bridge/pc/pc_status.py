@@ -2,6 +2,9 @@
 
 CPU・メモリ・ページファイル（スワップの欄）・C: ドライブ・起動時刻は Windows の値（PowerShell を 1 つ動かしたまま 1 秒ごとに読む）、
 GPU は nvidia-smi、声の AI（whisper-server・Ollama）は WSL の中を見る。標準ライブラリだけで動く（pc-status.service）。
+CPU の温度は LibreHardwareMonitor（管理者で動かしたまま）の WMI の「CPU Package」。更新の数は 1 時間ごと
+（Ubuntu は apt、Windows は Windows Update）。返事で頼まれたら、Windows の再起動・電源を切る（shutdown.exe）と、
+Ubuntu の更新（pc-upgrade.service）をする。Windows Update の入れ込みは管理者がいるのでしない。
 """
 
 import argparse
@@ -25,11 +28,25 @@ WIN_LOOP = (
     "$o=Get-CimInstance Win32_OperatingSystem;"
     "$d=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\";"
     "$p=@(Get-CimInstance Win32_PageFileUsage|Measure-Object -Property AllocatedBaseSize,CurrentUsage -Sum);"
+    "$t=$null;foreach($ns in 'root/LibreHardwareMonitor','root/OpenHardwareMonitor'){try{"
+    "$t=(Get-CimInstance -Namespace $ns -ClassName Sensor -Filter \"SensorType='Temperature' AND Name='CPU Package'\" "
+    "-ErrorAction Stop|Select-Object -First 1).Value;if($t){break}}catch{}};"
+    "$k='HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion';"
+    "$rb=(Test-Path \"$k\\WindowsUpdate\\Auto Update\\RebootRequired\") -or "
+    "(Test-Path \"$k\\Component Based Servicing\\RebootPending\");"
     "[pscustomobject]@{cpu=$c;mem_kb=$o.TotalVisibleMemorySize;free_kb=$o.FreePhysicalMemory;"
     "pf_mb=$p[0].Sum;pf_used_mb=$p[1].Sum;boot=$o.LastBootUpTime.ToString('o');"
-    "os=$o.Caption;disk=$d.Size;disk_free=$d.FreeSpace}|ConvertTo-Json -Compress;"
+    "os=$o.Caption;disk=$d.Size;disk_free=$d.FreeSpace;cpu_temp=$t;reboot=$rb}|ConvertTo-Json -Compress;"
     "[Console]::Out.Flush()}"
 )
+WIN_UPDATES = (
+    "$u=@((New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher()"
+    ".Search('IsInstalled=0 and IsHidden=0').Updates);"
+    "[pscustomobject]@{n=$u.Count;sec=@($u|Where-Object{$_.MsrcSeverity}).Count}|ConvertTo-Json -Compress"
+)
+SHUTDOWN = '/mnt/c/Windows/System32/shutdown.exe'
+UPGRADE_UNIT = 'pc-upgrade.service'
+UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', UPGRADE_UNIT]
 IP_SKIP = ('lo', 'docker', 'br-', 'veth')
 
 
@@ -62,6 +79,58 @@ class Windows:
 
     def get(self):
         return self.latest if time.monotonic() - self.stamp < 10 else {}
+
+
+class Updates:
+    """更新の数を 1 時間ごと（と Ubuntu の更新のあと）に数える。Windows Update を調べるのに約 15 秒かかる。"""
+
+    def __init__(self):
+        self.latest = {}
+        self.wake = threading.Event()
+
+    def start(self):
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        while True:
+            latest = {}
+            sim = run(['apt-get', '-s', '-o', 'Debug::NoLocking=1', 'upgrade'], timeout=120)
+            inst = [line for line in sim.splitlines() if line.startswith('Inst ')]
+            if sim:
+                latest.update(ubuntu_updates=len(inst), ubuntu_security=sum('-security' in line for line in inst))
+            try:
+                w = json.loads(run([POWERSHELL, '-NoProfile', '-Command', WIN_UPDATES], timeout=300))
+                latest.update(win_updates_pending=int(w['n']), win_security_pending=int(w['sec']))
+            except (ValueError, KeyError, TypeError):
+                pass
+            self.latest = latest
+            self.wake.wait(3600)
+            self.wake.clear()
+
+
+def can_sudo(cmd):
+    """pc-upgrade.sudoers でパスワードなしに cmd を実行できるか。"""
+    out = run(['sudo', '-n', '-l'])
+    want = ' '.join(cmd[2:])
+    return any('NOPASSWD:' in line and line.rstrip().endswith(want) for line in out.splitlines())
+
+
+def upgrade_state():
+    """ボタンの更新（pc-upgrade.service）が動いているかと、前回の結果（一度も動いていなければ空）。"""
+    out = run(['systemctl', 'show', UPGRADE_UNIT, '-p', 'ActiveState', '-p', 'Result',
+               '-p', 'ExecMainStartTimestampMonotonic'], timeout=3)
+    props = dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
+    running = props.get('ActiveState') in ('activating', 'active', 'deactivating')
+    started = props.get('ExecMainStartTimestampMonotonic', '0') not in ('', '0')
+    return {'upgrade_running': running,
+            'upgrade_result': props.get('Result', '') if started and not running else ''}
+
+
+def reply_flag(reply, key):
+    try:
+        return json.loads(reply).get(key) is True
+    except (ValueError, AttributeError):
+        return False
 
 
 def http_ok(url, timeout=1.0):
@@ -138,8 +207,9 @@ def wsl_os():
     return m.group(1) if m else ''
 
 
-def collect(win, slow):
+def collect(win, slow, updates):
     w = win.get()
+    u = updates.latest
     g = gpu()
     mb = lambda kb: round(kb / 1024) if isinstance(kb, (int, float)) else None  # noqa: E731
     status = {
@@ -150,12 +220,24 @@ def collect(win, slow):
         'cpu_percent': round(min(100.0, w['cpu']), 1) if isinstance(w.get('cpu'), (int, float)) else None,
         'gpu_percent': g.get('load'),
         'gpu_freq_mhz': g.get('mhz'),
-        'temperatures_c': {'gpu': g['temp']} if g.get('temp') is not None else {},
+        'temperatures_c': {k: v for k, v in (('cpu', w.get('cpu_temp')), ('gpu', g.get('temp')))
+                           if isinstance(v, (int, float)) and v > 0},
         'power_w': g.get('power'),
         'services': services(),
         'stt_engine': slow['stt'],
         'ips': slow['ips'],
+        'can_reboot': slow['can_shutdown'],
+        'can_poweroff': slow['can_shutdown'],
+        'can_upgrade': slow['can_upgrade'],
+        'reboot_required': (bool(w['reboot']) or os.path.exists('/var/run/reboot-required')) if 'reboot' in w else None,
     }
+    if 'ubuntu_updates' in u:
+        status.update(updates_pending=u['ubuntu_updates'] + u.get('win_updates_pending', 0),
+                      security_pending=u['ubuntu_security'] + u.get('win_security_pending', 0),
+                      ubuntu_updates_pending=u['ubuntu_updates'], ubuntu_security_pending=u['ubuntu_security'],
+                      win_updates_pending=u.get('win_updates_pending'),
+                      win_security_pending=u.get('win_security_pending'))
+    status.update(upgrade_state())
     if w.get('mem_kb') and w.get('free_kb') is not None:
         status.update(mem_total_mb=mb(w['mem_kb']), mem_used_mb=mb(w['mem_kb'] - w['free_kb']),
                       mem_available_mb=mb(w['free_kb']))
@@ -183,27 +265,45 @@ def main():
     url = args.car_url.rstrip('/') + '/api/mypc/status'
     win = Windows()
     win.start()
-    slow = {'os': wsl_os(), 'stt': stt_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic()}
+    updates = Updates()
+    updates.start()
+    slow = {'os': wsl_os(), 'stt': stt_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
+            'can_shutdown': os.access(SHUTDOWN, os.X_OK), 'can_upgrade': can_sudo(UPGRADE_CMD)}
     if args.once:
-        time.sleep(5)
-        print(json.dumps(collect(win, slow), ensure_ascii=False, indent=1))
+        time.sleep(25)
+        print(json.dumps(collect(win, slow, updates), ensure_ascii=False, indent=1))
         return
     print(f'パソコンの状態を送ります → {url}', flush=True)
     failing = False
+    upgrading = False
     while True:
         time.sleep(args.interval)
         if time.monotonic() - slow['stamp'] > 60:
-            slow.update(stt=stt_engine(), ips=ip_addresses(), stamp=time.monotonic())
+            slow.update(stt=stt_engine(), ips=ip_addresses(), can_upgrade=can_sudo(UPGRADE_CMD),
+                        stamp=time.monotonic())
+        status = collect(win, slow, updates)
+        if upgrading and not status['upgrade_running']:
+            updates.wake.set()
+        upgrading = status['upgrade_running']
         req = urllib.request.Request(
-            url, data=json.dumps(collect(win, slow)).encode('utf-8'), method='POST',
+            url, data=json.dumps(status).encode('utf-8'), method='POST',
             headers={'Content-Type': 'application/json', 'X-API-Token': token})
         try:
             with urllib.request.urlopen(req, timeout=3.0) as res:
-                res.read()
+                reply = res.read()
             if failing:
                 print('送れるようになりました', flush=True)
             failing = False
-        except (urllib.error.URLError, OSError) as e:
+            if reply_flag(reply, 'upgrade'):
+                print('ダッシュボードから更新を頼まれたので pc-upgrade.service を始めます', flush=True)
+                subprocess.run(UPGRADE_CMD, timeout=30, check=False)
+            if reply_flag(reply, 'poweroff'):
+                print('ダッシュボードから電源を切ることを頼まれたので Windows の電源を切ります', flush=True)
+                subprocess.run([SHUTDOWN, '/s', '/t', '5'], timeout=30, check=False)
+            elif reply_flag(reply, 'reboot'):
+                print('ダッシュボードから再起動を頼まれたので Windows を再起動します', flush=True)
+                subprocess.run([SHUTDOWN, '/r', '/t', '5'], timeout=30, check=False)
+        except (urllib.error.URLError, OSError, subprocess.TimeoutExpired) as e:
             if not failing:
                 print(f'送れません: {e}', file=sys.stderr, flush=True)
             failing = True

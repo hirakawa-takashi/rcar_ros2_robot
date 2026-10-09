@@ -493,11 +493,11 @@
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
           <tr><td class="k" id="jt_l4t_k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
-          <tr class="jtonly"><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
-          <tr class="jtonly"><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
-          <tr class="jtonly"><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
-          <tr class="jtonly"><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
-          <tr class="jtonly"><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">Jetson の電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
+          <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
+          <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
+          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
+          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+          <tr><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">Jetson の電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
         </table>
       </div>
     </div>
@@ -959,8 +959,11 @@ function renderIps(el, ips) {
   el.innerHTML = ips && ips.length
     ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
+const jtTarget = () => aiStack && aiStack.backend && aiStack.backend.want === 'pc'
+  ? {name: 'パソコン', path: k => `/api/mypc/${k}`} : {name: 'Jetson ', path: k => `/api/jetson/${k}`};
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
+    if (btnId === 'jt_reboot_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('reboot')});
     if (!confirm(`${name}を再起動しますか？\n${when ? when + '再起動します。' : ''}戻るまで 1〜2 分かかります。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
@@ -973,6 +976,7 @@ rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/rebo
 rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
 function poweroffButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
+    if (btnId === 'jt_poweroff_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('poweroff')});
     if (!confirm(`${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
@@ -993,11 +997,13 @@ document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
-  const n = latestTelemetry.jetson_host?.updates_pending;
-  if (!confirm(`Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
+  const pc = jtTarget().name === 'パソコン';
+  const n = pc ? latestTelemetry.mypc_host?.ubuntu_updates_pending : latestTelemetry.jetson_host?.updates_pending;
+  if (!confirm(pc ? `パソコンの Ubuntu（WSL）を更新しますか？（${n ?? '?'} 個）\nWindows Update はしません。終わるまで数分かかります。`
+    : `Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
   const msg = document.getElementById('jt_upgrade_msg');
   msg.textContent = '送っています…';
-  apiPost('/api/jetson/upgrade').then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+  apiPost(jtTarget().path('upgrade')).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
     msg.textContent = ok ? '頼みました' : (j.detail || '送れませんでした');
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
@@ -1613,7 +1619,12 @@ function renderJetsonHost() {
   byId('jt_l4t_k').textContent = pc ? 'GPU' : 'JetPack（L4T）';
   if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
   if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
-  document.querySelectorAll('.jtonly').forEach(tr => { tr.style.display = pc ? 'none' : ''; });
+  byId('jt_upgrade_btn').textContent = pc ? 'Ubuntu を更新' : 'Jetson を更新';
+  byId('jt_upgrade_btn').title = pc ? 'パソコンの WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
+  byId('jt_reboot_btn').textContent = pc ? 'パソコンを再起動' : 'Jetson を再起動';
+  byId('jt_poweroff_btn').textContent = pc ? 'パソコンの電源を切る' : 'Jetson の電源を切る';
+  if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
+  if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
   byId('jt_note').textContent = pc
     ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はいつも Jetson の Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
     : 'Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
