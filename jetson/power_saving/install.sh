@@ -1,15 +1,12 @@
 #!/bin/bash
-# Jetson の SSD（NVMe）の深いねむり（APST）・Jetson のメモリを SSD に貸すこと（HMB）と Wi-Fi の省電力を切る。sudo で実行する。
-# SSD の設定は次の起動から効く（再起動がいる）。
+# Jetson の Wi-Fi の省電力を切る。sudo で実行する。
+# SSD の APST・HMB を切る設定は、効かなかったので入れない（README）。前に入れた分は消す（次の起動から効く）。
 set -eu
 cd "$(dirname "$0")"
 
 CONF=/boot/extlinux/extlinux.conf
-cp -n "$CONF" "$CONF.orig-apst"
 for ARG in nvme_core.default_ps_max_latency_us=0 nvme.max_host_mem_size_mb=0; do
-    if ! grep -q "$ARG" "$CONF"; then
-        sed -i "/^[[:space:]]*APPEND /s/\$/ $ARG/" "$CONF"
-    fi
+    sed -i "/^[[:space:]]*APPEND /s/ *$ARG//" "$CONF"
 done
 grep -n "APPEND" "$CONF"
 
