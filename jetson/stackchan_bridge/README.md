@@ -45,7 +45,8 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
   `--pc-model` があれば、モデルを読み込ませてからパソコンを使う。聞き取り（10 秒）・返事（10 秒）でつながらなければ、
   その回から Jetson（whisper small・qwen2.5:3b）にもどす。返事の途中で切れたときは、その返事はやめる
 - 行き先は `--pc-host`（既定は環境変数 `AI_PC_HOST`、なければ Tailscale の taka3-wsl `100.86.172.21`）。空でパソコンを使わない
-- 使っているほうは `GET :8003/status` の `engines` に出る（「（パソコン）」がつく）
+- 使っているほうは `GET :8003/status` の `engines` に出る（「（パソコン）」がつく）。`backend` は `want`（選んだ所 `jetson` / `pc`）・`active`（今使っている所）・`error`（パソコンにつながらない理由）
+- 切り替え: `POST :8003/backend?to=jetson|pc`（ダッシュボードの Jetson のカードの「動かす所」の Jetson / MyPC ボタンが `POST /api/stackchan/backend` 経由で呼ぶ）。`backend.txt` に書いて、起動し直してもそのまま。`jetson` ならパソコンを見ない。`pc` にするとすぐパソコンを見て、動いていれば使う（つながらないあいだは Jetson）
 - whisper の見回り（5 分ごと）は Jetson の whisper-server だけを試す
 - 2026/10/10 の実機（Jetson から同じ声 4 つ）: 聞き取り Jetson 0.53〜0.74 秒 → パソコン 0.29〜0.44 秒（Tailscale の中継込み）。
   返事は Jetson qwen2.5:3b 15〜17 文字片/秒 → パソコン qwen2.5:14b 約 62 文字片/秒（読み込みは最初の 1 回 約 31 秒）。

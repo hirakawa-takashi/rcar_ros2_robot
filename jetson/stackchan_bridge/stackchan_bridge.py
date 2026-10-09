@@ -64,8 +64,10 @@ from websockets.exceptions import ConnectionClosed
 WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
-# パソコン（WSL の Ubuntu、RTX 4080 SUPER）の whisper-server・Ollama。動いていればこちらを使い、だめなら Jetson
-PC = {'host': '', 'model': '', 'up': False}
+# パソコン（WSL の Ubuntu、RTX 4080 SUPER）の whisper-server・Ollama。want が pc で動いていればこちらを使い、だめなら Jetson
+PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None}
+PC_WAKE = threading.Event()
+BACKENDS = ('jetson', 'pc')
 PC_WHISPER_PORT = 8178
 PC_OLLAMA_PORT = 11434
 PC_CHECK_EVERY = 10.0
@@ -153,6 +155,7 @@ BRIGHT_MARGIN = 8  # 境目の近くで行ったり来たりしないよう、±
 BRIGHT_EVERY = 60.0
 BRIGHT_MIN_FRAMES = 5
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
+BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
 TO_NET = re.compile(r'(?:インターネット|ネット|クラウド|net)' + _SWITCH, re.I)
@@ -163,7 +166,7 @@ STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': N
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None}
+          'dozing': False, 'light': None, 'screen': None, 'backend': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
@@ -233,6 +236,14 @@ def save_mode(mode):
     with open(MODE_FILE, 'w') as f:
         f.write(mode + '\n')
     set_status(mode=mode)
+
+
+def load_backend():
+    try:
+        with open(BACKEND_FILE) as f:
+            return 'jetson' if f.read().strip() == 'jetson' else 'pc'
+    except OSError:
+        return 'pc'
 
 
 def load_device_ota():
@@ -516,6 +527,23 @@ def pc_url(port, path):
     return f"http://{PC['host']}:{port}{path}"
 
 
+def show_engines():
+    set_status(engines=engines(PC['args']),
+               backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']})
+
+
+def set_backend(want):
+    """ダッシュボードの切り替え: jetson ならパソコンを使わない。pc ならパソコンを見て、動いていれば使う。"""
+    PC['want'] = want
+    with open(BACKEND_FILE, 'w') as f:
+        f.write(want + '\n')
+    log(f'聞き取り・返事をする所: {"パソコン" if want == "pc" else "Jetson"}')
+    if want == 'jetson':
+        PC.update(up=False, error=None)
+    PC_WAKE.set()
+    show_engines()
+
+
 def engines(args):
     if PC['up']:
         return {'stt': 'whisper-server large-v3（パソコン）', 'llm': f"{PC['model']}（パソコン）",
@@ -524,10 +552,11 @@ def engines(args):
 
 
 def pc_down(e):
+    PC['error'] = str(e)
     if PC['up']:
         PC['up'] = False
         log(f'パソコンにつながらないので Jetson に戻します（{e}）')
-        set_status(engines=engines(PC['args']))
+    show_engines()
 
 
 def pc_check():
@@ -543,17 +572,19 @@ def pc_check():
 
 
 async def pc_watch(args):
-    """PC_CHECK_EVERY 秒ごとにパソコンを見て、聞き取りと返事の行き先を切り替える。"""
+    """PC_CHECK_EVERY 秒ごと（切り替えたらすぐ）にパソコンを見て、聞き取りと返事の行き先を切り替える。"""
     while True:
-        try:
-            await asyncio.to_thread(pc_check)
-            if not PC['up']:
-                PC['up'] = True
-                log(f"パソコン（{PC['host']}）を使います: whisper large-v3・{PC['model']}")
-                set_status(engines=engines(args))
-        except (OSError, ValueError) as e:
-            pc_down(e)
-        await asyncio.sleep(PC_CHECK_EVERY)
+        PC_WAKE.clear()
+        if PC['want'] == 'pc':
+            try:
+                await asyncio.to_thread(pc_check)
+                if PC['want'] == 'pc' and not PC['up']:
+                    PC.update(up=True, error=None)
+                    log(f"パソコン（{PC['host']}）を使います: whisper large-v3・{PC['model']}")
+                    show_engines()
+            except (OSError, ValueError) as e:
+                pc_down(e)
+        await asyncio.to_thread(PC_WAKE.wait, PC_CHECK_EVERY)
 
 
 async def stt_watchdog(voice, wake_words):
@@ -665,6 +696,15 @@ class OtaHandler(BaseHTTPRequestHandler):
             self._shot()
         elif path == '/enroll':
             self._enroll()
+        elif path == '/backend':
+            want = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('to', [''])[0]
+            if want not in BACKENDS:
+                return self._send_error(400, 'to は jetson か pc')
+            if want == 'pc' and not PC['host']:
+                return self._send_error(409, 'パソコン（--pc-host）が決まっていません')
+            set_backend(want)
+            with STATUS_LOCK:
+                self._send_json({'ok': True, 'backend': STATUS['backend']})
         elif path == STREAM_PATH:
             on = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('on', ['0'])[0] == '1'
             FRAME.update(on=on, viewer_at=time.time())
@@ -1559,10 +1599,11 @@ async def main():
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     WATCH['interval'] = max(0.0, args.watch_interval)
-    PC.update(host=args.pc_host, model=args.pc_model, args=args)
+    PC.update(host=args.pc_host, model=args.pc_model, args=args,
+              want=load_backend() if args.pc_host else 'jetson')
     load_device_ota()
-    set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0,
-               engines=engines(args))
+    set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0)
+    show_engines()
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
     watchdog = asyncio.create_task(stt_watchdog(args.voice, args.wake_words))
