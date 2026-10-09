@@ -69,7 +69,27 @@ PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None, 'tts': 
 PC_WAKE = threading.Event()
 BACKENDS = ('jetson', 'pc')
 PC_VOICES = {3: 'ずんだもん', 2: '四国めたん', 8: '春日部つむぎ', 14: '冥鳴ひまり', 20: 'もち子さん'}  # VOICEVOX のノーマル
-PC_VOICE_SHORT = {2: 'めたん', 8: 'つむぎ', 14: 'ひまり', 20: 'もち子'}  # ダッシュボードのボタン
+# パソコンで「ネットにして」: 会話はパソコンの AI のまま、新しい情報だけネットで調べてプロンプトに足す
+WEB_TIMEOUT = 6.0
+WEB_UA = 'Mozilla/5.0 (X11; Linux aarch64) stackchan-bridge'
+WEATHER_ASK = re.compile(r'天気|気温|雨|雪|晴れ|くもり|曇り|傘|暑い|寒い|台風')
+NEWS_ASK = re.compile(r'ニュース|話題|出来事|事件')
+FOREIGN_TEXT = re.compile(r'[\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\uac00-\ud7af]+')  # キリル・アラビア・タイ・ハングル
+WMO_JA = {0: '快晴', 1: '晴れ', 2: '晴れ時々くもり', 3: 'くもり', 45: '霧', 48: '霧', 51: '霧雨', 53: '霧雨', 55: '霧雨',
+          61: '小雨', 63: '雨', 65: '大雨', 66: '冷たい雨', 67: '冷たい雨', 71: '小雪', 73: '雪', 75: '大雪', 77: '雪',
+          80: 'にわか雨', 81: 'にわか雨', 82: '激しいにわか雨', 85: 'にわか雪', 86: 'にわか雪', 95: '雷雨', 96: '雷雨', 99: '雷雨'}
+NET_PROMPT = ('\n下はネットで今調べた結果です。天気・ニュース・今の出来事など新しいことを聞かれたら、これを使って答えてください。'
+              '結果にないことは、わからないと言ってください。URL や記号は読まないでください。\n')
+LOCAL_PROMPT = 'ネットは見られないので、天気やニュースなど新しいことを聞かれたら、わからないと言ってください。'
+HOME = {}
+# パソコンの声で話すときの話し方・性格（ローカルの会話の AI に足す）
+PC_PERSONAS = {
+    3: '話し方は「ずんだもん」です。一人称は「ボク」、語尾は「〜のだ」「〜なのだ」。明るく元気で、ちょっと調子に乗りやすい性格です。例:「ボクにまかせるのだ！」',
+    2: '話し方は「四国めたん」です。一人称は「わたくし」、お嬢様の言葉（「〜ですわ」「〜ですの」）。上品で、少し背伸びした性格です。例:「わたくしにお任せくださいですわ。」',
+    8: '話し方は「春日部つむぎ」です。一人称は「あーし」、くだけた明るいギャルの言葉（「〜じゃん」「マジで」）。人なつっこく、やさしい性格です。例:「それマジでいいじゃん！」',
+    14: '話し方は「冥鳴ひまり」です。一人称は「わたし」、おっとりした静かな丁寧語。落ち着いていて、ゆっくり寄りそう性格です。例:「ゆっくりで、だいじょうぶですよ。」',
+    20: '話し方は「もち子さん」です。一人称は「わたし」、やさしいお姉さんの丁寧語。面倒見がよく、ほめ上手な性格です。例:「よくがんばりましたね、えらいです。」',
+}
 PC_WHISPER_PORT = 8178
 PC_OLLAMA_PORT = 11434
 # パソコンの VOICEVOX ENGINE（CPU）。パソコンを使っているあいだの声。だめならミニコンの Kokoro
@@ -81,7 +101,7 @@ PC_WARM_TIMEOUT = 120.0
 PC_STT_TIMEOUT = 10.0
 PC_LLM_TIMEOUT = 10.0
 SYSTEM_PROMPT = ('あなたは家庭用ロボット「スタックちゃん」です。日本語で、やさしく、1〜2文で短く答えてください。'
-                 '中国語や英語は使わず、日本語だけで話してください。')
+                 '中国語や英語などほかの国の言葉や文字は使わず、日本語だけで話してください。')
 IN_RATE = 16000
 OUT_RATE = 24000
 FRAME_MS = 60
@@ -505,11 +525,11 @@ def _llm_sentences(url, model, messages, timeout=60):
         for line in r:
             buf += json.loads(line).get('message', {}).get('content', '')
             while (m := SENTENCE_END.search(buf)):
-                s, buf = buf[:m.end()].strip(), buf[m.end():]
+                s, buf = FOREIGN_TEXT.sub('', buf[:m.end()]).strip(), buf[m.end():]
                 if s:
                     yield s
-    if buf.strip():
-        yield buf.strip()
+    if (s := FOREIGN_TEXT.sub('', buf).strip()):
+        yield s
 
 
 def voicevox_wav(text, speaker):
@@ -521,6 +541,79 @@ def voicevox_wav(text, speaker):
                                  {'Content-Type': 'application/json'})
     with urllib.request.urlopen(req, timeout=PC_TTS_TIMEOUT) as r:
         return r.read()
+
+
+def web_get(url):
+    req = urllib.request.Request(url, headers={'User-Agent': WEB_UA, 'Accept-Language': 'ja'})
+    with urllib.request.urlopen(req, timeout=WEB_TIMEOUT) as r:
+        return r.read().decode('utf-8', 'replace')
+
+
+def home_place():
+    """家の場所（市・緯度経度）。インターネットの出口の IP から 1 回だけ調べて覚える。"""
+    if not HOME:
+        j = json.loads(web_get('http://ip-api.com/json/?lang=ja&fields=status,city,lat,lon'))
+        if j.get('status') == 'success':
+            HOME.update(city=j['city'], lat=j['lat'], lon=j['lon'])
+    return HOME
+
+
+def weather_info():
+    h = home_place()
+    if not h:
+        return ''
+    j = json.loads(web_get(
+        f"https://api.open-meteo.com/v1/forecast?latitude={h['lat']}&longitude={h['lon']}&timezone=Asia%2FTokyo"
+        '&current=temperature_2m,weather_code&forecast_days=3'
+        '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'))
+    c, d = j['current'], j['daily']
+    lines = [f"{h['city']}の天気（Open-Meteo）: 今 {WMO_JA.get(c['weather_code'], '?')} {c['temperature_2m']:.0f}℃"]
+    for i, name in enumerate(('今日', '明日', 'あさって')):
+        lines.append(f"{name}（{d['time'][i]}）{WMO_JA.get(d['weather_code'][i], '?')}、"
+                     f"最高 {d['temperature_2m_max'][i]:.0f}℃、最低 {d['temperature_2m_min'][i]:.0f}℃、"
+                     f"雨の確率 {d['precipitation_probability_max'][i]}%")
+    return '\n'.join(lines)
+
+
+def news_info():
+    root = ET.fromstring(web_get('https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja'))
+    titles = [t.text for t in root.iter('title')][2:7]
+    return 'ニュース（Google ニュース）:\n' + '\n'.join(f'- {t}' for t in titles if t)
+
+
+def search_info(query):
+    """聞かれたことばで Google ニュースを検索して、新しい記事の見出しを 5 つ。"""
+    root = ET.fromstring(web_get('https://news.google.com/rss/search?hl=ja&gl=JP&ceid=JP:ja&q='
+                                 + urllib.parse.quote(query)))
+    items = [(i.findtext('title'), (i.findtext('pubDate') or '')[5:16]) for i in root.iter('item')][:5]
+    return ('検索「' + query + '」（Google ニュース）:\n' + '\n'.join(f'- {t}（{d}）' for t, d in items if t)) \
+        if items else ''
+
+
+def web_info(query):
+    """聞かれたことをネットで調べて、プロンプトに足す文にする。調べられなかった所は飛ばす。"""
+    jobs = [search_info]
+    if WEATHER_ASK.search(query):
+        jobs.insert(0, weather_info)
+    if NEWS_ASK.search(query):
+        jobs.insert(0, news_info)
+    out = []
+    for job in jobs:
+        try:
+            out.append(job(query) if job is search_info else job())
+        except Exception as e:  # noqa: BLE001 - 調べられなくても会話は続ける
+            log(f'ネットで調べられません（{job.__name__}）: {e}')
+    return '\n'.join(t for t in out if t)
+
+
+def pc_net():
+    """パソコンを使っていて「ネット」のとき。会話はパソコンの AI のまま、ネットは調べるだけに使う。"""
+    return STATUS['mode'] == 'net' and PC['want'] == 'pc' and PC['up']
+
+
+def persona():
+    """パソコンの VOICEVOX で話すときは、その声のキャラクターの話し方・性格。ミニコン（Kokoro）のときは空。"""
+    return PC_PERSONAS.get(PC['speaker'], '') if PC['up'] and PC['tts'] else ''
 
 
 def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE, use_pc=True):
@@ -571,8 +664,7 @@ def show_engines():
     set_status(engines=engines(PC['args']),
                backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']},
                pc_voice={'speaker': PC['speaker'],
-                         'choices': [{'speaker': k, 'name': v, 'short': PC_VOICE_SHORT.get(k, v)}
-                                     for k, v in PC_VOICES.items()]})
+                         'choices': [{'speaker': k, 'name': v} for k, v in PC_VOICES.items()]})
 
 
 def set_pc_voice(speaker):
@@ -1161,6 +1253,14 @@ class Session:
 
     async def to_net(self, announce=True):
         """ネットの XiaoZhi につなぎ、このセッションの声と文字を中継する。だめならローカルのまま。"""
+        if PC['want'] == 'pc' and PC['up']:
+            save_mode('net')
+            await self.set_face('net')
+            log('ネット: パソコンの AI で話し、新しいことだけネットで調べます')
+            if announce:
+                await self.say('ネットで調べながら話します。')
+            set_status(state=self.listen_state())
+            return
         self.switching = True
         cloud = None
         try:
@@ -1219,7 +1319,7 @@ class Session:
 
     async def need_cloud(self):
         """ネットのモードで呼ばれたら、ネットの会話を開く。開けたら True。"""
-        if STATUS['mode'] == 'net' and not self.cloud:
+        if STATUS['mode'] == 'net' and not self.cloud and not pc_net():
             await self.to_net(announce=False)
         return bool(self.cloud)
 
@@ -1551,7 +1651,13 @@ class Session:
                 await self.to_net()
                 return
             if is_switch(TO_LOCAL, text):
-                await self.say('今はローカルです。')
+                if STATUS['mode'] == 'net':
+                    save_mode('local')
+                    await self.set_face('local')
+                    log('ローカルにもどりました')
+                    await self.say('ローカルにもどりました。')
+                else:
+                    await self.say('今はローカルです。')
                 return
             if is_switch(TO_MINI, text) or is_switch(TO_PC, text):
                 await self.say(switch_backend('pc' if is_switch(TO_PC, text) else 'jetson'))
@@ -1561,7 +1667,15 @@ class Session:
                 return
             await self.send(type='llm', emotion='thinking', text='🤔')
             now = time.strftime('今は %Y年%m月%d日 %H時%M分です。')
-            system = SYSTEM_PROMPT + now
+            system = SYSTEM_PROMPT + persona() + now
+            if STATUS['mode'] == 'net':
+                t1 = time.time()
+                query = (self.wake.sub('', text) if self.wake else text).strip(' 、。,.') or text
+                info = await asyncio.to_thread(web_info, query)
+                log(f'ネットで調べました（{time.time() - t1:.2f} 秒）: {info.splitlines()[0] if info else "なし"}')
+                system += NET_PROMPT + info
+            else:
+                system += LOCAL_PROMPT
             if CAR_ASK.search(text):
                 car = await asyncio.to_thread(car_status, a.car_url)
                 log(f'AI-CAR のようすを渡します: {car.splitlines()[0]}')
