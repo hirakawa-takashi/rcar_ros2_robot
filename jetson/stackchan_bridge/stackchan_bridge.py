@@ -81,6 +81,9 @@ WEB_UA = 'Mozilla/5.0 (X11; Linux aarch64) stackchan-bridge'
 WEATHER_ASK = re.compile(r'天気|気温|雨|雪|晴れ|くもり|曇り|傘|暑い|寒い|台風')
 NEWS_ASK = re.compile(r'ニュース|話題|出来事|事件')
 FOREIGN_TEXT = re.compile(r'[\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\uac00-\ud7af]+')  # キリル・アラビア・タイ・ハングル
+KANA = re.compile(r'[\u3041-\u30ff]')
+HANZI = re.compile(r'[\u4e00-\u9fff]')
+CHINESE_ONLY = re.compile(r'[，你我们么这说吗呢吧啊没]')  # 日本語ではまず使わない字
 WMO_JA = {0: '快晴', 1: '晴れ', 2: '晴れ時々くもり', 3: 'くもり', 45: '霧', 48: '霧', 51: '霧雨', 53: '霧雨', 55: '霧雨',
           61: '小雨', 63: '雨', 65: '大雨', 66: '冷たい雨', 67: '冷たい雨', 71: '小雪', 73: '雪', 75: '大雪', 77: '雪',
           80: 'にわか雨', 81: 'にわか雨', 82: '激しいにわか雨', 85: 'にわか雪', 86: 'にわか雪', 95: '雷雨', 96: '雷雨', 99: '雷雨'}
@@ -101,14 +104,27 @@ WIKI_UA = 'stackchan-bridge/1.0 (https://github.com/hirakawa-takashi/rcar_ros2_r
 WIKI_SKIP = re.compile(r'image|size|caption|insignia|website|map|flag|coa|symbol|logo|alt|画像|サイズ|地図|国旗|国章|位置')
 LOCAL_PROMPT = 'ネットは見られないので、天気やニュースなど新しいことを聞かれたら、わからないと言ってください。'
 HOME = {}
-# パソコンの声で話すときの話し方・性格（ローカルの会話の AI に足す）
+# パソコンの声で話すときのキャラクター（名乗る名前, 話し方・性格）。ローカルの会話の AI の最初の決まりにする
 PC_PERSONAS = {
-    3: '話し方は「ずんだもん」です。一人称は「ボク」、語尾は「〜のだ」「〜なのだ」。明るく元気で、ちょっと調子に乗りやすい性格です。例:「ボクにまかせるのだ！」',
-    2: '話し方は「四国めたん」です。一人称は「わたくし」、お嬢様の言葉（「〜ですわ」「〜ですの」）。上品で、少し背伸びした性格です。例:「わたくしにお任せくださいですわ。」',
-    8: '話し方は「春日部つむぎ」です。一人称は「あーし」、くだけた明るいギャルの言葉（「〜じゃん」「マジで」）。人なつっこく、やさしい性格です。例:「それマジでいいじゃん！」',
-    14: '話し方は「冥鳴ひまり」です。一人称は「わたし」、おっとりした静かな丁寧語。落ち着いていて、ゆっくり寄りそう性格です。例:「ゆっくりで、だいじょうぶですよ。」',
-    20: '話し方は「もち子さん」です。一人称は「わたし」、やさしいお姉さんの丁寧語。面倒見がよく、ほめ上手な性格です。例:「よくがんばりましたね、えらいです。」',
+    3: ('ずんだもん', '一人称は「ボク」。文の終わりは、いつも「〜のだ」「〜なのだ」にします（「です」「ます」「だよ」「なのだよ」で終わらない）。'
+        '明るく元気で、ちょっと調子に乗りやすい性格です。例:「ボクはずんだもんなのだ！」「ボクにまかせるのだ！」「それはすごいのだ！」'),
+    2: ('四国めたん', '一人称は「わたくし」。お嬢様の言葉で、文の終わりは「〜ですわ」「〜ですの」「〜かしら」にします。'
+        '上品で少し背伸びしていて、本当は面倒見がいい性格です。例:「わたくしは四国めたんですわ。」「お疲れさまでしたわね。」'),
+    8: ('春日部つむぎ', '一人称は「あーし」。くだけた明るいギャルの言葉で、「〜じゃん」「マジで」「〜だよね〜」を使います（です・ます は使わない）。'
+        '人なつっこく、やさしい性格です。例:「あーしは春日部つむぎだよ！」「それマジでいいじゃん！」'),
+    14: ('冥鳴ひまり', '一人称は「わたし」。おっとりした静かな丁寧語で、文の終わりは「〜ですね」「〜ですよ」「〜ましょうか」にします。'
+         '落ち着いていて、ゆっくり寄りそう性格です。例:「わたしは冥鳴ひまりです。」「ゆっくりで、だいじょうぶですよ。」'),
+    20: ('もち子', '一人称は「わたし」。やさしいお姉さんの丁寧語で、文の終わりは「〜ですね」「〜ましょうね」にします。'
+         '面倒見がよく、ほめ上手な性格です。例:「わたしはもち子です。」「よくがんばりましたね、えらいです。」'),
 }
+PERSONA_PROMPT = ('あなたは「{name}」です。家庭用ロボット「スタックちゃん」の体に入って、{name}の声で話しています。'
+                  '「だれ？」「誰の声？」「名前は？」と聞かれたら、「{name}」と名乗ってください。聞かれていないときは名乗りません。'
+                  '日本語で、1〜2文で短く答えてください。中国語や英語などほかの国の言葉や文字は使わず、'
+                  '英語の言葉（リチャージ など）も、ふつうの日本語に言いかえてください。'
+                  'どの文も、かならず次の{name}の話し方で話してください。{style}')
+# 「だれ？」「誰の声？」など、自分のことを聞かれた。ネットで調べない
+SELF_ASK = re.compile(r'^(あなた|きみ|君|おまえ|お前)?(は|って)?(だれ|誰|何者|なにもの)|(だれ|誰)の声|'
+                      r'^((あなた|きみ|君)の)?名前は|自己紹介')
 PC_WHISPER_PORT = 8178
 PC_OLLAMA_PORT = 11434
 # パソコンの VOICEVOX ENGINE（CPU）。パソコンを使っているあいだの声。だめならミニコンの Kokoro
@@ -542,6 +558,12 @@ def llm_sentences(model, messages):
     yield from _llm_sentences(OLLAMA_URL, model, messages)
 
 
+def is_chinese(s):
+    """漢字ばかりで、かなが少なく、中国語だけの字がある文（qwen2.5 がときどき混ぜる中国語）。"""
+    hanzi = len(HANZI.findall(s))
+    return hanzi >= 6 and len(KANA.findall(s)) * 4 < hanzi and bool(CHINESE_ONLY.search(s))
+
+
 def _llm_sentences(url, model, messages, timeout=60):
     body = json.dumps({'model': model, 'stream': True, 'keep_alive': -1, 'messages': messages,
                        'options': {'num_predict': 120}}).encode()
@@ -551,9 +573,9 @@ def _llm_sentences(url, model, messages, timeout=60):
             buf += json.loads(line).get('message', {}).get('content', '')
             while (m := SENTENCE_END.search(buf)):
                 s, buf = FOREIGN_TEXT.sub('', buf[:m.end()]).strip(), buf[m.end():]
-                if s:
+                if s and not is_chinese(s):
                     yield s
-    if (s := FOREIGN_TEXT.sub('', buf).strip()):
+    if (s := FOREIGN_TEXT.sub('', buf).strip()) and not is_chinese(s):
         yield s
 
 
@@ -691,9 +713,12 @@ def pc_net():
     return STATUS['mode'] == 'net' and PC['want'] == 'pc' and PC['up']
 
 
-def persona():
-    """パソコンの VOICEVOX で話すときは、その声のキャラクターの話し方・性格。ミニコン（Kokoro）のときは空。"""
-    return PC_PERSONAS.get(PC['speaker'], '') if PC['up'] and PC['tts'] else ''
+def system_prompt():
+    """会話の AI の最初の決まり。パソコンの VOICEVOX で話すときは、その声のキャラクター。ミニコン（Kokoro）のときはスタックちゃん。"""
+    if not (PC['up'] and PC['tts'] and PC['speaker'] in PC_PERSONAS):
+        return SYSTEM_PROMPT
+    name, style = PC_PERSONAS[PC['speaker']]
+    return PERSONA_PROMPT.format(name=name, style=style)
 
 
 def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE, use_pc=True):
@@ -1789,14 +1814,14 @@ class Session:
                 return
             await self.send(type='llm', emotion='thinking', text='🤔')
             now = time.strftime('今は %Y年%m月%d日 %H時%M分です。')
-            system = SYSTEM_PROMPT + persona() + now
-            if STATUS['mode'] == 'net':
+            system = system_prompt() + now
+            query = (self.wake.sub('', text) if self.wake else text).strip(' 、。,.') or text
+            if STATUS['mode'] == 'net' and not SELF_ASK.search(query):
                 t1 = time.time()
-                query = (self.wake.sub('', text) if self.wake else text).strip(' 、。,.') or text
                 info = await asyncio.to_thread(web_info, query)
                 log(f'ネットで調べました（{time.time() - t1:.2f} 秒）: {info.splitlines()[0] if info else "なし"}')
                 system += NET_PROMPT + info
-            else:
+            elif STATUS['mode'] != 'net':
                 system += LOCAL_PROMPT
             if CAR_ASK.search(text):
                 car = await asyncio.to_thread(car_status, a.car_url)
