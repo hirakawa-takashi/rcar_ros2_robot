@@ -32,6 +32,11 @@ XiaoZhi の 2 つの口をまねる:
   正面を向いて 5 秒数え、画面にカメラを出してから撮る。写真は `POST /camera/shot` に届く。face_id で顔を見て
   （`shot`）、ダッシュボードから `POST /enroll?name=` で名前を付けて face_id に登録する（ネットのときも同じ）。
 
+- パソコンの控え（--primary-url）: パソコンでも同じ受け口を動かしておく。ミニコンが落ちると、スタックちゃんは
+  パソコン（Windows の 192.168.11.7 → WSL）につなぎに来る（xiaozhi-fallback-pc.patch）。ここではミニコンの
+  bridge を 10 秒ごとに見て、動いていれば声・ネット/ローカルの選択をまね、スタックちゃんが呼びかけ待ちなら切って
+  ミニコンへつなぎ直させる。
+
 AI-CAR の走行・安全停止には何も送らない。
 """
 import argparse
@@ -128,6 +133,12 @@ GREET_HOLD = 30 * 60
 VIEWER_HOLD = 10.0
 FRAME_STALE = 3.0
 CLOUD_OTA_URL = 'https://api.tenclass.net/xiaozhi/ota/'
+# パソコンの控え: ミニコンの bridge（--primary-url）を見る間隔と、何回続けて動いていたら返すか
+PRIMARY = {'url': '', 'up': 0}
+PRIMARY_CHECK_EVERY = 10.0
+PRIMARY_TIMEOUT = 3.0
+PRIMARY_HANDBACK_CHECKS = 3
+STANDBY_ONLY = 'ミニコンが止まっているあいだは、パソコンで話します。'
 FACE_TOOL = 'self.robot.set_face_color'
 FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00}
 SEARCH_TOOL = 'self.web.search'
@@ -195,7 +206,7 @@ STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': N
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc_voice': None}
+          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc_voice': None, 'standby': False}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
@@ -691,6 +702,8 @@ def set_backend(want):
 
 def switch_backend(want):
     """「ミニコンにして」「パソコンにして」。返事の文を返す。"""
+    if PRIMARY['url'] and want == 'jetson':
+        return STANDBY_ONLY
     if want == 'pc' and not PC['host']:
         return 'パソコンが決められていないので、ミニコンで話します。'
     was = PC['want']
@@ -774,6 +787,44 @@ async def stt_watchdog(voice, wake_words):
                 log(f'whisper がおかしいので起動し直します（「{said}」→「{text}」）')
                 subprocess.run(['pkill', '-KILL', '-x', 'whisper-server'], check=False)
                 break
+
+
+def primary_status():
+    with urllib.request.urlopen(PRIMARY['url'] + '/status', timeout=PRIMARY_TIMEOUT) as r:
+        return json.loads(r.read())
+
+
+def mirror_primary(st):
+    """ミニコンで選んでいる「ネット / ローカル」と声を、こちらにも入れる。"""
+    if st.get('mode') in ('net', 'local') and st['mode'] != STATUS['mode']:
+        save_mode(st['mode'])
+        log(f"ミニコンに合わせて {st['mode']} にしました")
+    speaker = (st.get('pc_voice') or {}).get('speaker')
+    if speaker in PC_VOICES and speaker != PC['speaker']:
+        set_pc_voice(speaker)
+
+
+async def primary_watch():
+    """パソコンの控え: ミニコンの bridge が動いていれば選択をまね、スタックちゃんがここで呼びかけ待ちなら
+    切って、ミニコンへつなぎ直させる（ファームウェアはミニコンを先に試す）。"""
+    while True:
+        try:
+            st = await asyncio.to_thread(primary_status)
+        except (OSError, ValueError) as e:
+            if PRIMARY['up']:
+                log(f'ミニコンの bridge につながりません（{e}）')
+            PRIMARY['up'] = 0
+        else:
+            PRIMARY['up'] += 1
+            if not SESSIONS:
+                mirror_primary(st)
+            elif (PRIMARY['up'] >= PRIMARY_HANDBACK_CHECKS
+                  and all(s.asleep() and not s.busy() and not s.cloud for s in SESSIONS)):
+                log('ミニコンがもどったので、スタックちゃんをミニコンへ返します')
+                for s in list(SESSIONS):
+                    await s.ws.close()
+        set_status(standby=PRIMARY['up'] == 0)
+        await asyncio.sleep(PRIMARY_CHECK_EVERY)
 
 
 class OtaHandler(BaseHTTPRequestHandler):
@@ -870,6 +921,8 @@ class OtaHandler(BaseHTTPRequestHandler):
                 return self._send_error(400, 'to は jetson か pc')
             if want == 'pc' and not PC['host']:
                 return self._send_error(409, 'パソコン（--pc-host）が決まっていません')
+            if PRIMARY['url'] and want == 'jetson':
+                return self._send_error(409, STANDBY_ONLY)
             set_backend(want)
             with STATUS_LOCK:
                 self._send_json({'ok': True, 'backend': STATUS['backend']})
@@ -1763,6 +1816,8 @@ async def handler(ws, args):
                     await s.on_text(json.loads(msg))
                 except ValueError:
                     log(f'JSON でないメッセージ: {msg[:80]}')
+    except ConnectionClosed:
+        pass
     finally:
         s.cancel.set()
         if s.keep_task:
@@ -1813,20 +1868,25 @@ async def main():
                    help='「撮影して」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
     p.add_argument('--watch-interval', type=float, default=2.0,
                    help='見守りで顔を見る間隔（秒）。0 で見守りをしない')
+    p.add_argument('--primary-url', default=os.environ.get('AI_PRIMARY_URL', ''),
+                   help='パソコンの控えとして動かすとき、ミニコンの bridge（例 http://100.111.231.54:8003）。'
+                        '選択をまね、ミニコンがもどったらスタックちゃんを返す。いつもパソコンで話す')
     args = p.parse_args()
 
     global LOOP
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     WATCH['interval'] = max(0.0, args.watch_interval)
+    PRIMARY['url'] = args.primary_url.rstrip('/')
     PC.update(host=args.pc_host, model=args.pc_model, args=args, speaker=load_pc_voice(args.pc_speaker),
-              want=load_backend() if args.pc_host else 'jetson')
+              want='pc' if PRIMARY['url'] else load_backend() if args.pc_host else 'jetson')
     load_device_ota()
     set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0)
     show_engines()
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
-    watchdog = asyncio.create_task(stt_watchdog(args.voice, args.wake_words))
+    # 控えのときは Kokoro がないので whisper の見回りはしない（パソコンの whisper はパソコンの systemd が見る）
+    watchdog = asyncio.create_task(primary_watch() if PRIMARY['url'] else stt_watchdog(args.voice, args.wake_words))
     pc = asyncio.create_task(pc_watch(args)) if args.pc_host else None
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
         log(f'待ち受け: OTA http://{args.host}:{args.ota_port}/xiaozhi/ota/  WebSocket :{args.ws_port}/xiaozhi/v1/')

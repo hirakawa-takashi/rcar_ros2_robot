@@ -92,6 +92,8 @@ WSL は PowerShell の画面を閉じるとしばらくして止まるので、`
 | `firmware/xiaozhi-auto-reopen.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | 会話が切れたら（画面をさわって止めたとき以外）、自分でつなぎ直す（3 秒後、だめなら 6・12…最大 60 秒ごと。つなぎ直しの失敗ではエラーの音を出さない）。AI Agent を開いたときも 2 秒後に自分でつなぐ（下の「呼びかけ」） |
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 | `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
+| `firmware/xiaozhi-fallback-pc.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（auto-reopen のあと） | ミニコンが答えないとき、パソコン（`AICAR_FALLBACK_HOST` 192.168.11.7、同じ 8000・8003 番）につなぐ。WebSocket は毎回ミニコンを先に試し、だめならパソコン。起動のときの OTA も、失敗するたびにミニコンとパソコンを入れかえて聞く（下の「ミニコンが落ちたとき」） |
+| `firmware/stackchan-camera-follow-server.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | カメラの映像・撮影の写真を、今つないでいる受け口（ミニコンかパソコン）へ送る |
 | `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
 
 ```bash
@@ -103,6 +105,8 @@ git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-auto-reopen.pat
 git apply <このフォルダ>/firmware/stackchan-camera-stream.patch
 git apply <このフォルダ>/firmware/stackchan-face-color.patch
 git apply <このフォルダ>/firmware/stackchan-countdown-shot.patch
+git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-fallback-pc.patch
+git apply <このフォルダ>/firmware/stackchan-camera-follow-server.patch
 . ~/esp/esp-idf-v5.5.4/export.sh
 idf.py build
 # Jetson の USB-A につなぐと /dev/ttyACM0。Wi-Fi の設定（NVS）は消えない
@@ -112,6 +116,34 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 - 書き込むのは ota_0（0x20000）・assets（0xa00000）・otadata（0xd000）など。NVS（0x9000）の Wi-Fi の設定と、スマホのアプリの登録はそのまま
 - Jetson の IP アドレスが変わるとつながらない。ルーターで固定する（2026/10: Jetson 192.168.11.23、スタックちゃん 192.168.11.8）
 - スマホのアプリで変える AI の設定（声・性格）は使わなくなる。声の大きさは本体の設定の「Volume」（0〜100、最初は 70）でも変えられる
+
+## ミニコンが落ちたとき（パソコンの控え）
+
+パソコンでも同じ bridge を `--primary-url` つきで動かしておきます（`pc/pc-stackchan.service`、聞き取り・返事・声は
+パソコンの whisper large-v3・qwen2.5:14b・VOICEVOX）。
+
+```
+スタックちゃん → ws://192.168.11.23:8000（ミニコン）… だめなら → ws://192.168.11.7:8000（Windows）
+                 → portproxy → WSL の 127.0.0.1:8000（パソコンの bridge）
+```
+
+- Windows（管理者で 1 回）: `pc/stackchan-portproxy.ps1`。LAN の `192.168.11.7:8000/8003` を WSL へ通し、ファイアウォールで
+  同じ LAN（LocalSubnet）からだけ入れる。パソコンの IP アドレスはルーターで固定する
+- パソコンの bridge はミニコンの `GET /status` を 10 秒ごとに見る。動いていてスタックちゃんがつながっていなければ、
+  ネット / ローカルと声の選択をまねる。スタックちゃんがこちらにつながっていて、ミニコンが 3 回続けて（約 30 秒）動いていて、
+  呼びかけ待ち（会話中・撮影中・ネットの会話中でない）なら、こちらから切る → スタックちゃんは 3 秒後にミニコンへつなぎ直す
+- パソコンの bridge では「ミニコンにして」・`POST /backend?to=jetson` は使えない（「ミニコンが止まっているあいだは、パソコンで話します。」）。
+  見守り（face_id）・Kokoro・whisper の見回りは使わない。VOICEVOX が止まると声が出ない
+- ダッシュボードは、ミニコンが未接続か bridge が答えないとき、パソコンの bridge（Tailscale の :8003）からスタックちゃんの様子を出す
+- ミニコンが止まってから、パソコンで話せるまで: 会話が切れて 3 秒後につなぎ直し（ミニコンへの接続が失敗してから）。
+  起動のときにミニコンが止まっていれば、OTA の 1 回目の失敗から 10 秒後にパソコンに聞く
+
+```bash
+# パソコン（WSL）
+sudo apt install -y python3-websockets python3-numpy python3-opencv python3-opuslib sox
+mkdir -p ~/ai/stackchan_bridge && cp stackchan_bridge.py ~/ai/stackchan_bridge/
+sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now pc-stackchan
+```
 
 ## カメラの映像
 

@@ -914,21 +914,38 @@ class DashboardNode(Node):
         self.get_logger().warn('ダッシュボードから Jetson の再起動を受け付けました')
         return {'ok': True}
 
-    def _stackchan_base(self):
-        """Jetson の stackchan_bridge の URL（stackchan_bridge_url か、Jetson が送ってくる IP アドレス。Tailscale を先に）。"""
+    def _stackchan_bases(self):
+        """stackchan_bridge の URL。stackchan_bridge_url か、ミニコンとパソコン（控え）が送ってくる IP アドレス
+        （Tailscale を先に）。ミニコンが未接続ならパソコンを先に。"""
         if self.stackchan_bridge_url:
-            return self.stackchan_bridge_url
+            return [self.stackchan_bridge_url]
         with self._lock:
-            state = self._jetson_host_state()
-        ips = [ip for ip in (state or {}).get('ips') or [] if ip.get('addr')]
-        ips.sort(key=lambda ip: ip.get('iface') != 'tailscale0')
-        return f"http://{ips[0]['addr']}:{STACKCHAN_BRIDGE_PORT}" if ips else ''
+            hosts = [self._jetson_host_state(), self._mypc_host_state()]
+        if not (hosts[0] or {}).get('alive'):
+            hosts.reverse()
+        bases = []
+        for state in hosts:
+            ips = [ip for ip in (state or {}).get('ips') or [] if ip.get('addr')]
+            ips.sort(key=lambda ip: ip.get('iface') != 'tailscale0')
+            if ips:
+                bases.append(f"http://{ips[0]['addr']}:{STACKCHAN_BRIDGE_PORT}")
+        return bases
 
     def stackchan_request(self, path, method='GET', timeout=STACKCHAN_TIMEOUT):
-        """Jetson の stackchan_bridge に聞いて、(中身, Content-Type) を返す（スタックちゃんのカード用、表示だけ）。"""
-        base = self._stackchan_base()
-        if not base:
-            raise HTTPException(status_code=503, detail='Jetson の IP アドレスがまだ届いていません')
+        """stackchan_bridge に聞いて、(中身, Content-Type) を返す（スタックちゃんのカード用、表示だけ）。
+        ミニコンにつながらなければ、パソコンの控えに聞く。"""
+        bases = self._stackchan_bases()
+        if not bases:
+            raise HTTPException(status_code=503, detail='ミニコンの IP アドレスがまだ届いていません')
+        for base in bases[:-1]:
+            try:
+                return self._stackchan_get(base, path, method, timeout)
+            except HTTPException as exc:
+                if exc.status_code != 503:
+                    raise
+        return self._stackchan_get(bases[-1], path, method, timeout)
+
+    def _stackchan_get(self, base, path, method, timeout):
         req = urllib.request.Request(base + path, data=b'' if method == 'POST' else None, method=method)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as res:
