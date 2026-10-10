@@ -41,6 +41,7 @@ AI-CAR の走行・安全停止には何も送らない。
 """
 import argparse
 import asyncio
+import concurrent.futures
 import html
 import io
 import json
@@ -83,8 +84,21 @@ FOREIGN_TEXT = re.compile(r'[\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\uac00-\ud7a
 WMO_JA = {0: '快晴', 1: '晴れ', 2: '晴れ時々くもり', 3: 'くもり', 45: '霧', 48: '霧', 51: '霧雨', 53: '霧雨', 55: '霧雨',
           61: '小雨', 63: '雨', 65: '大雨', 66: '冷たい雨', 67: '冷たい雨', 71: '小雪', 73: '雪', 75: '大雪', 77: '雪',
           80: 'にわか雨', 81: 'にわか雨', 82: '激しいにわか雨', 85: 'にわか雪', 86: 'にわか雪', 95: '雷雨', 96: '雷雨', 99: '雷雨'}
-NET_PROMPT = ('\n下はネットで今調べた結果です。天気・ニュース・今の出来事など新しいことを聞かれたら、これを使って答えてください。'
-              '結果にないことは、わからないと言ってください。URL や記号は読まないでください。\n')
+NET_PROMPT = ('\n下はネットで今調べた結果です。天気・ニュース・今の出来事や、今の首相・社長など新しいことを聞かれたら、'
+              'これを使って答えてください。結果に答えがあれば、言い切って答えてください。'
+              '人や役職は、いちばん新しい日付のものを答えてください。'
+              '結果にないことは、自分の覚えで答えず、わからないと言ってください。URL や記号は読まないでください。\n')
+SEARCH_PROMPT = ('ユーザーの質問をネットで調べるための検索ことばを、日本語の名詞 2〜3 個を空白で区切って 1 行だけ出してください。'
+                 '外国語やカタカナの英語にせず、ふつうの日本語の言葉を使ってください。説明は書かないでください。\n'
+                 '例: 今の日本の総理大臣は誰？ → 日本 総理大臣\n例: ウクライナの首相を調べて → ウクライナ 首相\n'
+                 '例: イギリスの首相は？ → イギリス 首相')
+SEARCH_FILLER = re.compile(r'現在の?|今の?|最新の?|名前|だれ|誰|なに|何|教えて|調べて|知ってる|について|[、。,.?？!！「」『』]')
+WEB_INFO_CHARS = 1500
+WIKI_API = ('https://ja.wikipedia.org/w/api.php?format=json&formatversion=2&action=query&generator=search&gsrlimit=2'
+            '&prop=extracts|revisions&exintro=1&explaintext=1&exchars=200&exlimit=2'
+            '&rvprop=content&rvslots=main&gsrsearch=')
+WIKI_UA = 'stackchan-bridge/1.0 (https://github.com/hirakawa-takashi/rcar_ros2_robot)'
+WIKI_SKIP = re.compile(r'image|size|caption|insignia|website|map|flag|coa|symbol|logo|alt|画像|サイズ|地図|国旗|国章|位置')
 LOCAL_PROMPT = 'ネットは見られないので、天気やニュースなど新しいことを聞かれたら、わからないと言ってください。'
 HOME = {}
 # パソコンの声で話すときの話し方・性格（ローカルの会話の AI に足す）
@@ -554,8 +568,8 @@ def voicevox_wav(text, speaker):
         return r.read()
 
 
-def web_get(url):
-    req = urllib.request.Request(url, headers={'User-Agent': WEB_UA, 'Accept-Language': 'ja'})
+def web_get(url, ua=WEB_UA):
+    req = urllib.request.Request(url, headers={'User-Agent': ua, 'Accept-Language': 'ja'})
     with urllib.request.urlopen(req, timeout=WEB_TIMEOUT) as r:
         return r.read().decode('utf-8', 'replace')
 
@@ -569,7 +583,7 @@ def home_place():
     return HOME
 
 
-def weather_info():
+def weather_info(_words=None):
     h = home_place()
     if not h:
         return ''
@@ -586,35 +600,90 @@ def weather_info():
     return '\n'.join(lines)
 
 
-def news_info():
+def news_info(_words=None):
     root = ET.fromstring(web_get('https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja'))
     titles = [t.text for t in root.iter('title')][2:7]
     return 'ニュース（Google ニュース）:\n' + '\n'.join(f'- {t}' for t in titles if t)
 
 
-def search_info(query):
-    """聞かれたことばで Google ニュースを検索して、新しい記事の見出しを 5 つ。"""
+def search_words(text):
+    """質問から検索ことばを作る（パソコンの会話の AI に頼む。だめなら質問の文から決まった言い回しを除くだけ）。"""
+    words = text
+    try:
+        body = json.dumps({'model': PC['model'], 'stream': False, 'keep_alive': -1,
+                           'options': {'temperature': 0, 'num_predict': 24},
+                           'messages': [{'role': 'system', 'content': SEARCH_PROMPT},
+                                        {'role': 'user', 'content': text}]}).encode()
+        with urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/chat'), body),
+                                    timeout=WEB_TIMEOUT / 2) as r:
+            words = json.loads(r.read())['message']['content'].splitlines()[0]
+    except (OSError, ValueError, KeyError, IndexError) as e:
+        log(f'検索ことばを作れません（{e}）')
+    return ' '.join(SEARCH_FILLER.sub(' ', FOREIGN_TEXT.sub('', words.replace('\ufffd', ''))).split())[:40] or text
+
+
+def news_search_info(words):
+    """検索ことばで Google ニュースを検索して、新しい記事の見出しと日付を 5 つ。"""
     root = ET.fromstring(web_get('https://news.google.com/rss/search?hl=ja&gl=JP&ceid=JP:ja&q='
-                                 + urllib.parse.quote(query)))
+                                 + urllib.parse.quote(words)))
     items = [(i.findtext('title'), (i.findtext('pubDate') or '')[5:16]) for i in root.iter('item')][:5]
-    return ('検索「' + query + '」（Google ニュース）:\n' + '\n'.join(f'- {t}（{d}）' for t, d in items if t)) \
-        if items else ''
+    return ('ニュースの検索「' + words + '」（Google ニュース）:\n'
+            + '\n'.join(f'- {t}（{d}）' for t, d in items if t)) if items else ''
+
+
+def ddg_info(words):
+    """検索ことばで DuckDuckGo を検索して、上から 4 つのページの説明。"""
+    page = web_get('https://html.duckduckgo.com/html/?q=' + urllib.parse.quote(words))
+    snips = [_plain(x)[:150] for x in re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', page, re.S)][:4]
+    return ('ウェブの検索（DuckDuckGo）:\n' + '\n'.join(f'- {x}' for x in snips if x)) if snips else ''
+
+
+def _wiki_text(v):
+    v = re.sub(r'<ref[^>]*/>|<ref.*?</ref>', '', v)
+    v = re.sub(r'\[\[(?:[^|\]]*\|)?([^\]]*)\]\]', r'\1', v)
+    v = re.sub(r'\[https?://\S+ ?([^\]]*)\]', r'\1', v)
+    v = re.sub(r'\{\{[^{}]*\}\}|\'\'+', '', v)
+    v = re.sub(r'<br\s*/?>', ' ', v)
+    return ' '.join(_plain(v).split())
+
+
+def wiki_info(words):
+    """Wikipedia（日本語）で上から 2 つの記事の、はじめの説明と右の表（現職・就任日など）。1 回で取る（何回も聞くと 429）。"""
+    pages = json.loads(web_get(WIKI_API + urllib.parse.quote(words), WIKI_UA)).get('query', {}).get('pages', [])
+    out = []
+    for page in sorted(pages, key=lambda x: x.get('index', 0)):
+        top = page['revisions'][0]['slots']['main']['content'].split('\n==')[0]
+        box = []
+        for k, v in re.findall(r'^\|\s*([^=|\n]+?)\s*=\s*(.+)$', top, re.M):
+            if not WIKI_SKIP.search(k) and (v := _wiki_text(v)) and len(box) < 12:
+                box.append(f'{k}: {v[:60]}')
+        intro = ' '.join(page.get('extract', '').split())
+        out.append(f"Wikipedia「{page['title']}」: {intro}" + ('\n' + '、'.join(box) if box else ''))
+    return '\n'.join(out)
 
 
 def web_info(query):
-    """聞かれたことをネットで調べて、プロンプトに足す文にする。調べられなかった所は飛ばす。"""
-    jobs = [search_info]
-    if WEATHER_ASK.search(query):
-        jobs.insert(0, weather_info)
+    """聞かれたことをネットで調べて、プロンプトに足す文にする。いっしょに調べ、WEB_TIMEOUT 秒で間に合わない所は飛ばす。"""
+    words = search_words(query)
+    jobs = [wiki_info, ddg_info, news_search_info]
     if NEWS_ASK.search(query):
         jobs.insert(0, news_info)
+    if WEATHER_ASK.search(query):
+        jobs.insert(0, weather_info)
+    pool = concurrent.futures.ThreadPoolExecutor(len(jobs))
+    futs = [pool.submit(job, words) for job in jobs]
+    concurrent.futures.wait(futs, timeout=WEB_TIMEOUT)
+    pool.shutdown(wait=False, cancel_futures=True)
     out = []
-    for job in jobs:
-        try:
-            out.append(job(query) if job is search_info else job())
-        except Exception as e:  # noqa: BLE001 - 調べられなくても会話は続ける
-            log(f'ネットで調べられません（{job.__name__}）: {e}')
-    return '\n'.join(t for t in out if t)
+    for job, fut in zip(jobs, futs):
+        if not fut.done():
+            log(f'ネットで調べるのが間に合いません（{job.__name__}）')
+        elif fut.exception():
+            log(f'ネットで調べられません（{job.__name__}）: {fut.exception()}')
+        elif fut.result():
+            out.append(fut.result())
+    log(f'検索ことば「{words}」: {len(out)} か所から')
+    return '\n'.join(out)[:WEB_INFO_CHARS]
 
 
 def pc_net():
