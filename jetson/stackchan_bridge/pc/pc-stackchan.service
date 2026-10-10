@@ -1,0 +1,12 @@
+[Unit]
+Description=StackChan bridge standby on the PC (used when the mini PC is down)
+After=network-online.target whisper-server.service ollama.service voicevox.service
+Wants=network-online.target
+[Service]
+User=super
+WorkingDirectory=/home/super/ai/stackchan_bridge
+ExecStart=/usr/bin/python3 -u /home/super/ai/stackchan_bridge/stackchan_bridge.py --pc-host 127.0.0.1 --model qwen2.5:14b --watch-interval 0 --primary-url http://100.111.231.54:8003
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
