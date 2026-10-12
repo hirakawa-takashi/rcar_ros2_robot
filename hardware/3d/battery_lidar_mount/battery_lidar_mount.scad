@@ -6,14 +6,12 @@
 //       openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
 //       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
 //       openscad -D 'part="cam_mount"' -o cam_mount.stl battery_lidar_mount.scad（カメラの板。裏を下にした向き）
-//       （2 眼カメラ用は -D 'front_cam="stereo"' を足して cam_mount_stereo.stl / cover_stereo.stl）
 //       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
 //       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
 
 part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
-front_cam = "wide";   // 前のカメラ: "wide"（Camera Module 3 Wide、1 眼）| "stereo"（USB 2 眼）。板・カバーの窓・組立図が変わる（ふたは共通）
 
 $fn = 48;
 
@@ -127,13 +125,10 @@ boss_keep = 5;            // 残す高さ（下はフランジの上から、上
 boss_tie_l = 20;          // 上の部分を、後ろ（前）の壁の外側に沿わせて留める長さ
 boss_tie_t = 2;           // 壁の外側に足す厚さ
 
-// ---- 2 眼カメラ（3D USB Camera 3D-1080P02、基板 80 x 17 mm）: ふたの前、LiDAR のモーターの下に、USB 端子を上にして立てる ----
-// 四隅の M2 の穴で、ふたの前端の面に当てる板（cam_mount.stl）に留める。板は左右の耳を、ふたの前端の柱 2 本に M3 で留める
-// USB は基板の上の端から L 字のプラグを上から差し、ケーブルを後ろへ曲げて、ふたの上を Pi へ通す
+// ---- カメラの板の位置の基準 ----
+// 板・ふたの前端の柱 2 本（M3）・ふたの M2 ナットのくぼみの位置は、前に付けていた USB 2 眼カメラ（基板 80 x 17 mm）の寸法から決めた。
+// 今のカメラ（Camera Module 3 Wide、下の wcam_*）もこの位置を使うので、変えると板・ふた・カバーが動く
 scam_board = [80, 17, 1.6];   // 幅 x 高さ（実測）x 厚さ（仮）
-scam_baseline = 60;           // 左右のレンズの中心の間隔（約 60 mm）
-scam_lens_d = 18;             // レンズのいちばん太い所（実測）
-scam_lens_l = 26;             // 基板の表からレンズの先まで（実測）
 scam_lens_z = 0;              // 仮: 基板の上下の中心からレンズの中心まで
 scam_hole_in = 1.5;           // 四隅の M2 の穴の中心の、基板のふちからの距離（実測）
 scam_back_h = 2;              // 基板の裏の部品の高さ（実測）
@@ -144,7 +139,6 @@ scam_so_d = 4.6;              // 支柱の太さ
 scam_hole_d = 2.5;            // 支柱と板の M2 の下穴（1.7 では印刷で約 0.5 mm につぶれたため）
 scam_ear_w = 8;               // 板の左右の耳（ふたの柱に M3 で留める）の幅
 scam_lpost_d = 6;             // ふたの柱の奥行き
-scam_slot_clr = 1.5;          // カバーの窓とレンズのすき間（片側）
 
 // ---- Camera Module 3 Wide（SC0874、横 102° / 縦 67°）: 2 眼と同じ板の位置に、FPC の端子を上にして（上下逆さまに）立てる ----
 // 寸法は公式の図面 RP-008155-DS-1（camera-module-3-wide-mechanical-drawing）。届いたら、レンズの長さと裏の端子の高さを実測して直す
@@ -265,9 +259,7 @@ scam_z1 = box_h + lid_t + lidar_tower_h - lidar_below - scam_usb_room;  // 基�
 scam_z0 = scam_z1 - scam_board[1];          // 基板の下端。ふたの上面より下（箱の前）
 scam_mnt_y0 = box_y0 + box_y + 2;           // 板の裏（ふたの前端の面に当てる）
 scam_back_y = scam_mnt_y0 + scam_mnt_t + scam_so;  // 基板の裏
-scam_front = scam_back_y + scam_board[2];   // 基板の表
 scam_lens_zc = scam_z0 + scam_board[1] / 2 + scam_lens_z;
-scam_tip_y = scam_front + scam_lens_l;
 scam_ends = [scam_cx - scam_board[0] / 2, scam_cx + scam_board[0] / 2];
 scam_holes = [for (x = [scam_ends[0] + scam_hole_in, scam_ends[1] - scam_hole_in], z = [scam_z0 + scam_hole_in, scam_z1 - scam_hole_in]) [x, z]];
 scam_mnt_x = [scam_ends[0] - 3.5, scam_ends[1] + 3.5];  // 板の左右の端（カバーのリブ X 21〜25 / 129〜133 の内側）
@@ -280,7 +272,7 @@ scam_nut_af = 4.4;                          // M2 ナット（二面幅 4 mm、�
 scam_nut_d = 2.5;                           // くぼみの深さ（柱の前の面から）
 
 wcam_cx = lidar_cx;                         // レンズを LiDAR の回転中心の真ん前にそろえる
-wcam_lens_zc = scam_lens_zc;                // レンズの中心の高さは 2 眼と同じ
+wcam_lens_zc = scam_lens_zc;                // レンズの中心の高さ（前の 2 眼カメラと同じ）
 wcam_z0 = wcam_lens_zc - wcam_lens_z;       // 基板の下の端
 wcam_z1 = wcam_z0 + wcam_board[1];          // 基板の上の端（FPC の端子の側）
 wcam_back_y = scam_mnt_y0 + scam_mnt_t + wcam_so;
@@ -476,21 +468,7 @@ module wcam_back_relief(zoff) {
         cylinder(d = wcam_relief_d, h = wcam_relief_l + 0.01);
 }
 
-// 2 眼カメラの板（組み立ての座標）。基板は前から M2 × 6 mm を 4 本、板は耳を M3 × 8 mm で 2 本
-module scam_mount() {
-    y1 = scam_mnt_y0 + scam_mnt_t;
-    zb = scam_z0 - 2;
-    difference() {
-        union() {
-            translate([scam_mnt_x[0], scam_mnt_y0, zb]) cube([scam_mnt_x[1] - scam_mnt_x[0], scam_mnt_t, scam_z1 - 3 - zb]);
-            for (x = scam_ear_x) translate([x, scam_mnt_y0, zb]) cube([scam_ear_w, scam_mnt_t, scam_ear_top - zb]);
-            for (h = scam_holes) translate([h[0], y1 - 0.01, h[1]]) rotate([-90, 0, 0]) cylinder(d = scam_so_d, h = scam_so + 0.01);
-        }
-        for (h = scam_holes) translate([h[0], scam_back_y, h[1]]) rotate([-90, 0, 0]) screw_hole(2, scam_so + scam_mnt_t + 1, scam_hole_d);
-        for (x = scam_ear_x) translate([x + scam_ear_w / 2, scam_mnt_y0, scam_ear_scr_z]) rotate([-90, 0, 0]) clear_hole(3, scam_mnt_t);
-    }
-}
-
+// カメラの板（組み立ての座標）。板は耳を M3 × 8 mm で 2 本
 module wcam_mount() {
     y1 = scam_mnt_y0 + scam_mnt_t;
     zb = wcam_z0 - 2;
@@ -508,8 +486,7 @@ module wcam_mount() {
 }
 
 module cam_mount() {
-    if (front_cam == "stereo") scam_mount();
-    else wcam_mount();
+    wcam_mount();
 }
 
 module pi_base() {
@@ -635,8 +612,7 @@ module sensor_ghost() {
 }
 
 module camera_ghost() {
-    if (front_cam == "stereo") scam_ghost();
-    else wcam_ghost();
+    wcam_ghost();
     color("white") cam_mount();
 }
 
@@ -646,16 +622,6 @@ module wcam_ghost() {
     color("black") translate([wcam_cx, wcam_front + wcam_lens_box_l - 0.01, wcam_lens_zc]) rotate([-90, 0, 0])
         cylinder(d1 = 8.5, d2 = wcam_lens_d, h = wcam_lens_l - wcam_lens_box_l);
     color("silver") translate([wcam_cx - wcam_conn[0] / 2, wcam_back_y - wcam_conn[1], wcam_z1 - wcam_conn[2]]) cube(wcam_conn);
-}
-
-module scam_ghost() {
-    color("darkgreen") translate([scam_ends[0], scam_back_y, scam_z0]) cube([scam_board[0], scam_board[2], scam_board[1]]);
-    for (dx = [-scam_baseline / 2, scam_baseline / 2]) {
-        color("dimgray") translate([scam_cx + dx - 7.5, scam_front, scam_lens_zc - 7.5]) cube([15, 10, 15]);
-        color("black") translate([scam_cx + dx, scam_front - 0.01, scam_lens_zc]) rotate([-90, 0, 0]) cylinder(d = scam_lens_d, h = scam_lens_l);
-    }
-    // L 字の USB-C プラグ（目安）
-    color("silver") translate([scam_cx - 6, scam_front, scam_z1]) cube([12, 7, 12]);
 }
 
 module drok_ghost() {
@@ -727,16 +693,12 @@ wfpc_len = plen(wfpc_pts) + 16 + norm([wfpc_pi_x - fpc_w / 2 - wfpc_cam_port[0],
 module cable_ghost() {
     lt = box_h + lid_t;
     pz = pi_z + 1.6;
-    if (front_cam != "stereo") color("white") {
+    color("white") {
         fpc_path(wfpc_pts);
         // HAT の下で 90° 折って左へ → CAM 端子（目安）
         translate([wfpc_pi_x - fpc_w / 2, pi_cy - 12 - fpc_w / 2, pz + 14.5]) cube([fpc_w, fpc_w, 0.6]);
         path([[wfpc_pi_x - fpc_w / 2, pi_cy - 12, pz + 14.5], [wfpc_cam_port[0], wfpc_cam_port[1], wfpc_cam_port[2]]], 1.5);
     }
-    // 2 眼カメラの USB（基板の裏 → ふたの上を後ろへ → LiDAR の線と一緒に Pi の USB へ）
-    if (front_cam == "stereo") color("white") path([[scam_cx, scam_front + 3.5, scam_z1 + 9], [scam_cx, scam_mnt_y0 - 4, scam_z1 + 7], [scam_tie[0], scam_mnt_y0 - 16, lt + 3], [scam_tie[0], scam_tie[1], lt + 4.5],
-                         [rear_tie[0] - 2, box_y0 + 22, lt + 4], [rear_tie[0] - 1, rear_tie[1], lt + 4], [lidar_cx + 30, box_y0 - 6, lt + 2],
-                         [pi_cx + pi_board[0] / 2 + 12, pi_cy - 2, pz + 12], [pi_cx + pi_board[0] / 2 + 2, pi_cy - 3, pz + 6]], 4);
     // LiDAR（USB 変換基板）→ Pi の USB
     color("silver") path([[lidar_cx - 6, box_y0 + 22, lt + 3], [rear_tie[0] - 3, box_y0 + 22, lt + 3], [rear_tie[0] + 1, rear_tie[1], lt + 4], [lidar_cx + 30, box_y0 - 6, lt],
                           [pi_cx + pi_board[0] / 2 + 12, pi_cy + 20, pz + 12], [pi_cx + pi_board[0] / 2 + 2, pi_cy + 19, pz + 12]], 3.5);
@@ -791,9 +753,6 @@ cov_ox1 = plate_w + cov_clr + cov_t;
 cov_oy0 = cov_y0 - cov_t;
 cov_oy1 = cov_y1 + cov_t;
 cov_oz = cov_top + cov_t;
-
-// 2 眼カメラのレンズを通す前の窓（X0, X1, 上端の Z）。レンズの先はカバーより前に出るので、壁の下の端から切り込み、カバーを真上へ抜けるようにする
-function cov_scam_slot(dx) = let(r = scam_lens_d / 2 + scam_slot_clr) [scam_cx + dx - r, scam_cx + dx + r, scam_lens_zc + r];
 
 // LiDAR を真上へ抜くための外形（ヘッド、柱 4 本、前のモーター側）
 module cover_lidar_cut() {
@@ -887,15 +846,9 @@ module cover() {
             cover_chg_profile() translate([0, 0, d[0]]) linear_extrude(0.01)
                 offset(delta = d[1]) offset(r = 4) offset(delta = -4) square([cov_chg[3] - cov_chg[2], cov_chg[1] - cov_chg[0]]);
         // Camera Module 3 Wide の窓（前の壁。外へ広がる四角。レンズの先は壁の内側より後ろなので、カバーはそのまま真上へ抜ける）
-        if (front_cam != "stereo") hull() for (y = [cov_y1 - 1, cov_oy1 + 1]) let (w = wcam_win(y))
+        hull() for (y = [cov_y1 - 1, cov_oy1 + 1]) let (w = wcam_win(y))
             translate([0, y, 0]) rotate([90, 0, 0]) linear_extrude(0.01)
                 translate([wcam_cx, wcam_lens_zc]) offset(r = 2) square([2 * w[0] - 4, 2 * w[1] - 4], center = true);
-        // 2 眼カメラの窓（前の壁。左右のレンズごと。間の基板と USB は壁で守る）
-        if (front_cam == "stereo") for (dx = [-scam_baseline / 2, scam_baseline / 2]) let (w = cov_scam_slot(dx), r = (w[1] - w[0]) / 2)
-            translate([0, cov_oy1 + 1, 0]) rotate([90, 0, 0]) linear_extrude(cov_t + 3) hull() {
-                translate([w[0] + r, w[2] - r]) circle(r = r);
-                translate([w[0], -20]) square([w[1] - w[0], 1]);
-            }
         // バッテリーの残量表示の窓（上面。縁は面取り）
         let (d = disp_rect(), m = disp_cov_m) {
             translate([d[0] - m, d[1] - m, cov_top - 1]) cube([d[2] - d[0] + 2 * m, d[3] - d[1] + 2 * m, cov_t + 2]);
@@ -905,7 +858,7 @@ module cover() {
             }
         }
         // 前面のスリット（飾り。カメラの窓の下）
-        for (i = [0 : 1]) translate([scam_cx - 14, cov_y1 - 1, (front_cam == "stereo" ? 20 : 16) + i * 7]) cube([28, cov_t + 2, 3]);
+        for (i = [0 : 1]) translate([scam_cx - 14, cov_y1 - 1, 16 + i * 7]) cube([28, cov_t + 2, 3]);
         // 六角の通気口
         for (i = [0 : 12], j = [0 : 8]) {
             x = cov_vent[0] + i * 6 + (j % 2) * 3;
@@ -950,10 +903,10 @@ else {
 echo(box_outer = [box_x, box_y, box_h], interior = [in_x - end_fill, in_y, in_z],
      lidar_holes = [for (p = lidar_holes_rel) lidar_hole(p)],
      lidar_top_z = box_h + lid_t + lidar_tower_h,
-     scam_board_xz = [scam_ends[0], scam_ends[1], scam_z0, scam_z1], scam_holes = scam_holes, scam_lens_center = [scam_cx, scam_tip_y, scam_lens_zc],
-     scam_board_y = [scam_back_y, scam_front], scam_mnt_x = scam_mnt_x, scam_mnt_y = [scam_mnt_y0, scam_mnt_y0 + scam_mnt_t], scam_ear_top_z = scam_ear_top,
-     cov_scam_slots = [cov_scam_slot(-scam_baseline / 2), cov_scam_slot(scam_baseline / 2)], cov_front_outer_y = cov_oy1,
-     front_cam = front_cam, wcam_board_xz = [wcam_cx - wcam_board[0] / 2, wcam_cx + wcam_board[0] / 2, wcam_z0, wcam_z1], wcam_holes = wcam_holes,
+     scam_board_xz = [scam_ends[0], scam_ends[1], scam_z0, scam_z1], scam_holes = scam_holes,
+     scam_mnt_x = scam_mnt_x, scam_mnt_y = [scam_mnt_y0, scam_mnt_y0 + scam_mnt_t], scam_ear_top_z = scam_ear_top,
+     cov_front_outer_y = cov_oy1,
+     wcam_board_xz = [wcam_cx - wcam_board[0] / 2, wcam_cx + wcam_board[0] / 2, wcam_z0, wcam_z1], wcam_holes = wcam_holes,
      wcam_relief_y = [scam_mnt_y0 - wcam_relief_l, scam_mnt_y0], box_front_wall_left = wall_y - (box_y0 + box_y - (scam_mnt_y0 - wcam_relief_l)),
      wcam_board_y = [wcam_back_y, wcam_front], wcam_lens_tip = [wcam_cx, wcam_tip_y, wcam_lens_zc], wcam_tip_to_cover_in = cov_y1 - wcam_tip_y,
      wcam_win_in = 2 * wcam_win(cov_y1), wcam_win_out = 2 * wcam_win(cov_oy1), wfpc_len = wfpc_len, pi_holes = pi_pts, pi_board_x = [pi_cx - pi_board[0] / 2, pi_cx + pi_board[0] / 2],

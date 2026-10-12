@@ -182,20 +182,20 @@ class PerceptionNode(Node):
         self.declare_parameter('living_labels', ['人', '犬', '猫', '鳥'])
         self.declare_parameter('living_slow_distance', 1.5)
         self.declare_parameter('living_stop_distance', 0.6)
-        # 2 眼カメラの距離（stereo_depth_node）で見つけた通り道の中の物。
+        # 1 眼の奥行きの AI（stereo_topic の JSON）で見つけた通り道の中の物。
         # LiDAR の同じ方向の距離が stereo_low_margin 以上遠い（光が上を通る）ものだけを低い物とする。
-        # stereo_guard が false の間は判定を表示するだけ（dashboard.yaml は true）
+        # 減速・停止に使うのは stereo_guard と mono_depth_guard の両方が true のときだけ
         self.declare_parameter('stereo_topic', '/stereo/depth_status')
         self.declare_parameter('stereo_guard', False)
         self.declare_parameter('stereo_slow_distance', 0.8)
         self.declare_parameter('stereo_stop_distance', 0.45)
         self.declare_parameter('stereo_low_margin', 0.15)
         self.declare_parameter('stereo_max_age', 1.5)
-        # 物の枠の距離: 2 眼のマスの距離（/stereo/depth_grid）で測れればそれを使い、
-        # 測れない所（左はしなど）は LiDAR の距離にする。空で 2 眼を使わない
-        self.declare_parameter('stereo_grid_topic', '/stereo/depth_grid')
+        # 物の枠の距離: マスの距離（JSON の grid_cm）で測れればそれを使い、
+        # 測れない所は LiDAR の距離にする。空でマスを使わない
+        self.declare_parameter('stereo_grid_topic', '')
         # 1 眼の奥行きの AI（SC-Depth v3 の HEF）で床から出っぱった低い物を見つけ、
-        # 2 眼と同じ形で stereo_topic・mono_depth_image_topic に出す。空で無効
+        # stereo_topic・mono_depth_image_topic に出す。空で無効
         self.declare_parameter('mono_depth_hef', '')
         self.declare_parameter('mono_depth_rate', 10.0)
         self.declare_parameter('mono_depth_image_topic', '/stereo/depth/compressed')
@@ -552,7 +552,7 @@ class PerceptionNode(Node):
         return distance, ('lidar' if distance is not None else None)
 
     def _stereo_distance_for_box(self, x_min, y_min, x_max, y_max):
-        """枠の真ん中（縦横の半分）にかかる 2 眼のマスの距離。
+        """枠の真ん中（縦横の半分）にかかるマスの距離。
 
         測れたマスが stereo_grid_min_ratio より少なければ None。マスの距離を近い順に
         まとめ、測れたマスの 3 割以上がある、いちばん手前のまとまりの中央値を返す。
@@ -719,7 +719,7 @@ class PerceptionNode(Node):
         threading.Thread(target=self._run_depth, args=(frame,), daemon=True).start()
 
     def _run_depth(self, frame: bytes):
-        """1 眼の奥行きの AI で床から出っぱった物を探し、2 眼と同じ形の状態と色の画像を出す。"""
+        """1 眼の奥行きの AI で床から出っぱった物を探し、状態と色の画像を出す。"""
         try:
             import cv2
             image = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
@@ -930,7 +930,7 @@ class PerceptionNode(Node):
         }
 
     def _stereo_assessment(self, now):
-        """2 眼の距離のいちばん近い物を LiDAR と比べ、低い障害物の減速・停止の判定を作る。"""
+        """奥行きの距離のいちばん近い物を LiDAR と比べ、低い障害物の減速・停止の判定を作る。"""
         with self._lock:
             stereo = self._stereo
             age = now - self._stereo_stamp if self._stereo_stamp else None
@@ -970,7 +970,7 @@ class PerceptionNode(Node):
         return result
 
     def _stereo_object(self, obj):
-        """2 眼の物 1 個の距離・横の位置・横幅・同じ向きの LiDAR の距離・低い物か・映像の上の枠。"""
+        """奥行きで見つけた物 1 個の距離・横の位置・横幅・同じ向きの LiDAR の距離・低い物か・映像の上の枠。"""
         distance = obj['distance_m']
         b_min, b_max = (math.radians(obj[k]) for k in ('bearing_min_deg', 'bearing_max_deg'))
         lidar = self._distance_for_bearings(b_min, b_max)

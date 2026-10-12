@@ -28,8 +28,7 @@ overview:
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
     - {name: FastAPI + uvicorn, role: Web ダッシュボード / REST / WebSocket}
     - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8m）}
-    - {name: OpenCV (V4L2), role: USB 2 眼カメラ取り込み（stereo_camera_node）}
-    - {name: libcamera (rpicam), role: カメラ v3 取り込み（camera_type:=picam のとき）}
+    - {name: libcamera (rpicam), role: Camera Module 3 Wide 取り込み（camera_ros）}
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
 
 system:
@@ -47,7 +46,7 @@ system:
       state: done
       items:
         - LiDAR（A1M8）で障害物までの距離
-        - 2 眼カメラ（640×360・15 fps）
+        - Camera Module 3 Wide（960×540・30 fps）
         - AI HAT+ の YOLOv8m（人・動物など 80 種類）
         - 運転モード・自律走行・安全ガード
         - ダッシュボード（8080 番）
@@ -98,7 +97,7 @@ hardware:
     - {id: motor_hat, label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2, bus: I2C 0x60, power: 12V（モーター）, jump: motor, side: right}
     - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
     - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
-    - {id: camera, label: 2 眼カメラ（ELP 3D USB Camera）, sub: 片目 1280×720 → 640×360 15fps（上下逆さまに取付）, bus: USB 2.0, power: 5V, side: left}
+    - {id: camera, label: Camera Module 3 Wide（SC0874）, sub: IMX708 / 横 102° / 960×540 30fps, bus: CSI（フラットケーブル）, power: 3V3（Pi から）, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線・配線色未定）, power: 3V3, jump: gpio, side: bottom}
@@ -320,7 +319,7 @@ print3d:
     - {file: test_stand_part.png, label: 試験台（印刷する向き）}
     - {file: test_stand_top.png, label: 試験台の床板（真上から。斜めの格子の中抜き）}
   unverified:
-    - 寸法はデータシート・商品画像からの読み取りで、実物に合わせていない（VL53L1X・IMU のピン位置、LiDAR の USB 変換基板の大きさ、DROK の部品の高さ、2 眼カメラの基板の厚さ・レンズの長さと画角）
+    - 寸法はデータシート・商品画像からの読み取りで、実物に合わせていない（VL53L1X・IMU のピン位置、LiDAR の USB 変換基板の大きさ、DROK の部品の高さ、Camera Module 3 Wide のレンズの長さ・裏の端子の厚さ）
     - LiDAR 底面のねじ穴の深さと、ねじ込み穴（下穴）のきつさ
     - バンパーの板ばねの硬さ（PLA・0.8 mm で計算上 約 8 N、ひずみ 約 1.1 %）
     - 車体や車輪にバンパーの壁が当たらないか、床からセンサーまでの高さ
@@ -392,7 +391,7 @@ nodes:
     file: ai_car_web/perception_node.py
     role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
-    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /stereo/depth_status, /stereo/depth_grid, /jetson_detections]
+    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /stereo/depth_status, /jetson_detections]
     params:
       - {name: stop_distance, ref: perception_node.stop_distance, unit: m, desc: 停止判定}
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
@@ -400,11 +399,10 @@ nodes:
       - {name: living_guard, ref: perception_node.living_guard, unit: '', desc: 人・動物の検出で減速・停止する（false は表示のみ）}
       - {name: living_slow_distance, ref: perception_node.living_slow_distance, unit: m, desc: 人・動物がこの距離以内で減速}
       - {name: living_stop_distance, ref: perception_node.living_stop_distance, unit: m, desc: 人・動物がこの距離以内で停止}
-      - {name: stereo_guard, ref: perception_node.stereo_guard, unit: '', desc: 2 眼の距離で見つけた低い障害物で減速・停止する（false は表示のみ）}
-      - {name: stereo_slow_distance, ref: perception_node.stereo_slow_distance, unit: m, desc: 2 眼で見つけた低い障害物がこの距離以内で減速}
-      - {name: stereo_stop_distance, ref: perception_node.stereo_stop_distance, unit: m, desc: 2 眼で見つけた低い障害物がこの距離以内で停止}
-      - {name: stereo_low_margin, ref: perception_node.stereo_low_margin, unit: m, desc: LiDAR の距離が 2 眼よりこれ以上遠ければ低い物}
-      - {name: stereo_grid_min_ratio, ref: perception_node.stereo_grid_min_ratio, unit: '', desc: 物の枠の真ん中の 2 眼のマスがこの割合以上測れていれば 2 眼の距離（だめなら LiDAR）}
+      - {name: stereo_guard, ref: perception_node.stereo_guard, unit: '', desc: 1 眼の奥行きの AI で見つけた低い障害物で減速・停止する（mono_depth_guard も true のときだけ。false は表示のみ）}
+      - {name: stereo_slow_distance, ref: perception_node.stereo_slow_distance, unit: m, desc: 低い障害物がこの距離以内で減速}
+      - {name: stereo_stop_distance, ref: perception_node.stereo_stop_distance, unit: m, desc: 低い障害物がこの距離以内で停止}
+      - {name: stereo_low_margin, ref: perception_node.stereo_low_margin, unit: m, desc: LiDAR の距離が 1 眼の距離よりこれ以上遠ければ低い物}
       - {name: inference_rate, ref: perception_node.inference_rate, unit: Hz, desc: 推論レート上限}
       - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
       - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
@@ -439,21 +437,10 @@ nodes:
       - {name: reboot_after, ref: lidar_watchdog_node.reboot_after, unit: 回, desc: この回数続くと、ラズパイを再起動する（この起動で /scan が来ていたときだけ。0 でしない）}
       - {name: reboot_min_uptime, ref: lidar_watchdog_node.reboot_min_uptime, unit: s, desc: 起動からこの秒数たつまでは再起動しない（くり返さないため）}
     layer: sensor
-  - id: stereo_camera_node
-    label: stereo_camera_node
-    file: ai_car_web/stereo_camera_node.py
-    role: USB の 2 眼カメラ（2560×720 の左右横並び MJPG）を V4L2 で読み、MJPG を 1/2 の大きさで展開して（decode_reduce）、左目を 640×360・JPEG（品質 80）で 15 fps publish。camera_type:=stereo（既定）のとき起動（launch 側で respawn）。サービス ~/capture_calib（std_srvs/Trigger）で、市松模様が左右とも見つかれば元の大きさ（片目 1280×720）で左右の画像を calib_dir に保存する（キャリブレーション用）。/stereo/pair_gray を受けるノードがいるときだけ、左右を片目 320×180 の白黒にして横に並べ 3 Hz で出す（距離の計算用）
-    publishes: [/camera/image_raw/compressed, /stereo/pair_gray]
-    subscribes: []
-    params:
-      - {name: fps, ref: stereo_camera_node.fps, unit: fps, desc: 取り込みと publish の速さ}
-      - {name: rotate_180, ref: stereo_camera_node.rotate_180, unit: '', desc: 上下逆さまに付けたとき true}
-      - {name: eye, ref: stereo_camera_node.eye, unit: '', desc: 出す目（left / right）}
-    layer: sensor
   - id: camera
     label: camera（camera_ros）
     file: 外部パッケージ camera_ros + Raspberry Pi 版 libcamera
-    role: IMX708 を 960×540 30fps で取り込み JPEG（品質 80）で publish。camera_type:=picam のときだけ起動（launch 側で respawn）
+    role: IMX708 を 960×540 30fps で取り込み JPEG（品質 80）で publish。use_camera で起動（launch 側で respawn）
     publishes: [/camera/image_raw/compressed]
     subscribes: []
     params: []
@@ -480,23 +467,6 @@ nodes:
       - {name: invalid_is_cliff, ref: cliff_node.invalid_is_cliff, unit: '', desc: 床が見えない（測定無効）も段差とみなす}
       - {name: timing_budget_ms, ref: cliff_node.timing_budget_ms, unit: ms, desc: 1 回の測定時間（短距離モード）}
     layer: sensor
-  - id: stereo_depth_node
-    label: stereo_depth_node
-    file: ai_car_web/stereo_depth_node.py
-    role: 2 眼カメラの左右（/stereo/pair_gray）を stereo_calib.yaml で平行にそろえ、SGBM（片目 320×180・視差 0〜64 px、約 0.10 m から）で距離にする。カメラの高さ・向きで床からの高さを出し、通り道の中で床より 2〜60 cm 高い点のいちばん近い距離と、0.6 m より近い物を画像の上でつながりごとに分けた一覧（5 個まで）を /stereo/depth_status に、距離の色の画像を /stereo/depth/compressed に、左目の画像の 32×18 のマスごとの距離を /stereo/depth_grid に出す。perception_node が物の枠の距離に使い、LiDAR と比べて低い障害物の判定を作る（stereo_guard が false の間は表示だけ）。use_stereo_depth（既定 true）と camera_type:=stereo のとき起動
-    publishes: [/stereo/depth_status, /stereo/depth/compressed, /stereo/depth_grid]
-    subscribes: [/stereo/pair_gray]
-    params:
-      - {name: calib_file, ref: stereo_depth_node.calib_file, unit: '', desc: stereo_calibrate が書いたキャリブレーションの値}
-      - {name: num_disparities, ref: stereo_depth_node.num_disparities, unit: px, desc: 探す左右のずれの幅（大きいほど近くまで測れるが重い）}
-      - {name: camera_height_m, ref: stereo_depth_node.camera_height_m, unit: m, desc: 床からカメラまでの高さ}
-      - {name: camera_pitch_deg, ref: stereo_depth_node.camera_pitch_deg, unit: deg, desc: カメラの下向きの角度}
-      - {name: max_range_m, ref: stereo_depth_node.max_range_m, unit: m, desc: これより遠い物は見ない}
-      - {name: min_height_m, ref: stereo_depth_node.min_height_m, unit: m, desc: 床よりこれだけ高い点を物とみなす}
-      - {name: near_objects_range_m, ref: stereo_depth_node.near_objects_range_m, unit: m, desc: これより近い物は 1 個ずつ分けて全部の枠を出す}
-      - {name: near_objects_max, ref: stereo_depth_node.near_objects_max, unit: 個, desc: 分けて出す物の数の上限（近い順）}
-      - {name: near_objects_min_width_m, ref: stereo_depth_node.near_objects_min_width_m, unit: m, desc: これより細い物は、まちがった対応として出さない}
-    layer: perception
   - id: slam_toolbox
     label: slam_toolbox
     file: launch/slam.launch.py
@@ -529,15 +499,13 @@ nodes:
 
 topics:
   - {name: /scan, type: sensor_msgs/LaserScan, desc: LiDAR 360° スキャン（約 8 Hz）}
-  - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（2 眼カメラの左目 15 Hz / Camera Module 3 は 30 Hz）}
+  - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（Camera Module 3 Wide、30 Hz）}
   - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（20 Hz）}
   - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の距離・前進 / 後退の停止（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
-  - {name: /stereo/pair_gray, type: sensor_msgs/Image (mono8), desc: 2 眼カメラの左右を片目 320×180 の白黒にして横に並べた画像（3 Hz、受けるノードがいるときだけ）}
-  - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 2 眼の距離（通り道の中のいちばん近い物の距離・左右・高さ・方位、測れた画素の割合、処理時間）。perception_node が低い障害物の判定に使う（stereo_guard が false の間は表示のみ）}
-  - {name: /stereo/depth_grid, type: std_msgs/String (JSON), desc: 2 眼の距離を左目の画像の 32×18 のマスに分けた前方の距離（cm、測れない = 0）。perception_node が物の枠の距離に使う}
-  - {name: /stereo/depth/compressed, type: sensor_msgs/CompressedImage, desc: 2 眼の距離の色の画像（近い = 赤、遠い = 青、測れない = 黒）}
+  - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 1 眼の奥行きの AI の低い物（通り道の中のいちばん近い物の距離・左右・高さ・方位、処理時間）。perception_node が出して自分で低い障害物の判定に使う（名前は前の 2 眼カメラのときのまま）}
+  - {name: /stereo/depth/compressed, type: sensor_msgs/CompressedImage, desc: 1 眼の奥行きの距離の色の画像（perception_node が出す）}
   - {name: /jetson_detections, type: std_msgs/String (JSON), desc: Jetson（NanoOWL）の物体検出（名前・信頼度・画面の位置）。POST /api/jetson/detections から dashboard_node が流す。表示のみ}
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
