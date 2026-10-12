@@ -21,6 +21,9 @@ dashboard_node:
     max_linear_speed: 0.3
     max_angular_speed: 1.0
     cmd_timeout: 0.7
+    # 「出力」の初期値（%）。手動（Web・ゲームパッド）は max_* × 出力、自動も drive_mode_node でこれ以下にする
+    output_percent: 50.0
+    drive_output_topic: "/drive_output"
     # CPU 負荷軽減のため画面更新 5Hz、LiDAR 点群は 360 点に間引き
     telemetry_rate: 10.0
     scan_max_points: 720
@@ -72,6 +75,11 @@ drive_mode_node:
     cliff_topic: "/cliff_status"
     cliff_guard: true        # 段差を検出した向き（前 / 後）への移動を止め、AUTO は STOP
     cliff_timeout: 1.0       # 段差判定がこれより古ければ使わない（配線済みなら AUTO を拒否 / STOP）
+    # ダッシュボードの「出力」で、どのモードでも |速さ| ≤ max_* × 出力（自動走行の上限）
+    drive_output_topic: "/drive_output"
+    default_output: 0.5      # 「出力」が届くまでの値
+    max_linear_speed: 0.3    # dashboard_node と同じ値
+    max_angular_speed: 1.0
 
 motor_driver_node:
   ros__parameters:
@@ -113,8 +121,8 @@ joy_teleop_node:
     joy_cmd_topic: "/joy_cmd"
     publish_rate: 10.0
     deadzone: 0.15
-    # 通常の出力割合。RB を押している間は全速
-    speed_scale: 0.5
+    # スティックを倒しきったときの割合。1.0 = ダッシュボードの「出力」と同じ（RB は全速 = 同じ）
+    speed_scale: 1.0
     axis_linear_x: 1    # 左スティック上下: 前進/後退
     axis_linear_y: 0    # 左スティック左右: 平行移動
     axis_angular_z: 3   # 右スティック左右: 旋回

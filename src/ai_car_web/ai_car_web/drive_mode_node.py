@@ -28,7 +28,7 @@ import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from std_msgs.msg import String
+from std_msgs.msg import Float32, String
 
 MODES = ('manual', 'auto', 'stop')
 LABELS = {'manual': '手動', 'auto': '自動', 'stop': '停止'}
@@ -73,6 +73,11 @@ class DriveModeNode(Node):
         self.declare_parameter('cliff_guard', True)
         # 段差判定がこの秒数より古ければ使わない（配線済みなら AUTO を拒否 / STOP）
         self.declare_parameter('cliff_timeout', 1.0)
+        # ダッシュボードの「出力」（0.1〜1.0）。どのモードでも |速さ| ≤ max_* × 出力
+        self.declare_parameter('drive_output_topic', '/drive_output')
+        self.declare_parameter('default_output', 0.5)
+        self.declare_parameter('max_linear_speed', 0.3)
+        self.declare_parameter('max_angular_speed', 1.0)
 
         self.auto_timeout = float(self.get_parameter('auto_timeout').value)
         self.manual_timeout = float(self.get_parameter('manual_timeout').value)
@@ -83,6 +88,9 @@ class DriveModeNode(Node):
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
         self.cliff_guard = bool(self.get_parameter('cliff_guard').value)
         self.cliff_timeout = float(self.get_parameter('cliff_timeout').value)
+        self.max_linear = float(self.get_parameter('max_linear_speed').value)
+        self.max_angular = float(self.get_parameter('max_angular_speed').value)
+        self._output = float(self.get_parameter('default_output').value)
 
         self._lock = threading.Lock()
         mode = str(self.get_parameter('initial_mode').value).lower()
@@ -117,6 +125,11 @@ class DriveModeNode(Node):
             String, self.get_parameter('request_topic').value, self._request_cb, 10)
         self.create_subscription(
             String, self.get_parameter('obstacle_topic').value, self._obstacle_cb, 10)
+        output_topic = self.get_parameter('drive_output_topic').value
+        if output_topic:
+            self.create_subscription(
+                Float32, output_topic, self._output_cb,
+                QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         joy_topic = self.get_parameter('joy_cmd_topic').value
         if joy_topic:
             self.create_subscription(Twist, joy_topic, self._joy_cb, 10)
@@ -177,6 +190,10 @@ class DriveModeNode(Node):
             self._set_mode('stop', 'guard', ' / '.join(block))
             return
         self._publish_cmd(cmd)
+
+    def _output_cb(self, msg: Float32):
+        with self._lock:
+            self._output = max(0.1, min(1.0, float(msg.data)))
 
     def _joy_cb(self, msg: Twist):
         with self._lock:
@@ -297,9 +314,12 @@ class DriveModeNode(Node):
     # --- 出力 ---
     def _publish_cmd(self, msg: Twist):
         out = Twist()
-        out.linear.x = msg.linear.x
-        out.linear.y = msg.linear.y
-        out.angular.z = msg.angular.z
+        with self._lock:
+            lin = self.max_linear * self._output
+            ang = self.max_angular * self._output
+        out.linear.x = max(-lin, min(lin, msg.linear.x))
+        out.linear.y = max(-lin, min(lin, msg.linear.y))
+        out.angular.z = max(-ang, min(ang, msg.angular.z))
         if self.obstacle_guard and out.linear.x > 0.0 and self._obstacle_stop():
             out.linear.x = 0.0
         if self.cliff_guard and out.linear.x != 0.0:
