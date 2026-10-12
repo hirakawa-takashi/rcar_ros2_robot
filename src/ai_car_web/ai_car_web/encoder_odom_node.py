@@ -141,6 +141,7 @@ class EncoderOdomNode(Node):
         # 車体の中心から車輪の中心まで（前後 lx・左右 ly）
         self.declare_parameter('wheel_base_half', 0.11)
         self.declare_parameter('track_half', 0.12)
+        self.declare_parameter('yaw_scale', 1.0)
         # モーターの正転（Motor HAT の + 出力）でカウントが減るなら -1
         self.declare_parameter('count_sign', -1)
 
@@ -169,7 +170,8 @@ class EncoderOdomNode(Node):
         cpr = float(self.get_parameter('counts_per_rev').value)
         self.m_per_count = 2.0 * math.pi * float(self.get_parameter('wheel_radius').value) / cpr
         self.k = (float(self.get_parameter('wheel_base_half').value)
-                  + float(self.get_parameter('track_half').value))
+                  + float(self.get_parameter('track_half').value)) / float(
+            self.get_parameter('yaw_scale').value)
 
         ctx = mp.get_context('spawn')
         self.counts = ctx.Array('q', len(pins), lock=False)

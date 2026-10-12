@@ -75,7 +75,7 @@
 
 ## 既知の問題
 - Pi には rviz2 が未インストール（ros-base のみ）。RViz2 は開発PC側での表示を想定
-- `/odom`（encoder_odom_node）の距離は床で合わせた値（counts_per_rev 1408、実測 1.8 m ≒ 約 10,000 カウント）。旋回・横移動はまだ寸法からの計算値
+- `/odom`（encoder_odom_node）の距離は床で合わせた値（counts_per_rev 1408、実測 1.8 m ≒ 約 10,000 カウント）。旋回は yaw_scale 1.42（床で 1.5 回転して合わせた値）。横移動はまだ寸法からの計算値
 - LiDAR は `ros-jazzy-rplidar-ros` の導入と `super` の `dialout` グループ所属が必要
 - AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。温度は HailoRT C API `hailo_get_chip_temperature()` で取得済み。NPU 使用率と電力はダッシュボードでは扱わない（使用率は `HAILO_MONITOR=1` の推論アプリがある間のみ `hailortcli monitor` で参照可）。電力は未取得（`measure-power` は `UNSUPPORTED_OPCODE`、`query_health_stats()`/`query_performance_stats()` は HAILO8 非対応、`hatctl` は Ubuntu に存在せず Hailo 専用 hwmon も無し、PMIC に HAT 専用レール無し。外付け INA219 等が必要）
 - 検出物体の距離は LiDAR の方位角対応による概算で、カメラとLiDARの外部キャリブレーションは未実施（設置が同軸・同方向である前提）
