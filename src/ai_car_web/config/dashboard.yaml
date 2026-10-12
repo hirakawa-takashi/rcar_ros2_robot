@@ -180,6 +180,10 @@ imu_node:
     frame_id: "imu_link"
     imu_topic: "/imu/data"
     publish_rate: 20.0
+    # 基板の x が後ろ・y が右（z 軸まわりに 180°）なので、BNO055 の軸の割り当てで
+    # x・y の符号を反転して imu_link（x 前・y 左・z 上）にそろえる
+    axis_map_config: 0x24
+    axis_map_sign: 0x06
 
 cliff_node:
   ros__parameters:

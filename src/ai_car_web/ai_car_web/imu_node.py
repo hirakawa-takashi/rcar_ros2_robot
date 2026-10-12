@@ -17,6 +17,8 @@ UNIT_SEL = 0x3B
 OPR_MODE = 0x3D
 PWR_MODE = 0x3E
 SYS_TRIGGER = 0x3F
+AXIS_MAP_CONFIG = 0x41
+AXIS_MAP_SIGN = 0x42
 CONFIG_MODE = 0x00
 NDOF_MODE = 0x0C
 
@@ -31,12 +33,16 @@ class ImuNode(Node):
         self.declare_parameter('frame_id', 'imu_link')
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('publish_rate', 50.0)
+        self.declare_parameter('axis_map_config', 0x24)
+        self.declare_parameter('axis_map_sign', 0x00)
 
         self.i2c_bus = int(self.get_parameter('i2c_bus').value)
         self.i2c_address = int(self.get_parameter('i2c_address').value)
         self.frame_id = str(self.get_parameter('frame_id').value)
         imu_topic = str(self.get_parameter('imu_topic').value)
         publish_rate = float(self.get_parameter('publish_rate').value)
+        self.axis_map_config = int(self.get_parameter('axis_map_config').value)
+        self.axis_map_sign = int(self.get_parameter('axis_map_sign').value)
 
         self.pub = self.create_publisher(Imu, imu_topic, 10)
         self._fd = None
@@ -78,6 +84,8 @@ class ImuNode(Node):
         self._write_reg(PWR_MODE, 0x00)
         self._write_reg(UNIT_SEL, 0x00)
         self._write_reg(SYS_TRIGGER, 0x00)
+        self._write_reg(AXIS_MAP_CONFIG, self.axis_map_config)
+        self._write_reg(AXIS_MAP_SIGN, self.axis_map_sign)
         self._write_reg(OPR_MODE, NDOF_MODE)
         time.sleep(0.03)
 

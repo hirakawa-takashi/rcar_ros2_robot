@@ -28,7 +28,7 @@
   - `autonomy_node`（Level 1 自律走行・LiDAR 反応型）: `/scan` を前 / 左 / 右 / 後セクターに分けて最短距離を求め、前進（0.15 m/s）→ 0.8 m 以内で減速（0.08 m/s、空いている側へ緩く曲がる）→ 0.35 m 以内で空いている側へその場旋回（0.6 rad/s、前方 0.9 m 以上空くまで）→ 前進を繰り返す。前後左右とも 0.25 m 以内なら後退。LiDAR が 1 秒以上途絶えると停止。`/cmd_vel_auto` に 10Hz で常時 publish（AUTO 以外はゼロ速度で待機）、状態は `/autonomy_status`（JSON: behavior / sectors / cmd）。地図・自己位置は使わない。launch 引数 `use_autonomy`
   - 運転モード UI: 手動操作カード上部にモードバッジ（手動 / 自動 / 停止）と 3 ボタン（`POST /api/drive_mode`）、拒否理由表示。自律走行カードに行動・各方向距離・自動指令・`/cmd_vel` 出力を表示
   - Subscribe: `/scan`、`/imu/data`、`/odom`、`/camera/image_raw/compressed`
-  - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate`
+  - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate` / `axis_map_config` / `axis_map_sign`（BNO055 の軸の割り当て。基板は x 後ろ・y 右なので `0x24` / `0x06` で x・y を反転して imu_link にそろえる）
   - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は 3 m で固定、3 m より遠い点は描かない）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
