@@ -92,6 +92,22 @@ motor_driver_node:
     max_duty: 1.0            # 出力 100 % のときの PWM（0〜1）
     timeout: 0.5             # /cmd_vel がこの秒数届かないと止める
 
+encoder_odom_node:
+  ros__parameters:
+    # 4 輪のエンコーダー（ピンは motor_hat.yaml）→ /odom と odom → base_footprint の TF
+    odom_topic: "/odom"
+    odom_frame: "odom"
+    base_frame: "base_footprint"
+    publish_tf: true
+    motor_hat_config: ""     # 空なら share/ai_car_web/config/motor_hat.yaml
+    gpio_chip: ""            # 空なら pinctrl-rp1 を探す
+    publish_rate: 20.0
+    counts_per_rev: 2464.0   # 車輪 1 回転のカウント（11 パルス × 4 逓倍 × 減速 56）
+    wheel_radius: 0.0403     # メカナムホイール Ø80.59 mm
+    wheel_base_half: 0.11    # 車体の中心から車輪の中心まで 前後
+    track_half: 0.12         # 同 左右
+    count_sign: -1           # モーターの正転でカウントが減る（2026/10/12 確認）
+
 autonomy_node:
   ros__parameters:
     # Level 1: LiDAR 反応型（地図なし）。AUTO モードのときだけ /cmd_vel に中継される
