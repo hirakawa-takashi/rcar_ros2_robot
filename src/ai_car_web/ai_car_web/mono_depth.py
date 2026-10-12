@@ -30,6 +30,40 @@ def camera_rays(rows, cols, hfov_deg, aspect, pitch_deg=0.0):
     return down, left
 
 
+def contact_pitch(disp, down, left, points, camera_height, lidar_height, min_points=10,
+                  near=0.3, far=2.0, wall_ratio=1.04, max_spread=3.0):
+    """LiDAR が当たった物と床のさかい目の行から、カメラの下向きの角度のずれ [度]。
+
+    down / left は決めた角度の camera_rays。points は LiDAR の点の（カメラから見た方位 [rad]・
+    左が正, 前方の距離 x [m]）。LiDAR の光の行から下へ、AI の値が光の所の wall_ratio 倍以内の
+    あいだは同じ物とし、その下のはしを床にふれる行とする。床なら下向きの tan は
+    カメラの高さ / x なので、その角度との差が、決めた角度からのずれ（下向きが正）。
+    点ごとのずれの中央値を返す。点が min_points より少ないか、ばらつき（中央値からの差の
+    中央値）が max_spread 度より大きいときは None。返り値は (ずれ, 使った点の数, ばらつき)。
+    """
+    rows, cols = disp.shape
+    rise = lidar_height - camera_height
+    est = []
+    for bearing, x in points:
+        if not near <= x <= far:
+            continue
+        r = int(np.searchsorted(down, -rise / x))
+        c = int(np.searchsorted(-left, -math.tan(bearing)))
+        if not (1 <= r < rows - 1 and 2 <= c < cols - 2):
+            continue
+        col = np.median(disp[:, c - 2:c + 3], axis=1)
+        limit = wall_ratio * np.median(col[r - 1:r + 2])
+        while r < rows - 1 and col[r + 1] <= limit:
+            r += 1
+        est.append(math.atan(camera_height / x) - math.atan(down[r]))
+    if len(est) < min_points:
+        return None, len(est), None
+    est = np.degrees(est)
+    pitch = float(np.median(est))
+    spread = float(np.median(np.abs(est - pitch)))
+    return (pitch if spread <= max_spread else None), len(est), spread
+
+
 def obstacle_columns(disp, down, camera_height, nearer=1.15, min_height=0.02, fill=0.7,
                      min_down=0.02):
     """列ごとの、床から出っぱった物の一番下の行（なければ -1）と上の端の行と、物の画素。
