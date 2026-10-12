@@ -176,6 +176,12 @@ class ImuNode(Node):
                 self._next_retry = now + 2.0
                 return
         try:
+            if self._read_reg(OPR_MODE, 1)[0] != NDOF_MODE:
+                self.get_logger().warn(
+                    'BNO055 が NDOF モードでない（リセットされた）ので設定し直します')
+                self._disconnect()
+                self._next_retry = now
+                return
             data = self._read_reg(0x08, 46)
             self._publish_data(data)
         except OSError as e:
