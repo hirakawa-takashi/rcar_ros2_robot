@@ -1926,7 +1926,7 @@ async def handler(ws, args):
         with STATUS_LOCK:
             STATUS['connected'] = max(0, STATUS['connected'] - 1)
         set_status(last_seen=time.time())
-        log(f'切れました: {peer}')
+        log(f'切れました: {peer}（コード {ws.protocol.close_code} {ws.protocol.close_reason or ""}）')
 
 
 async def main():
