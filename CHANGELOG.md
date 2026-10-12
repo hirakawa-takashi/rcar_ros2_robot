@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- スタックちゃんのパソコンの声（VOICEVOX）を 5 人から 43 人にした。ダッシュボードの Jetson のカードの「声」は、ボタンをやめて、えらぶ欄（下に開く一覧）にした。番号は各キャラクターの最初のスタイル（ノーマル・ふつう など）。足した 38 人にも、名乗る名前・一人称・文の終わり・性格（`PC_PERSONAS`）を 1 人ずつ決めた（キャラクターの公式の設定とはちがうところがある）
 - SLAM を `/odom` つきでふだんから動かす（`use_slam` 既定 true）。`slam_toolbox.yaml` の `minimum_travel_distance` / `minimum_travel_heading` を 0 → 0.2 m / 0.2 rad にした。
 - エンコーダーのオドメトリ `encoder_odom_node` を追加。4 輪の A/B 相（`motor_hat.yaml` のピン）を libgpiod の両エッジで 4 逓倍に数え（ROS と取り合わないよう別プロセス）、メカナムの順運動学（x = (前左 + 前右 + 後左 + 後右) / 4、y = (−前左 + 前右 + 後左 − 後右) / 4、旋回 = (−前左 + 前右 − 後左 + 後右) / (4 × (0.11 + 0.12))）で `/odom` と odom → base_footprint の TF を 20 Hz で出す。1 回転 2,464 カウント（11 × 4 × 56）・半径 40.3 mm で 1 カウント 0.103 mm。`use_odom`（既定 true）。`use_slam:=true` のときは SLAM の固定の TF をやめて、この TF を使う。実機（10/12、タイヤを浮かせて前進 25 % を 1.5 秒）: x 0.263 m・y 0.006 m・向き 1.6°、4 輪のカウント 2,468〜2,655、CPU 約 8 %。後左は信号のゆれで読みとばしが多い（約 900 回）が、カウントは他の輪と同じくらい
 - ダッシュボードの「出力」（10〜100 %）を、Web の操作だけでなくゲームパッドと自動走行の最大の速さにも使う。これまでは Web のボタンだけがブラウザの中で出力をかけ、ゲームパッド（`speed_scale` 0.5）と自動（巡航 0.15 m/s・旋回 0.6 rad/s）は出力と関係なく走っていた。出力は `POST /api/drive_output` で `dashboard_node` が持ち（初期値 `output_percent` 50、再起動で 50 に戻る）、`/drive_output`（Float32・transient local）で `drive_mode_node` へ送る。`drive_mode_node` はどのモードでも `|linear| ≤ 0.3 × 出力`・`|angular| ≤ 1.0 × 出力` に抑える（25 % なら 0.075 m/s・0.25 rad/s）。ゲームパッドは `speed_scale` 1.0 にして、倒しきり = 出力（RB も同じ）
