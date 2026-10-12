@@ -32,7 +32,7 @@ from nav_msgs.msg import OccupancyGrid, Odometry
 from pydantic import BaseModel
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
-from sensor_msgs.msg import CompressedImage, Imu, LaserScan
+from sensor_msgs.msg import CompressedImage, Imu, LaserScan, MagneticField
 from std_msgs.msg import Float32, String
 
 from ai_car_web.architecture import load_architecture
@@ -275,6 +275,7 @@ class DashboardNode(Node):
         self.declare_parameter('cmd_vel_topic', '/cmd_vel_manual')
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('imu_topic', '/imu/data')
+        self.declare_parameter('mag_topic', '/imu/mag')
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('system_status_topic', '/system_status')
         self.declare_parameter('camera_topic', '/camera/image_raw/compressed')
@@ -369,6 +370,9 @@ class DashboardNode(Node):
             LaserScan, self.get_parameter('scan_topic').value, self._scan_cb, sensor_qos)
         self.create_subscription(
             Imu, self.get_parameter('imu_topic').value, self._imu_cb, sensor_qos)
+        mag_topic = str(self.get_parameter('mag_topic').value)
+        if mag_topic:
+            self.create_subscription(MagneticField, mag_topic, self._mag_cb, sensor_qos)
         self.create_subscription(
             Odometry, self.get_parameter('odom_topic').value, self._odom_cb, 10)
         self.create_subscription(
@@ -423,6 +427,8 @@ class DashboardNode(Node):
         self._cmd_active = False
         self._scan = None
         self._imu = None
+        self._imu_tilt = (0.0, 0.0)
+        self._mag = None
         self._odom = None
         self._system = None
         self._obstacle = None
@@ -502,6 +508,28 @@ class DashboardNode(Node):
                 'yaw_deg': round(math.degrees(yaw), 2),
                 'angular_velocity_z': round(msg.angular_velocity.z, 4),
                 'linear_acceleration_x': round(msg.linear_acceleration.x, 4),
+            }
+            self._imu_tilt = (roll, pitch)
+
+    def _mag_cb(self, msg: MagneticField):
+        m = msg.magnetic_field
+        x, y, z = m.x * 1e6, m.y * 1e6, m.z * 1e6
+        with self._lock:
+            roll, pitch = self._imu_tilt
+        cr, sr = math.cos(roll), math.sin(roll)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        y1 = y * cr - z * sr
+        z1 = y * sr + z * cr
+        level_x = x * cp + z1 * sp
+        heading = math.degrees(math.atan2(y1, level_x)) % 360.0
+        with self._lock:
+            self._mag = {
+                'stamp': self._stamp_to_sec(msg.header.stamp),
+                'x_ut': round(x, 1),
+                'y_ut': round(y, 1),
+                'z_ut': round(z, 1),
+                'strength_ut': round(math.sqrt(x * x + y * y + z * z), 1),
+                'heading_deg': round(heading, 1),
             }
 
     def _odom_cb(self, msg: Odometry):
@@ -1150,6 +1178,7 @@ class DashboardNode(Node):
                 },
                 'scan': self._scan,
                 'imu': self._imu,
+                'mag': self._mag,
                 'odom': self._odom,
                 'system': self._system,
                 'obstacle': self._obstacle,

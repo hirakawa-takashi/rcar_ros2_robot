@@ -6,6 +6,7 @@ dashboard_node:
     cmd_vel_topic: "/cmd_vel_manual"
     scan_topic: "/scan"
     imu_topic: "/imu/data"
+    mag_topic: "/imu/mag"
     odom_topic: "/odom"
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"
@@ -179,13 +180,24 @@ imu_node:
     i2c_address: 0x29
     frame_id: "imu_link"
     imu_topic: "/imu/data"
+    # 磁気（sensor_msgs/MagneticField）。IMU モード（0x08）では BNO055 の磁気センサーが止まるので出さない
+    mag_topic: "/imu/mag"
     publish_rate: 20.0
     # 基板の x が後ろ・y が右（z 軸まわりに 180°）なので、BNO055 の軸の割り当てで
     # x・y の符号を反転して imu_link（x 前・y 左・z 上）にそろえる
     axis_map_config: 0x24
     axis_map_sign: 0x06
-    # ジャイロ・加速度・磁気の補正が 3 になったら、補正値（0x55〜0x6A の 22 バイト）を保存し、
-    # 次につないだとき NDOF に入る前に書きもどす（BNO055 は電源が切れると補正を忘れる）
+    # 動作モード: 0x08 IMU（ジャイロ＋加速度、磁気なし）/ 0x0C NDOF（磁気も使う）。
+    # 車の上では磁気が地磁気（約 46 µT）の 2〜3 倍（110〜150 µT）あり、止まっていても ±40 µT ゆれるので、
+    # NDOF ではジャイロの補正も 0 から進まない。IMU にすると数秒でジャイロが 3 になる（向きは起動時からの相対）。
+    # 0x07 AMG（3 つのセンサーの生の値）にすると磁気も読めて、向きは imu_node が計算する
+    # （ジャイロ＋加速度の Mahony フィルター、磁気は使わない。ジャイロのずれは止まっているあいだに引く）。
+    # AMG では BNO055 の補正の状態は出ないので、補正の保存もしない
+    operation_mode: 0x07
+    # AMG の向きの計算で、加速度で傾きを直す強さ（大きいほど早く直すが、ゆれに弱い）
+    filter_gain: 1.0
+    # 補正が 3 になったら（IMU はジャイロ・加速度、NDOF は磁気も）、補正値（0x55〜0x6A の 22 バイト）を保存し、
+    # 次につないだとき動作モードに入る前に書きもどす（BNO055 は電源が切れると補正を忘れる）
     calibration_file: "~/.ros/bno055_calibration.json"
     calibration_save_interval: 600.0
 
