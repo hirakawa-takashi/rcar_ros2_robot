@@ -180,6 +180,14 @@ imu_node:
     frame_id: "imu_link"
     imu_topic: "/imu/data"
     publish_rate: 20.0
+    # 基板の x が後ろ・y が右（z 軸まわりに 180°）なので、BNO055 の軸の割り当てで
+    # x・y の符号を反転して imu_link（x 前・y 左・z 上）にそろえる
+    axis_map_config: 0x24
+    axis_map_sign: 0x06
+    # ジャイロ・加速度・磁気の補正が 3 になったら、補正値（0x55〜0x6A の 22 バイト）を保存し、
+    # 次につないだとき NDOF に入る前に書きもどす（BNO055 は電源が切れると補正を忘れる）
+    calibration_file: "~/.ros/bno055_calibration.json"
+    calibration_save_interval: 600.0
 
 cliff_node:
   ros__parameters:

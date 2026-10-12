@@ -2,6 +2,7 @@
 """GY-BNO055 を読み取り sensor_msgs/Imu として publish するノード。"""
 
 import fcntl
+import json
 import math
 import os
 import time
@@ -17,6 +18,10 @@ UNIT_SEL = 0x3B
 OPR_MODE = 0x3D
 PWR_MODE = 0x3E
 SYS_TRIGGER = 0x3F
+AXIS_MAP_CONFIG = 0x41
+AXIS_MAP_SIGN = 0x42
+CALIB_OFFSETS = 0x55
+CALIB_SIZE = 22
 CONFIG_MODE = 0x00
 NDOF_MODE = 0x0C
 
@@ -31,12 +36,22 @@ class ImuNode(Node):
         self.declare_parameter('frame_id', 'imu_link')
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('publish_rate', 50.0)
+        self.declare_parameter('axis_map_config', 0x24)
+        self.declare_parameter('axis_map_sign', 0x00)
+        self.declare_parameter('calibration_file', '~/.ros/bno055_calibration.json')
+        self.declare_parameter('calibration_save_interval', 600.0)
 
         self.i2c_bus = int(self.get_parameter('i2c_bus').value)
         self.i2c_address = int(self.get_parameter('i2c_address').value)
         self.frame_id = str(self.get_parameter('frame_id').value)
         imu_topic = str(self.get_parameter('imu_topic').value)
         publish_rate = float(self.get_parameter('publish_rate').value)
+        self.axis_map_config = int(self.get_parameter('axis_map_config').value)
+        self.axis_map_sign = int(self.get_parameter('axis_map_sign').value)
+        self.calibration_file = os.path.expanduser(
+            str(self.get_parameter('calibration_file').value))
+        self.calibration_save_interval = float(
+            self.get_parameter('calibration_save_interval').value)
 
         self.pub = self.create_publisher(Imu, imu_topic, 10)
         self._fd = None
@@ -45,6 +60,7 @@ class ImuNode(Node):
         self._last_error_log = 0.0
         self._calibration = None
         self._temperature_c = None
+        self._calib_saved_at = None
         self.create_timer(1.0 / max(publish_rate, 1.0), self._timer_cb)
 
     def _write_reg(self, reg: int, value: int):
@@ -78,8 +94,49 @@ class ImuNode(Node):
         self._write_reg(PWR_MODE, 0x00)
         self._write_reg(UNIT_SEL, 0x00)
         self._write_reg(SYS_TRIGGER, 0x00)
+        self._write_reg(AXIS_MAP_CONFIG, self.axis_map_config)
+        self._write_reg(AXIS_MAP_SIGN, self.axis_map_sign)
+        self._load_calibration()
         self._write_reg(OPR_MODE, NDOF_MODE)
         time.sleep(0.03)
+
+    def _load_calibration(self):
+        try:
+            with open(self.calibration_file, encoding='utf-8') as f:
+                offsets = bytes(json.load(f)['offsets'])
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            self.get_logger().warn(f'BNO055 の補正ファイルを読めません: {e}')
+            return
+        if len(offsets) != CALIB_SIZE:
+            self.get_logger().warn('BNO055 の補正ファイルの長さが不正です')
+            return
+        if os.write(self._fd, bytes([CALIB_OFFSETS]) + offsets) != CALIB_SIZE + 1:
+            raise OSError('BNO055 補正値の書き込み失敗')
+        self.get_logger().info(f'BNO055 の補正を読みこみました: {self.calibration_file}')
+
+    def _save_calibration(self, now: float):
+        self._calib_saved_at = now
+        self._write_reg(OPR_MODE, CONFIG_MODE)
+        time.sleep(0.025)
+        try:
+            offsets = self._read_reg(CALIB_OFFSETS, CALIB_SIZE)
+        finally:
+            self._write_reg(OPR_MODE, NDOF_MODE)
+            time.sleep(0.02)
+        tmp = self.calibration_file + '.tmp'
+        try:
+            os.makedirs(os.path.dirname(self.calibration_file) or '.', exist_ok=True)
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump({'saved': time.strftime('%Y-%m-%dT%H:%M:%S'),
+                           'calibration': list(self._calibration),
+                           'offsets': list(offsets)}, f)
+            os.replace(tmp, self.calibration_file)
+        except OSError as e:
+            self.get_logger().warn(f'BNO055 の補正を保存できません: {e}')
+            return
+        self.get_logger().info(f'BNO055 の補正を保存しました: {self.calibration_file}')
 
     def _connect(self):
         fd = os.open(f'/dev/i2c-{self.i2c_bus}', os.O_RDWR)
@@ -176,8 +233,18 @@ class ImuNode(Node):
                 self._next_retry = now + 2.0
                 return
         try:
+            if self._read_reg(OPR_MODE, 1)[0] != NDOF_MODE:
+                self.get_logger().warn(
+                    'BNO055 が NDOF モードでない（リセットされた）ので設定し直します')
+                self._disconnect()
+                self._next_retry = now
+                return
             data = self._read_reg(0x08, 46)
             self._publish_data(data)
+            if (self._calibration[1:] == (3, 3, 3)
+                    and (self._calib_saved_at is None
+                         or now - self._calib_saved_at >= self.calibration_save_interval)):
+                self._save_calibration(now)
         except OSError as e:
             self._warn_error('BNO055 読み取りエラー', e)
             self._disconnect()
