@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- SLAM を `/odom` つきでふだんから動かす（`use_slam` 既定 true）。`slam_toolbox.yaml` の `minimum_travel_distance` / `minimum_travel_heading` を 0 → 0.2 m / 0.2 rad にした。
 - エンコーダーのオドメトリ `encoder_odom_node` を追加。4 輪の A/B 相（`motor_hat.yaml` のピン）を libgpiod の両エッジで 4 逓倍に数え（ROS と取り合わないよう別プロセス）、メカナムの順運動学（x = (前左 + 前右 + 後左 + 後右) / 4、y = (−前左 + 前右 + 後左 − 後右) / 4、旋回 = (−前左 + 前右 − 後左 + 後右) / (4 × (0.11 + 0.12))）で `/odom` と odom → base_footprint の TF を 20 Hz で出す。1 回転 2,464 カウント（11 × 4 × 56）・半径 40.3 mm で 1 カウント 0.103 mm。`use_odom`（既定 true）。`use_slam:=true` のときは SLAM の固定の TF をやめて、この TF を使う。実機（10/12、タイヤを浮かせて前進 25 % を 1.5 秒）: x 0.263 m・y 0.006 m・向き 1.6°、4 輪のカウント 2,468〜2,655、CPU 約 8 %。後左は信号のゆれで読みとばしが多い（約 900 回）が、カウントは他の輪と同じくらい
 - ダッシュボードの「出力」（10〜100 %）を、Web の操作だけでなくゲームパッドと自動走行の最大の速さにも使う。これまでは Web のボタンだけがブラウザの中で出力をかけ、ゲームパッド（`speed_scale` 0.5）と自動（巡航 0.15 m/s・旋回 0.6 rad/s）は出力と関係なく走っていた。出力は `POST /api/drive_output` で `dashboard_node` が持ち（初期値 `output_percent` 50、再起動で 50 に戻る）、`/drive_output`（Float32・transient local）で `drive_mode_node` へ送る。`drive_mode_node` はどのモードでも `|linear| ≤ 0.3 × 出力`・`|angular| ≤ 1.0 × 出力` に抑える（25 % なら 0.075 m/s・0.25 rad/s）。ゲームパッドは `speed_scale` 1.0 にして、倒しきり = 出力（RB も同じ）
 - モーター制御ノード `motor_driver_node` を追加。これまで `/cmd_vel` を受けるノードがなく、ダッシュボードの「前進」などを押してもタイヤが回らなかった。`/cmd_vel` をメカナムの逆運動学（前左 = x − y − z、前右 = x + y + z、後左 = x + y − z、後右 = x − y + z、`max_linear_speed` 0.3 m/s・`max_angular_speed` 1.0 rad/s で 100 %）で 4 輪の出力にし、Motor HAT の PCA9685 を `/dev/i2c-1` から直接書いて回す（エンコーダーを使わないオープンループ）。M2・M4 は `motor_hat.yaml` の `reversed` で符号を反転。`/cmd_vel` が 0.5 秒届かないと止め、終了時も全部止める。`/motor_status` に 4 輪の出力を 5 Hz で出す。`use_motor`（既定 true）
@@ -14,6 +15,7 @@
 - プロジェクト説明（`architecture.yaml`・`PROJECT_STATUS.md`・3D の README）とダッシュボードの「2眼の距離」の表示を、Camera Module 3 Wide と 1 眼の距離に直した
 
 ### Fixed
+- ダッシュボードの SLAM の地図が、車が止まると消えていた。`slam_toolbox` は動いてスキャンを足したときだけ `/pose` を出すので、`/pose` が 5 秒来ないと「途絶」にして地図を描かなかった。`/map`（2 秒ごと）が 5 秒以内に来ていれば動いているとみなし、最後の自己位置を出す。
 - `/odom` の向きがその場回転で実際の約 0.7 倍だった（床で /odom 380° のとき実際 540°）。`encoder_odom_node` に `yaw_scale`（向きの変化の倍率）を足し、1.42 にした
 - `/odom` の距離が実際の約 0.57 倍だった（床で 1.8 m 走って /odom 1.03 m、4 輪平均 約 10,000 カウント）。`counts_per_rev` を 2,464（11 × 4 × 56）から 1,408（11 × 4 × 32 相当）にした
 - `encoder_odom_node` がエッジを約半分取りこぼし、床で前後 1 m 走ったのに `/odom` は 0.55 m だった（後左の読みとばし 8,526 回）。libgpiod v1 の Python は 1 本 16 個までしかエッジをためず、1 個ずつ読むのも遅いため。GPIO の v2 uAPI（`ioctl`）で 8 本を 1 つの要求にしてカーネルに 1,024 個までためさせ、48 バイトずつまとめて読むようにした。seqno の飛びを「取りこぼし」としてログに出す

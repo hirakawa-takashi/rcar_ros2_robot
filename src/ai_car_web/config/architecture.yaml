@@ -21,7 +21,7 @@ overview:
     - {state: done, text: 運転モード管理（手動 / 自動 / 停止）と Level 1 自律走行}
     - {state: done, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
     - {state: done, text: エンコーダー読み取り・オドメトリ（/odom）}
-    - {state: todo, text: SLAM（slam_toolbox）}
+    - {state: done, text: SLAM（slam_toolbox、/odom つき）}
     - {state: todo, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション）}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
@@ -498,13 +498,13 @@ nodes:
   - id: slam_toolbox
     label: slam_toolbox
     file: launch/slam.launch.py
-    role: 地図と自己位置（online async SLAM）。use_slam:=true のときだけ起動。odom → base_footprint は encoder_odom_node の TF（use_odom:=false なら固定の TF にしてスキャンの照合だけ）。robot_state_publisher が URDF から base_link → laser の TF を出す
+    role: 地図と自己位置（online async SLAM）。use_slam（既定 true）で起動。odom → base_footprint は encoder_odom_node の TF（use_odom:=false なら固定の TF にしてスキャンの照合だけ）。robot_state_publisher が URDF から base_link → laser の TF を出す
     publishes: [/map, /pose, /tf]
     subscribes: [/scan, /tf]
     params:
       - {name: resolution, ref: slam_toolbox.resolution, unit: m, desc: 地図の 1 セルの大きさ}
       - {name: max_laser_range, ref: slam_toolbox.max_laser_range, unit: m, desc: 地図に使うスキャンの距離}
-      - {name: minimum_travel_distance, ref: slam_toolbox.minimum_travel_distance, unit: m, desc: この距離動いたらスキャンを使う（オドメトリが無い間は 0）}
+      - {name: minimum_travel_distance, ref: slam_toolbox.minimum_travel_distance, unit: m, desc: この距離動いたらスキャンを使う（/odom つきで 0.2）}
       - {name: map_update_interval, ref: slam_toolbox.map_update_interval, unit: s, desc: /map を出す間隔}
     layer: perception
   - id: system_monitor_node
@@ -635,7 +635,7 @@ status:
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
     - 実配線に合わせた motor_hat.yaml / gpio_pins.yaml の修正
-    - 床で 1 m 走らせて /odom の counts_per_rev を合わせ、SLAM を /odom つきで試す（minimum_travel_* を 0.2 に）
+    - SLAM の地図を部屋 1 周で作って、壁が二重にならないか確かめる
     - 実機で自動モードの旋回方向・速度・しきい値を調整
   docs:
     - {name: README.md, desc: セットアップ・実行・各デバイスの導入手順}

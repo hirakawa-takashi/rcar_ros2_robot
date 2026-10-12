@@ -647,7 +647,7 @@
       <tr><td class="k">地図の更新</td><td class="v" id="sl_age">-</td></tr>
       <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <span id="sl_saved"></span></td></tr>
     </table>
-    <div class="note">slam_toolbox（use_slam:=true で起動）。車輪のオドメトリがまだ無いので、位置は LiDAR のスキャンどうしの照合だけで出す。ゆっくり動かして地図を作る。自律走行にはまだ使わない。</div>
+    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.2 m か約 11° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。自律走行にはまだ使わない。</div>
   </div>
 
 

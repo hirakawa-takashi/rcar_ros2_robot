@@ -137,7 +137,7 @@ def generate_launch_description():
                               description='エンコーダーのオドメトリ（/odom・odom → base_footprint の TF）を起動する'),
         DeclareLaunchArgument('use_autonomy', default_value='true',
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
-        DeclareLaunchArgument('use_slam', default_value='false',
+        DeclareLaunchArgument('use_slam', default_value='true',
                               description='slam_toolbox で地図と自己位置を出す（slam.launch.py）'),
         Node(
             package='ai_car_web',
