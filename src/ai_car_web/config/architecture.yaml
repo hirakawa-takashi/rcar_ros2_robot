@@ -19,7 +19,7 @@ overview:
     - {state: done, text: 障害物判定（LiDAR + Hailo-8 物体検出）とサーマル制御}
     - {state: done, text: F710 ゲームパッド手動操作}
     - {state: done, text: 運転モード管理（手動 / 自動 / 停止）と Level 1 自律走行}
-    - {state: todo, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
+    - {state: done, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
     - {state: todo, text: エンコーダー読み取り・オドメトリ（/odom）}
     - {state: todo, text: SLAM（slam_toolbox）}
     - {state: todo, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション）}
@@ -367,6 +367,18 @@ nodes:
       - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: stop / LiDAR データなし（unknown）/ 判定の途絶中は前進を 0 にする}
       - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にし、AUTO は STOP}
       - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 段差判定が古ければ使わない（配線済みなら AUTO を拒否 / STOP）}
+    layer: control
+  - id: motor_driver_node
+    label: motor_driver_node
+    file: ai_car_web/motor_driver_node.py
+    role: /cmd_vel をメカナムの逆運動学で 4 輪の出力にし、Motor HAT（PCA9685 + TB6612、I2C 0x60）の M1〜M4 を PWM で回す（エンコーダーなし）。割り付けと向きは motor_hat.yaml。/cmd_vel が途絶えたら止める
+    publishes: [/motor_status]
+    subscribes: [/cmd_vel]
+    params:
+      - {name: max_linear_speed, ref: motor_driver_node.max_linear_speed, unit: m/s, desc: この速さの指令で出力 100 %}
+      - {name: max_angular_speed, ref: motor_driver_node.max_angular_speed, unit: rad/s, desc: この旋回の指令で出力 100 %}
+      - {name: max_duty, ref: motor_driver_node.max_duty, unit: '', desc: 出力 100 % のときの PWM（0〜1）}
+      - {name: timeout, ref: motor_driver_node.timeout, unit: s, desc: /cmd_vel がこの秒数届かないと止める}
     layer: control
   - id: autonomy_node
     label: autonomy_node
