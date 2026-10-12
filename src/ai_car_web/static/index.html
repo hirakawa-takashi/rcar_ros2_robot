@@ -538,6 +538,9 @@
         <tr><td class="k">yaw [deg]</td><td class="v" id="i_yaw">-</td></tr>
         <tr><td class="k">角速度 z [rad/s]</td><td class="v" id="i_gz">-</td></tr>
         <tr><td class="k">加速度 x [m/s²]</td><td class="v" id="i_ax">-</td></tr>
+        <tr><td class="k">磁気 x / y / z [µT]</td><td class="v" id="i_mxyz">-</td></tr>
+        <tr><td class="k">磁気の強さ [µT]</td><td class="v" id="i_mstr">-</td></tr>
+        <tr><td class="k">磁気の向き [deg]</td><td class="v" id="i_mhead">-</td></tr>
       </table>
     </div>
 
@@ -1754,6 +1757,11 @@ function renderAll(d) {
     i ? fmt(i.angular_velocity_z, 3) : '-';
   document.getElementById('i_ax').textContent =
     i ? fmt(i.linear_acceleration_x, 2) : '-';
+  const mg = freshMsg(d.mag, d.stamp, 2.0);
+  document.getElementById('i_mxyz').textContent =
+    mg ? `${fmt(mg.x_ut, 0)} / ${fmt(mg.y_ut, 0)} / ${fmt(mg.z_ut, 0)}` : '-';
+  document.getElementById('i_mstr').textContent = mg ? fmt(mg.strength_ut, 1) : '-';
+  document.getElementById('i_mhead').textContent = mg ? fmt(mg.heading_deg, 0) : '-';
 
   renderCliff(d.cliff);
   renderSlam(d.slam);
