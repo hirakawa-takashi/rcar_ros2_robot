@@ -1,0 +1,114 @@
+diff --git a/main/hal/hal_mcp.cpp b/main/hal/hal_mcp.cpp
+index 0d73851..9dd890f 100644
+--- a/main/hal/hal_mcp.cpp
++++ b/main/hal/hal_mcp.cpp
+@@ -92,6 +92,24 @@ void Hal::xiaozhi_mcp_init()
+             return true;
+         });
+ 
++    mclog::tagInfo(_tag, "add robot.set_face_color tool");
++    mcp_server.AddUserOnlyTool("self.robot.set_face_color",
++                               "Set the color (0xRRGGBB) of the eyes and mouth on the screen. White = 16777215.",
++                               PropertyList({Property("color", kPropertyTypeInteger, 0xFFFFFF, 0, 0xFFFFFF)}),
++                               [this](const PropertyList& properties) -> ReturnValue {
++                                   int color = properties["color"].value<int>();
++                                   mclog::tagInfo(_tag, "set_face_color: {:06X}", color);
++
++                                   LvglLockGuard lock;
++
++                                   auto& stackchan = GetStackChan();
++                                   if (!stackchan.hasAvatar()) {
++                                       return false;
++                                   }
++                                   stackchan.avatar().setColor(color);
++                                   return true;
++                               });
++
+     mclog::tagInfo(_tag, "add robot.create_reminder tool");
+     mcp_server.AddTool("self.robot.create_reminder",
+                        "Create a reminder. Duration is in seconds. Message is what to say when time is up. Set repeat "
+diff --git a/main/stackchan/avatar/avatar/avatar.h b/main/stackchan/avatar/avatar/avatar.h
+index c592942..366e22a 100644
+--- a/main/stackchan/avatar/avatar/avatar.h
++++ b/main/stackchan/avatar/avatar/avatar.h
+@@ -56,6 +56,11 @@ public:
+         });
+     }
+ 
++    void setColor(uint32_t hex)
++    {
++        _key_elements.forEach([hex](Element* element) { element->setColor(hex); });
++    }
++
+     Emotion getEmotion() const
+     {
+         return _emotion;
+diff --git a/main/stackchan/avatar/avatar/elements/element.h b/main/stackchan/avatar/avatar/elements/element.h
+index ea9001e..314db16 100644
+--- a/main/stackchan/avatar/avatar/elements/element.h
++++ b/main/stackchan/avatar/avatar/elements/element.h
+@@ -79,6 +79,15 @@ public:
+      *
+      * @param visible
+      */
++    /**
++     * @brief Main color (0xRRGGBB) of the face parts
++     *
++     * @param hex
++     */
++    virtual void setColor(uint32_t hex)
++    {
++    }
++
+     virtual void setVisible(bool visible)
+     {
+         _visible = visible;
+diff --git a/main/stackchan/avatar/skins/default/default.h b/main/stackchan/avatar/skins/default/default.h
+index e4d3400..f3f85a0 100644
+--- a/main/stackchan/avatar/skins/default/default.h
++++ b/main/stackchan/avatar/skins/default/default.h
+@@ -43,6 +43,7 @@ public:
+     void setEmotion(const Emotion& emotion) override;
+     void setVisible(bool visible) override;
+     void setSize(int size) override;
++    void setColor(uint32_t hex) override;
+ 
+ private:
+     bool _is_left_eye    = false;
+@@ -66,6 +67,7 @@ public:
+     void setWeight(int weight) override;
+     void setRotation(int rotation) override;
+     void setVisible(bool visible) override;
++    void setColor(uint32_t hex) override;
+ 
+ private:
+     std::unique_ptr<uitk::lvgl_cpp::Container> _mouth;
+diff --git a/main/stackchan/avatar/skins/default/eyes.cpp b/main/stackchan/avatar/skins/default/eyes.cpp
+index 32c6c1f..4975ac3 100644
+--- a/main/stackchan/avatar/skins/default/eyes.cpp
++++ b/main/stackchan/avatar/skins/default/eyes.cpp
+@@ -130,6 +130,11 @@ void DefaultEyes::setVisible(bool visible)
+     _container->setHidden(!visible);
+ }
+ 
++void DefaultEyes::setColor(uint32_t hex)
++{
++    _eye->setBgColor(lv_color_hex(hex));
++}
++
+ void DefaultEyes::setSize(int size)
+ {
+     Feature::setSize(size);
+diff --git a/main/stackchan/avatar/skins/default/mouth.cpp b/main/stackchan/avatar/skins/default/mouth.cpp
+index 02b683c..20d830f 100644
+--- a/main/stackchan/avatar/skins/default/mouth.cpp
++++ b/main/stackchan/avatar/skins/default/mouth.cpp
+@@ -71,3 +71,8 @@ void DefaultMouth::setVisible(bool visible)
+ 
+     _mouth->setHidden(!visible);
+ }
++
++void DefaultMouth::setColor(uint32_t hex)
++{
++    _mouth->setBgColor(lv_color_hex(hex));
++}

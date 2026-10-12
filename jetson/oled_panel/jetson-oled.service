@@ -1,0 +1,11 @@
+[Unit]
+Description=Show Jetson status on the Yahboom CUBE case OLED and RGB light bar (I2C bus 7)
+
+[Service]
+User=jetson
+ExecStart=/usr/bin/python3 -u /home/jetson/oled_panel/oled_panel.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

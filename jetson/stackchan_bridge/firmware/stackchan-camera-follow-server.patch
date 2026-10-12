@@ -1,0 +1,55 @@
+--- a/main/hal/board/stackchan_camera.h
++++ b/main/hal/board/stackchan_camera.h
+@@ -52,6 +52,7 @@
+ 
+     static void FrameUploadTask(void* arg);
+     int UploadFrame(bool want);
++    std::string FrameUrl();
+     std::atomic<int> shot_seconds_{0};
+ 
+     bool ShowPreview(int count);
+--- a/main/hal/board/stackchan_camera.cc
++++ b/main/hal/board/stackchan_camera.cc
+@@ -23,6 +23,8 @@
+ #include "lvgl_display.h"
+ #include "mcp_server.h"
+ #include "system_info.h"
++#include "settings.h"
++#include "aicar_server.h"
+ 
+ // #include "application.h"
+ // #include "audio_service.h"
+@@ -1037,6 +1039,14 @@
+     xTaskCreate(FrameUploadTask, "cam_frame", 6144, this, 1, &frame_task_);
+ }
+ 
++// 今つないでいる受け口（ミニコンかパソコン）の /camera/frame
++std::string StackChanCamera::FrameUrl()
++{
++    Settings settings("websocket", false);
++    std::string ws = settings.GetString("url");
++    return AicarIsBridge(ws) ? AicarWithHost(frame_url_, AicarHostOf(ws)) : frame_url_;
++}
++
+ // 1: 続けて送ってほしい, 0: 今は見ている人がいない, -1: 送れなかった
+ int StackChanCamera::UploadFrame(bool want)
+ {
+@@ -1060,7 +1070,7 @@
+         http->SetContent(std::string((const char*)jpeg, jpeg_len));
+         free(jpeg);
+     }
+-    if (!http->Open(want ? "POST" : "GET", frame_url_)) {
++    if (!http->Open(want ? "POST" : "GET", FrameUrl())) {
+         return -1;
+     }
+     int code          = http->GetStatusCode();
+@@ -1107,7 +1117,8 @@
+         ESP_LOGE(TAG, "shot: capture failed");
+         return;
+     }
+-    std::string url = frame_url_.substr(0, frame_url_.rfind('/')) + "/shot";
++    std::string frame_url = FrameUrl();
++    std::string url = frame_url.substr(0, frame_url.rfind('/')) + "/shot";
+     uint8_t* jpeg   = nullptr;
+     size_t jpeg_len = 0;
+     {

@@ -6,7 +6,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import AndSubstitution, EqualsSubstitution, LaunchConfiguration
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -33,7 +33,6 @@ def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
     use_system_monitor = LaunchConfiguration('use_system_monitor')
     use_camera = LaunchConfiguration('use_camera')
-    camera_type = LaunchConfiguration('camera_type')
     use_lidar = LaunchConfiguration('use_lidar')
     use_perception = LaunchConfiguration('use_perception')
     use_joy = LaunchConfiguration('use_joy')
@@ -42,7 +41,6 @@ def generate_launch_description():
     use_cliff = LaunchConfiguration('use_cliff')
     use_drive_mode = LaunchConfiguration('use_drive_mode')
     use_autonomy = LaunchConfiguration('use_autonomy')
-    use_floor = LaunchConfiguration('use_floor')
     use_slam = LaunchConfiguration('use_slam')
 
     try:
@@ -61,8 +59,7 @@ def generate_launch_description():
             additional_env=_rpicam_env(),
             respawn=True,
             respawn_delay=5.0,
-            condition=IfCondition(AndSubstitution(
-                use_camera, EqualsSubstitution(camera_type, 'picam'))),
+            condition=IfCondition(use_camera),
         ),
     ] if camera_available else []
 
@@ -81,6 +78,16 @@ def generate_launch_description():
             parameters=[params_file],
             respawn=True,
             respawn_delay=5.0,
+            condition=IfCondition(use_lidar),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='lidar_watchdog_node',
+            name='lidar_watchdog_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
             condition=IfCondition(use_lidar),
         ),
     ] if lidar_available else []
@@ -105,10 +112,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_system_monitor', default_value='true',
                               description='システム監視ノードを起動する'),
         DeclareLaunchArgument('use_camera', default_value='true',
-                              description='カメラノードを起動する'),
-        DeclareLaunchArgument('camera_type', default_value='stereo',
-                              description='stereo: USB 2 眼カメラ（stereo_camera_node）/ '
-                                          'picam: Camera Module 3（camera_ros）'),
+                              description='カメラノード（Camera Module 3 Wide、camera_ros）を起動する'),
         DeclareLaunchArgument('use_lidar', default_value='true',
                               description='rplidar_ros の LiDAR ノードを起動する'),
         DeclareLaunchArgument('use_perception', default_value='true',
@@ -125,8 +129,6 @@ def generate_launch_description():
                               description='運転モード管理（手動/自動/停止 → /cmd_vel）を起動する'),
         DeclareLaunchArgument('use_autonomy', default_value='true',
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
-        DeclareLaunchArgument('use_floor', default_value='true',
-                              description='カメラで床の上の低い障害物を見つけるノードを起動する'),
         DeclareLaunchArgument('use_slam', default_value='false',
                               description='slam_toolbox で地図と自己位置を出す（slam.launch.py）'),
         Node(
@@ -209,27 +211,6 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_autonomy),
-        ),
-        Node(
-            package='ai_car_web',
-            executable='floor_obstacle_node',
-            name='floor_obstacle_node',
-            output='screen',
-            parameters=[params_file],
-            respawn=True,
-            respawn_delay=2.0,
-            condition=IfCondition(use_floor),
-        ),
-        Node(
-            package='ai_car_web',
-            executable='stereo_camera_node',
-            name='stereo_camera_node',
-            output='screen',
-            parameters=[params_file],
-            respawn=True,
-            respawn_delay=5.0,
-            condition=IfCondition(AndSubstitution(
-                use_camera, EqualsSubstitution(camera_type, 'stereo'))),
         ),
         *camera_nodes,
         *lidar_nodes,

@@ -9,6 +9,8 @@ dashboard_node:
     odom_topic: "/odom"
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"
+    stereo_depth_topic: "/stereo/depth_status"
+    stereo_depth_image_topic: "/stereo/depth/compressed"
     # ブラウザへの MJPEG 配信レート（カメラ取り込み 15fps と同じ）
     camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
@@ -186,23 +188,26 @@ perception_node:
     front_angle_deg: 60.0
     stop_distance: 0.35
     slow_distance: 0.8
-    hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
+    # 物の名前を当てる YOLO（yolov8m.hef）は使わない。AI HAT+ は 1 眼の奥行きの AI だけに使う
+    hef_path: ""
     # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）
     inference_rate: 15.0
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
-    # 2 眼カメラ（ELP、片目 1280x720 → 960x540）の横の画角。仮の値（広角レンズでゆがみがあるので実測して直す）。
-    # Camera Module 3 に戻すときは 66.0
-    camera_hfov_deg: 120.0
+    # Camera Module 3 Wide の横の画角（公称 102°。ふつうの Camera Module 3 は 66.0）
+    camera_hfov_deg: 102.0
     scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
-    # LiDAR の回転中心から見たカメラのレンズ（使っている左目）の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（左 30 mm、前 79 mm。
-    # 前はレンズの先、レンズの長さ 26 mm は実測）。LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
-    camera_offset_x_m: 0.079
-    camera_offset_y_m: 0.030
+    # LiDAR の回転中心から見たカメラのレンズの先の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（Camera Module 3 Wide は真ん前 63 mm）。
+    # LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
+    camera_offset_x_m: 0.063
+    camera_offset_y_m: 0.0
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
+    # 物の枠の距離のマス（/stereo/depth_grid）。出すノードがないので使わない（物の枠の距離は LiDAR）
+    stereo_grid_topic: ""
+    stereo_grid_min_ratio: 0.3
     # Jetson（jetson/owl_detector の NanoOWL）の物体検出。LiDAR の距離を付けて表示するだけ（速度は変えない）
     jetson_topic: "/jetson_detections"
     jetson_max_age: 2.0
@@ -211,50 +216,46 @@ perception_node:
     living_labels: ["人", "犬", "猫", "鳥"]
     living_slow_distance: 1.5
     living_stop_distance: 0.6
-    # カメラの床の検出（floor_obstacle_node）で見つけた低い障害物。false の間は判定を表示するだけ
-    floor_guard: false
-    floor_slow_distance: 0.8
-    # カメラに床が映るのは約 0.35 m 先からなので、見えなくなる前に止まるよう少し長め
-    floor_stop_distance: 0.45
-    floor_low_margin: 0.15
-    floor_max_age: 1.0
+    # 1 眼の奥行きの AI（下の mono_depth_*）で見つけた低い障害物（LiDAR の線より低い物）の判定。
+    # 減速・停止に使うのは stereo_guard と mono_depth_guard の両方が true のときだけ（名前は前の 2 眼カメラのときのまま）
+    stereo_topic: "/stereo/depth_status"
+    stereo_guard: true
+    stereo_slow_distance: 0.8
+    stereo_stop_distance: 0.45
+    stereo_low_margin: 0.15
+    # 判定が届かなくなってから、古い値を使わなくなるまでの秒数
+    stereo_max_age: 1.5
+    # 1 眼の奥行きの AI（Hailo Model Zoo の SC-Depth v3、320x256、Hailo-8 で約 5.5 ms）。
+    # 床の行の真ん中より 1.07 倍手前に見える所を物とし、物が床につく行から距離を出す。
+    # /stereo/depth_status・/stereo/depth/compressed に出す（トピック名は前の 2 眼カメラのときのまま）。空で無効
+    # 取得: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/scdepthv3.hef
+    mono_depth_hef: "/home/super/AI-CAR_ws/models/scdepthv3.hef"
+    mono_depth_rate: 15.0
+    # まずは表示だけ（減速・停止には使わない）
+    mono_depth_guard: false
+    mono_camera_height_m: 0.112
+    mono_camera_pitch_deg: 0.0
+    mono_nearer_ratio: 1.07
+    mono_min_height_m: 0.02
+    mono_fill_ratio: 0.5
+    # 遠いと AI の奥行きが縮んで、床と物の差が小さくなるので 1 m まで
+    mono_max_range_m: 1.0
+    mono_min_columns: 3
+    # Camera Module 3 Wide のレンズは車の真ん中より 8 mm 左
+    mono_corridor_center_y_m: -0.008
+    mono_corridor_half_width_m: 0.15
+    # 物の出たり消えたりをおさえる。0.5 秒に 2 回見えたら出し、見えなくなっても 0.4 秒は出す。
+    # 距離は最近 5 回の中央値（今のほうが近ければ今の値）
+    mono_confirm_count: 2
+    mono_confirm_window_s: 0.5
+    mono_hold_s: 0.4
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
     hailo_temp_crit: 85.0
-    # 実効スループット表示用（YOLOv8m 640x640 = 78.9 GOP / Hailo-8 公称 26 TOPS）
-    model_gops: 78.9
+    # 実効スループット表示用（SC-Depth v3 320x256 = 10.7 GOP / Hailo-8 公称 26 TOPS）
+    model_gops: 10.7
     hailo_peak_tops: 26.0
-
-floor_obstacle_node:
-  ros__parameters:
-    camera_topic: "/camera/image_raw/compressed"
-    status_topic: "/floor_obstacle_status"
-    rate: 5.0
-    # カメラのレンズの床からの高さ（3D マウントの CAD 値）と下向きの角度。実機で紙を 0.4 / 0.6 / 1.0 m に置いて合わせる
-    camera_height_m: 0.112
-    camera_pitch_deg: 0.0
-    # 2 眼カメラ（ELP、片目 16:9）の視野角。仮の値（縦は横 120° からピンホールで計算）。実測して直す。
-    # Camera Module 3（IMX708 16:9）に戻すときは 66.0 / 40.1
-    camera_hfov_deg: 120.0
-    camera_vfov_deg: 88.6
-    # 車体の中心はカメラ（左目、X 39 mm）の 38 mm 右（天板の中心 77 mm）。片側 0.15 m は車輪の外側 + 余裕
-    corridor_center_y_m: -0.038
-    corridor_half_width_m: 0.15
-    max_range_m: 1.5
-    # 床の色を覚える、いちばん近い帯（カメラから 0.35〜0.45 m）
-    ref_max_m: 0.45
-    # 床の色の許容幅（Lab）。明るさ（L）は影で変わるので広め
-    tol_l: 25.0
-    tol_ab: 8.0
-    tol_sigma: 3.0
-    learn_rate: 0.05
-    warmup_frames: 5
-    min_rows: 3
-    min_width_m: 0.03
-    segment_gap_m: 0.15
-    confirm_frames: 2
-    history_frames: 3
 
 rplidar:
   ros__parameters:
@@ -263,24 +264,32 @@ rplidar:
     frame_id: "laser"
     angle_compensate: true
 
-# USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo（既定）で起動
-stereo_camera_node:
+# /scan が scan_timeout 秒来ないと rplidar を止め、launch の respawn（5 秒後）で起動し直す。
+# USB が抜けて差し直されたとき、rplidar_ros は古いポートを握ったまま /scan を出さなくなるため
+# usb_reset_after 回起動し直しても /scan が戻らなければ、rplidar を止めた後に LiDAR の USB をつなぎ直す
+# （電池の電圧が下がった後、CP2102 が返事をしなくなり、起動し直しを 33 分で 81 回しても戻らなかった）。
+# systemd/99-ai-car-lidar-usb.rules で dialout に /dev/bus/usb の書き込みを許す。0 でつなぎ直さない
+lidar_watchdog_node:
   ros__parameters:
-    device: "/dev/v4l/by-id/usb-3D_USB_Camera_3D_USB_Camera_01.00.00-video-index0"
-    # 左右を横に並べた MJPG（片目 1280x720）。30fps だと JPEG の展開と作り直しで CPU 約 108%、15fps で約 52%
-    width: 2560
-    height: 720
-    fps: 15.0
-    # 3D の板（cam_mount）に USB 端子を上にして付けているので回さない。上下逆さまに付けたときは true（左右の画像も入れ替わる）
-    rotate_180: false
-    eye: "left"
-    output_width: 960
-    output_height: 540
-    jpeg_quality: 80
-    image_topic: "/camera/image_raw/compressed"
-    frame_id: "camera_link"
+    scan_timeout: 3.0
+    startup_grace: 15.0
+    kill_wait: 3.0
+    process_pattern: "rplidar_ros/rplidar_composition"
+    usb_reset_after: 2
+    usb_vendor_id: "10c4"
+    usb_product_id: "ea60"
+    # つなぎ直しでも戻らないと、power_cycle_after 回目から power_cycles 回、USB の電気を 3 秒切って入れ直す
+    # （/usr/local/sbin/ai-car-usb-power-cycle、uhubctl。4 つの口が全部切れるのでゲームパッドも数秒切れる）。
+    # CP2102 が固まると USBDEVFS_RESET では戻らず、2026-10-08 は約 10 時間 45 分 /scan が来なかった。
+    # 1 回あたり 約 22 秒なので、固まってから 約 1.5 分で電気の入れ直し、約 2.5 分で再起動
+    power_cycle_after: 4
+    power_cycles: 2
+    # それでも reboot_after 回続けばラズパイを再起動する。この起動で /scan が一度でも来ていて、
+    # 起動から reboot_min_uptime 秒たっているときだけ（LiDAR がない・再起動でも直らないときにくり返さない）。0 でしない
+    reboot_after: 7
+    reboot_min_uptime: 1800.0
 
-# Camera Module 3（camera_ros）。camera_type:=picam のときだけ使う
+# Camera Module 3 Wide（camera_ros）。dashboard.launch.py の use_camera で起動
 camera:
   ros__parameters:
     format: "RGB888"
@@ -290,6 +299,9 @@ camera:
     height: 540
     jpeg_quality: 80
     camera: 0
+    # センサーの読み方を 2304x1296（2x2 まとめ・全体）に決める。決めないと、960x540 には
+    # 1536x864（真ん中だけ切り取り）が選ばれ、横の画角が 102° → 約 79° に狭くなる
+    sensor_mode: "2304:1296"
     # フレーム間隔の下限 / 上限（µs）。両方 66666 で 15fps 固定
     FrameDurationLimits: [33333, 33333]
     # 室内だと AE が露光を 33ms（1 フレーム分）まで伸ばして動体がぶれるため、

@@ -1,7 +1,7 @@
 # 家族の顔を見分ける（Jetson、face_id）
 
 顔の画像を受け取り、登録した家族のだれかを返します。あとで M5 スタックちゃん（机の上、カメラ GC0308 640×480）から
-顔の画像を受け取る予定です。届くまでは、AI-CAR の 2 眼カメラ（`GET /api/camera/snapshot`）で試します。
+顔の画像を受け取る予定です。届くまでは、AI-CAR の前方カメラ（Camera Module 3 Wide、`GET /api/camera/snapshot`）で試します。
 
 ```
 （今）AI-CAR GET /api/camera/snapshot ─┐

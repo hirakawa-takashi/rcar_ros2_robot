@@ -1,0 +1,6 @@
+[Unit]
+Description=Log Jetson memory, temperature, fan and service state (one line, for diagnosing hangs)
+
+[Service]
+Type=oneshot
+ExecStart=/home/jetson/health_log/jetson_health.sh

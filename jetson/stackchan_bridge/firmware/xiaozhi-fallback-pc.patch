@@ -1,0 +1,121 @@
+--- a/main/ota.h
++++ b/main/ota.h
+@@ -30,8 +30,11 @@
+     const std::string& GetActivationMessage() const { return activation_message_; }
+     const std::string& GetActivationCode() const { return activation_code_; }
+     std::string GetCheckVersionUrl();
++    // AI-CAR: ask the other bridge (mini PC <-> PC) next time
++    void SwitchServer() { use_fallback_ = !use_fallback_; }
+ 
+ private:
++    bool use_fallback_ = false;
+     std::string activation_message_;
+     std::string activation_code_;
+     bool has_new_version_ = false;
+--- a/main/ota.cc
++++ b/main/ota.cc
+@@ -1,6 +1,7 @@
+ #include "ota.h"
+ #include "system_info.h"
+ #include "settings.h"
++#include "aicar_server.h"
+ #include "assets/lang_config.h"
+ 
+ #include <freertos/FreeRTOS.h>
+@@ -49,6 +50,9 @@
+     if (url.empty()) {
+         url = CONFIG_OTA_URL;
+     }
++    if (use_fallback_ && AicarIsBridge(url)) {
++        url = AicarWithHost(url, AICAR_FALLBACK_HOST);
++    }
+     return url;
+ }
+ 
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -432,6 +432,7 @@
+             Alert(Lang::Strings::ERROR, buffer, "cloud_slash", Lang::Sounds::OGG_EXCLAMATION);
+ 
+             ESP_LOGW(TAG, "Check new version failed, retry in %d seconds (%d/%d)", retry_delay, retry_count, MAX_RETRY);
++            ota_->SwitchServer();
+             for (int i = 0; i < retry_delay; i++) {
+                 vTaskDelay(pdMS_TO_TICKS(1000));
+                 if (GetDeviceState() == kDeviceStateIdle) {
+--- a/main/protocols/websocket_protocol.cc
++++ b/main/protocols/websocket_protocol.cc
+@@ -3,8 +3,10 @@
+ #include "system_info.h"
+ #include "application.h"
+ #include "settings.h"
++#include "aicar_server.h"
+ 
+ #include <cstring>
++#include <vector>
+ #include <cJSON.h>
+ #include <esp_log.h>
+ #include <arpa/inet.h>
+@@ -172,9 +174,24 @@
+         }
+     });
+ 
+-    ESP_LOGI(TAG, "Connecting to websocket server: %s with version: %d", url.c_str(), version_);
+-    if (!websocket_->Connect(url.c_str())) {
++    std::vector<std::string> urls{url};
++    if (AicarIsBridge(url)) {
++        urls = {AicarWithHost(url, AicarHostOf(CONFIG_OTA_URL)), AicarWithHost(url, AICAR_FALLBACK_HOST)};
++    }
++    bool connected = false;
++    for (const auto& u : urls) {
++        ESP_LOGI(TAG, "Connecting to websocket server: %s with version: %d", u.c_str(), version_);
++        if (websocket_->Connect(u.c_str())) {
++            connected = true;
++            if (u != url) {
++                Settings rw("websocket", true);
++                rw.SetString("url", u);
++            }
++            break;
++        }
+         ESP_LOGE(TAG, "Failed to connect to websocket server, code=%d", websocket_->GetLastError());
++    }
++    if (!connected) {
+         SetError(Lang::Strings::SERVER_NOT_CONNECTED);
+         return false;
+     }
+--- /dev/null
++++ b/main/aicar_server.h
+@@ -0,0 +1,34 @@
++#pragma once
++// AI-CAR: the StackChan bridge runs on the mini PC (host of CONFIG_OTA_URL) and, as a standby, on the PC.
++// Try the mini PC first and the PC when the mini PC does not answer (same ports and paths).
++#include <string>
++
++#include "sdkconfig.h"
++
++#define AICAR_FALLBACK_HOST "192.168.11.7"
++
++inline std::string AicarHostOf(const std::string& url) {
++    auto b = url.find("://");
++    if (b == std::string::npos) {
++        return "";
++    }
++    b += 3;
++    auto e = url.find_first_of(":/", b);
++    return url.substr(b, e == std::string::npos ? std::string::npos : e - b);
++}
++
++inline std::string AicarWithHost(const std::string& url, const std::string& host) {
++    auto b = url.find("://");
++    if (b == std::string::npos) {
++        return url;
++    }
++    b += 3;
++    auto e = url.find_first_of(":/", b);
++    return url.substr(0, b) + host + (e == std::string::npos ? "" : url.substr(e));
++}
++
++// The bridge URLs to try for url: the mini PC first, then the PC. Other servers are tried as they are.
++inline bool AicarIsBridge(const std::string& url) {
++    auto host = AicarHostOf(url);
++    return host == AicarHostOf(CONFIG_OTA_URL) || host == AICAR_FALLBACK_HOST;
++}

@@ -1,0 +1,246 @@
+diff --git a/main/hal/board/stackchan_camera.cc b/main/hal/board/stackchan_camera.cc
+index 5ac9188..73ae26e 100644
+--- a/main/hal/board/stackchan_camera.cc
++++ b/main/hal/board/stackchan_camera.cc
+@@ -28,6 +28,7 @@
+ // #include "audio_service.h"
+ #include <hal/board/hal_bridge.h>
+ #include "assets/assets.h"
++#include "assets/lang_config.h"
+ 
+ #ifdef CONFIG_XIAOZHI_ENABLE_CAMERA_DEBUG_MODE
+ #undef LOG_LOCAL_LEVEL
+@@ -742,6 +743,54 @@ bool StackChanCamera::Capture()
+         }
+     }
+ 
++    return ShowPreview(0);
++}
++
++
++// 7 セグメントの数字（白・黒いふち）を右上に描く。白と黒は RGB565 のバイト順によらない
++static void fill_rect(uint8_t* data, int w, int h, size_t stride, int x0, int y0, int x1, int y1, uint16_t color)
++{
++    x0 = MAX(x0, 0);
++    y0 = MAX(y0, 0);
++    x1 = MIN(x1, w);
++    y1 = MIN(y1, h);
++    for (int y = y0; y < y1; y++) {
++        auto row = (uint16_t*)(data + y * stride);
++        for (int x = x0; x < x1; x++) {
++            row[x] = color;
++        }
++    }
++}
++
++static void draw_count(uint8_t* data, int w, int h, size_t stride, int count)
++{
++    // a b c d e f g
++    static const uint8_t kSegments[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
++    const int W = 80, H = 140, T = 18, B = 4;
++    const int ox = w - W - 16, oy = 16;
++    const int seg[7][4] = {
++        {ox, oy, ox + W, oy + T},                                // a
++        {ox + W - T, oy, ox + W, oy + H / 2},                    // b
++        {ox + W - T, oy + H / 2, ox + W, oy + H},                // c
++        {ox, oy + H - T, ox + W, oy + H},                        // d
++        {ox, oy + H / 2, ox + T, oy + H},                        // e
++        {ox, oy, ox + T, oy + H / 2},                            // f
++        {ox, oy + (H - T) / 2, ox + W, oy + (H + T) / 2},        // g
++    };
++    uint8_t mask = kSegments[count % 10];
++    for (int pass = 0; pass < 2; pass++) {
++        int b           = pass == 0 ? B : 0;
++        uint16_t color  = pass == 0 ? 0x0000 : 0xFFFF;
++        for (int i = 0; i < 7; i++) {
++            if (mask & (1 << i)) {
++                fill_rect(data, w, h, stride, seg[i][0] - b, seg[i][1] - b, seg[i][2] + b, seg[i][3] + b, color);
++            }
++        }
++    }
++}
++
++bool StackChanCamera::ShowPreview(int count)
++{
+     // 显示预览图片
+     auto display = dynamic_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
+     if (display != nullptr) {
+@@ -847,6 +896,9 @@ bool StackChanCamera::Capture()
+                 return false;
+         }
+ 
++        if (count > 0 && color_format == LV_COLOR_FORMAT_RGB565) {
++            draw_count(data, w, h, stride, count);
++        }
+         auto image = std::make_unique<LvglAllocatedImage>(data, lvgl_image_size, w, h, stride, color_format);
+         display->SetPreviewImage(std::move(image));
+     }
+@@ -973,6 +1025,7 @@ bool StackChanCamera::StreamCaptures()
+ #define FRAME_MIN_INTERVAL_MS 150
+ #define FRAME_IDLE_INTERVAL_MS 2000
+ #define FRAME_ERROR_INTERVAL_MS 5000
++#define SHOT_JPEG_QUALITY 80
+ 
+ void StackChanCamera::StartFrameUpload(const std::string& url)
+ {
+@@ -1019,19 +1072,88 @@ int StackChanCamera::UploadFrame(bool want)
+     return reply.rfind("1", 0) == 0 ? 1 : 0;
+ }
+ 
++bool StackChanCamera::RequestShot(int seconds)
++{
++    if (frame_task_ == nullptr) {
++        return false;
++    }
++    shot_seconds_ = seconds;
++    xTaskNotifyGive(frame_task_);
++    return true;
++}
++
++bool StackChanCamera::PreviewFrame(int count)
++{
++    std::lock_guard<std::mutex> lock(frame_mutex_);
++    return StreamCaptures() && ShowPreview(count);
++}
++
++// 数えながら画面にカメラを出し、0 で撮って /camera/shot へ送る
++void StackChanCamera::DoShot(int seconds)
++{
++    ESP_LOGI(TAG, "shot: %d s", seconds);
++    int64_t end = esp_timer_get_time() + seconds * 1000000LL;
++    int shown   = 0;
++    for (int64_t left; (left = end - esp_timer_get_time()) > 0;) {
++        int count = (int)((left + 999999) / 1000000);
++        if (count != shown) {
++            shown = count;
++            hal_bridge::app_play_sound(Lang::Sounds::OGG_POPUP);
++        }
++        PreviewFrame(count);
++        vTaskDelay(pdMS_TO_TICKS(10));
++    }
++    if (!Capture()) {
++        ESP_LOGE(TAG, "shot: capture failed");
++        return;
++    }
++    std::string url = frame_url_.substr(0, frame_url_.rfind('/')) + "/shot";
++    uint8_t* jpeg   = nullptr;
++    size_t jpeg_len = 0;
++    {
++        std::lock_guard<std::mutex> lock(frame_mutex_);
++        if (!frame_.data ||
++            !image_to_jpeg(frame_.data, frame_.len, frame_.width ? frame_.width : 320,
++                           frame_.height ? frame_.height : 240, frame_.format, SHOT_JPEG_QUALITY, &jpeg, &jpeg_len) ||
++            jpeg == nullptr) {
++            ESP_LOGE(TAG, "shot: jpeg failed");
++            return;
++        }
++    }
++    auto http = Board::GetInstance().GetNetwork()->CreateHttp();
++    http->SetTimeout(10000);
++    http->SetHeader("Device-Id", SystemInfo::GetMacAddress().c_str());
++    http->SetHeader("Content-Type", "image/jpeg");
++    http->SetContent(std::string((const char*)jpeg, jpeg_len));
++    free(jpeg);
++    if (!http->Open("POST", url)) {
++        ESP_LOGE(TAG, "shot: upload failed");
++        return;
++    }
++    int code = http->GetStatusCode();
++    http->ReadAll();
++    http->Close();
++    ESP_LOGI(TAG, "shot: sent %u bytes, %d", (unsigned)jpeg_len, code);
++}
++
+ void StackChanCamera::FrameUploadTask(void* arg)
+ {
+     auto self = static_cast<StackChanCamera*>(arg);
+     bool want = false;
+     vTaskDelay(pdMS_TO_TICKS(FRAME_ERROR_INTERVAL_MS));
+     while (true) {
++        int seconds = self->shot_seconds_.exchange(0);
++        if (seconds > 0) {
++            self->DoShot(seconds);
++            continue;
++        }
+         int64_t start = esp_timer_get_time();
+         int r         = self->UploadFrame(want);
+         want          = r == 1;
+         int wait_ms   = r == 1 ? FRAME_MIN_INTERVAL_MS - (int)((esp_timer_get_time() - start) / 1000)
+                         : r == 0 ? FRAME_IDLE_INTERVAL_MS
+                                  : FRAME_ERROR_INTERVAL_MS;
+-        vTaskDelay(pdMS_TO_TICKS(wait_ms > 10 ? wait_ms : 10));
++        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_ms > 10 ? wait_ms : 10));
+     }
+ }
+ 
+diff --git a/main/hal/board/stackchan_camera.h b/main/hal/board/stackchan_camera.h
+index 6ac113b..554f0ea 100644
+--- a/main/hal/board/stackchan_camera.h
++++ b/main/hal/board/stackchan_camera.h
+@@ -4,6 +4,7 @@
+ #ifndef CONFIG_IDF_TARGET_ESP32
+ #include <lvgl.h>
+ #include <thread>
++#include <atomic>
+ #include <memory>
+ #include <mutex>
+ #include <string>
+@@ -51,6 +52,11 @@ private:
+ 
+     static void FrameUploadTask(void* arg);
+     int UploadFrame(bool want);
++    std::atomic<int> shot_seconds_{0};
++
++    bool ShowPreview(int count);
++    bool PreviewFrame(int count);
++    void DoShot(int seconds);
+ 
+ public:
+     StackChanCamera(const esp_video_init_config_t& config);
+@@ -61,6 +67,8 @@ public:
+     bool StreamCaptures();
+     // url に GET で「1」が返る間、JPEG を POST し続ける（シャッターの音なし）
+     void StartFrameUpload(const std::string& url);
++    // seconds 秒数えながら画面にカメラを出して撮り、frame の url の隣の /camera/shot へ JPEG を送る
++    bool RequestShot(int seconds);
+ 
+     // 翻转控制函数
+     virtual bool SetHMirror(bool enabled) override;
+diff --git a/main/hal/hal_mcp.cpp b/main/hal/hal_mcp.cpp
+index 9dd890f..46f64aa 100644
+--- a/main/hal/hal_mcp.cpp
++++ b/main/hal/hal_mcp.cpp
+@@ -8,6 +8,7 @@
+ #include <mcp_server.h>
+ #include <stackchan/stackchan.h>
+ #include <apps/common/common.h>
++#include <hal/board/hal_bridge.h>
+ 
+ using namespace stackchan;
+ 
+@@ -110,6 +111,25 @@ void Hal::xiaozhi_mcp_init()
+                                    return true;
+                                });
+ 
++    mclog::tagInfo(_tag, "add camera.countdown_photo tool");
++    mcp_server.AddUserOnlyTool(
++        "self.camera.countdown_photo",
++        "Face forward, show the camera on the screen while counting down, then take a photo and send it to the server.",
++        PropertyList({Property("seconds", kPropertyTypeInteger, 5, 1, 9)}),
++        [this](const PropertyList& properties) -> ReturnValue {
++            auto camera = hal_bridge::board_get_camera();
++            if (camera == nullptr) {
++                return false;
++            }
++            {
++                LvglLockGuard lock;
++                auto& motion = GetStackChan().motion();
++                motion.pitchServo().moveWithSpeed(0, 300);
++                motion.yawServo().moveWithSpeed(0, 300);
++            }
++            return camera->RequestShot(properties["seconds"].value<int>());
++        });
++
+     mclog::tagInfo(_tag, "add robot.create_reminder tool");
+     mcp_server.AddTool("self.robot.create_reminder",
+                        "Create a reminder. Duration is in seconds. Message is what to say when time is up. Set repeat "

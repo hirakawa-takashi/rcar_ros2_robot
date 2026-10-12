@@ -14,6 +14,9 @@ import struct
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import zlib
 from collections import deque
 
@@ -31,7 +34,6 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
-from std_srvs.srv import Trigger
 
 from ai_car_web.architecture import load_architecture
 from ai_car_web.dev_diary import find_repo, load_dev_diary
@@ -104,6 +106,8 @@ class JetsonStatusRequest(BaseModel):
     disk_used_gb: float | None = None
     services: dict[str, bool] = {}
     llm_models: list[str] = []
+    stt_engine: str = ''
+    tts_engine: str = ''
     llm_size_mb: float | None = None
     llm_vram_mb: float | None = None
     updates_pending: int | None = None
@@ -113,6 +117,7 @@ class JetsonStatusRequest(BaseModel):
     last_upgrade: float | None = None
     ips: list[dict[str, str]] = []
     can_reboot: bool | None = None
+    can_poweroff: bool | None = None
     can_upgrade: bool | None = None
     upgrade_running: bool | None = None
     upgrade_result: str = ''
@@ -120,11 +125,54 @@ class JetsonStatusRequest(BaseModel):
     upgrade_phase: str = ''
 
 
+class MyPCStatusRequest(JetsonStatusRequest):
+    """パソコン（jetson/stackchan_bridge/pc/pc_status.py）から受け取る状態。Jetson と同じ形に GPU の名前を足す。"""
+
+    gpu_name: str = ''
+    gpu_driver: str = ''
+    ubuntu_updates_pending: int | None = None
+    ubuntu_security_pending: int | None = None
+    win_updates_pending: int | None = None
+    win_security_pending: int | None = None
+    win_reboot_required: bool | None = None
+
+
+def host_status(req: JetsonStatusRequest):
+    """Jetson・パソコンから届いた状態の、文字の長さと項目の数を絞る。"""
+    status = req.model_dump()
+    for key, value in status.items():
+        if isinstance(value, str):
+            status[key] = value[:64]
+    status['temperatures_c'] = {k[:16]: round(v, 1)
+                                for k, v in list(req.temperatures_c.items())[:8]}
+    status['services'] = {k[:16]: v for k, v in list(req.services.items())[:8]}
+    status['llm_models'] = [m[:64] for m in req.llm_models[:4]]
+    status['ips'] = [{'iface': str(ip.get('iface', ''))[:16], 'addr': str(ip.get('addr', ''))[:64]}
+                     for ip in req.ips[:8]]
+    return status
+
+
 JETSON_STATUS_TIMEOUT = 5.0
+MYPC_ACTIONS = ('reboot', 'upgrade')
 JETSON_REBOOT_WINDOW = 10.0
 PI_REBOOT_DELAY = 10.0
+STACKCHAN_BRIDGE_PORT = 8003
+STACKCHAN_TIMEOUT = 2.0
+STACKCHAN_PHOTO_TIMEOUT = 20.0
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
+POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
+
+
+def _can_sudo(cmd):
+    """sudoers でパスワードなしに cmd を実行できるか（sudo -n -l の NOPASSWD の行で見る）。"""
+    try:
+        out = subprocess.run(['sudo', '-n', '-l'], capture_output=True, text=True,
+                             timeout=5, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    want = ' '.join(cmd[2:])
+    return any('NOPASSWD:' in line and line.rstrip().endswith(want) for line in out.splitlines())
 
 
 def _jpeg_dimensions(data: bytes):
@@ -232,8 +280,11 @@ class DashboardNode(Node):
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('slam_pose_topic', '/pose')
         self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
-        # 2 眼カメラのキャリブレーション用の撮影（stereo_camera_node）
-        self.declare_parameter('calib_capture_service', '/stereo_camera_node/capture_calib')
+        # スタックちゃんのカードに出す会話の様子（Jetson の stackchan_bridge）。空なら Jetson が送ってくる IP アドレスの 8003
+        self.declare_parameter('stackchan_bridge_url', '')
+        # 1 眼の奥行きの AI の距離（perception_node が出す）。空で無効
+        self.declare_parameter('stereo_depth_topic', '/stereo/depth_status')
+        self.declare_parameter('stereo_depth_image_topic', '/stereo/depth/compressed')
         # 地図の保存先（空なら ~/maps）
         self.declare_parameter('map_save_dir', '')
         # Jetson から POST /api/jetson/detections で受けた検出を流すトピック。空で無効
@@ -250,6 +301,7 @@ class DashboardNode(Node):
         self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
         self.api_token = str(self.get_parameter('api_token').value) or os.environ.get(
             'AI_CAR_API_TOKEN', '')
+        self.stackchan_bridge_url = str(self.get_parameter('stackchan_bridge_url').value).rstrip('/')
         self.gpio_config = self.get_parameter('gpio_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'gpio_pins.yaml')
         self.motor_hat_config = self.get_parameter('motor_hat_config').value or os.path.join(
@@ -326,8 +378,13 @@ class DashboardNode(Node):
         if SaveMap is not None:
             self.slam_save_client = self.create_client(
                 SaveMap, self.get_parameter('slam_save_service').value)
-        self.calib_capture_client = self.create_client(
-            Trigger, self.get_parameter('calib_capture_service').value)
+        depth_topic = self.get_parameter('stereo_depth_topic').value
+        if depth_topic:
+            self.create_subscription(String, depth_topic, self._stereo_depth_cb, 10)
+        depth_image_topic = self.get_parameter('stereo_depth_image_topic').value
+        if depth_image_topic:
+            self.create_subscription(
+                CompressedImage, depth_image_topic, self._depth_image_cb, sensor_qos)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -348,9 +405,17 @@ class DashboardNode(Node):
         self._autonomy_stamp = 0.0
         self._cliff = None
         self._cliff_stamp = 0.0
+        self._stereo_depth = None
+        self._stereo_depth_stamp = 0.0
+        self._depth_frame = None
+        self._depth_frame_count = 0
         self._jetson_host = None
         self._jetson_host_stamp = 0.0
+        self._mypc_host = None
+        self._mypc_host_stamp = 0.0
+        self._mypc_asked = {}
         self._jetson_reboot_at = None
+        self._jetson_poweroff_at = None
         self._jetson_upgrade_at = None
         self._map = None
         self._map_png = None
@@ -498,23 +563,6 @@ class DashboardNode(Node):
             self._map_saved = saved
         return saved
 
-    def capture_calib(self, timeout: float = 10.0):
-        """stereo_camera_node に、キャリブレーション用の左右の画像を 1 組撮らせる。"""
-        if not self.calib_capture_client.service_is_ready():
-            return {'ok': False, 'reason': '2 眼カメラのノードが起動していない'}
-        done = threading.Event()
-        future = self.calib_capture_client.call_async(Trigger.Request())
-        future.add_done_callback(lambda _: done.set())
-        if not done.wait(timeout):
-            return {'ok': False, 'reason': '撮影の応答がない'}
-        result = future.result()
-        if result is None:
-            return {'ok': False, 'reason': '撮影の応答が空'}
-        try:
-            return json.loads(result.message)
-        except json.JSONDecodeError:
-            return {'ok': result.success, 'reason': result.message}
-
     def _obstacle_cb(self, msg: String):
         try:
             obstacle = json.loads(msg.data)
@@ -563,6 +611,35 @@ class DashboardNode(Node):
         with self._lock:
             self._cliff = payload
             self._cliff_stamp = self.get_clock().now().nanoseconds * 1e-9
+
+    def _stereo_depth_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        with self._lock:
+            self._stereo_depth = payload
+            self._stereo_depth_stamp = self.get_clock().now().nanoseconds * 1e-9
+
+    def _depth_image_cb(self, msg: CompressedImage):
+        data = bytes(msg.data)
+        with self._lock:
+            self._depth_frame = data
+            self._depth_frame_count += 1
+
+    def latest_depth_frame(self):
+        """最新の距離の色の JPEG と通し番号を返す。未受信なら (None, 0)。"""
+        with self._lock:
+            return self._depth_frame, self._depth_frame_count
+
+    def _stereo_depth_state(self):
+        if self._stereo_depth is None:
+            return None
+        age = self.get_clock().now().nanoseconds * 1e-9 - self._stereo_depth_stamp
+        state = dict(self._stereo_depth)
+        state['alive'] = age < 3.0
+        state['age_s'] = round(age, 1)
+        return state
 
     def request_drive_mode(self, mode: str):
         """運転モードの切替を drive_mode_node へ要求する。"""
@@ -726,15 +803,7 @@ class DashboardNode(Node):
 
     def update_jetson_status(self, req: JetsonStatusRequest):
         """Jetson の状態を、文字の長さと項目の数を絞ってから覚える。"""
-        status = req.model_dump()
-        for key in ('hostname', 'os', 'l4t', 'power_mode', 'upgrade_result', 'upgrade_phase'):
-            status[key] = status[key][:64]
-        status['temperatures_c'] = {k[:16]: round(v, 1)
-                                    for k, v in list(req.temperatures_c.items())[:8]}
-        status['services'] = {k[:16]: v for k, v in list(req.services.items())[:8]}
-        status['llm_models'] = [m[:64] for m in req.llm_models[:4]]
-        status['ips'] = [{'iface': str(ip.get('iface', ''))[:16], 'addr': str(ip.get('addr', ''))[:64]}
-                         for ip in req.ips[:8]]
+        status = host_status(req)
         now = self.get_clock().now().nanoseconds * 1e-9
         with self._lock:
             self._jetson_host = status
@@ -742,14 +811,56 @@ class DashboardNode(Node):
             reboot = (self._jetson_reboot_at is not None
                       and now - self._jetson_reboot_at < JETSON_REBOOT_WINDOW)
             self._jetson_reboot_at = None
+            poweroff = (self._jetson_poweroff_at is not None
+                        and now - self._jetson_poweroff_at < JETSON_REBOOT_WINDOW)
+            self._jetson_poweroff_at = None
             upgrade = (self._jetson_upgrade_at is not None
                        and now - self._jetson_upgrade_at < JETSON_REBOOT_WINDOW)
             self._jetson_upgrade_at = None
         if reboot:
             self.get_logger().warn('Jetson に再起動を伝えました')
+        if poweroff:
+            self.get_logger().warn('Jetson に電源を切ることを伝えました')
         if upgrade:
             self.get_logger().info('Jetson に更新を伝えました')
-        return {'ok': True, 'reboot': reboot, 'upgrade': upgrade}
+        return {'ok': True, 'reboot': reboot, 'poweroff': poweroff, 'upgrade': upgrade}
+
+    def update_mypc_status(self, req: MyPCStatusRequest):
+        """パソコンの状態を覚える（ダッシュボードの Jetson のカードで MyPC を選んだときに出す）。"""
+        status = host_status(req)
+        now = self.get_clock().now().nanoseconds * 1e-9
+        with self._lock:
+            self._mypc_host = status
+            self._mypc_host_stamp = now
+            asked = {k: now - t < JETSON_REBOOT_WINDOW for k, t in self._mypc_asked.items()}
+            self._mypc_asked = {}
+        for key, yes in asked.items():
+            if yes:
+                self.get_logger().warn(f'パソコンに {key} を伝えました')
+        return {'ok': True, **{k: asked.get(k, False) for k in MYPC_ACTIONS}}
+
+    def request_mypc(self, action: str):
+        """次にパソコンから状態が届いたときの返事で、Windows の再起動・電源を切る、Ubuntu の更新を頼む。"""
+        if action not in MYPC_ACTIONS:
+            raise HTTPException(status_code=404, detail='reboot・poweroff・upgrade のどれかです')
+        with self._lock:
+            state = self._mypc_host_state()
+            if not state or not state['alive']:
+                raise HTTPException(status_code=409, detail='パソコンが未接続です')
+            if not state.get(f'can_{action}'):
+                raise HTTPException(status_code=503, detail=f'パソコンで {action} ができません')
+            if action == 'upgrade' and state.get('upgrade_running'):
+                raise HTTPException(status_code=409, detail='パソコンは更新中です')
+            self._mypc_asked[action] = self.get_clock().now().nanoseconds * 1e-9
+        self.get_logger().warn(f'ダッシュボードからパソコンの {action} を受け付けました')
+        return {'ok': True}
+
+    def _mypc_host_state(self):
+        if self._mypc_host is None:
+            return None
+        age = self.get_clock().now().nanoseconds * 1e-9 - self._mypc_host_stamp
+        return dict(self._mypc_host, alive=age < JETSON_STATUS_TIMEOUT, age_s=round(age, 1),
+                    **{f'{k}_pending': k in self._mypc_asked for k in MYPC_ACTIONS})
 
     def request_jetson_upgrade(self):
         """次に Jetson から状態が届いたときの返事で、更新（NVIDIA の部品以外）を頼む。"""
@@ -781,6 +892,73 @@ class DashboardNode(Node):
         self.get_logger().warn('ダッシュボードから Jetson の再起動を受け付けました')
         return {'ok': True}
 
+    def _stackchan_bases(self):
+        """stackchan_bridge の URL。stackchan_bridge_url か、ミニコンとパソコン（控え）が送ってくる IP アドレス
+        （Tailscale を先に）。ミニコンが未接続ならパソコンを先に。"""
+        if self.stackchan_bridge_url:
+            return [self.stackchan_bridge_url]
+        with self._lock:
+            hosts = [self._jetson_host_state(), self._mypc_host_state()]
+        if not (hosts[0] or {}).get('alive'):
+            hosts.reverse()
+        bases = []
+        for state in hosts:
+            ips = [ip for ip in (state or {}).get('ips') or [] if ip.get('addr')]
+            ips.sort(key=lambda ip: ip.get('iface') != 'tailscale0')
+            if ips:
+                bases.append(f"http://{ips[0]['addr']}:{STACKCHAN_BRIDGE_PORT}")
+        return bases
+
+    def stackchan_request(self, path, method='GET', timeout=STACKCHAN_TIMEOUT):
+        """stackchan_bridge に聞いて、(中身, Content-Type) を返す（スタックちゃんのカード用、表示だけ）。
+        ミニコンにつながらなければ、パソコンの控えに聞く。"""
+        bases = self._stackchan_bases()
+        if not bases:
+            raise HTTPException(status_code=503, detail='ミニコンの IP アドレスがまだ届いていません')
+        for base in bases[:-1]:
+            try:
+                return self._stackchan_get(base, path, method, timeout)
+            except HTTPException as exc:
+                if exc.status_code != 503:
+                    raise
+        return self._stackchan_get(bases[-1], path, method, timeout)
+
+    def _stackchan_get(self, base, path, method, timeout):
+        req = urllib.request.Request(base + path, data=b'' if method == 'POST' else None, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as res:
+                return res.read(), res.headers.get('Content-Type')
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = json.loads(exc.read()).get('detail')
+            except (ValueError, AttributeError):
+                detail = None
+            raise HTTPException(status_code=exc.code if exc.code in (400, 404, 409) else 502,
+                                detail=detail or f'Jetson の stackchan_bridge が {exc.code} を返しました')
+        except (urllib.error.URLError, OSError):
+            raise HTTPException(status_code=503, detail='Jetson の stackchan_bridge につながりません')
+
+    def stackchan_json(self, path, method='GET', timeout=STACKCHAN_TIMEOUT):
+        body, _ = self.stackchan_request(path, method, timeout)
+        try:
+            return json.loads(body)
+        except ValueError:
+            raise HTTPException(status_code=502, detail='Jetson の stackchan_bridge の返事を読めません')
+
+    def request_jetson_poweroff(self):
+        """次に Jetson から状態が届いたときの返事で、電源を切ることを頼む。"""
+        with self._lock:
+            state = self._jetson_host_state()
+            if not state or not state['alive']:
+                raise HTTPException(status_code=409, detail='Jetson が未接続です')
+            if not state.get('can_poweroff'):
+                raise HTTPException(
+                    status_code=503,
+                    detail='Jetson の jetson-reboot.sudoers に poweroff が入っていません')
+            self._jetson_poweroff_at = self.get_clock().now().nanoseconds * 1e-9
+        self.get_logger().warn('ダッシュボードから Jetson の電源を切ることを受け付けました')
+        return {'ok': True}
+
     def _moving(self):
         now = self.get_clock().now().nanoseconds * 1e-9
         with self._lock:
@@ -792,19 +970,21 @@ class DashboardNode(Node):
 
     def reboot_pi(self):
         """止まっているときだけ、ラズパイを再起動する（10 秒後。返事を先に返す）。"""
+        return self._shutdown_pi(REBOOT_CMD, '再起動')
+
+    def poweroff_pi(self):
+        """止まっているときだけ、ラズパイの電源を切る（10 秒後。返事を先に返す）。"""
+        return self._shutdown_pi(POWEROFF_CMD, '電源オフ')
+
+    def _shutdown_pi(self, cmd, label):
         if self._moving():
-            raise HTTPException(status_code=409, detail='走行中は再起動できません（先に止めてください）')
-        try:
-            allowed = subprocess.run(['sudo', '-n', '-l', *REBOOT_CMD[2:]], capture_output=True,
-                                     timeout=5, check=False).returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            allowed = False
-        if not allowed:
+            raise HTTPException(status_code=409, detail=f'走行中は{label}できません（先に止めてください）')
+        if not _can_sudo(cmd):
             raise HTTPException(status_code=503,
-                                detail='ラズパイに ai-car-reboot.sudoers が入っていません')
+                                detail=f'ラズパイの ai-car-reboot.sudoers に {cmd[-1]} が入っていません')
         self.stop()
-        self.get_logger().warn(f'ダッシュボードからラズパイの再起動を受け付けました（{PI_REBOOT_DELAY:.0f} 秒後）')
-        threading.Thread(target=self._reboot_pi_later, daemon=True).start()
+        self.get_logger().warn(f'ダッシュボードからラズパイの{label}を受け付けました（{PI_REBOOT_DELAY:.0f} 秒後）')
+        threading.Thread(target=self._reboot_pi_later, args=(cmd,), daemon=True).start()
         return {'ok': True}
 
     def upgrade_pi(self):
@@ -828,21 +1008,21 @@ class DashboardNode(Node):
         self.get_logger().info('ダッシュボードからラズパイの更新を始めました')
         return {'ok': True}
 
-    def _reboot_pi_later(self):
-        """10 秒待ち（そのあいだも Jetson の再起動を受け付ける）、Jetson への再起動の頼みが残っていれば伝え終わるまで待ってから再起動する。"""
+    def _reboot_pi_later(self, cmd):
+        """10 秒待ち（そのあいだも Jetson の再起動・電源を切る頼みを受け付ける）、頼みが残っていれば伝え終わるまで待ってから cmd を実行する。"""
         time.sleep(PI_REBOOT_DELAY)
         deadline = time.monotonic() + JETSON_REBOOT_WINDOW
         waited = False
         while time.monotonic() < deadline:
             with self._lock:
-                pending = self._jetson_reboot_at is not None
+                pending = self._jetson_reboot_at is not None or self._jetson_poweroff_at is not None
             if not pending:
                 break
             waited = True
             time.sleep(0.2)
         if waited:
             time.sleep(1.0)
-        subprocess.run(REBOOT_CMD, timeout=30, check=False)
+        subprocess.run(cmd, timeout=30, check=False)
 
     def _jetson_host_state(self):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -853,6 +1033,7 @@ class DashboardNode(Node):
         state['alive'] = age < JETSON_STATUS_TIMEOUT
         state['age_s'] = round(age, 1)
         state['reboot_pending'] = self._jetson_reboot_at is not None
+        state['poweroff_pending'] = self._jetson_poweroff_at is not None
         state['upgrade_pending'] = self._jetson_upgrade_at is not None
         return state
 
@@ -928,8 +1109,10 @@ class DashboardNode(Node):
                 'drive_mode': self._drive_mode_state(),
                 'autonomy': self._autonomy_state(),
                 'cliff': self._cliff_state(),
+                'stereo_depth': self._stereo_depth_state(),
                 'slam': self._slam_state(),
                 'jetson_host': self._jetson_host_state(),
+                'mypc_host': self._mypc_host_state(),
                 'joy': {
                     'connected': (self.get_clock().now().nanoseconds * 1e-9
                                   - self._joy_stamp) < self.joy_timeout,
@@ -1045,9 +1228,21 @@ def create_app(node: DashboardNode) -> FastAPI:
     def jetson_status(req: JetsonStatusRequest):
         return node.update_jetson_status(req)
 
+    @app.post('/api/mypc/status', dependencies=[Depends(require_token)])
+    def mypc_status(req: MyPCStatusRequest):
+        return node.update_mypc_status(req)
+
+    @app.post('/api/mypc/{action}', dependencies=[Depends(require_token)])
+    def mypc_action(action: str):
+        return node.request_mypc(action)
+
     @app.post('/api/jetson/reboot', dependencies=[Depends(require_token)])
     def jetson_reboot():
         return node.request_jetson_reboot()
+
+    @app.post('/api/jetson/poweroff', dependencies=[Depends(require_token)])
+    def jetson_poweroff():
+        return node.request_jetson_poweroff()
 
     @app.post('/api/jetson/upgrade', dependencies=[Depends(require_token)])
     def jetson_upgrade():
@@ -1056,6 +1251,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/system/reboot', dependencies=[Depends(require_token)])
     def system_reboot():
         return node.reboot_pi()
+
+    @app.post('/api/system/poweroff', dependencies=[Depends(require_token)])
+    def system_poweroff():
+        return node.poweroff_pi()
 
     @app.post('/api/system/upgrade', dependencies=[Depends(require_token)])
     def system_upgrade():
@@ -1080,9 +1279,42 @@ def create_app(node: DashboardNode) -> FastAPI:
     def slam_save():
         return node.save_map()
 
-    @app.post('/api/camera/calib_capture', dependencies=[Depends(require_token)])
-    def calib_capture():
-        return node.capture_calib()
+    @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
+    def stackchan_status():
+        return node.stackchan_json('/status')
+
+    @app.post('/api/stackchan/photo', dependencies=[Depends(require_token)])
+    def stackchan_photo():
+        return node.stackchan_json('/photo', 'POST', STACKCHAN_PHOTO_TIMEOUT)
+
+    @app.get('/api/stackchan/photo.jpg', dependencies=[Depends(require_token)])
+    def stackchan_photo_jpg():
+        body, ctype = node.stackchan_request('/photo.jpg')
+        return Response(content=body, media_type=ctype or 'image/jpeg', headers={'Cache-Control': 'no-store'})
+
+    @app.post('/api/stackchan/enroll', dependencies=[Depends(require_token)])
+    def stackchan_enroll(name: str):
+        return node.stackchan_json('/enroll?name=' + urllib.parse.quote(name.strip()), 'POST',
+                                   STACKCHAN_PHOTO_TIMEOUT)
+
+    @app.post('/api/stackchan/backend', dependencies=[Depends(require_token)])
+    def stackchan_backend(to: str):
+        if to not in ('jetson', 'pc'):
+            raise HTTPException(status_code=400, detail='to は jetson か pc')
+        return node.stackchan_json(f'/backend?to={to}', 'POST')
+
+    @app.post('/api/stackchan/pc_voice', dependencies=[Depends(require_token)])
+    def stackchan_pc_voice(speaker: int):
+        return node.stackchan_json(f'/pc_voice?speaker={speaker}', 'POST')
+
+    @app.post('/api/stackchan/stream', dependencies=[Depends(require_token)])
+    def stackchan_stream(on: int = 0):
+        return node.stackchan_json(f'/camera/stream?on={1 if on else 0}', 'POST')
+
+    @app.get('/api/stackchan/frame.jpg', dependencies=[Depends(require_token)])
+    def stackchan_frame_jpg():
+        body, ctype = node.stackchan_request('/camera/frame.jpg')
+        return Response(content=body, media_type=ctype or 'image/jpeg', headers={'Cache-Control': 'no-store'})
 
     @app.get('/api/camera/snapshot')
     def snapshot():
@@ -1091,8 +1323,7 @@ def create_app(node: DashboardNode) -> FastAPI:
             return Response(status_code=503)
         return Response(content=frame, media_type='image/jpeg')
 
-    @app.get('/api/camera/stream')
-    def stream():
+    def mjpeg(latest):
         interval = 1.0 / max(node.camera_stream_rate, 0.1)
 
         # 配信周期と同じ間隔で寝ると位相ずれで新フレームを取り逃がし実効レートが
@@ -1103,7 +1334,7 @@ def create_app(node: DashboardNode) -> FastAPI:
             last = -1
             next_at = 0.0
             while True:
-                frame, count = node.latest_frame()
+                frame, count = latest()
                 now = time.monotonic()
                 if frame is not None and count != last and now >= next_at:
                     last = count
@@ -1116,6 +1347,14 @@ def create_app(node: DashboardNode) -> FastAPI:
         return StreamingResponse(
             frames(),
             media_type='multipart/x-mixed-replace; boundary=frame')
+
+    @app.get('/api/camera/stream')
+    def stream():
+        return mjpeg(node.latest_frame)
+
+    @app.get('/api/camera/depth_stream')
+    def depth_stream():
+        return mjpeg(node.latest_depth_frame)
 
     @app.websocket('/ws')
     async def telemetry_ws(websocket: WebSocket):

@@ -5,6 +5,7 @@ AI HAT+ の検出状況およびランタイム情報と、ソフトの更新の
 `/system_status` (std_msgs/String) に配信する。
 """
 
+import collections
 import ctypes
 import glob
 import json
@@ -38,6 +39,12 @@ _THROTTLE_BITS = {
 
 
 _HAILO_DRIVER_SYSFS = '/sys/bus/pci/drivers/hailo'
+
+# ファームウェアが電源とやりとりした結果（Pi 5 の device tree）
+_DT_POWER = '/proc/device-tree/chosen/power'
+
+# 電圧低下の回数を数える最近の範囲 [秒]
+_UV_RECENT_S = 600.0
 
 
 def _hailo_pci_sysfs():
@@ -87,6 +94,34 @@ def _read_text(path):
             return f.read().strip()
     except OSError:
         return None
+
+
+def _rpi_volt_alarm():
+    """Pi 5 の電圧低下の印（hwmon rpi_volt の in0_lcrit_alarm）のパス。なければ None。"""
+    for d in sorted(glob.glob('/sys/class/hwmon/hwmon*')):
+        if _read_text(f'{d}/name') == 'rpi_volt':
+            return f'{d}/in0_lcrit_alarm'
+    return None
+
+
+def _read_bytes(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _supply_info():
+    """電源から使える電流の上限 [A] と、USB PD でやりとりできたか。読めなければ None。"""
+    raw = _read_bytes(f'{_DT_POWER}/max_current')
+    if raw is None or len(raw) < 4:
+        return None
+    pdo = _read_bytes(f'{_DT_POWER}/usbpd_power_data_objects') or b''
+    return {
+        'max_a': round(int.from_bytes(raw[:4], 'big') / 1000.0, 2),
+        'pd': any(pdo),
+    }
 
 
 def _run(cmd, timeout=3.0):
@@ -231,6 +266,12 @@ class SystemMonitorNode(Node):
         self._kernel = platform.release()
         self._upgrade = {'upgrade_running': None, 'upgrade_result': ''}
         self._upgrade_stamp = 0.0
+        self._uv_alarm = _rpi_volt_alarm()
+        self._uv_now = False
+        self._uv_count = 0
+        self._uv_last = None
+        self._uv_events = collections.deque()
+        self._supply = _supply_info()
         self.create_timer(1.0 / max(rate, 0.1), self._publish_cb)
 
     # --- CPU / メモリ ---
@@ -338,6 +379,7 @@ class SystemMonitorNode(Node):
         input_volt = volts.get('EXT5V')
         # PMIC は EXT5V の電流を出さないため、各レールの合計電力から換算する
         input_amp = total_w / input_volt if input_volt else None
+        throttled = self._throttled()
 
         return {
             'total_w': round(total_w, 2),
@@ -345,21 +387,30 @@ class SystemMonitorNode(Node):
             'input_amp': round(input_amp, 3) if input_amp else None,
             'core_volt': round(volts['VDD_CORE'], 3) if 'VDD_CORE' in volts else None,
             'rails': dict(sorted(rails.items(), key=lambda kv: -kv[1]['watt'])),
-            'throttled': self._throttled(),
-            'pd_5a': self._pd_5a(),
+            'throttled': throttled,
+            'under_voltage': self._under_voltage(throttled),
+            'supply': self._supply,
         }
 
-    def _pd_5a(self):
-        """5A 対応 PD 電源として認識されているかを返す。"""
-        if not self.has_vcgencmd:
-            return None
-        out = _run(['vcgencmd', 'get_config', 'usb_max_current_enable'])
-        if not out or '=' not in out:
-            return None
-        try:
-            return bool(int(out.split('=')[1]))
-        except ValueError:
-            return None
+    def _under_voltage(self, throttled):
+        """今の電圧低下と、このノードが起動してから・最近 10 分の電圧低下の回数、最後に見た時刻。"""
+        now = (_read_text(self._uv_alarm) == '1'
+               or bool(throttled and throttled.get('under_voltage_now')))
+        t = time.time()
+        if now and not self._uv_now:
+            self._uv_count += 1
+            self._uv_events.append(t)
+        if now:
+            self._uv_last = round(t, 3)
+        self._uv_now = now
+        while self._uv_events and t - self._uv_events[0] > _UV_RECENT_S:
+            self._uv_events.popleft()
+        return {
+            'now': now,
+            'count': self._uv_count,
+            'recent_10min': len(self._uv_events),
+            'last': self._uv_last,
+        }
 
     def _throttled(self):
         """get_throttled のビットを名前付きフラグに展開する。"""

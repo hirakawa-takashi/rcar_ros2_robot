@@ -17,7 +17,7 @@
           gap: 16px; }
   .card { background: #1e232b; border: 1px solid #2c3340; border-radius: 8px; padding: 14px; }
   .card.wide { grid-column: span 2; }
-  /* 4 列固定: カメラ / LiDAR を上段、ラズパイ / Jetson / AI HAT+ を 2 段目に揃える */
+  /* 4 列固定: 1 段目 カメラ / LiDAR、2 段目 ラズパイ / Jetson / AI HAT+・IMU・落下防止、3 段目 運転モード / 自律走行、4 段目 スタックちゃん / SLAM */
   @media (min-width: 900px) { .grid { grid-template-columns: repeat(4, 1fr); } }
   @media (max-width: 620px) { .card.wide { grid-column: auto; } }
   .stack { display: grid; gap: 16px; grid-template-rows: auto 1fr; }
@@ -67,6 +67,13 @@
   .jcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
   @media (min-width: 900px) { .card.wide .jcols { grid-template-columns: repeat(2, 1fr); } }
   .osline { font-size: 12px; margin: -4px 0 10px; color: #9fb0c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scphoto[hidden] { display: none; }
+  .scphoto { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; flex-wrap: wrap; }
+  .scmsgs { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  table.sctalk { margin-top: 8px; }
+  table.sctalk td.k { width: 3em; vertical-align: top; }
+  table.sctalk td.v { text-align: left; }
+  .scphoto input[type=text] { width: 9em; padding: 4px 6px; background: #0e1726; color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .jcols h3 { font-size: 12px; margin: 0 0 6px; color: #9fb0c7; font-weight: 600; }
   .gpio_svg { width: 100%; height: auto; display: block; background: #c9d6d9;
               border-radius: 8px; margin-bottom: 10px; }
@@ -247,6 +254,16 @@
   button:hover { filter: brightness(1.12); }
   button.reboot { padding: 3px 10px; font-size: 12px; border-color: var(--warn); }
   button.reboot:disabled { opacity: .4; }
+  .aiswitch { margin-left: 8px; }
+  .voicebtns { display: flex; justify-content: space-between; align-items: flex-start; }
+  #jt_voice_btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+  .voicebtns .k { color: #9fb0c7; font-family: system-ui, sans-serif; font-size: 14px; }
+  .voicebtns button { padding: 3px 6px; font-size: 12px; letter-spacing: 0; }
+  .voicebtns button.active { background: #2b5d9e; border-color: #4a90d9; }
+  .voicebtns button:disabled { opacity: .4; }
+  .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
+  .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
+  .aiswitch button:disabled { opacity: .4; }
   button:active { background: #16284a; transform: translateY(2px); box-shadow: 0 1px 0 #0a1425, 0 2px 6px rgba(0, 0, 0, .4); }
   button.joy-on { background: linear-gradient(180deg, #1e7a56, #145a3f); border-color: var(--ok); box-shadow: 0 3px 0 #0a1425, 0 0 12px rgba(53, 227, 154, .35); }
   button.stop { background: linear-gradient(180deg, #8a2534, #5c1622); border-color: var(--crit);
@@ -266,11 +283,11 @@
   .bar > span.t-warm { background: linear-gradient(90deg, #a8961a, #f2d64b); box-shadow: 0 0 6px rgba(242, 214, 75, .35); }
   .bar > span.t-hot { background: linear-gradient(90deg, #c4621a, #ff9a3c); box-shadow: 0 0 8px rgba(255, 154, 60, .45); }
   .bar > span.t-crit { background: linear-gradient(90deg, #c23a48, #ff5c6c); box-shadow: 0 0 10px rgba(255, 92, 108, .55); }
-  .barrow .v.t-cool { color: #6cb6ff; }
-  .barrow .v.t-ok { color: #5fe39a; }
-  .barrow .v.t-warm { color: #f2d64b; }
-  .barrow .v.t-hot { color: #ff9a3c; }
-  .barrow .v.t-crit { color: #ff5c6c; font-weight: 700; }
+  .barrow .v.t-cool, td.v.t-cool, .core .pct.t-cool { color: #6cb6ff; }
+  .barrow .v.t-ok, td.v.t-ok, .core .pct.t-ok { color: #5fe39a; }
+  .barrow .v.t-warm, td.v.t-warm, .core .pct.t-warm { color: #f2d64b; }
+  .barrow .v.t-hot, td.v.t-hot, .core .pct.t-hot { color: #ff9a3c; }
+  .barrow .v.t-crit, td.v.t-crit, .core .pct.t-crit { color: #ff5c6c; font-weight: 700; }
   .badge, .modebadge { font-family: var(--mono); letter-spacing: .04em; border: 1px solid transparent; }
   .badge { background: rgba(84, 130, 190, .15); color: var(--muted); border-color: var(--line); }
   .badge.ok { background: rgba(53, 227, 154, .12); color: var(--ok); border-color: rgba(53, 227, 154, .4); box-shadow: 0 0 8px rgba(53, 227, 154, .2); }
@@ -292,6 +309,7 @@
   .camwrap::after, .mapwrap::after { right: 4px; bottom: 4px; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
   .mapwrap { position: relative; margin-bottom: 8px; }
   .mapwrap .map { margin-bottom: 0; }
+  .mapwrap.slam { max-width: 640px; margin: 0 auto 8px; }
   .aboutbtn { background: linear-gradient(180deg, #123a5a, #0c2a44); border-color: var(--cyan2); color: #bfe9ff; letter-spacing: .04em; }
   .aboutpanel { background: linear-gradient(180deg, #0c1629, #080f1e); border-color: var(--line2);
                 box-shadow: 0 20px 70px #000, 0 0 0 1px rgba(53, 214, 255, .08); }
@@ -316,6 +334,7 @@
 <div class="headrow">
   <h1>AI-CAR ダッシュボード</h1>
   <div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
+  <span id="power_alert" class="badge" style="display:none"></span>
   <span id="developer" class="developer"></span>
   <button id="about_btn" class="aboutbtn">プロジェクト説明</button>
   <button id="diary_btn" class="aboutbtn diarybtn">開発日記</button>
@@ -359,18 +378,15 @@
       <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
-      <tr><td class="k">低い障害物</td><td class="v" id="o_floor" title="-">-</td></tr>
+      <tr>
+        <td class="k" id="sd_label">1眼の距離</td>
+        <td class="v"><span id="sd_val" title="-" style="display:inline-block; max-width:calc(100% - 7em); overflow:hidden; text-overflow:ellipsis; vertical-align:middle">-</span> <button id="sd_view" style="padding:3px 10px; font-size:12px">距離の画像</button></td>
+      </tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
       <tr>
         <td class="k">推論 [ms]</td>
         <td class="v" id="o_infer" title="括弧内は AI HAT+ のサーマル状態と推論レート係数">-</td>
-      </tr>
-      <tr>
-        <td class="k">キャリブレーション</td>
-        <td class="v wrap" title="市松模様をカメラに向けて押す。左右とも見つかった組だけ保存（20 組が目安）">
-          <button id="cal_capture">撮影</button> <span id="cal_result"></span>
-        </td>
       </tr>
     </table>
     <div class="note" id="cam_note"></div>
@@ -398,7 +414,7 @@
     <div class="bar"><span id="cpu_bar"></span></div>
     <div class="cores" id="cores"></div>
     <table>
-      <tr><td class="k">CPU使用率</td><td class="v" id="cpu_pct">-</td></tr>
+      <tr><td class="k">CPU負荷率</td><td class="v" id="cpu_pct">-</td></tr>
       <tr><td class="k">クロック [MHz]</td><td class="v" id="cpu_freq">-</td></tr>
       <tr><td class="k">ファン [rpm]</td><td class="v" id="cpu_fan">-</td></tr>
       <tr><td class="k">メモリ [GB]</td><td class="v" id="mem">-</td></tr>
@@ -407,22 +423,24 @@
       <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
       <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
       <tr><td class="k">電源状態</td><td class="v" id="pwr_state">-</td></tr>
-      <tr><td class="k">PD対応（5A）</td><td class="v" id="pwr_pd">-</td></tr>
+      <tr><td class="k">電源の電流上限 [A]</td><td class="v" id="pwr_supply" title="ラズパイが電源とやりとりして決めた上限（5 A 未満は橙）">-</td></tr>
       <tr><td class="k">IP アドレス</td><td class="v wrap" id="pi_ips">-</td></tr>
       <tr><td class="k">セキュリティ更新</td><td class="v" id="pi_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
       <tr><td class="k">再起動</td><td class="v" id="pi_reboot_req">-</td></tr>
-      <tr><td class="k">最後の自動更新</td><td class="v" id="pi_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
       <tr><td class="k">更新する</td><td class="v wrap"><span id="pi_upgrade_state"></span> <button class="reboot" id="pi_upgrade_btn" title="ROS 2 も含めて更新する。走行中は押せない">ラズパイを更新</button> <span id="pi_upgrade_msg"></span></td></tr>
       <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="pi_reboot_btn">ラズパイを再起動</button> <span id="pi_reboot_msg"></span></td></tr>
+      <tr><td class="k">電源を切る</td><td class="v"><button class="reboot" id="pi_poweroff_btn" title="走行中は押せない">ラズパイの電源を切る</button> <span id="pi_poweroff_msg"></span></td></tr>
     </table>
   </div>
 
   <div class="card wide">
-    <h2>Jetson Orin Nano Super — AI 担当 <span class="badge" id="jt_state">-</span></h2>
+    <h2><span id="jt_title">ミニコン（Orin Nano Super） — AI 担当</span> <span class="badge" id="jt_state">-</span>
+      <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）をミニコン（Jetson）でする。「ミニコンにして」でも切りかわる">ミニコン</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだはミニコン。「パソコンにして」でも切りかわる">パソコン</button></span>
+      <span id="ai_be_msg"></span></h2>
     <div class="osline" id="jt_os">-</div>
     <div class="jcols">
       <div>
-        <h3>温度・使用率</h3>
+        <h3>温度・負荷率</h3>
         <div class="barrow">
           <span class="k">CPU 温度</span>
           <span class="bar"><span id="jt_cpu_temp_bar"></span></span>
@@ -434,12 +452,12 @@
           <span class="v" id="jt_gpu_temp">-</span>
         </div>
         <div class="barrow">
-          <span class="k">CPU 使用</span>
+          <span class="k">CPU 負荷率</span>
           <span class="bar"><span id="jt_cpu_bar"></span></span>
           <span class="v" id="jt_cpu">-</span>
         </div>
         <div class="barrow">
-          <span class="k">GPU 使用</span>
+          <span class="k">GPU 負荷率</span>
           <span class="bar"><span id="jt_gpu_bar"></span></span>
           <span class="v" id="jt_gpu">-</span>
         </div>
@@ -459,31 +477,32 @@
         </table>
       </div>
       <div>
-        <h3>AI の部品</h3>
+        <h3>AI の部品<span id="ai_side"></span></h3>
         <table>
-          <tr><td class="k">声→文字</td><td class="v" id="jt_svc_whisper" title="whisper-server（whisper.cpp small、GPU）">-</td></tr>
+          <tr><td class="k">声→文字</td><td class="v wrap" id="jt_svc_whisper" title="whisper-server（whisper-server.service の -m のモデル）">-</td></tr>
           <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
           <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
-          <tr><td class="k">文字→声</td><td class="v" id="jt_svc_kokoro" title="Kokoro（GPU、Docker）">-</td></tr>
+          <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="ミニコンは Kokoro（GPU、Docker）、パソコンは VOICEVOX（CPU）。仕組みの名前と版">-</td></tr>
+          <tr id="jt_voice_row" style="display:none"><td class="v" colspan="2"><div class="voicebtns"><span class="k">　声</span><span id="jt_voice_btns" title="パソコンの VOICEVOX の声と、ローカルの会話の話し方・性格。次の文から変わる（ミニコンにもどったときは Kokoro・ふつうの話し方）"></span></div></td></tr>
         </table>
       </div>
       <div>
         <h3>更新・システム</h3>
         <table>
-          <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
-          <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
-          <tr><td class="k">最後の自動更新</td><td class="v" id="jt_last_upgrade" title="unattended-upgrades が最後に動いた時刻">-</td></tr>
-          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">Jetson を更新</button> <span id="jt_upgrade_msg"></span></td></tr>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
           <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
-          <tr><td class="k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
+          <tr><td class="k" id="jt_l4t_k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
-          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">Jetson を再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+          <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
+          <tr><td class="k">再起動</td><td class="v" id="jt_reboot">-</td></tr>
+          <tr><td class="k">更新する</td><td class="v wrap"><span id="jt_upgrade_state"></span> <button class="reboot" id="jt_upgrade_btn" title="NVIDIA の部品（JetPack）は変えない">ミニコンを更新</button> <span id="jt_upgrade_msg"></span></td></tr>
+          <tr><td class="k">再起動する</td><td class="v"><button class="reboot" id="jt_reboot_btn">ミニコンを再起動</button> <span id="jt_reboot_msg"></span></td></tr>
+          <tr id="jt_poweroff_row"><td class="k">電源を切る</td><td class="v"><button class="reboot" id="jt_poweroff_btn">ミニコンの電源を切る</button> <span id="jt_poweroff_msg"></span></td></tr>
         </table>
       </div>
     </div>
-    <div class="note">Jetson の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
+    <div class="note" id="jt_note">ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。</div>
   </div>
 
   <div class="stack">
@@ -556,7 +575,8 @@
       <input id="gain" type="range" min="10" max="100" value="50">
     </div>
     <div class="speed">
-      <input id="api_token" type="password" placeholder="API トークン（api_token 設定時）">
+      APIキー: <input id="api_token" type="password" placeholder="未設定" readonly autocomplete="off">
+      <button id="api_token_edit" class="reboot" type="button">変更</button>
       <span id="auth_note" class="note"></span>
     </div>
     <div class="speed">押している間だけ動作します（離すと停止）。</div>
@@ -578,8 +598,44 @@
   </div>
 
   <div class="card wide">
+    <h2>M5 スタックちゃん（CoreS3） <span class="badge" id="sc_state">-</span></h2>
+    <div class="jcols">
+      <div>
+        <table>
+          <tr><td class="k">IP アドレス</td><td class="v" id="sc_ip">-</td></tr>
+          <tr><td class="k">ネット / ローカル</td><td class="v wrap" id="sc_mode" title="「ネットにして」「ローカルにして」と言うと切りかわる（ミニコンでもパソコンでも）。ネットのときは顔が緑">-</td></tr>
+        </table>
+        <h3 style="margin-top: 12px" title="画面を 1 回さわって、ランプが緑のときに言う">話しかける言葉</h3>
+        <table>
+          <tr><td class="k">「スタックちゃん」</td><td class="v wrap" title="ネットもローカルも。名前を呼ぶと会話モード、30 秒だまると「じゃあ、またね。」で呼びかけ待ちにもどる">呼びかけ（30 秒で終わり）</td></tr>
+          <tr><td class="k">「ネットにして」</td><td class="v wrap">ネットの AI（顔が緑）</td></tr>
+          <tr><td class="k">「ローカルにして」</td><td class="v wrap">家の AI（顔が白）</td></tr>
+          <tr><td class="k">「ミニコンにして」</td><td class="v wrap">家の AI をミニコンで</td></tr>
+          <tr><td class="k">「パソコンにして」</td><td class="v wrap">家の AI をパソコンで</td></tr>
+          <tr><td class="k">「撮影して」</td><td class="v wrap">5 秒数えて撮る</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>顔の登録（カメラの映像）</h3>
+        <img class="cam" id="sc_cam" alt="スタックちゃんのカメラの写真">
+        <div class="scphoto" id="sc_enroll" title="「撮影して」と言うと、スタックちゃんが正面を向いて 5 秒数えて撮る。写っている顔 1 つを、名前を付けて Jetson の face_id に登録する">
+          <div class="scmsgs"><span id="sc_photo_msg">-</span><span id="sc_shot_msg">-</span></div>
+          <button id="sc_enroll_btn" style="white-space: nowrap">登録</button></div>
+        <div class="scphoto">
+          <input id="sc_name" type="text" maxlength="20" placeholder="名前" autocomplete="off">
+          <span id="sc_enroll_msg"></span></div>
+      </div>
+    </div>
+    <table class="sctalk">
+      <tr><td class="k">聞取</td><td class="v wrap" id="sc_heard">-</td></tr>
+      <tr><td class="k">返事</td><td class="v wrap" id="sc_reply">-</td></tr>
+    </table>
+    <div class="note">Jetson の受け口（jetson-stackchan.service）から 2 秒ごとに取る（API トークンが必要）。写真は「撮影して」と言ったときだけ撮り、Jetson にはいちばん新しい 1 枚だけを置く（保存しない）。表示だけで、AI-CAR の走行・安全には使わない。</div>
+  </div>
+
+  <div class="card wide">
     <h2>地図と自己位置（SLAM） <span class="badge" id="sl_state">-</span></h2>
-    <div class="mapwrap"><canvas class="map" id="slam_map" width="480" height="480"></canvas></div>
+    <div class="mapwrap slam"><canvas class="map" id="slam_map" width="480" height="480"></canvas></div>
     <table>
       <tr><td class="k">地図 [セル / m]</td><td class="v" id="sl_size">-</td></tr>
       <tr><td class="k">自己位置 x / y [m] / 向き [°]</td><td class="v" id="sl_pose">-</td></tr>
@@ -641,8 +697,23 @@ const TOKEN_KEY = 'ai_car_api_token';
 const urlToken = new URLSearchParams(location.search).get('token');
 if (urlToken) localStorage.setItem(TOKEN_KEY, urlToken);
 const tokenInput = document.getElementById('api_token');
+const tokenEdit = document.getElementById('api_token_edit');
 tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
-tokenInput.addEventListener('change', () => localStorage.setItem(TOKEN_KEY, tokenInput.value));
+// APIキーはふだん読むだけ。「変更」→ 確認 → 入力 →「保存」（Enter）で保存する
+function saveToken() {
+  localStorage.setItem(TOKEN_KEY, tokenInput.value);
+  tokenInput.readOnly = true;
+  tokenEdit.textContent = '変更';
+}
+tokenEdit.addEventListener('click', () => {
+  if (!tokenInput.readOnly) return saveToken();
+  if (!confirm('APIキーを変更しますか？\nまちがえると、ボタンで操作できなくなります。')) return;
+  tokenInput.readOnly = false;
+  tokenEdit.textContent = '保存';
+  tokenInput.focus();
+  tokenInput.select();
+});
+tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !tokenInput.readOnly) saveToken(); });
 
 function authHeaders() {
   const t = localStorage.getItem(TOKEN_KEY);
@@ -799,6 +870,66 @@ function setTempBar(bar, label, celsius, fallback = '-') {
   label.title = `${lv.text}（45℃ 未満 青 / 60℃ 未満 緑 / 70℃ 未満 黄 / 80℃ 未満 橙 / 80℃ 以上 赤）`;
 }
 
+// 負荷率の色（温度バーと同じ 5 段階の色）
+const LOAD_LEVELS = [
+  { below: 25, cls: 't-cool' },
+  { below: 50, cls: 't-ok' },
+  { below: 70, cls: 't-warm' },
+  { below: 90, cls: 't-hot' },
+  { below: Infinity, cls: 't-crit' },
+];
+
+function coreHtml(v, i) {
+  const cls = LOAD_LEVELS.find(l => v < l.below).cls;
+  return `<div class="core" title="25% 未満 青 / 50% 未満 緑 / 70% 未満 黄 / 90% 未満 橙 / 90% 以上 赤">`
+    + `C${i}<div class="bar"><span class="${cls}" style="width:${v}%"></span></div>`
+    + `<span class="pct ${cls}">${fmt(v, 0)}%</span></div>`;
+}
+
+function setLoadBar(bar, label, percent, digits = 0) {
+  if (percent == null) {
+    bar.style.width = '0%';
+    bar.className = '';
+    label.className = 'v';
+    label.textContent = '-';
+    return;
+  }
+  const cls = LOAD_LEVELS.find(l => percent < l.below).cls;
+  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  bar.className = cls;
+  label.className = `v ${cls}`;
+  label.textContent = `${fmt(percent, digits)} %`;
+}
+
+// ラズパイの 5V の不足は LiDAR などが急に止まる原因になるので、いちばん上に出す
+function renderPowerAlert(p) {
+  const el = document.getElementById('power_alert');
+  const uv = p && p.under_voltage;
+  const occurred = !!(p && p.throttled && p.throttled.under_voltage_occurred);
+  if (!uv || !(uv.now || uv.count > 0 || occurred)) {
+    el.style.display = 'none';
+    return;
+  }
+  if (uv.now) {
+    el.className = 'badge crit';
+    el.textContent = 'ラズパイの 5V が足りません（電源の力不足）';
+    el.style.display = '';
+    return;
+  }
+  const t = uv.last ? new Date(uv.last * 1000) : null;
+  const last = t ? `、最後 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
+  const total = uv.count > 0 ? `起動後 ${uv.count} 回${last}` : '起動後にあり';
+  const recent = uv.recent_10min || 0;
+  if (recent > 0) {
+    el.className = 'badge warn';
+    el.textContent = `ラズパイの 5V が足りなくなりました（直近 10 分 ${recent} 回、${total}）。電源・ケーブルの力不足です`;
+  } else {
+    el.className = 'badge';
+    el.textContent = `ラズパイの 5V の不足: 直近 10 分は 0 回（${total}）`;
+  }
+  el.style.display = '';
+}
+
 // 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
 function renderThrottled(t) {
   const state = document.getElementById('pwr_state');
@@ -831,8 +962,11 @@ function renderIps(el, ips) {
   el.innerHTML = ips && ips.length
     ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
+const jtTarget = () => aiStack && aiStack.backend && aiStack.backend.want === 'pc'
+  ? {name: 'Ubuntu ', path: k => `/api/mypc/${k}`} : {name: 'ミニコン', path: k => `/api/jetson/${k}`};
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
+    if (btnId === 'jt_reboot_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('reboot')});
     if (!confirm(`${name}を再起動しますか？\n${when ? when + '再起動します。' : ''}戻るまで 1〜2 分かかります。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
@@ -842,7 +976,19 @@ function rebootButton(btnId, msgId, name, path, when) {
   });
 }
 rebootButton('pi_reboot_btn', 'pi_reboot_msg', 'ラズパイ', '/api/system/reboot', '10 秒後に');
-rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'Jetson ', '/api/jetson/reboot', '');
+rebootButton('jt_reboot_btn', 'jt_reboot_msg', 'ミニコン', '/api/jetson/reboot', '');
+function poweroffButton(btnId, msgId, name, path, when) {
+  document.getElementById(btnId).addEventListener('click', () => {
+    if (!confirm(`${name}の電源を切りますか？\n${when ? when + '切ります。' : ''}もう一度入れるには、本体の電源ボタンを押すか、電源をつなぎ直してください。ダッシュボードからは入れられません。`)) return;
+    const msg = document.getElementById(msgId);
+    msg.textContent = '送っています…';
+    apiPost(path).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+      msg.textContent = ok ? `${when}電源を切ります` : (j.detail || '送れませんでした');
+    }).catch(() => { msg.textContent = '送れませんでした'; });
+  });
+}
+poweroffButton('pi_poweroff_btn', 'pi_poweroff_msg', 'ラズパイ', '/api/system/poweroff', '10 秒後に');
+poweroffButton('jt_poweroff_btn', 'jt_poweroff_msg', 'ミニコン', '/api/jetson/poweroff', '');
 document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   const n = latestTelemetry.system?.updates?.updates_pending;
   if (!confirm(`ラズパイを更新しますか？（ROS 2 も含めて ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだは走らせないでください。`)) return;
@@ -853,22 +999,19 @@ document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
-  const n = latestTelemetry.jetson_host?.updates_pending;
-  if (!confirm(`Jetson を更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
+  const pc = jtTarget().name === 'Ubuntu ';
+  const n = pc ? latestTelemetry.mypc_host?.ubuntu_updates_pending : latestTelemetry.jetson_host?.updates_pending;
+  if (!confirm(pc ? `Ubuntu（WSL）を更新しますか？（${n ?? '?'} 個）\nWindows Update はしません。終わるまで数分かかります。`
+    : `ミニコンを更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
   const msg = document.getElementById('jt_upgrade_msg');
   msg.textContent = '送っています…';
-  apiPost('/api/jetson/upgrade').then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+  apiPost(jtTarget().path('upgrade')).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
     msg.textContent = ok ? '頼みました' : (j.detail || '送れませんでした');
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 
 function badge(cls, text) {
   return `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;
-}
-function upgradeTime(t) {
-  const d = t ? new Date(t * 1000) : null;
-  const pad = n => String(n).padStart(2, '0');
-  return d ? `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '-';
 }
 const UPGRADE_PHASES = {prepare: '準備中', download: 'ダウンロード中', install: 'インストール中'};
 function upgradeProgress(u) {
@@ -885,11 +1028,17 @@ function renderUpdates(u, prefix) {
     : u.upgrade_result === 'success' ? badge('ok', '前回は成功')
     : u.upgrade_result ? badge('crit', '前回は失敗') : '';
   if (u.upgrade_running) byId('upgrade_msg').textContent = '';
-  byId('last_upgrade').textContent = upgradeTime(u.last_upgrade);
 }
 
 function renderSystem(s) {
-  if (!s) return;
+  if (!s) {
+    blankPiCard();
+    document.getElementById('pi_upgrade_btn').disabled = true;
+    document.getElementById('h_state').textContent = '-';
+    setTempBar(document.getElementById('h_temp_bar'), document.getElementById('h_temp'), null);
+    document.getElementById('h_info').innerHTML = '';
+    return;
+  }
   renderIps(document.getElementById('pi_ips'), s.ips);
   const piOs = document.getElementById('pi_os');
   piOs.textContent = s.os || '-';
@@ -900,8 +1049,7 @@ function renderSystem(s) {
     : u.reboot_required ? badge('warn', '必要') : badge('ok', 'いらない');
   document.getElementById('pi_upgrade_btn').disabled = !u.can_upgrade || !!u.upgrade_running;
   const c = s.cpu || {};
-  document.getElementById('cpu_pct').textContent = fmt(c.percent, 1) + ' %';
-  setBar(document.getElementById('cpu_bar'), c.percent);
+  setLoadBar(document.getElementById('cpu_bar'), document.getElementById('cpu_pct'), c.percent, 1);
   document.getElementById('cpu_freq').textContent = fmt(c.freq_mhz, 0);
   const fan = c.fan || {};
   document.getElementById('cpu_fan').textContent = fan.rpm == null
@@ -917,17 +1065,19 @@ function renderSystem(s) {
     m.swap_percent == null ? '-' : fmt(m.swap_percent, 1) + ' %';
   const cores = document.getElementById('cores');
   cores.innerHTML = (c.per_core || [])
-    .map((v, i) => `<div class="core">C${i}<div class="bar"><span style="width:${v}%"></span></div>${fmt(v, 0)}%</div>`)
+    .map(coreHtml)
     .join('');
 
   const p = s.power;
   document.getElementById('pwr_total').textContent = p ? fmt(p.total_w, 2) : '-';
   document.getElementById('pwr_input').textContent = p ? fmt(p.input_volt, 2) : '-';
   document.getElementById('pwr_amp').textContent = p ? fmt(p.input_amp, 2) : '-';
-  const pd = p ? p.pd_5a : null;
-  document.getElementById('pwr_pd').textContent =
-    pd === true ? '〇' : pd === false ? '×' : '-';
+  const sup = p && p.supply;
+  document.getElementById('pwr_supply').innerHTML = sup && sup.max_a != null
+    ? `<span class="badge ${sup.max_a >= 5 ? 'ok' : 'warn'}">${fmt(sup.max_a, 1)}</span> PD ${sup.pd ? 'あり' : 'なし'}`
+    : '-';
   renderThrottled(p && p.throttled);
+  renderPowerAlert(p);
 
   const h = s.hailo || {};
   const state = !h.enabled ? '<span class="badge">無効</span>'
@@ -960,12 +1110,17 @@ function scanBands(danger, stopD, slowD) {
   ];
 }
 
+// 距離の色（LiDAR の図の点と同じ）。距離がわからないときは灰色。
+function bandColor(bands, dist) {
+  return dist == null ? '#8a94a6' : bands.find(b => dist <= b.max).color;
+}
+
 const SCAN_RANGE_M = 3;  // LiDAR 点群の表示範囲 [m]（固定）
 
 // 車体の上から見た形 [m]。原点は LiDAR の回転中心、x は前、y は左。
 // battery_lidar_mount.scad と ai_car.xacro の値: 天板 200 x 154 mm（中心は LiDAR から後ろ 43 mm・右 8 mm）、
 // バンパーは天板の前後に 32.8 mm、カバーは 212.3 x 159.4 mm、車軸は天板の前後の端から 52 mm、
-// 2 眼カメラのレンズ（Ø18 mm）は LiDAR から前 53〜79 mm、メカナムホイール Ø80.6 x 幅 39.1 mm。車輪の左右の位置（天板の端から 11 mm 外）は見込み
+// カメラ（Camera Module 3 Wide）のレンズの先は LiDAR から前 63 mm、メカナムホイール Ø80.6 x 幅 39.1 mm。車輪の左右の位置（天板の端から 11 mm 外）は見込み
 const CAR_SHAPE = (() => {
   const px = -0.043, py = -0.008, pl = 0.200, pw = 0.154, bump = 0.0328;
   const wheelX = pl / 2 - 0.052, wheelY = pw / 2 + 0.011 + 0.0391 / 2;
@@ -1015,9 +1170,10 @@ function drawCar(ctx, cx, cy, scale) {
   ctx.beginPath(); ctx.arc(0, 0, c.lidarHead, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.restore();
 }
-// カメラの見える範囲（扇形）と、カメラで見つけた物の位置・名前を LiDAR の図に重ねる。
+// カメラの見える範囲（扇形）と、カメラで見つけた物の位置を LiDAR の図に点で重ねる。
+// 1 眼の奥行きの AI で見つけた低い物は、色を距離（LiDAR の点と同じ距離帯）、点の直径を横幅の 2 倍（小さい物も見えるように）にする。
 // 物の位置は画面の横位置から出した方向と、perception_node が LiDAR で付けた距離（カメラから前方の距離）
-function drawCameraView(ctx, cx, cy, scale, range, o) {
+function drawCameraView(ctx, cx, cy, scale, range, o, bands) {
   if (!o || o.camera_hfov_deg == null) return;
   const half = o.camera_hfov_deg / 2 * Math.PI / 180;
   const ox = o.camera_offset_x_m || 0, oy = o.camera_offset_y_m || 0;
@@ -1047,13 +1203,7 @@ function drawCameraView(ctx, cx, cy, scale, range, o) {
   const items = [];
   const jt = o.jetson;
   for (const d of (jt && jt.alive && jt.detections) || []) items.push([d, '#3fb8f0']);
-  const danger = o.danger_distance || 0.3;
-  for (const d of o.detections || []) {
-    items.push([d, d.distance != null && d.distance <= danger ? '#e04b4b' : '#5cb85c']);
-  }
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textBaseline = 'middle';
-  const placed = [];
+  for (const d of o.detections || []) items.push([d, bandColor(bands, d.distance)]);
   for (const [d, color] of items) {
     const cxImg = d.center_x ?? (d.box[0] + d.box[2]) / 2;
     const t = (0.5 - cxImg) * 2 * tanHalf;
@@ -1069,19 +1219,18 @@ function drawCameraView(ctx, cx, cy, scale, range, o) {
     const [qx, qy] = toPx(ox + d.distance, oy + d.distance * t);
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(qx, qy, 5, 0, Math.PI * 2); ctx.fill();
-    const text = `${d.label} ${d.distance.toFixed(2)}m`;
-    const tw = ctx.measureText(text).width + 8;
-    const tx = Math.min(ctx.canvas.width - tw - 2, Math.max(2, qx + 8));
-    let ty = qy;
-    while (placed.some(([x, y, w]) => tx < x + w && x < tx + tw && Math.abs(ty - y) < 20)) ty += 20;
-    placed.push([tx, ty, tw]);
-    if (ty !== qy) {
-      ctx.strokeStyle = color;
-      ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(tx, ty); ctx.stroke();
-    }
-    ctx.fillRect(tx, ty - 9, tw, 18);
-    ctx.fillStyle = '#0e1116';
-    ctx.fillText(text, tx + 4, ty);
+  }
+
+  const st = o.stereo;
+  const stItems = st ? (st.objects && st.objects.length ? st.objects : [st]) : [];
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  for (const it of stItems) {
+    if (it.distance == null || it.lateral == null || it.distance > reach) continue;
+    const [qx, qy] = toPx(ox + it.distance, oy + it.lateral);
+    const r = Math.max(2.5, (it.width || 0) * scale);
+    ctx.fillStyle = bandColor(bands, it.distance);
+    ctx.beginPath(); ctx.arc(qx, qy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
@@ -1152,7 +1301,7 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
     ctx.fillRect(cx - y * scale - s / 2, cy - x * scale - s / 2, s, s);
   }
 
-  drawCameraView(ctx, cx, cy, scale, range, obstacle);
+  drawCameraView(ctx, cx, cy, scale, range, obstacle, bands);
 
   // 凡例（左下）
   ctx.font = '10px sans-serif';
@@ -1165,6 +1314,12 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
     ctx.fillStyle = '#9fb0c7';
     ctx.fillText(b.label, 16, ly);
   });
+  const sy = size - 8 - bands.length * 14;
+  ctx.fillStyle = '#9fb0c7';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(9, sy, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillText('1眼の物（色＝距離、大きさ＝横幅）', 16, sy);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
 
@@ -1184,11 +1339,18 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
 const LEVEL_TEXT = { clear: '安全', slow: '減速', stop: '停止', unknown: '不明' };
 const THERMAL_TEXT = { normal: '通常', warn: '高温・レート低下', critical: '危険温度・停止' };
 
-function renderObstacle(o) {
+const OBSTACLE_IDS = ['o_labels', 'o_living', 'o_jetson', 'o_sectors', 'o_scale', 'o_infer', 'h_fps', 'h_tops', 'h_load'];
+function renderObstacle(o, stale) {
   const level = document.getElementById('o_level');
   if (!o) {
-    level.innerHTML = '<span class="badge">未受信</span>';
-    level.title = '/obstacle_status 未受信';
+    level.innerHTML = `<span class="badge${stale ? ' warn' : ''}">${stale ? '途絶' : '未受信'}</span>`;
+    level.title = stale ? '/obstacle_status が 2 秒より古い' : '/obstacle_status 未受信';
+    for (const id of OBSTACLE_IDS) {
+      const el = document.getElementById(id);
+      el.textContent = '-';
+      el.title = '';
+    }
+    setLoadBar(document.getElementById('h_load_bar'), document.getElementById('h_load'), null);
     return;
   }
   const LEVEL_BADGE = { clear: 'ok', slow: 'warn', stop: 'crit' };
@@ -1227,29 +1389,12 @@ function renderObstacle(o) {
     jetsonCell.title = jt && jt.age != null ? `最後の受信から ${fmt(jt.age, 1)} s` : '/jetson_detections 未受信';
   } else {
     const items = (jt.detections || []).map((d) =>
-      d.distance != null ? `${d.label} ${fmt(d.distance)} m` : `${d.label} 距離不明`);
+      d.distance != null ? `${d.label} ${fmt(d.distance)} m${DIST_SOURCE[d.distance_source] || ''}` : `${d.label} 距離不明`);
     jetsonCell.textContent = items.length
       ? items[0] + (items.length > 1 ? ` 他${items.length - 1}` : '')
       : 'なし';
     jetsonCell.title = `${items.join(', ') || 'なし'}（${jt.model || 'Jetson'}、` +
       `${fmt(jt.inference_ms, 1)} ms、表示のみ）`;
-  }
-  const fl = o.floor;
-  const floorCell = document.getElementById('o_floor');
-  if (!fl) {
-    floorCell.textContent = '-';
-    floorCell.title = '-';
-  } else {
-    const mode = fl.enabled ? '' : '（表示のみ）';
-    let text;
-    if (!fl.ready) text = fl.reason || '床の色を学習中';
-    else if (fl.distance == null) text = 'なし';
-    else if (fl.low) text = `${fmt(fl.distance)} m → ${LEVEL_TEXT[fl.level] || fl.level}`;
-    else text = `${fmt(fl.distance)} m（LiDAR にも見える）`;
-    floorCell.textContent = text + mode;
-    floorCell.title = `カメラの床の検出。LiDAR ${fmt(fl.lidar_distance)} m。` +
-      `見えるのは ${fmt(fl.near_limit_m)} m 先から。減速 ${fmt(fl.slow_distance)} m / 停止 ${fmt(fl.stop_distance)} m` +
-      (fl.enabled ? '' : '。floor_guard が false なので速度制限には使わない');
   }
   const th = o.thermal || {};
   document.getElementById('o_infer').textContent =
@@ -1261,11 +1406,10 @@ function renderObstacle(o) {
   document.getElementById('h_tops').textContent = tp.max_tops == null
     ? '-' : `${fmt(tp.now_tops, 2)} / ${fmt(tp.max_tops, 2)}`;
   // 負荷率 = 1 秒のうち推論している時間の割合（fps × 1 回の推論時間）
-  const load = tp.fps == null || !tp.max_fps ? null : tp.fps / tp.max_fps * 100;
-  setBar(document.getElementById('h_load_bar'), load);
-  document.getElementById('h_load').textContent = load == null ? '-' : `${fmt(load, 0)} %`;
+  const load = tp.fps == null || !tp.max_fps ? null : Math.min(tp.fps / tp.max_fps * 100, 100);
+  setLoadBar(document.getElementById('h_load_bar'), document.getElementById('h_load'), load);
   document.getElementById('h_load').title = load == null ? ''
-    : `1 秒のうち推論している時間の割合（${fmt(tp.fps, 1)} 回 × ${fmt(1000 / tp.max_fps, 1)} ms）`;
+    : `1 秒のうち推論している時間の割合（${fmt(tp.fps, 1)} 回 × 最近 30 回の推論時間の中央値 ${fmt(1000 / tp.max_fps, 1)} ms）`;
   document.getElementById('h_tops').title = tp.peak_tops == null ? ''
     : `モデル ${tp.model_gops} GOP × 推論レートの推定値。公称 ${tp.peak_tops} TOPS に対し連続実行時で ${fmt((tp.utilization || 0) * 100, 1)} %`;
 }
@@ -1273,21 +1417,198 @@ function renderObstacle(o) {
 let latestTelemetry = {};
 
 // Jetson（jetson/status_reporter）が 1 秒ごとに送る状態。5 秒以上届かないと未接続
-function renderJetsonHost(j) {
+const scId = id => document.getElementById(id);
+let stackBusy = false;
+let stackPhotoAt = null;
+let stackPhotoUrl = null;
+let stackEnrollBusy = false;
+// 待っている（waiting・idle）は呼び掛け待ち、それ以外（聞く・考える・話す）は会話モード
+function stackState(r) {
+  if (!r.connected) return ['warn', '未接続', '画面を 1 回さわると話せます'];
+  if (r.dozing) return ['', 'おやすみ中', '「スタックちゃん」と呼ぶと起きます'];
+  if (r.state === 'waiting' || r.state === 'idle') return ['ok', '接続中（呼び掛け待ち）', '「スタックちゃん」と呼ぶと会話モード'];
+  return ['ok', '接続中（会話モード）', '30 秒だまると「じゃあ、またね。」'];
+}
+
+function stackTime(t) {
+  if (!t) return '-';
+  const d = new Date(t * 1000);
+  const ago = Math.max(0, Date.now() / 1000 - t);
+  const rel = ago < 60 ? `${fmt(ago, 0)} 秒前` : ago < 3600 ? `${fmt(ago / 60, 0)} 分前` : `${fmt(ago / 3600, 1)} 時間前`;
+  return `${d.toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'})}（${rel}）`;
+}
+
+let backendBusy = false;
+
+function renderBackend(r) {
+  const b = r && r.backend;
+  const e = (r && r.engines) || {};
+  ['jetson', 'pc'].forEach(k => {
+    const btn = document.getElementById(`ai_be_${k}`);
+    btn.disabled = !b || backendBusy;
+    btn.classList.toggle('active', !!b && b.want === k);
+  });
+  const msg = document.getElementById('ai_be_msg');
+  msg.innerHTML = b && b.want === 'pc' && b.active !== 'pc'
+    ? badge('warn', b.error ? 'パソコンにつながらないのでミニコン' : 'パソコンを準備中（今はミニコン）') : '';
+  msg.title = b ? `声→文字: ${e.stt || '-'} / 会話の AI: ${e.llm || '-'}` + (b.error ? `\n${b.error}` : '') : '';
+  aiStack = r;
+  renderJetsonHost();
+}
+
+let aiStack = null;
+let aiJetson = {};
+let aiHosts = {jetson: null, pc: null};
+
+function renderAiRows(v, pc) {
   const byId = id => document.getElementById(id);
+  byId('ai_side').textContent = pc ? '（パソコン）' : '（ミニコン）';
+  const svc = v.services || {};
+  const svcBadge = (key, offCls) => svc[key] == null ? '-'
+    : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
+  const engine = (key, name) => svc[key] == null ? '-'
+    : (svc[key] && name ? `<span class="nw">${esc(name)}</span> / ` : '') + svcBadge(key, 'warn');
+  byId('jt_svc_whisper').innerHTML = engine('whisper', v.stt_engine);
+  const models = v.llm_models || [];
+  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-'
+    : (svc.ollama ? `${esc(models.length ? models.join(', ') : 'なし')} / ` : '') + svcBadge('ollama', 'warn');
+  const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
+  const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
+  const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
+  byId('jt_llm_split').innerHTML = gpuPct == null ? '-'
+    : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
+  const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
+  byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
+  const tts = pc ? {on: svc.voicevox, name: v.tts_engine}
+    : {on: (aiJetson.services || {}).kokoro, name: aiJetson.tts_engine};
+  byId('jt_svc_kokoro').innerHTML = tts.on == null ? '-'
+    : (tts.on && tts.name ? `<span class="nw">${esc(tts.name)}</span> / ` : '')
+      + (tts.on ? badge('ok', '稼働中') : badge('warn', '停止'));
+  renderVoiceBtns(pc);
+}
+
+let voiceBusy = false;
+
+function renderVoiceBtns(pc) {
+  const v = aiStack && aiStack.pc_voice;
+  const row = document.getElementById('jt_voice_row'), box = document.getElementById('jt_voice_btns');
+  row.style.display = pc && v ? '' : 'none';
+  if (!pc || !v) return;
+  const key = v.choices.map(c => c.speaker).join(',');
+  if (box.dataset.key !== key) {
+    box.dataset.key = key;
+    box.innerHTML = v.choices.map(c => `<button data-speaker="${c.speaker}" title="${esc(c.name)}">${esc(c.name)}</button>`).join('');
+    box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      voiceBusy = true;
+      apiPost(`/api/stackchan/pc_voice?speaker=${b.dataset.speaker}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+        if (res && !res[0].ok) alert(res[1].detail || '声を変えられませんでした');
+      }).finally(() => { voiceBusy = false; pollStackchan(); });
+    }));
+  }
+  box.querySelectorAll('button').forEach(b => {
+    b.disabled = voiceBusy;
+    b.classList.toggle('active', Number(b.dataset.speaker) === v.speaker);
+  });
+}
+
+['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
+  backendBusy = true;
+  apiPost(`/api/stackchan/backend?to=${k}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+    if (res && !res[0].ok) alert(res[1].detail || '切り替えられませんでした');
+  }).finally(() => { backendBusy = false; pollStackchan(); });
+}));
+
+function renderStackchan(r, err) {
+  renderBackend(r);
+  const st = scId('sc_state');
+  const last = (r && r.last) || {};
+  const dev = (r && r.device) || {};
+  if (!r) {
+    st.className = 'badge warn';
+    st.textContent = '未接続';
+    st.title = err;
+  } else {
+    const [cls, label, title] = stackState(r);
+    st.className = 'badge' + (cls ? ` ${cls}` : '');
+    st.textContent = label;
+    st.title = title;
+  }
+  scId('sc_heard').textContent = last.heard || '-';
+  scId('sc_reply').textContent = last.reply || '-';
+  scId('sc_ip').textContent = dev.ip || '-';
+  const net = !!(r && r.mode === 'net');
+  scId('sc_mode').textContent = r ? (net ? 'ネット（顔が緑）' : 'ローカル（Jetson）') : '-';
+  scId('sc_photo_msg').textContent = r && r.photo_at ? `写真: ${stackTime(r.photo_at)}`
+    : r && r.connected && !r.camera ? 'カメラの返事がありません' : r && !r.connected ? '画面を 1 回さわると撮れます' : '-';
+  const shot = r && r.shot;
+  scId('sc_shot_msg').textContent = r && r.shooting ? '数えています…'
+    : !(r && r.photo_at) ? '「撮影して」と言うと撮れます' : !shot ? '顔:' : shot.error ? `顔: ${shot.error}` : shot.faces === 0 ? '顔: 見つかりません'
+    : shot.faces > 1 ? `顔: ${shot.faces} つ（1 人ずつ撮ってください）`
+    : shot.name ? `顔: ${shot.name} さん` : '顔: 1 つ（まだ登録していない人）';
+  scId('sc_enroll_btn').disabled = stackEnrollBusy || !(r && r.photo_at) || !!r.shooting;
+  if (r && r.photo_at && r.photo_at !== stackPhotoAt) scId('sc_enroll_msg').textContent = '';
+  if (r && r.photo_at && r.photo_at !== stackPhotoAt) {
+    stackPhotoAt = r.photo_at;
+    loadStackPhoto();
+  }
+}
+
+function showStackImage(b) {
+  if (!b) return;
+  if (stackPhotoUrl) URL.revokeObjectURL(stackPhotoUrl);
+  stackPhotoUrl = URL.createObjectURL(b);
+  scId('sc_cam').src = stackPhotoUrl;
+}
+
+function loadStackPhoto() {
+  fetch('/api/stackchan/photo.jpg', {headers: authHeaders()})
+    .then(f => f.ok ? f.blob() : null)
+    .then(showStackImage)
+    .catch(() => {});
+}
+
+scId('sc_enroll_btn').addEventListener('click', () => {
+  const name = scId('sc_name').value.trim();
+  const out = scId('sc_enroll_msg');
+  if (!name) { out.innerHTML = badge('warn', '名前を入れてください'); return; }
+  stackEnrollBusy = true;
+  scId('sc_enroll_btn').disabled = true;
+  out.textContent = '登録しています…';
+  apiPost(`/api/stackchan/enroll?name=${encodeURIComponent(name)}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+    if (!res) { out.textContent = ''; return; }
+    const [r, j] = res;
+    out.innerHTML = r.ok ? badge('ok', `${esc(j.name)} さんを登録しました（${j.samples} 枚目）`)
+      : badge('warn', esc(j.detail || '登録できませんでした'));
+  }).catch(() => { out.textContent = ''; }).finally(() => { stackEnrollBusy = false; pollStackchan(); });
+});
+
+function pollStackchan() {
+  if (stackBusy || document.visibilityState !== 'visible') return;
+  stackBusy = true;
+  fetch('/api/stackchan/status', {headers: authHeaders()})
+    .then(r => r.json().then(j => [r, j]))
+    .then(([r, j]) => renderStackchan(r.ok ? j : null,
+      r.status === 401 ? 'API トークンを入れると見られます' : (j.detail || '受け口の返事がありません')))
+    .catch(() => renderStackchan(null, 'ダッシュボードにつながりません'))
+    .finally(() => { stackBusy = false; });
+}
+
+function renderJetsonHost() {
+  const byId = id => document.getElementById(id);
+  const pc = !!(aiStack && aiStack.backend && aiStack.backend.want === 'pc');
+  const j = pc ? aiHosts.pc : aiHosts.jetson;
+  aiJetson = aiHosts.jetson && aiHosts.jetson.alive ? aiHosts.jetson : {};
   const alive = !!(j && j.alive);
   byId('jt_state').className = 'badge' + (alive ? ' ok' : j ? ' warn' : '');
   byId('jt_state').textContent = alive ? '接続中' : '未接続';
-  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : '/api/jetson/status 未受信';
+  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : (pc ? '/api/mypc/status 未受信（パソコンの pc-status.service）' : '/api/jetson/status 未受信');
   const v = alive ? j : {};
   const t = v.temperatures_c || {};
   setTempBar(byId('jt_cpu_temp_bar'), byId('jt_cpu_temp'), t.cpu);
   setTempBar(byId('jt_gpu_temp_bar'), byId('jt_gpu_temp'), t.gpu);
-  setBar(byId('jt_cpu_bar'), v.cpu_percent);
-  byId('jt_cpu').textContent = v.cpu_percent == null ? '-' : fmt(v.cpu_percent, 0) + ' %';
+  setLoadBar(byId('jt_cpu_bar'), byId('jt_cpu'), v.cpu_percent);
   byId('jt_cpu').title = v.cpu_freq_mhz == null ? '' : `${fmt(v.cpu_freq_mhz, 0)} MHz`;
-  setBar(byId('jt_gpu_bar'), v.gpu_percent);
-  byId('jt_gpu').textContent = v.gpu_percent == null ? '-' : fmt(v.gpu_percent, 0) + ' %';
+  setLoadBar(byId('jt_gpu_bar'), byId('jt_gpu'), v.gpu_percent);
   byId('jt_gpu').title = v.gpu_freq_mhz == null ? '' : `${fmt(v.gpu_freq_mhz, 0)} MHz`;
   const memPct = v.mem_total_mb ? 100 * v.mem_used_mb / v.mem_total_mb : null;
   setBar(byId('jt_mem_bar'), memPct);
@@ -1300,21 +1621,7 @@ function renderJetsonHost(j) {
   byId('jt_power').textContent = fmt(v.power_w, 1);
   byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
 
-  const svc = v.services || {};
-  const svcBadge = (key, offCls) => svc[key] == null ? '-'
-    : svc[key] ? badge('ok', '稼働中') : badge(offCls, '停止');
-  byId('jt_svc_whisper').innerHTML = svcBadge('whisper', 'warn');
-  const models = v.llm_models || [];
-  byId('jt_svc_ollama').innerHTML = svc.ollama == null ? '-'
-    : (svc.ollama ? `${esc(models.length ? models.join(', ') : 'なし')} / ` : '') + svcBadge('ollama', 'warn');
-  const loaded = models.length && v.llm_size_mb > 0 && v.llm_vram_mb != null;
-  const gpuPct = loaded ? Math.min(100, 100 * v.llm_vram_mb / v.llm_size_mb) : null;
-  const gpuText = gpuPct == null ? '' : `GPU ${fmt(gpuPct, 0)} %`;
-  byId('jt_llm_split').innerHTML = gpuPct == null ? '-'
-    : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
-  const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
-  byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
-  byId('jt_svc_kokoro').innerHTML = svcBadge('kokoro', 'warn');
+  renderAiRows(v, pc);
 
   renderUpdates(v, 'jt_');
   byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +
@@ -1333,6 +1640,21 @@ function renderJetsonHost(j) {
   byId('jt_os').title = v.l4t ? `L4T ${v.l4t}` : '';
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
+  byId('jt_poweroff_btn').disabled = !alive;
+  byId('jt_title').textContent = pc ? `パソコン${v.gpu_name ? `（${v.gpu_name}）` : ''} — AI 担当` : 'ミニコン（Orin Nano Super） — AI 担当';
+  byId('jt_l4t_k').textContent = pc ? 'GPU' : 'JetPack（L4T）';
+  if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
+  if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
+  byId('jt_upgrade_btn').textContent = pc ? 'Ubuntu を更新' : 'ミニコンを更新';
+  byId('jt_upgrade_btn').title = pc ? 'WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
+  byId('jt_reboot_btn').textContent = pc ? 'Ubuntu を再起動' : 'ミニコンを再起動';
+  byId('jt_poweroff_row').style.display = pc ? 'none' : '';
+  byId('jt_reboot').title = pc ? `Ubuntu の再起動。Windows の再起動は${v.win_reboot_required ? 'いる' : 'いらない'}` : '';
+  if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
+  if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
+  byId('jt_note').textContent = pc
+    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi、AI の部品は WSL の値。文字→声はパソコンの VOICEVOX（ずんだもん）、止まっているときはミニコンの Kokoro。表示だけで、AI-CAR の速度や安全の判定には使わない。'
+    : 'ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
 }
 
 function setLink(id, cls, text, title) {
@@ -1372,27 +1694,38 @@ function renderLinks(d) {
 
 function render(d) {
   latestTelemetry = d || {};
+  lastTelemetryAt = Date.now();
   if (!d.auth_required) {
     document.getElementById('auth_note').textContent = '認証なし（api_token 未設定）';
   }
-  const s = d.scan;
+  renderAll(d);
+}
+
+// stamp が timeout 秒より古いメッセージは null にして、カードを「-」にする
+function freshMsg(m, now, timeout) {
+  return m && m.stamp && now && now - m.stamp <= timeout ? m : null;
+}
+
+function renderAll(d) {
+  const s = freshMsg(d.scan, d.stamp, 2.0);
+  const obs = freshMsg(d.obstacle, d.stamp, 2.0);
   document.getElementById('s_count').textContent = s ? s.count : '-';
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
-  const danger = (d.obstacle && d.obstacle.danger_distance) || 0.3;
-  const frontHalf = (((d.obstacle && d.obstacle.front_angle_deg) || 60) / 2) * Math.PI / 180;
+  const danger = (obs && obs.danger_distance) || 0.3;
+  const frontHalf = (((obs && obs.front_angle_deg) || 60) / 2) * Math.PI / 180;
   const ap = (d.autonomy && d.autonomy.params) || {};
   const stopD = Math.max(danger, ap.stop_distance || 0.35);
   const slowD = Math.max(stopD, ap.slow_distance || 0.8);
-  drawScanMap(s, danger, frontHalf, stopD, slowD, d.obstacle);
-  renderObstacle(d.obstacle);
+  drawScanMap(s, danger, frontHalf, stopD, slowD, obs);
+  renderObstacle(obs, !!d.obstacle);
   renderJoy(d.joy);
   renderDriveMode(d.drive_mode);
   renderAutonomy(d.autonomy);
-  drawDetections(d.obstacle);
+  drawDetections(obs, scanBands(danger, stopD, slowD));
 
-  const i = d.imu;
+  const i = freshMsg(d.imu, d.stamp, 2.0);
   document.getElementById('i_roll').textContent = i ? fmt(i.roll_deg, 1) : '-';
   document.getElementById('i_pitch').textContent = i ? fmt(i.pitch_deg, 1) : '-';
   document.getElementById('i_yaw').textContent = i ? fmt(i.yaw_deg, 1) : '-';
@@ -1403,9 +1736,11 @@ function render(d) {
 
   renderCliff(d.cliff);
   renderSlam(d.slam);
-  renderSystem(d.system);
-  renderJetsonHost(d.jetson_host);
+  renderSystem(freshMsg(d.system, d.stamp, 3.0));
+  aiHosts = {jetson: d.jetson_host, pc: d.mypc_host};
+  renderJetsonHost();
   renderCamera(d.camera);
+  renderStereoDepth(d.stereo_depth, obs && obs.stereo);
   renderLinks(d);
 }
 
@@ -1414,9 +1749,9 @@ let slamRev = null;
 slamImg.onload = () => drawSlam();
 function renderSlam(sl) {
   const st = document.getElementById('sl_state');
-  const m = sl && sl.map;
-  const p = sl && sl.pose;
-  if (!sl || (!sl.alive && !m)) {
+  const m = sl && sl.alive ? sl.map : null;
+  const p = sl && sl.alive ? sl.pose : null;
+  if (!sl || (!sl.alive && !sl.map)) {
     st.className = 'badge'; st.textContent = '未起動';
   } else {
     st.className = 'badge ' + (sl.alive ? 'ok' : 'warn');
@@ -1426,7 +1761,7 @@ function renderSlam(sl) {
     ? `${m.width} × ${m.height} / ${fmt(m.width * m.resolution, 1)} × ${fmt(m.height * m.resolution, 1)}（${fmt(m.resolution * 100, 0)} cm）` : '-';
   document.getElementById('sl_pose').textContent = p
     ? `${fmt(p.x)} / ${fmt(p.y)} / ${fmt(p.yaw_deg, 1)}` : '-';
-  document.getElementById('sl_age').textContent = sl && sl.map_age != null ? `${fmt(sl.map_age, 1)} s 前` : '-';
+  document.getElementById('sl_age').textContent = m && sl.map_age != null ? `${fmt(sl.map_age, 1)} s 前` : '-';
   document.getElementById('sl_save').disabled = !(sl && sl.alive && sl.can_save);
   const sv = sl && sl.saved;
   document.getElementById('sl_saved').textContent = sv ? (sv.ok ? `保存: ${sv.name}` : sv.reason) : '';
@@ -1443,7 +1778,7 @@ function drawSlam() {
   ctx.fillStyle = '#0e1116';
   ctx.fillRect(0, 0, W, H);
   const sl = latestTelemetry.slam;
-  const m = sl && sl.map;
+  const m = sl && sl.alive && sl.map;
   if (!m || !slamImg.naturalWidth) return;
   const s = Math.min(W / m.width, H / m.height);
   const ox = (W - m.width * s) / 2, oy = (H - m.height * s) / 2;
@@ -1467,19 +1802,6 @@ document.getElementById('sl_save').addEventListener('click', () => {
   apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;
   }).catch(() => {});
-});
-
-document.getElementById('cal_capture').addEventListener('click', () => {
-  const btn = document.getElementById('cal_capture');
-  const out = document.getElementById('cal_result');
-  btn.disabled = true;
-  out.textContent = '確かめ中…';
-  apiPost('/api/camera/calib_capture').then(r => r && r.json()).then(j => {
-    if (!j) { out.textContent = ''; return; }
-    out.innerHTML = j.ok
-      ? badge('ok', `保存 ${esc(j.count)} 組目`) + ' <span class="nw">20 組が目安</span>'
-      : badge('warn', esc(j.reason || '失敗')) + (j.count != null ? ` <span class="nw">保存済み ${esc(j.count)} 組</span>` : '');
-  }).catch(() => { out.textContent = ''; }).finally(() => { btn.disabled = false; });
 });
 
 const CLIFF_BADGE = {
@@ -1524,25 +1846,30 @@ function renderJoy(j) {
   el.textContent = j.active ? '操作中' : '接続中';
 }
 
-// 検出枠をカメラ映像に重畳する（30cm 以内は赤、それ以外は緑。Jetson の検出は水色）。
-function drawDetections(o) {
+const DIST_SOURCE = { lidar: '（LiDAR）' };
+
+// カメラ映像の枠の文字: 名前と距離の数字だけ（m や出し方は付けない）。
+function camLabel(d) {
+  return d.distance == null ? `${d.label} 距離不明` : `${d.label} ${d.distance.toFixed(2)}`;
+}
+
+// 検出枠をカメラ映像に重畳する（色は LiDAR の図と同じ距離の色。Jetson の検出は水色）。
+function drawDetections(o, bands) {
   const canvas = document.getElementById('cam_overlay');
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
-  const danger = (o && o.danger_distance) || 0.3;
   for (const d of (o && o.detections) || []) {
     const [x1, y1, x2, y2] = d.box;
-    const near = d.distance != null && d.distance <= danger;
-    ctx.strokeStyle = near ? '#e04b4b' : '#5cb85c';
-    ctx.lineWidth = near ? 3 : 2;
+    const color = bandColor(bands, d.distance);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
     ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
-    const text = d.distance != null
-      ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
+    const text = camLabel(d);
     ctx.font = 'bold 32px sans-serif';
     const tw = ctx.measureText(text).width + 16;
     const ty = Math.max(0, y1 * h - 40);
-    ctx.fillStyle = near ? '#e04b4b' : '#5cb85c';
+    ctx.fillStyle = color;
     ctx.fillRect(x1 * w, ty, tw, 40);
     ctx.fillStyle = '#0e1116';
     ctx.fillText(text, x1 * w + 8, ty + 30);
@@ -1553,8 +1880,7 @@ function drawDetections(o) {
     ctx.strokeStyle = '#3fb8f0';
     ctx.lineWidth = 3;
     ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
-    const text = d.distance != null
-      ? `${d.label} ${d.distance.toFixed(2)} m` : `${d.label} 距離不明`;
+    const text = camLabel(d);
     ctx.font = 'bold 32px sans-serif';
     const tw = ctx.measureText(text).width + 16;
     const ty = Math.min(h - 40, Math.max(0, y1 * h));
@@ -1563,39 +1889,89 @@ function drawDetections(o) {
     ctx.fillStyle = '#0e1116';
     ctx.fillText(text, x1 * w + 8, ty + 30);
   }
-  const fl = o && o.floor;
-  if (fl && fl.box) {
-    const [x1, y1, x2] = fl.box;
-    const color = fl.low ? '#f0a030' : '#8a94a6';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.setLineDash([12, 8]);
-    ctx.beginPath();
-    ctx.moveTo(x1 * w, y1 * h);
-    ctx.lineTo(x2 * w, y1 * h);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    const text = `床 ${fl.distance.toFixed(2)} m`;
-    ctx.font = 'bold 28px sans-serif';
-    const tw = ctx.measureText(text).width + 16;
-    ctx.fillStyle = color;
-    ctx.fillRect(x1 * w, Math.min(h - 36, y1 * h + 4), tw, 36);
-    ctx.fillStyle = '#0e1116';
-    ctx.fillText(text, x1 * w + 8, Math.min(h - 36, y1 * h + 4) + 27);
+  const st = o && o.stereo;
+  const stItems = st ? (st.objects && st.objects.length ? st.objects : [st]) : [];
+  for (const it of stItems) {
+    if (!it.box || it.distance == null) continue;
+    drawStereoBox(ctx, w, h, it, bandColor(bands, it.distance));
   }
 }
 
+function drawStereoBox(ctx, w, h, st, color) {
+  const [x1, y1, x2, y2] = st.box;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
+  const text = st.distance.toFixed(2);
+  ctx.font = 'bold 32px sans-serif';
+  const tw = ctx.measureText(text).width + 16;
+  const ty = Math.max(0, y1 * h - 40);
+  ctx.fillStyle = color;
+  ctx.fillRect(x1 * w, ty, tw, 40);
+  ctx.fillStyle = '#0e1116';
+  ctx.fillText(text, x1 * w + 8, ty + 30);
+}
+
 let camStreaming = false;
+let camDepth = false;
+const camSrc = () => `/api/camera/${camDepth ? 'depth_stream' : 'stream'}?t=${Date.now()}`;
+
+document.getElementById('sd_view').addEventListener('click', () => {
+  camDepth = !camDepth;
+  document.getElementById('sd_view').textContent = camDepth ? 'カメラの映像' : '距離の画像';
+  document.getElementById('cam_overlay').style.display = camDepth ? 'none' : '';
+  if (camStreaming) document.getElementById('cam').src = camSrc();
+});
+
+// 1 眼の奥行きの AI の距離（perception_node が出す）
+function renderStereoDepth(sd, judge) {
+  const cell = document.getElementById('sd_val');
+  const mono = !!(sd && sd.source === 'mono');
+  if (!sd || !sd.alive) {
+    cell.textContent = sd ? '止まっている' : '-';
+    cell.title = '1 眼の奥行きの AI から届いていません';
+    return;
+  }
+  if (!sd.ok) {
+    cell.textContent = sd.reason || '測れない';
+    cell.title = '-';
+    return;
+  }
+  const n = sd.nearest;
+  const side = n ? (Math.abs(n.lateral_m) < 0.03 ? '正面'
+    : `${n.lateral_m > 0 ? '左' : '右'} ${fmt(Math.abs(n.lateral_m), 2)} m`) : '';
+  const mode = judge && judge.enabled ? '' : '（表示のみ）';
+  const verdict = !n || !judge || judge.distance == null ? ''
+    : !judge.low ? ' LiDAR にも見える'
+    : judge.level === 'clear' ? ' 低い物' : ` → ${LEVEL_TEXT[judge.level] || judge.level}${mode}`;
+  cell.textContent = n
+    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）${verdict}` +
+      ((sd.objects || []).length > 1 ? `・近くに ${sd.objects.length} 個` : '')
+    : `${fmt(sd.max_range_m, 1)} m 以内になし`;
+  cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
+    `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
+    (mono ? `1 眼の奥行きの AI（推論 ${fmt(sd.infer_ms, 1)} ms）。`
+      : `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。`) +
+    (judge ? `LiDAR ${fmt(judge.lidar_distance)} m。減速 ${fmt(judge.slow_distance)} m / 停止 ${fmt(judge.stop_distance)} m` +
+      (judge.enabled ? '' : `。${mono ? 'mono_depth_guard' : 'stereo_guard'} が false なので速度制限には使わない`) : '');
+}
 
 function renderCamera(cam) {
-  if (!cam) return;
   const img = document.getElementById('cam');
-  if (cam.available && !camStreaming) {
+  if (cam && cam.available && !camStreaming) {
     camStreaming = true;
-    img.src = `/api/camera/stream?t=${Date.now()}`;
-  } else if (!cam.available && camStreaming) {
+    img.src = camSrc();
+  } else if (!(cam && cam.available) && camStreaming) {
     camStreaming = false;
     img.removeAttribute('src');
+  }
+  if (!cam || !cam.available) {
+    document.getElementById('cam_state').innerHTML = cam
+      ? '<span class="badge warn">映像なし</span>' : '<span class="badge">未受信</span>';
+    for (const id of ['cam_size', 'cam_fps', 'cam_age']) document.getElementById(id).textContent = '-';
+    document.getElementById('cam_note').textContent = cam
+      ? `${cam.topic} を待機中です（camera_ros ノードを起動してください）` : '';
+    return;
   }
   document.getElementById('cam_state').innerHTML = cam.available
     ? '<span class="badge ok">配信中</span>'
@@ -1708,6 +2084,8 @@ function loadGpio() {
 loadGpio();
 // 配線表は静的情報のため 30 秒ごとの再取得に留める
 setInterval(loadGpio, 30000);
+pollStackchan();
+setInterval(pollStackchan, 2000);
 
 // ---- Motor HAT 接続図 ----
 function wireHex(c, fallback) {
@@ -1907,17 +2285,40 @@ function renderOverview(a) {
 }
 function renderSystemDiagram(a) {
   const s = a.system || {}, devices = s.devices || [], links = s.links || [];
-  const big = {w: 290, h: 215}, small = {w: 230, h: 58};
+  const charW = c => c.charCodeAt(0) > 0xff ? 12 : 6.8;
+  const textW = t => [...String(t || '')].reduce((w, c) => w + charW(c), 0);
+  const big = {w: 290, h: 215}, small = {w: 230, h: 58}, bigTop = 212;
+  const wrap = item => {
+    const lines = [''];
+    let width = 0;
+    [...String(item)].forEach(c => {
+      if (width + charW(c) > big.w - 44) { lines.push(''); width = 0; }
+      lines[lines.length - 1] += c;
+      width += charW(c);
+    });
+    return lines;
+  };
+  const wrapped = Object.fromEntries(devices.map(d => [d.id, (d.items || []).map(wrap)]));
+  const subLines = Object.fromEntries(devices.map(d => {
+    const sub = String(d.sub || ''), i = sub.indexOf(' / ');
+    return [d.id, textW(sub) > big.w - 24 && i > 0 ? [sub.slice(0, i), sub.slice(i + 3)] : [sub]];
+  }));
+  const itemTop = id => 66 + 14 * (subLines[id] || ['']).length;
+  ['ai_car', 'jetson', 'stackchan'].forEach(id => {
+    const items = wrapped[id] || [];
+    big.h = Math.max(big.h, itemTop(id) + items.reduce((t, ls) => t + ls.length * 17 + 3, 0));
+  });
+  const bigY = bigTop + big.h / 2;
   const layout = {
-    ai_car: [190, 320, big], jetson: [600, 320, big], stackchan: [1010, 320, big],
-    browser: [190, 70, small], person: [1010, 70, small],
+    ai_car: [190, bigY, big], jetson: [600, bigY, big], stackchan: [1010, bigY, big],
+    browser: [190, 70, small], pc: [600, 70, small], person: [1010, 70, small],
   };
   const doneColor = '#35d6ff', planColor = '#f0b429';
   const byId = Object.fromEntries(devices.map(d => [d.id, d]));
   const num = i => String.fromCharCode(0x2460 + i);
   const pairs = {};
   links.forEach(l => { const k = [l.from, l.to].sort().join('|'); (pairs[k] = pairs[k] || []).push(l); });
-  let svg = `<svg class="aboutsvg" viewBox="0 0 1200 450"><defs>` +
+  let svg = `<svg class="aboutsvg" viewBox="0 0 1200 ${bigTop + big.h + 20}"><defs>` +
     [['sys-done', doneColor], ['sys-plan', planColor]].map(([id, c]) =>
       `<marker id="${id}" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto-start-reverse"><path d="M0,0 L10,4 L0,8 z" fill="${c}"/></marker>`).join('') +
     '</defs>';
@@ -1949,17 +2350,10 @@ function renderSystemDiagram(a) {
       ` stroke="${planned ? planColor : '#64b5f6'}" stroke-width="2"${planned ? ' stroke-dasharray="8 5"' : ''}/>`;
     if (size === big) {
       svg += `<text x="${x}" y="${top + 30}" fill="#e8eaed" text-anchor="middle" font-size="18" font-weight="bold">${esc(d.label)}</text>` +
-        `<text x="${x}" y="${top + 52}" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(d.sub || '')}</text>`;
-      let ty = top + 80;
-      (d.items || []).forEach(item => {
-        const lines = [''];
-        let width = 0;
-        [...String(item)].forEach(c => {
-          const cw = c.charCodeAt(0) > 0xff ? 12 : 6.8;
-          if (width + cw > size.w - 44) { lines.push(''); width = 0; }
-          lines[lines.length - 1] += c;
-          width += cw;
-        });
+        subLines[d.id].map((line, j) => `<text x="${x}" y="${top + 52 + 15 * j}" fill="#9fb0c7" text-anchor="middle"` +
+          ` font-size="${Math.max(9, Math.min(12, 12 * (size.w - 24) / textW(line)))}">${esc(line)}</text>`).join('');
+      let ty = top + itemTop(d.id);
+      (wrapped[d.id] || []).forEach(lines => {
         lines.forEach((line, j) => {
           svg += `<text x="${left + 16}" y="${ty}" fill="#dbe4ef" font-size="12">${j ? '　' : '・'}${esc(line)}</text>`;
           ty += 17;
@@ -2885,6 +3279,11 @@ document.getElementById('diary').addEventListener('click', ev => { if (ev.target
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeDiary(); });
 
 let pollTimer = null;
+let liveWs = null;
+let wsEverOpened = false;
+let lastTelemetryAt = 0;
+const TELEMETRY_STALE_MS = 3000;
+const PI_LINK_IDS = ['cam_link', 's_link', 'i_link', 'pi_link', 'h_link', 'c_link', 'sc_state'];
 
 function setConn(on, text) {
   document.getElementById('dot').classList.toggle('on', on);
@@ -2897,7 +3296,10 @@ function startPolling() {
   pollTimer = setInterval(() => {
     fetch('/api/status')
       .then(r => r.json())
-      .then(render)
+      .then(d => {
+        setConn(true, 'ポーリング接続（WebSocket未使用）');
+        render(d);
+      })
       .catch(() => setConn(false, '切断（再接続します）'));
   }, 250);
 }
@@ -2905,15 +3307,17 @@ function startPolling() {
 function connect() {
   let opened = false;
   const ws = new WebSocket(`ws://${location.host}/ws`);
+  liveWs = ws;
   ws.onopen = () => {
-    opened = true;
+    opened = wsEverOpened = true;
     clearInterval(pollTimer);
     pollTimer = null;
     setConn(true, '接続中');
   };
   ws.onmessage = ev => render(JSON.parse(ev.data));
   ws.onclose = () => {
-    if (opened) {
+    if (liveWs !== ws) return;
+    if (opened || wsEverOpened) {
       setConn(false, '切断（再接続します）');
       setTimeout(connect, 2000);
     } else {
@@ -2922,6 +3326,41 @@ function connect() {
     }
   };
 }
+const PI_VALUE_IDS = ['pi_os', 'cpu_pct', 'cpu_freq', 'cpu_fan', 'mem', 'swap', 'pwr_total', 'pwr_input',
+                     'pwr_amp', 'pwr_state', 'pwr_supply', 'pi_ips', 'pi_security', 'pi_reboot_req'];
+
+function blankPiCard() {
+  const byId = id => document.getElementById(id);
+  for (const id of PI_VALUE_IDS) byId(id).textContent = '-';
+  byId('pi_os').title = '';
+  byId('pi_upgrade_state').innerHTML = '';
+  setTempBar(byId('cpu_temp_bar'), byId('cpu_temp'), null);
+  setLoadBar(byId('cpu_bar'), byId('cpu_pct'), null);
+  byId('cores').innerHTML = '';
+}
+
+function markTelemetryStale() {
+  latestTelemetry = {};
+  renderAll({});
+  const title = `ラズパイから ${fmt((Date.now() - lastTelemetryAt) / 1000, 0)} 秒届いていません`;
+  for (const id of PI_LINK_IDS) setLink(id, 'crit', '未接続', title);
+  document.getElementById('cam_state').innerHTML = '<span class="badge crit">未接続</span>';
+  setLink('jt_state', '', '不明', 'Jetson の状態はラズパイを通して届くため、今はわかりません');
+  setConn(false, 'ラズパイとつながっていません（再接続します）');
+}
+
+setInterval(() => {
+  if (!lastTelemetryAt || Date.now() - lastTelemetryAt < TELEMETRY_STALE_MS) return;
+  markTelemetryStale();
+  // 電源が急に切れると WebSocket の close が来ないことがあるので、こちらから張り直す
+  if (liveWs && liveWs.readyState === WebSocket.OPEN) {
+    const dead = liveWs;
+    liveWs = null;
+    dead.close();
+    connect();
+  }
+}, 1000);
+
 connect();
 </script>
 </body>

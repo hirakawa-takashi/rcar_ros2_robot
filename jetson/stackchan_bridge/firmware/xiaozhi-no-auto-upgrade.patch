@@ -1,0 +1,14 @@
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -433,10 +433,7 @@
+         retry_delay = 10; // Reset retry delay
+ 
+         if (ota_->HasNewVersion()) {
+-            if (UpgradeFirmware(ota_->GetFirmwareUrl(), ota_->GetFirmwareVersion())) {
+-                return; // This line will never be reached after reboot
+-            }
+-            // If upgrade failed, continue to normal operation
++            ESP_LOGW(TAG, "New firmware %s found, auto upgrade is disabled", ota_->GetFirmwareVersion().c_str());
+         }
+ 
+         // No new version, mark the current version as valid

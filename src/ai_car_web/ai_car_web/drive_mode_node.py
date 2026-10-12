@@ -16,7 +16,7 @@
   - /cmd_vel_auto が途絶えたら STOP、ゲームパッド切断時も STOP（パラメータで選択）
   - 手動指令が途絶えたら STOP
   - モード遷移時は必ず一度ゼロ速度を送る
-  - 障害物 "stop" 判定中はどのモードでも前進を止める（最終段ガード）
+  - 障害物 "stop" 判定中・LiDAR データなし（"unknown"）・判定の途絶中は、どのモードでも前進を止める（最終段ガード）
   - 落下防止センサーが段差を検出した向き（前 / 後）への移動を止め、AUTO は STOP にする
 """
 
@@ -316,8 +316,8 @@ class DriveModeNode(Node):
             obstacle = self._obstacle
             age = time.monotonic() - self._obstacle_stamp if self._obstacle_stamp else None
         if not obstacle or age is None or age > self.obstacle_timeout:
-            return False
-        return obstacle.get('level') == 'stop'
+            return True
+        return obstacle.get('level') in ('stop', 'unknown')
 
     def _cliff_block(self):
         """段差で止める向き (前進, 後退) を返す。判定が古い・未配線なら止めない。"""

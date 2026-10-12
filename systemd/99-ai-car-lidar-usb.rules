@@ -1,0 +1,2 @@
+# LiDAR の USB（CP2102）を lidar_watchdog_node（ユーザー super、dialout）がつなぎ直せるようにする
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="10c4", ATTR{idProduct}=="ea60", GROUP="dialout", MODE="0664"

@@ -1,0 +1,11 @@
+[Unit]
+Description=VOICEVOX ENGINE (CPU) for StackChan
+After=network-online.target
+[Service]
+User=super
+WorkingDirectory=/home/super/ai/voicevox/linux-cpu-x64
+ExecStart=/home/super/ai/voicevox/linux-cpu-x64/run --host 0.0.0.0 --port 50021 --cpu_num_threads 8
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

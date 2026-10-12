@@ -1,0 +1,99 @@
+--- a/main/application.h
++++ b/main/application.h
+@@ -141,11 +141,17 @@
+     bool assets_version_checked_ = false;
+     bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
+     int clock_ticks_ = 0;
++    // Reopen the audio channel by itself after it closes (not by a tap), so the server can keep listening
++    bool user_closed_ = false;
++    bool auto_reopen_ = false;
++    int reopen_in_ = 0;
++    int reopen_wait_ = 3;
+     TaskHandle_t activation_task_handle_ = nullptr;
+ 
+ 
+     // Event handlers
+     void HandleStateChangedEvent();
++    void ScheduleReopen();
+     void HandleToggleChatEvent();
+     void HandleStartListeningEvent();
+     void HandleStopListeningEvent();
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -186,7 +186,12 @@
+ 
+         if (bits & MAIN_EVENT_ERROR) {
+             SetDeviceState(kDeviceStateIdle);
+-            Alert(Lang::Strings::ERROR, last_error_message_.c_str(), "circle_xmark", Lang::Sounds::OGG_EXCLAMATION);
++            if (auto_reopen_) {
++                ESP_LOGW(TAG, "Reopen failed: %s", last_error_message_.c_str());
++                ScheduleReopen();
++            } else {
++                Alert(Lang::Strings::ERROR, last_error_message_.c_str(), "circle_xmark", Lang::Sounds::OGG_EXCLAMATION);
++            }
+         }
+ 
+         if (bits & MAIN_EVENT_NETWORK_CONNECTED) {
+@@ -254,6 +259,12 @@
+             if (clock_ticks_ % 10 == 0) {
+                 SystemInfo::PrintHeapStats();
+             }
++
++            if (reopen_in_ > 0 && --reopen_in_ == 0 && GetDeviceState() == kDeviceStateIdle) {
++                ESP_LOGI(TAG, "Reopening audio channel");
++                auto_reopen_ = true;
++                ToggleChatState();
++            }
+         }
+     }
+ }
+@@ -301,6 +312,7 @@
+ 
+     SystemInfo::PrintHeapStats();
+     SetDeviceState(kDeviceStateIdle);
++    reopen_in_ = 2;
+ 
+     has_server_time_ = ota_->HasServerTime();
+ 
+@@ -500,6 +512,11 @@
+     
+     protocol_->OnAudioChannelOpened([this, codec, &board]() {
+         board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
++        Schedule([this]() {
++            auto_reopen_ = false;
++            user_closed_ = false;
++            reopen_wait_ = 3;
++        });
+         if (protocol_->server_sample_rate() != codec->output_sample_rate()) {
+             ESP_LOGW(TAG, "Server sample rate %d does not match device output sample rate %d, resampling may cause distortion",
+                 protocol_->server_sample_rate(), codec->output_sample_rate());
+@@ -512,6 +529,10 @@
+             auto display = Board::GetInstance().GetDisplay();
+             display->SetChatMessage("system", "");
+             SetDeviceState(kDeviceStateIdle);
++            if (!user_closed_) {
++                ScheduleReopen();
++            }
++            user_closed_ = false;
+         });
+     });
+     
+@@ -706,10 +727,18 @@
+     } else if (state == kDeviceStateSpeaking) {
+         AbortSpeaking(kAbortReasonNone);
+     } else if (state == kDeviceStateListening) {
++        user_closed_ = true;
++        reopen_in_ = 0;
+         protocol_->CloseAudioChannel();
+     }
+ }
+ 
++void Application::ScheduleReopen() {
++    reopen_in_ = reopen_wait_;
++    reopen_wait_ = std::min(reopen_wait_ * 2, 60);
++    ESP_LOGI(TAG, "Audio channel closed, reopening in %d s", reopen_in_);
++}
++
+ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
+     // Check state again in case it was changed during scheduling
+     if (GetDeviceState() != kDeviceStateConnecting) {
