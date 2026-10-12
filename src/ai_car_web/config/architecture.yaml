@@ -389,7 +389,7 @@ nodes:
     publishes: [/odom, /tf]
     subscribes: []
     params:
-      - {name: counts_per_rev, ref: encoder_odom_node.counts_per_rev, unit: カウント, desc: 車輪 1 回転のカウント（11 パルス × 4 × 56）}
+      - {name: counts_per_rev, ref: encoder_odom_node.counts_per_rev, unit: カウント, desc: 車輪 1 回転のカウント（床の 1.8 m で合わせた値、11 パルス × 4 × 32 相当）}
       - {name: wheel_radius, ref: encoder_odom_node.wheel_radius, unit: m, desc: 車輪の半径}
       - {name: wheel_base_half, ref: encoder_odom_node.wheel_base_half, unit: m, desc: 中心から車輪まで（前後）}
       - {name: track_half, ref: encoder_odom_node.track_half, unit: m, desc: 中心から車輪まで（左右）}
