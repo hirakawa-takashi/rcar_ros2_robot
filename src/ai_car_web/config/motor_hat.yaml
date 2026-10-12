@@ -23,6 +23,7 @@
 #   wheel    : 車輪位置（front_left / front_right / rear_left / rear_right）。URDF の *_wheel_link と同名
 #   reversed : true なら正転指令で車輪が後退する取り付け（ソフト側で符号反転する）
 #   colors   : [Motor+, Motor−] の配線色
+#   minus_left : true なら HAT の M 端子の左のネジ（接続図の左）が Motor−。省略時は左が Motor+
 #   encoder  : Pi 40 ピンヘッダーの物理ピン番号
 #     vcc_pin / gnd_pin : VCC / GND の 40 ピン番号（vcc_pin を省略すると hat.encoder.vcc_pin を使う）。
 #                         hat.encoder.power_board が 'Motor HAT' なら Motor HAT (3V3 power) / (Ground) に挿す
@@ -57,6 +58,7 @@ motors:
     wheel: front_right
     reversed: true
     colors: [黒, 赤]
+    minus_left: true
     encoder: {gnd_pin: 34, a_pin: 33, b_pin: 35}
     note: 前右。左右対称に取り付くため正転指令で逆回転 → reversed
   - channel: M3
@@ -69,5 +71,6 @@ motors:
     wheel: rear_right
     reversed: true
     colors: [黒, 赤]
+    minus_left: true
     encoder: {gnd_pin: 25, a_pin: 36, b_pin: 38}
     note: 後右。左右対称に取り付くため正転指令で逆回転 → reversed
