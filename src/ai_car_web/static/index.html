@@ -744,13 +744,24 @@ function apiPost(path, body) {
 }
 
 const gain = document.getElementById('gain');
+let gainEditing = false;
 gain.addEventListener('input', () => {
+  gainEditing = true;
   document.getElementById('gainval').textContent = gain.value;
 });
+gain.addEventListener('change', () => {
+  apiPost('/api/drive_output', {percent: Number(gain.value)})
+    .finally(() => { gainEditing = false; });
+});
+function renderGain(limits) {
+  const p = limits && limits.output_percent;
+  if (gainEditing || typeof p !== 'number') return;
+  gain.value = p;
+  document.getElementById('gainval').textContent = p;
+}
 
 function send(x, y, z) {
-  const g = gain.value / 100;
-  apiPost('/api/cmd_vel', {linear_x: x * g, linear_y: y * g, angular_z: z * g});
+  apiPost('/api/cmd_vel', {linear_x: x, linear_y: y, angular_z: z});
 }
 
 let holdTimer = null;
@@ -1731,6 +1742,7 @@ function renderAll(d) {
   drawScanMap(s, danger, frontHalf, stopD, slowD, obs);
   renderObstacle(obs, !!d.obstacle);
   renderJoy(d.joy);
+  renderGain(d.limits);
   renderDriveMode(d.drive_mode);
   renderAutonomy(d.autonomy);
   drawDetections(obs, scanBands(danger, stopD, slowD));
