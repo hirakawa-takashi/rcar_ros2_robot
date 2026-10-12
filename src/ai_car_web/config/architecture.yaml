@@ -602,7 +602,7 @@ status:
     - /odom 未実装のためオドメトリは null。SLAM はスキャンの照合だけで位置を出すので、速く動かすと位置を見失う
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
     - IMU の搭載向きが imu_link と一致しておらず軸補正が必要
-    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 14/3/5/11 前、25/3/5/13 後。VIN 3V3 は前後とも Motor HAT (3V3 power)）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
+    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
