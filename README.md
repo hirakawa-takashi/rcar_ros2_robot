@@ -240,7 +240,7 @@ curl -L -o ~/AI-CAR_ws/models/yolov8m.hef \
 ```bash
 sudo apt install -y ros-jazzy-robot-state-publisher ros-jazzy-joint-state-publisher ros-jazzy-xacro
 # SLAM（地図と自己位置、use_slam:=true）を使うとき
-# 地図の保存（/slam_toolbox/save_map）は nav2_map_server の map_saver_cli を使う
+# 地図の保存はダッシュボードが /map から .pgm / .yaml を書く（nav2_map_server は手で map_saver_cli を使うとき）
 sudo apt install -y ros-jazzy-slam-toolbox ros-jazzy-nav2-map-server
 sudo apt install -y python3-psutil
 pip3 install fastapi uvicorn

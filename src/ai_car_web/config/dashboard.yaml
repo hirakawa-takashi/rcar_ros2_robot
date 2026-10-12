@@ -48,7 +48,6 @@ dashboard_node:
     # SLAM（slam_toolbox、use_slam:=true）の地図・自己位置と、地図の保存先
     map_topic: "/map"
     slam_pose_topic: "/pose"
-    slam_save_service: "/slam_toolbox/save_map"
     map_save_dir: "/home/super/AI-CAR_ws/maps"
     # Jetson（jetson/owl_detector）から POST /api/jetson/detections で受けた物体検出を流すトピック
     jetson_detections_topic: "/jetson_detections"
