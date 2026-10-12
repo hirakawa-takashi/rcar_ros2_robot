@@ -79,6 +79,11 @@
               border-radius: 8px; margin-bottom: 10px; }
   .gpio_legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px;
                  color: #9fb0c7; margin-bottom: 10px; }
+  .gpio_search { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; font-size: 12px; }
+  .gpio_search input { width: 18em; padding: 4px 8px; background: #0e1726; color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
+  .gpio_search button { padding: 3px 8px; font-size: 12px; background: #1a2433; color: #c7d2e0; border: 1px solid #3a4657; border-radius: 12px; cursor: pointer; }
+  .gpio_search button.on { background: #1e88e5; color: #fff; border-color: #1e88e5; }
+  table.pins tr.gpio_hide { display: none; }
   .gpio_legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
                    margin-right: 4px; vertical-align: -1px; border: 1px solid #556; }
   .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px;
@@ -665,6 +670,11 @@
       <span><i style="background:#90caf9"></i>ID EEPROM</span>
       <span><i style="background:#dfe7ff"></i>GPIO</span>
       <span><i style="background:transparent;border:2px solid #2e7d32"></i>使用中（外枠）</span>
+    </div>
+    <div class="gpio_search">
+      <input type="search" id="gpio_q" placeholder="部品で検索（例: IMU、M1、VL53L1X）" oninput="setGpioQuery(this.value)">
+      <span id="gpio_parts"></span>
+      <span class="note" id="gpio_hits" style="margin:0"></span>
     </div>
     <div class="pinwrap">
     <table class="pins">
@@ -2045,9 +2055,10 @@ function drawGpioHeader(pins) {
       if (!p) continue;
       const fill = PIN_COLORS[p.kind] || '#dfe7ff';
       const stroke = p.in_use ? '#2e7d32' : '#556';
+      const dim = gpioQuery && !gpioMatch(p);
       const title = `${pinNo}: ${p.name}` +
         (p.in_use ? `\n${p.devices.join(', ')} ${p.signals.join(', ')} ${p.colors.join(', ')}` : '');
-      out += `<g><title>${esc(title)}</title>`;
+      out += `<g${dim ? ' opacity="0.2"' : ''}><title>${esc(title)}</title>`;
       out += `<circle cx="${x}" cy="${cy}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${p.in_use ? 3.5 : 1}"/>`;
       if (p.in_use && p.colors.length) {
         const wc = WIRE_COLORS[String(p.colors[0]).toLowerCase()] || WIRE_COLORS[p.colors[0]];
@@ -2063,14 +2074,35 @@ function drawGpioHeader(pins) {
   svg.innerHTML = out;
 }
 
+let gpioData = null;
+let gpioQuery = '';
+function gpioMatch(p) {
+  const q = gpioQuery.toLowerCase();
+  return [...p.devices, ...p.signals].some(t => t.toLowerCase().includes(q));
+}
+function setGpioQuery(q) {
+  gpioQuery = q.trim();
+  const box = document.getElementById('gpio_q');
+  if (box.value !== q) box.value = q;
+  if (gpioData) renderGpio(gpioData);
+}
 function renderGpio(g) {
+  gpioData = g;
   document.getElementById('gpio_used').textContent = `使用 ${g.used_count} / 40`;
   drawGpioHeader(g.pins);
+  const parts = [...new Set(g.pins.flatMap(p => p.devices))].sort((a, b) => a.localeCompare(b, 'ja'));
+  document.getElementById('gpio_parts').innerHTML = ['', ...parts].map(d =>
+    `<button class="${d === gpioQuery ? 'on' : ''}" data-part="${esc(d)}" onclick="setGpioQuery(this.dataset.part)">${esc(d || 'すべて')}</button>`).join(' ');
+  const hits = gpioQuery ? g.pins.filter(gpioMatch) : [];
+  document.getElementById('gpio_hits').textContent = gpioQuery
+    ? (hits.length ? `${hits.length} ピン: ${hits.map(p => p.pin).join(', ')}` : '見つかりません')
+    : '';
   document.getElementById('gpio_rows').innerHTML = g.pins.map(p => {
     const colors = p.colors.length ? [...new Set(p.colors)].map(wireSwatch).join(' / ') : (p.in_use ? '<span class="badge warn">未設定</span>' : '');
     const sig = p.signals.map(esc).join(' / ');
     const notes = p.notes.map(esc).join('; ');
-    return `<tr class="${p.in_use ? 'used' : ''}">` +
+    const hide = gpioQuery && !gpioMatch(p);
+    return `<tr class="${p.in_use ? 'used' : ''}${hide ? ' gpio_hide' : ''}">` +
       `<td class="num">${p.pin}</td>` +
       `<td><span class="swatch" style="background:${PIN_COLORS[p.kind] || '#dfe7ff'};border-radius:50%"></span>${esc(p.name)}</td>` +
       `<td class="num">${p.bcm == null ? '-' : p.bcm}</td>` +
@@ -2082,7 +2114,7 @@ function renderGpio(g) {
   }).join('');
   document.getElementById('gpio_note').textContent = g.error
     ? `配線設定の読み込みに失敗: ${g.error}`
-    : `配線表: ${g.config_path}（編集後は dashboard_node を再起動）`;
+    : `配線表: ${g.config_path}（編集後は dashboard_node を再起動）。AI HAT+ と Motor HAT はピンに直接挿していないので載せていません（Motor HAT は下の接続図）。`;
 }
 
 function loadGpio() {
@@ -3198,6 +3230,9 @@ function writeAboutPdf(win) {
     .abouttable th, table.pins th { color: #333 !important; border-bottom-color: #999 !important; }
     .abouttable td, table.pins td { border-bottom-color: #ddd !important; color: #111; }
     table.pins tr.used td { background: #eef5ff !important; }
+    .gpio_search { display: none !important; }
+    table.pins tr.gpio_hide { display: table-row !important; }
+    .gpio_svg g { opacity: 1 !important; }
     .card { background: #fff !important; border-color: #bbb !important; color: #111 !important; box-shadow: none !important; }
     .card h2 { color: #0b3d5c !important; }
     .p3dgallery a { background: #fff !important; border-color: #bbb !important; }
