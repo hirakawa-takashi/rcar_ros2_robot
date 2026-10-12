@@ -93,6 +93,7 @@ WSL は PowerShell の画面を閉じるとしばらくして止まるので、`
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 | `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
 | `firmware/xiaozhi-fallback-pc.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（auto-reopen のあと） | ミニコンが答えないとき、パソコン（`AICAR_FALLBACK_HOST` 192.168.11.7、同じ 8000・8003 番）につなぐ。WebSocket は毎回ミニコンを先に試し、だめならパソコン。起動のときの OTA も、失敗するたびにミニコンとパソコンを入れかえて聞く（下の「ミニコンが落ちたとき」） |
+| `firmware/xiaozhi-channel-watchdog.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（fallback-pc のあと） | 会話の線が「閉じた」と知らせずに死んだとき（相手から 120 秒何も来ない）も、5 秒で閉じてつなぎ直す。つなぎ直しの時に「ひま」でなくても、1 秒ごとに待ってやり直す。線が 1 分つながらなければ（画面をさわって止めたときも）つなぎ直し、3 分つながらなければ自分で起動し直す。送りが固まって中の動きが 90 秒止まったときも起動し直す（AI Agent で起きる） |
 | `firmware/stackchan-camera-follow-server.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | カメラの映像・撮影の写真を、今つないでいる受け口（ミニコンかパソコン）へ送る |
 | `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
 
@@ -106,6 +107,7 @@ git apply <このフォルダ>/firmware/stackchan-camera-stream.patch
 git apply <このフォルダ>/firmware/stackchan-face-color.patch
 git apply <このフォルダ>/firmware/stackchan-countdown-shot.patch
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-fallback-pc.patch
+git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-channel-watchdog.patch
 git apply <このフォルダ>/firmware/stackchan-camera-follow-server.patch
 . ~/esp/esp-idf-v5.5.4/export.sh
 idf.py build
@@ -279,7 +281,7 @@ sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemc
 
 ### 声ごとの話し方・性格
 
-パソコンの VOICEVOX の声を選ぶと、ローカルの会話の AI の最初の決まり（`system_prompt`）を、その声のキャラクターにします（`PC_PERSONAS`・`PERSONA_PROMPT`）。「だれ？」「誰の声？」「名前は？」には、そのキャラクターの名前で答えます（このときはネットで調べない、`SELF_ASK`）。ミニコン（Kokoro）のときは今までどおり「スタックちゃん」です。
+ダッシュボードの Jetson のカードの「声」の、えらぶ欄（VOICEVOX 0.25.2 の 43 人。番号は各キャラクターの最初のスタイル、`PC_VOICES`）でパソコンの VOICEVOX の声を選ぶと、ローカルの会話の AI の最初の決まり（`system_prompt`）を、その声のキャラクターにします（`PC_PERSONAS`・`PERSONA_PROMPT`）。「だれ？」「誰の声？」「名前は？」には、そのキャラクターの名前で答えます（このときはネットで調べない、`SELF_ASK`）。ミニコン（Kokoro）のときは今までどおり「スタックちゃん」です。
 
 | 声 | 名乗る名前 | 話し方 |
 |---|---|---|
@@ -288,6 +290,7 @@ sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemc
 | 春日部つむぎ | 春日部つむぎ | 一人称「あーし」、「〜じゃん」「マジで」。人なつっこい |
 | 冥鳴ひまり | 冥鳴ひまり | 一人称「わたし」、おっとりした静かな丁寧語 |
 | もち子さん | もち子 | 一人称「わたし」、やさしいお姉さんの丁寧語、ほめ上手 |
+| ほか 38 人 | 名前のまま（†聖騎士 紅桜† は「聖騎士 紅桜」、小夜/SAYO は「小夜」） | `PC_PERSONAS` に 1 人ずつ（例: 白上虎太郎「ぼく」「〜だよ」、ちび式じい「わし」「〜じゃ」、中国うさぎ「〜ぴょん」） |
 
 返事の中のキリル・アラビア・タイ・ハングルの文字は読まずに消す（`FOREIGN_TEXT`。qwen2.5 がときどき混ぜる）。漢字ばかりで、かなが漢字の 1/4 より少なく、「，你我们么」など中国語だけの字がある文も読まない（`is_chinese`）。
 

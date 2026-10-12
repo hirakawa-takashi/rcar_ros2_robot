@@ -1,6 +1,6 @@
 # slam_toolbox（online async）の設定。slam.launch.py / dashboard.launch.py の use_slam:=true で使う。
 # odom → base_footprint は encoder_odom_node の /odom の TF（odom_source:=topic）。
-# 0.2 m か 0.2 rad 動くたびにスキャンを地図に足す（止まっているあいだは /pose も出ない）。
+# 0.1 m か 0.1 rad（約 6°）動くたびにスキャンを地図に足す（止まっているあいだは /pose も出ない）。
 slam_toolbox:
   ros__parameters:
     use_sim_time: false
@@ -34,8 +34,8 @@ slam_toolbox:
 
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.2
-    minimum_travel_heading: 0.2
+    minimum_travel_distance: 0.1
+    minimum_travel_heading: 0.1
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
     link_match_minimum_response_fine: 0.1

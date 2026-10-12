@@ -1,0 +1,107 @@
+--- a/main/application.h
++++ b/main/application.h
+@@ -7,6 +7,7 @@
+ #include <esp_timer.h>
+ 
+ #include <string>
++#include <atomic>
+ #include <mutex>
+ #include <deque>
+ #include <memory>
+@@ -146,6 +147,10 @@
+     bool auto_reopen_ = false;
+     int reopen_in_ = 0;
+     int reopen_wait_ = 3;
++    std::atomic<uint32_t> loop_alive_s_{0};
++    int stale_secs_ = 0;
++    int closed_secs_ = 0;
++    void CheckAudioChannel();
+     TaskHandle_t activation_task_handle_ = nullptr;
+ 
+ 
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -37,6 +37,15 @@
+         .callback = [](void* arg) {
+             Application* app = (Application*)arg;
+             xEventGroupSetBits(app->event_group_, MAIN_EVENT_CLOCK_TICK);
++            // The main loop can hang in a TCP send that never finishes; restart when it stops ticking.
++            uint32_t alive = app->loop_alive_s_.load();
++            uint32_t now = (uint32_t)(esp_timer_get_time() / 1000000);
++            auto state = app->GetDeviceState();
++            if (alive != 0 && now - alive > 90 && state != kDeviceStateUpgrading &&
++                state != kDeviceStateWifiConfiguring) {
++                ESP_LOGE(TAG, "Main loop stalled for %lu s, restarting", (unsigned long)(now - alive));
++                esp_restart();
++            }
+         },
+         .arg = this,
+         .dispatch_method = ESP_TIMER_TASK,
+@@ -260,11 +269,17 @@
+                 SystemInfo::PrintHeapStats();
+             }
+ 
+-            if (reopen_in_ > 0 && --reopen_in_ == 0 && GetDeviceState() == kDeviceStateIdle) {
+-                ESP_LOGI(TAG, "Reopening audio channel");
+-                auto_reopen_ = true;
+-                ToggleChatState();
++            if (reopen_in_ > 0 && --reopen_in_ == 0) {
++                if (GetDeviceState() == kDeviceStateIdle) {
++                    ESP_LOGI(TAG, "Reopening audio channel");
++                    auto_reopen_ = true;
++                    ToggleChatState();
++                } else if (!protocol_ || !protocol_->IsAudioChannelOpened()) {
++                    reopen_in_ = 1;
++                }
+             }
++            loop_alive_s_ = (uint32_t)(esp_timer_get_time() / 1000000);
++            CheckAudioChannel();
+         }
+     }
+ }
+@@ -731,6 +749,45 @@
+     }
+ }
+ 
++// Called every second. A channel that died without a close event (server gone, no data for 120 s)
++// is closed here so the reopen starts. A channel closed for 1 minute (even by a tap) is reopened,
++// and one closed for 3 minutes reboots the device.
++void Application::CheckAudioChannel() {
++    if (!protocol_) {
++        return;
++    }
++    auto state = GetDeviceState();
++    bool opened = protocol_->IsAudioChannelOpened();
++    if (!opened && (state == kDeviceStateListening || state == kDeviceStateSpeaking)) {
++        if (++stale_secs_ == 5) {
++            ESP_LOGW(TAG, "Audio channel lost in state %d, closing it to reopen", (int)state);
++            protocol_->CloseAudioChannel();
++        } else if (stale_secs_ == 15) {
++            ESP_LOGW(TAG, "Audio channel still lost, back to idle");
++            SetDeviceState(kDeviceStateIdle);
++            ScheduleReopen();
++        }
++    } else {
++        stale_secs_ = 0;
++    }
++    bool watching = state == kDeviceStateIdle || state == kDeviceStateConnecting ||
++                    state == kDeviceStateListening || state == kDeviceStateSpeaking;
++    if (!opened && watching) {
++        ++closed_secs_;
++        if (closed_secs_ == 60 && state == kDeviceStateIdle && reopen_in_ == 0) {
++            ESP_LOGW(TAG, "Audio channel closed for 60 s, reopening");
++            user_closed_ = false;
++            ScheduleReopen();
++        } else if (closed_secs_ >= 180) {
++            ESP_LOGE(TAG, "Audio channel closed for %d s, rebooting", closed_secs_);
++            closed_secs_ = 0;
++            Reboot();
++        }
++    } else {
++        closed_secs_ = 0;
++    }
++}
++
+ void Application::ScheduleReopen() {
+     reopen_in_ = reopen_wait_;
+     reopen_wait_ = std::min(reopen_wait_ * 2, 60);

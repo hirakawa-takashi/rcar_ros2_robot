@@ -4,11 +4,15 @@
 
 ### Added
 - Jetson: 家族の顔を見分ける `jetson/face_id/`（`jetson-face.service`、8090 番に登録の画面と API）。OpenCV の YuNet で顔を見つけ、SFace の特ちょう（128 個）を登録した人と比べる（近さ 0.40 以上で同じ人、低いと「知らない人」）。CPU だけで 1 回 約 15〜40 ms。顔の画像は保存せず、名前と特ちょうだけを Jetson に残す。今は AI-CAR のカメラ（画面を開いているあいだだけ 1 秒に 2 回）で試し、あとでスタックちゃんから `POST /api/face/recognize` で受け取る。表示とあいさつ用で、AI-CAR の速度には使わない
+- スタックちゃんのパソコンの声（VOICEVOX）を 5 人から 43 人にした。ダッシュボードの Jetson のカードの「声」は、ボタンをやめて、えらぶ欄（下に開く一覧）にした。番号は各キャラクターの最初のスタイル（ノーマル・ふつう など）。足した 38 人にも、名乗る名前・一人称・文の終わり・性格（`PC_PERSONAS`）を 1 人ずつ決めた（キャラクターの公式の設定とはちがうところがある）
 - SLAM を `/odom` つきでふだんから動かす（`use_slam` 既定 true）。`slam_toolbox.yaml` の `minimum_travel_distance` / `minimum_travel_heading` を 0 → 0.2 m / 0.2 rad にした。
 - エンコーダーのオドメトリ `encoder_odom_node` を追加。4 輪の A/B 相（`motor_hat.yaml` のピン）を libgpiod の両エッジで 4 逓倍に数え（ROS と取り合わないよう別プロセス）、メカナムの順運動学（x = (前左 + 前右 + 後左 + 後右) / 4、y = (−前左 + 前右 + 後左 − 後右) / 4、旋回 = (−前左 + 前右 − 後左 + 後右) / (4 × (0.11 + 0.12))）で `/odom` と odom → base_footprint の TF を 20 Hz で出す。1 回転 2,464 カウント（11 × 4 × 56）・半径 40.3 mm で 1 カウント 0.103 mm。`use_odom`（既定 true）。`use_slam:=true` のときは SLAM の固定の TF をやめて、この TF を使う。実機（10/12、タイヤを浮かせて前進 25 % を 1.5 秒）: x 0.263 m・y 0.006 m・向き 1.6°、4 輪のカウント 2,468〜2,655、CPU 約 8 %。後左は信号のゆれで読みとばしが多い（約 900 回）が、カウントは他の輪と同じくらい
 - ダッシュボードの「出力」（10〜100 %）を、Web の操作だけでなくゲームパッドと自動走行の最大の速さにも使う。これまでは Web のボタンだけがブラウザの中で出力をかけ、ゲームパッド（`speed_scale` 0.5）と自動（巡航 0.15 m/s・旋回 0.6 rad/s）は出力と関係なく走っていた。出力は `POST /api/drive_output` で `dashboard_node` が持ち（初期値 `output_percent` 50、再起動で 50 に戻る）、`/drive_output`（Float32・transient local）で `drive_mode_node` へ送る。`drive_mode_node` はどのモードでも `|linear| ≤ 0.3 × 出力`・`|angular| ≤ 1.0 × 出力` に抑える（25 % なら 0.075 m/s・0.25 rad/s）。ゲームパッドは `speed_scale` 1.0 にして、倒しきり = 出力（RB も同じ）
 - モーター制御ノード `motor_driver_node` を追加。これまで `/cmd_vel` を受けるノードがなく、ダッシュボードの「前進」などを押してもタイヤが回らなかった。`/cmd_vel` をメカナムの逆運動学（前左 = x − y − z、前右 = x + y + z、後左 = x + y − z、後右 = x − y + z、`max_linear_speed` 0.3 m/s・`max_angular_speed` 1.0 rad/s で 100 %）で 4 輪の出力にし、Motor HAT の PCA9685 を `/dev/i2c-1` から直接書いて回す（エンコーダーを使わないオープンループ）。M2・M4 は `motor_hat.yaml` の `reversed` で符号を反転。`/cmd_vel` が 0.5 秒届かないと止め、終了時も全部止める。`/motor_status` に 4 輪の出力を 5 Hz で出す。`use_motor`（既定 true）
 - 1 眼の距離: 車の傾き（カメラの下向きの角度）を毎回出して、床の三角形の距離と高さに使う（`mono_auto_pitch`）。LiDAR が当たった物（0.3〜2 m）の、AI の値が LiDAR の所と 4 % 以内のまま下へ続く行の下のはし（床とのさかい目）を、カメラの高さ 11.2 cm と LiDAR の距離から出る行とくらべ、点ごとの差の中央値（最近 5 回）にする。AI は物の下のはしを床にとけこませるので、平らな床で出る -2.7° を引く（`mono_pitch_bias_deg`）。10 点より少ない・ばらつき 3° より大きいときは `mono_camera_pitch_deg`（0°）。`/stereo/depth_status` の `pitch`、ダッシュボードの「1眼の距離」のマウスの説明に出す。実機（10/12）: 平らな床で -0.5〜+0.3°。前輪の下に 7 mm を入れると -4.1〜-4.2°（映像の窓のずれ 26 px では -3.7°）。そのとき白い箱は、角度 0° のままだと 0.58 → 0.43 m（-26 %）と出たのが 0.60〜0.62 m（+3〜6 %）、袋は 0.41 → 0.30 m が 0.39 m。床の行の AI の値のかたむきから角度を出す方法は、7 mm でも +0.4° しか動かず使えなかった。LiDAR で AI の値を m に合わせる方法も、床で 2.1〜2.4 倍遠く出て使えなかった
+
+### Changed
+- SLAM の地図を細かくするため、`minimum_travel_distance` / `minimum_travel_heading` を 0.2 m / 0.2 rad → 0.1 m / 0.1 rad（約 6°）にした。地図に足すスキャンが約 2 倍になる。LiDAR は 1 回 720 点（0.5° おき）のうち約 85 % が有効
 
 ### Removed
 - USB 2 眼カメラ（ELP 3D USB Camera）を今後使わないので、2 眼だけのものを消した: `stereo_camera_node`・`stereo_depth_node`・`stereo_calibrate`（`setup.py` の入口も）、キャリブレーションの資料と市松模様の PDF（`docs/calib`）、ダッシュボードの「撮影」の API（`POST /api/camera/calib_capture`）、`dashboard.launch.py` の `camera_type`・`use_stereo_depth`（カメラは `use_camera` で Camera Module 3 Wide の `camera_ros` だけ）、`dashboard.yaml` の `stereo_camera_node`・`stereo_depth_node` の設定、3D の 2 眼用の板・カバー（`cam_mount_stereo.stl`・`cover_stereo.stl`、`front_cam="stereo"`）。Camera Module 3 Wide 用の STL は形が変わらないことを確かめた（OpenSCAD で出し直して頂点が同じ）
@@ -16,6 +20,8 @@
 - プロジェクト説明（`architecture.yaml`・`PROJECT_STATUS.md`・3D の README）とダッシュボードの「2眼の距離」の表示を、Camera Module 3 Wide と 1 眼の距離に直した
 
 ### Fixed
+- スタックちゃんの会話の線（WebSocket）が切れたまま、電源を入れ直すまで会話できなくなることがあった（10/12 の 17:38・19:40）。ファームウェアに `xiaozhi-channel-watchdog.patch` を足した: 線が閉じた知らせなしに死んだ（120 秒何も来ない）まま「聞いている」状態なら 5 秒で閉じてつなぎ直す、つなぎ直しの時に「ひま」でなければ 1 秒ごとに待つ、1 分つながらなければ（画面をさわって止めたときも）つなぎ直し、3 分つながらなければ起動し直す、送りが固まって中の動き（1 秒ごとの時計）が 90 秒止まったら起動し直す。ミニコンへの TCP/8000 を 170 秒止めて試し、約 2 分でパソコンにつなぎ直し、戻すとミニコンに戻った。`stackchan_bridge` は「切れました」に WebSocket の閉じるコードと理由も書く
+- ダッシュボードの「地図を保存」が失敗していた。`slam_toolbox` の `save_map` は `map_saver_cli` を別プロセスで起こし、`/map` を 2 秒しか待たないので、UDP だけの ROS 通信では見つける前に時間切れになっていた（`Failed to spin map subscription`）。`dashboard_node` が受けている最後の `/map` から、map_server の形（trinary・占有 ≥ 0.65・空き ≤ 0.196）の `.pgm` / `.yaml` を `map_save_dir` に直接書く。`slam_save_service` パラメーターは消した
 - ダッシュボードの SLAM の地図が、車が止まると消えていた。`slam_toolbox` は動いてスキャンを足したときだけ `/pose` を出すので、`/pose` が 5 秒来ないと「途絶」にして地図を描かなかった。`/map`（2 秒ごと）が 5 秒以内に来ていれば動いているとみなし、最後の自己位置を出す。
 - `/odom` の向きがその場回転で実際の約 0.7 倍だった（床で /odom 380° のとき実際 540°）。`encoder_odom_node` に `yaw_scale`（向きの変化の倍率）を足し、1.42 にした
 - `/odom` の距離が実際の約 0.57 倍だった（床で 1.8 m 走って /odom 1.03 m、4 輪平均 約 10,000 カウント）。`counts_per_rev` を 2,464（11 × 4 × 56）から 1,408（11 × 4 × 32 相当）にした

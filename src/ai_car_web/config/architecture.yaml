@@ -505,7 +505,7 @@ nodes:
     params:
       - {name: resolution, ref: slam_toolbox.resolution, unit: m, desc: 地図の 1 セルの大きさ}
       - {name: max_laser_range, ref: slam_toolbox.max_laser_range, unit: m, desc: 地図に使うスキャンの距離}
-      - {name: minimum_travel_distance, ref: slam_toolbox.minimum_travel_distance, unit: m, desc: この距離動いたらスキャンを使う（/odom つきで 0.2）}
+      - {name: minimum_travel_distance, ref: slam_toolbox.minimum_travel_distance, unit: m, desc: この距離動いたらスキャンを使う（/odom つきで 0.1）}
       - {name: map_update_interval, ref: slam_toolbox.map_update_interval, unit: s, desc: /map を出す間隔}
     layer: perception
   - id: system_monitor_node

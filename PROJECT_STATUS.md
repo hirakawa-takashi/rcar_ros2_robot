@@ -49,7 +49,7 @@
   - つながりの印: カメラ・LiDAR・Raspberry Pi 5 — CPU・AI HAT+・IMU・落下防止センサー・Jetson のカードのタイトルの横に「接続中」などを出す（LiDAR・IMU は 2 秒、`/system_status` は 3 秒、Jetson は 5 秒届かないと途絶 / 未接続）
   - 更新の進み具合: ボタンの更新のあいだ「更新中 45 %」のように出す（ダウンロード 0〜30 %、インストール 30〜100 %。`/run/ai-car-upgrade.progress`・`/run/jetson-upgrade.progress`）
   - ラズパイの更新: 「Raspberry Pi 5 — CPU」カードに「セキュリティ更新」（`apt-check`、1 時間に 1 回とボタンの更新のあと）「再起動」（必要 / いらない）と「ラズパイを更新」ボタン（確認の画面あり、API トークンが必要、走行中・自動運転中は断る）。ボタンは `ai-car-upgrade.service`（`systemd/ai-car-upgrade.sh`、ROS 2 も含めて更新、消える部品があるときはやめる）を始める。自動のセキュリティ更新は Ubuntu の unattended-upgrades（自動の再起動なし）
-  - SLAM（地図と自己位置）: `use_slam`（既定 true）で `slam_toolbox` を起動し、ダッシュボードの「地図と自己位置（SLAM）」に地図と自己位置を出す。地図は `~/AI-CAR_ws/maps` に保存できる。位置はエンコーダーの `/odom` とスキャンの照合で出し、0.2 m か 0.2 rad 動くたびにスキャンを地図に足す（`minimum_travel_*`）。止まっていても `/map` は 2 秒ごとに届くので地図は出たまま。自律走行にはまだ使わない
+  - SLAM（地図と自己位置）: `use_slam`（既定 true）で `slam_toolbox` を起動し、ダッシュボードの「地図と自己位置（SLAM）」に地図と自己位置を出す。地図は `~/AI-CAR_ws/maps` に保存できる。位置はエンコーダーの `/odom` とスキャンの照合で出し、0.1 m か 0.1 rad 動くたびにスキャンを地図に足す（`minimum_travel_*`）。止まっていても `/map` は 2 秒ごとに届くので地図は出たまま。自律走行にはまだ使わない
   - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
   - 画面（`static/index.html`）: 手動操作カードは LiDAR カードの直下（4 列固定グリッド、幅 2 列分）に配置。メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止
