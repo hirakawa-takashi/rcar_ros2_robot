@@ -34,7 +34,6 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import String
-from std_srvs.srv import Trigger
 
 from ai_car_web.architecture import load_architecture
 from ai_car_web.dev_diary import find_repo, load_dev_diary
@@ -283,9 +282,7 @@ class DashboardNode(Node):
         self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
         # スタックちゃんのカードに出す会話の様子（Jetson の stackchan_bridge）。空なら Jetson が送ってくる IP アドレスの 8003
         self.declare_parameter('stackchan_bridge_url', '')
-        # 2 眼カメラのキャリブレーション用の撮影（stereo_camera_node）
-        self.declare_parameter('calib_capture_service', '/stereo_camera_node/capture_calib')
-        # 2 眼カメラの距離（stereo_depth_node）。空で無効
+        # 1 眼の奥行きの AI の距離（perception_node が出す）。空で無効
         self.declare_parameter('stereo_depth_topic', '/stereo/depth_status')
         self.declare_parameter('stereo_depth_image_topic', '/stereo/depth/compressed')
         # 地図の保存先（空なら ~/maps）
@@ -381,8 +378,6 @@ class DashboardNode(Node):
         if SaveMap is not None:
             self.slam_save_client = self.create_client(
                 SaveMap, self.get_parameter('slam_save_service').value)
-        self.calib_capture_client = self.create_client(
-            Trigger, self.get_parameter('calib_capture_service').value)
         depth_topic = self.get_parameter('stereo_depth_topic').value
         if depth_topic:
             self.create_subscription(String, depth_topic, self._stereo_depth_cb, 10)
@@ -567,23 +562,6 @@ class DashboardNode(Node):
         with self._lock:
             self._map_saved = saved
         return saved
-
-    def capture_calib(self, timeout: float = 10.0):
-        """stereo_camera_node に、キャリブレーション用の左右の画像を 1 組撮らせる。"""
-        if not self.calib_capture_client.service_is_ready():
-            return {'ok': False, 'reason': '2 眼カメラのノードが起動していない'}
-        done = threading.Event()
-        future = self.calib_capture_client.call_async(Trigger.Request())
-        future.add_done_callback(lambda _: done.set())
-        if not done.wait(timeout):
-            return {'ok': False, 'reason': '撮影の応答がない'}
-        result = future.result()
-        if result is None:
-            return {'ok': False, 'reason': '撮影の応答が空'}
-        try:
-            return json.loads(result.message)
-        except json.JSONDecodeError:
-            return {'ok': result.success, 'reason': result.message}
 
     def _obstacle_cb(self, msg: String):
         try:
@@ -1300,10 +1278,6 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/slam/save', dependencies=[Depends(require_token)])
     def slam_save():
         return node.save_map()
-
-    @app.post('/api/camera/calib_capture', dependencies=[Depends(require_token)])
-    def calib_capture():
-        return node.capture_calib()
 
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():

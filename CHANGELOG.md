@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Removed
+- USB 2 眼カメラ（ELP 3D USB Camera）を今後使わないので、2 眼だけのものを消した: `stereo_camera_node`・`stereo_depth_node`・`stereo_calibrate`（`setup.py` の入口も）、キャリブレーションの資料と市松模様の PDF（`docs/calib`）、ダッシュボードの「撮影」の API（`POST /api/camera/calib_capture`）、`dashboard.launch.py` の `camera_type`・`use_stereo_depth`（カメラは `use_camera` で Camera Module 3 Wide の `camera_ros` だけ）、`dashboard.yaml` の `stereo_camera_node`・`stereo_depth_node` の設定、3D の 2 眼用の板・カバー（`cam_mount_stereo.stl`・`cover_stereo.stl`、`front_cam="stereo"`）。Camera Module 3 Wide 用の STL は形が変わらないことを確かめた（OpenSCAD で出し直して頂点が同じ）
+- 1 眼の奥行きの AI（SC-Depth v3）が使う `/stereo/depth_status`・`/stereo/depth/compressed` と `stereo_guard` などの名前は、安全の判定を変えないようにそのまま残した。物の枠の距離のマス（`stereo_grid_topic`）は出すノードがないので空にした（物の枠の距離は今までどおり LiDAR）
+- プロジェクト説明（`architecture.yaml`・`PROJECT_STATUS.md`・3D の README）とダッシュボードの「2眼の距離」の表示を、Camera Module 3 Wide と 1 眼の距離に直した
+
 ### Known Issues
 - Motor HAT の出力故障（2026/09/25）: 12V は HAT 内まで到達し PCA9685 への指令も正しいが、M1・M3 とも駆動中の出力が 0V、緑 LED も消灯。モーター単体は正常。同型品（Adafruit 2348）へ交換予定。詳細は PROJECT_STATUS.md「既知の問題」
 

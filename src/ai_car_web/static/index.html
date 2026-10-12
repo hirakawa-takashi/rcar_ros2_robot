@@ -379,7 +379,7 @@
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
       <tr>
-        <td class="k" id="sd_label">2眼の距離</td>
+        <td class="k" id="sd_label">1眼の距離</td>
         <td class="v"><span id="sd_val" title="-" style="display:inline-block; max-width:calc(100% - 7em); overflow:hidden; text-overflow:ellipsis; vertical-align:middle">-</span> <button id="sd_view" style="padding:3px 10px; font-size:12px">距離の画像</button></td>
       </tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
@@ -1120,7 +1120,7 @@ const SCAN_RANGE_M = 3;  // LiDAR 点群の表示範囲 [m]（固定）
 // 車体の上から見た形 [m]。原点は LiDAR の回転中心、x は前、y は左。
 // battery_lidar_mount.scad と ai_car.xacro の値: 天板 200 x 154 mm（中心は LiDAR から後ろ 43 mm・右 8 mm）、
 // バンパーは天板の前後に 32.8 mm、カバーは 212.3 x 159.4 mm、車軸は天板の前後の端から 52 mm、
-// 2 眼カメラのレンズ（Ø18 mm）は LiDAR から前 53〜79 mm、メカナムホイール Ø80.6 x 幅 39.1 mm。車輪の左右の位置（天板の端から 11 mm 外）は見込み
+// カメラ（Camera Module 3 Wide）のレンズの先は LiDAR から前 63 mm、メカナムホイール Ø80.6 x 幅 39.1 mm。車輪の左右の位置（天板の端から 11 mm 外）は見込み
 const CAR_SHAPE = (() => {
   const px = -0.043, py = -0.008, pl = 0.200, pw = 0.154, bump = 0.0328;
   const wheelX = pl / 2 - 0.052, wheelY = pw / 2 + 0.011 + 0.0391 / 2;
@@ -1171,7 +1171,7 @@ function drawCar(ctx, cx, cy, scale) {
   ctx.restore();
 }
 // カメラの見える範囲（扇形）と、カメラで見つけた物の位置を LiDAR の図に点で重ねる。
-// 2 眼の物は、色を距離（LiDAR の点と同じ距離帯）、点の直径を横幅の 2 倍（小さい物も見えるように）にする。
+// 1 眼の奥行きの AI で見つけた低い物は、色を距離（LiDAR の点と同じ距離帯）、点の直径を横幅の 2 倍（小さい物も見えるように）にする。
 // 物の位置は画面の横位置から出した方向と、perception_node が LiDAR で付けた距離（カメラから前方の距離）
 function drawCameraView(ctx, cx, cy, scale, range, o, bands) {
   if (!o || o.camera_hfov_deg == null) return;
@@ -1319,7 +1319,7 @@ function drawScanMap(scan, danger, frontHalfRad, stopD, slowD, obstacle) {
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(9, sy, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.fillText('2眼の物（色＝距離、大きさ＝横幅）', 16, sy);
+  ctx.fillText('1眼の物（色＝距離、大きさ＝横幅）', 16, sy);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
 
@@ -1846,7 +1846,7 @@ function renderJoy(j) {
   el.textContent = j.active ? '操作中' : '接続中';
 }
 
-const DIST_SOURCE = { stereo: '（2眼）', lidar: '（LiDAR）' };
+const DIST_SOURCE = { lidar: '（LiDAR）' };
 
 // カメラ映像の枠の文字: 名前と距離の数字だけ（m や出し方は付けない）。
 function camLabel(d) {
@@ -1923,14 +1923,13 @@ document.getElementById('sd_view').addEventListener('click', () => {
   if (camStreaming) document.getElementById('cam').src = camSrc();
 });
 
-// 2 眼カメラの距離（stereo_depth_node、表示だけ）
+// 1 眼の奥行きの AI の距離（perception_node が出す）
 function renderStereoDepth(sd, judge) {
   const cell = document.getElementById('sd_val');
   const mono = !!(sd && sd.source === 'mono');
-  document.getElementById('sd_label').textContent = mono ? '1眼の距離' : '2眼の距離';
   if (!sd || !sd.alive) {
     cell.textContent = sd ? '止まっている' : '-';
-    cell.title = 'stereo_depth_node から届いていません';
+    cell.title = '1 眼の奥行きの AI から届いていません';
     return;
   }
   if (!sd.ok) {

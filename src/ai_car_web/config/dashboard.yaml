@@ -195,18 +195,18 @@ perception_node:
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
-    # Camera Module 3 Wide の横の画角（公称 102°。ふつうの Camera Module 3 は 66.0、2 眼カメラは 120.0）
+    # Camera Module 3 Wide の横の画角（公称 102°。ふつうの Camera Module 3 は 66.0）
     camera_hfov_deg: 102.0
     scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
-    # LiDAR の回転中心から見たカメラのレンズの先の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（Camera Module 3 Wide は真ん前 63 mm。
-    # 2 眼カメラの左目は前 0.079・左 0.030）。LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
+    # LiDAR の回転中心から見たカメラのレンズの先の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（Camera Module 3 Wide は真ん前 63 mm）。
+    # LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
     camera_offset_x_m: 0.063
     camera_offset_y_m: 0.0
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
-    # 物の枠の距離: 枠の真ん中の 2 眼のマスが 3 割以上測れていれば 2 眼の距離、だめなら（左はしなど）LiDAR の距離
-    stereo_grid_topic: "/stereo/depth_grid"
+    # 物の枠の距離のマス（/stereo/depth_grid）。出すノードがないので使わない（物の枠の距離は LiDAR）
+    stereo_grid_topic: ""
     stereo_grid_min_ratio: 0.3
     # Jetson（jetson/owl_detector の NanoOWL）の物体検出。LiDAR の距離を付けて表示するだけ（速度は変えない）
     jetson_topic: "/jetson_detections"
@@ -216,18 +216,18 @@ perception_node:
     living_labels: ["人", "犬", "猫", "鳥"]
     living_slow_distance: 1.5
     living_stop_distance: 0.6
-    # 2 眼カメラの距離（stereo_depth_node）で見つけた低い障害物（LiDAR の線より低い物）で減速・停止する。
-    # false にすると判定を表示するだけ。画面の左はし（約 42° より左）は 2 眼で測れない
+    # 1 眼の奥行きの AI（下の mono_depth_*）で見つけた低い障害物（LiDAR の線より低い物）の判定。
+    # 減速・停止に使うのは stereo_guard と mono_depth_guard の両方が true のときだけ（名前は前の 2 眼カメラのときのまま）
     stereo_topic: "/stereo/depth_status"
     stereo_guard: true
     stereo_slow_distance: 0.8
     stereo_stop_distance: 0.45
     stereo_low_margin: 0.15
-    # stereo_depth_node は約 3 回/秒なので、1 回分ぬけても切れないように
+    # 判定が届かなくなってから、古い値を使わなくなるまでの秒数
     stereo_max_age: 1.5
     # 1 眼の奥行きの AI（Hailo Model Zoo の SC-Depth v3、320x256、Hailo-8 で約 5.5 ms）。
     # 床の行の真ん中より 1.07 倍手前に見える所を物とし、物が床につく行から距離を出す。
-    # 2 眼と同じ /stereo/depth_status・/stereo/depth/compressed に出す。空で無効
+    # /stereo/depth_status・/stereo/depth/compressed に出す（トピック名は前の 2 眼カメラのときのまま）。空で無効
     # 取得: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/scdepthv3.hef
     mono_depth_hef: "/home/super/AI-CAR_ws/models/scdepthv3.hef"
     mono_depth_rate: 15.0
@@ -289,79 +289,7 @@ lidar_watchdog_node:
     reboot_after: 7
     reboot_min_uptime: 1800.0
 
-# USB の 2 眼カメラ（ELP 3D USB Camera）。dashboard.launch.py の camera_type:=stereo のときだけ使う（今は外してある）
-stereo_camera_node:
-  ros__parameters:
-    device: "/dev/v4l/by-id/usb-3D_USB_Camera_3D_USB_Camera_01.00.00-video-index0"
-    # 左右を横に並べた MJPG（片目 1280x720）。30fps だと JPEG の展開と作り直しで CPU 約 108%、15fps で約 52%
-    width: 2560
-    height: 720
-    fps: 15.0
-    # MJPG を 1/2 の大きさ（片目 640x360）で展開する。全部展開して 960x540 に作り直すと 1 枚 約 25 ms・CPU 約 53% で、
-    # 映像と物体検出が動くと Pi の電力が 約 4.0 W になり、電池（3 A）の 5V が 4.73 V まで下がって電圧低下が出た（半分で 約 8 ms）
-    decode_reduce: 2
-    # 3D の板（cam_mount）に USB 端子を上にして付けているので回さない。上下逆さまに付けたときは true（左右の画像も入れ替わる）
-    rotate_180: false
-    eye: "left"
-    output_width: 640
-    output_height: 360
-    jpeg_quality: 80
-    image_topic: "/camera/image_raw/compressed"
-    frame_id: "camera_link"
-    # 距離の計算用に、左右を 4 分の 1（片目 320x180）の白黒にして横に並べて出す。stereo_depth_node が受けているときだけ
-    # （片目 640x360・視差 128 px だと SGBM が 1 回 約 300 ms・CPU コア 約 1.4 個ぶんで、Pi の空きが 約 6 % になった）
-    pair_topic: "/stereo/pair_gray"
-    pair_rate: 3.0
-    pair_scale: 0.25
-
-# 2 眼カメラの左右の画像から距離を出す（表示だけ。走る・止まるの判断には使わない）
-stereo_depth_node:
-  ros__parameters:
-    pair_topic: "/stereo/pair_gray"
-    status_topic: "/stereo/depth_status"
-    image_topic: "/stereo/depth/compressed"
-    # 物の枠の距離用: 左目の画像を 32x18 のマスに分け、マスごとの前方の距離（中央値、4 m まで、6 点以上）
-    # 点は片目 640 幅のとき 4 画素おき（320 幅なら 2 画素おき）
-    grid_topic: "/stereo/depth_grid"
-    grid_cols: 32
-    grid_rows: 18
-    grid_max_range_m: 4.0
-    grid_min_points: 6
-    # stereo_calibrate が書いた値（28 組、誤差 0.33 px、レンズの間隔 59.8 mm、2026/10）
-    calib_file: "~/AI-CAR_ws/calib/stereo/stereo_calib.yaml"
-    # 片目 320x180（焦点 約 105 px・間隔 0.06 m）で視差 0〜64 px → 近いほうは約 0.10 m まで測れる
-    # （640x360・128 px と同じ近さ。640x360・96 px だと約 0.14 m までで、0.12 m ののりの棒がまちがった遠い距離になった）。
-    # 左はしの 64 px（約 42° より左）は測れない。SGBM は 1 回 約 25 ms（640x360・128 px は 約 300 ms）
-    num_disparities: 64
-    block_size: 3
-    uniqueness_ratio: 10
-    speckle_window: 25
-    speckle_range: 2
-    # 床からの高さを出すためのカメラのレンズの床からの高さ（3D マウントの CAD 値）と下向きの角度
-    camera_height_m: 0.112
-    camera_pitch_deg: 0.0
-    corridor_center_y_m: -0.038
-    corridor_half_width_m: 0.15
-    max_range_m: 2.0
-    # 床より 2 cm 以上・60 cm 以下の点を物とみなす。10 点（640x360 の 40 点と同じ広さ）より少ないときは無視
-    # （4 cm だと、0.23 m 先の高さ 約 3.4 cm の入れ物が床あつかいになった）
-    min_height_m: 0.02
-    max_height_m: 0.6
-    # 0.6 m より近い物は、画像の上でつながりごとに分けて全部（5 個まで）映像に枠を出す
-    near_objects_range_m: 0.6
-    near_objects_max: 5
-    # 横幅 2 cm より細いまとまりは出さない（窓わくの細い線を 0.19 m の物とまちがえた）
-    near_objects_min_width_m: 0.02
-    # 明るさの変わり方（左の目の Sobel の |横|+|縦| の平均）が 40 より小さいまとまりは出さない
-    # （もようのない床が 0.14 m の物になった。そのときの値は 14〜22、のりの棒・入れ物は 110〜150）
-    near_objects_min_texture: 40.0
-    min_points: 10
-    # 距離の色の画像: 0.2 m が赤、3 m より遠いと青
-    display_near_m: 0.2
-    display_far_m: 3.0
-    jpeg_quality: 70
-
-# Camera Module 3 Wide（camera_ros）。dashboard.launch.py の camera_type:=picam（既定）で起動
+# Camera Module 3 Wide（camera_ros）。dashboard.launch.py の use_camera で起動
 camera:
   ros__parameters:
     format: "RGB888"
