@@ -93,6 +93,7 @@ WSL は PowerShell の画面を閉じるとしばらくして止まるので、`
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 | `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
 | `firmware/xiaozhi-fallback-pc.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（auto-reopen のあと） | ミニコンが答えないとき、パソコン（`AICAR_FALLBACK_HOST` 192.168.11.7、同じ 8000・8003 番）につなぐ。WebSocket は毎回ミニコンを先に試し、だめならパソコン。起動のときの OTA も、失敗するたびにミニコンとパソコンを入れかえて聞く（下の「ミニコンが落ちたとき」） |
+| `firmware/xiaozhi-channel-watchdog.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（fallback-pc のあと） | 会話の線が「閉じた」と知らせずに死んだとき（相手から 120 秒何も来ない）も、5 秒で閉じてつなぎ直す。つなぎ直しの時に「ひま」でなくても、1 秒ごとに待ってやり直す。線が 1 分つながらなければ（画面をさわって止めたときも）つなぎ直し、3 分つながらなければ自分で起動し直す。送りが固まって中の動きが 90 秒止まったときも起動し直す（AI Agent で起きる） |
 | `firmware/stackchan-camera-follow-server.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | カメラの映像・撮影の写真を、今つないでいる受け口（ミニコンかパソコン）へ送る |
 | `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
 
@@ -106,6 +107,7 @@ git apply <このフォルダ>/firmware/stackchan-camera-stream.patch
 git apply <このフォルダ>/firmware/stackchan-face-color.patch
 git apply <このフォルダ>/firmware/stackchan-countdown-shot.patch
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-fallback-pc.patch
+git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-channel-watchdog.patch
 git apply <このフォルダ>/firmware/stackchan-camera-follow-server.patch
 . ~/esp/esp-idf-v5.5.4/export.sh
 idf.py build
