@@ -538,7 +538,8 @@ class DashboardNode(Node):
         map_age = now - self._map_stamp if self._map_stamp else None
         pose_age = now - self._slam_pose_stamp if self._slam_pose_stamp else None
         return {
-            'alive': pose_age is not None and pose_age < 5.0,
+            'alive': ((pose_age is not None and pose_age < 5.0)
+                      or (map_age is not None and map_age < 5.0)),
             'map': self._map,
             'map_age': round(map_age, 1) if map_age is not None else None,
             'pose': self._slam_pose,

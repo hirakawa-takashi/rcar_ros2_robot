@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """4 輪のエンコーダーから車輪のオドメトリ（/odom と odom → base_footprint の TF）を出すノード。
 
-A/B 相の両エッジを libgpiod のイベントで読み、4 逓倍でカウントする。パルスが多い
+A/B 相の両エッジを GPIO の v2 uAPI のイベントで読み、4 逓倍でカウントする。パルスが多い
 （1 輪 1 秒に数千エッジ）ので、ROS の executor と GIL を取り合わないように数えるのは
 別プロセス（spawn）で行い、カウントは共有メモリで受け取る。
 ピンと車輪の割り付け・向き（reversed）は motor_hat.yaml。
 4 輪の進んだ距離からメカナムの順運動学で、前後・左右の速さと旋回を出して積分する。
 """
 
+import fcntl
 import math
 import multiprocessing as mp
 import os
+import select
 import signal
+import struct
 import time
 
 import rclpy
@@ -24,70 +27,100 @@ from tf2_ros import TransformBroadcaster
 
 from ai_car_web.motor_hat import load_motor_hat
 
-try:
-    import gpiod
-except ImportError:  # pragma: no cover - Pi 以外
-    gpiod = None
-
 # (前の状態, 次の状態) -> 向き。状態 = A * 2 + B
 _STEP = {(0, 1): 1, (1, 3): 1, (3, 2): 1, (2, 0): 1,
          (1, 0): -1, (3, 1): -1, (2, 3): -1, (0, 2): -1}
 
+# Linux GPIO character device v2 uAPI（linux/gpio.h）
+_GET_CHIPINFO = 0x8044B401        # GPIO_GET_CHIPINFO_IOCTL (struct gpiochip_info 68 B)
+_GET_LINE = 0xC250B407            # GPIO_V2_GET_LINE_IOCTL (struct gpio_v2_line_request 592 B)
+_GET_VALUES = 0xC010B40E          # GPIO_V2_LINE_GET_VALUES_IOCTL (struct gpio_v2_line_values)
+_FLAG_INPUT_BOTH_EDGES = (1 << 2) | (1 << 4) | (1 << 5)
+_EVENT_RISING = 1
+_EVENT = struct.Struct('=QIIII24x')   # struct gpio_v2_line_event (48 B)
+_EVENT_BUFFER = 1024                  # カーネルの上限（GPIO_V2_LINES_MAX × 16）
 
-def _find_chip(name: str):
+
+def _open_chip(name: str) -> int:
     if name:
-        return gpiod.Chip(name)
+        return os.open(name if name.startswith('/') else f'/dev/{name}', os.O_RDONLY)
     for index in range(10):
         try:
-            chip = gpiod.Chip(f'/dev/gpiochip{index}')
+            fd = os.open(f'/dev/gpiochip{index}', os.O_RDONLY)
         except OSError:
             continue
-        if chip.label() == 'pinctrl-rp1':
-            return chip
-        chip.close()
+        info = bytearray(68)
+        fcntl.ioctl(fd, _GET_CHIPINFO, info)
+        if bytes(info[32:64]).split(b'\0')[0] == b'pinctrl-rp1':
+            return fd
+        os.close(fd)
     raise OSError('pinctrl-rp1 の gpiochip が見つかりません')
 
 
-def count_worker(chip_name: str, pins: list, counts, errors, alive):
-    """pins = [(A の BCM, B の BCM), ...] を数え続け、counts / errors に足す。"""
+def _request_lines(chip: int, offsets: list) -> int:
+    req = bytearray(592)
+    struct.pack_into(f'{len(offsets)}I', req, 0, *offsets)
+    consumer = b'encoder_odom'
+    req[256:256 + len(consumer)] = consumer
+    struct.pack_into('Q', req, 288, _FLAG_INPUT_BOTH_EDGES)
+    struct.pack_into('II', req, 560, len(offsets), _EVENT_BUFFER)
+    fcntl.ioctl(chip, _GET_LINE, req)
+    return struct.unpack_from('i', req, 588)[0]
+
+
+def _get_values(fd: int, n: int) -> list:
+    vals = bytearray(16)
+    struct.pack_into('QQ', vals, 0, 0, (1 << n) - 1)
+    fcntl.ioctl(fd, _GET_VALUES, vals)
+    bits = struct.unpack_from('Q', vals, 0)[0]
+    return [(bits >> j) & 1 for j in range(n)]
+
+
+def count_worker(chip_name: str, pins: list, counts, errors, dropped, alive):
+    """pins = [(A の BCM, B の BCM), ...] を数え続け、counts / errors に足す。
+
+    libgpiod v1 の Python は 1 本 16 個までしかエッジをためず、1 個ずつ読むのも
+    遅いので、エッジを取りこぼす。GPIO の v2 uAPI で 8 本を 1 つの要求にして
+    1,024 個までためさせ、まとめて読む。seqno が飛んだ数を dropped に足す。
+    """
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        chip = _find_chip(chip_name)
+        chip = _open_chip(chip_name)
         offsets = [p for pair in pins for p in pair]
-        lines = chip.get_lines(offsets)
-        lines.request(consumer='encoder_odom', type=gpiod.LINE_REQ_EV_BOTH_EDGES)
+        fd = _request_lines(chip, offsets)
+        values = _get_values(fd, len(offsets))
     except OSError as e:
         alive.value = -1
         print(f'エンコーダーの GPIO を開けません: {e}', flush=True)
         return
     where = {}
     for i, (a, b) in enumerate(pins):
-        where[a] = (i, 1)
-        where[b] = (i, 0)
-    values = lines.get_values()
+        where[a] = (i, 0)
+        where[b] = (i, 1)
     level = [[values[2 * i], values[2 * i + 1]] for i in range(len(pins))]
+    poller = select.poll()
+    poller.register(fd, select.POLLIN)
+    last_seq = 0
     alive.value = 1
-    rising = gpiod.LineEvent.RISING_EDGE
     while alive.value == 1:
-        ready = lines.event_wait(sec=0, nsec=100_000_000)
-        if not ready:
+        if not poller.poll(100):
             continue
-        events = []
-        for line in ready:
-            events.extend(line.event_read_multiple())
-        events.sort(key=lambda e: (e.sec, e.nsec))
-        for ev in events:
-            i, bit = where[ev.source.offset()]
+        data = os.read(fd, _EVENT.size * _EVENT_BUFFER)
+        for _, kind, offset, seqno, _ in _EVENT.iter_unpack(data):
+            if last_seq and seqno != last_seq + 1:
+                dropped.value += seqno - last_seq - 1
+            last_seq = seqno
+            i, bit = where[offset]
             pair = level[i]
             prev = pair[0] * 2 + pair[1]
-            pair[1 - bit] = 1 if ev.type == rising else 0
+            pair[bit] = 1 if kind == _EVENT_RISING else 0
             step = _STEP.get((prev, pair[0] * 2 + pair[1]))
             if step is None:
                 errors[i] += 1
             else:
                 counts[i] += step
-    lines.release()
-    chip.close()
+    os.close(fd)
+    os.close(chip)
 
 
 class EncoderOdomNode(Node):
@@ -103,11 +136,12 @@ class EncoderOdomNode(Node):
         self.declare_parameter('gpio_chip', '')
         self.declare_parameter('publish_rate', 20.0)
         # 車輪 1 回転のカウント（11 パルス × 4 逓倍 × 減速 56）
-        self.declare_parameter('counts_per_rev', 2464.0)
+        self.declare_parameter('counts_per_rev', 1408.0)
         self.declare_parameter('wheel_radius', 0.0403)
         # 車体の中心から車輪の中心まで（前後 lx・左右 ly）
         self.declare_parameter('wheel_base_half', 0.11)
         self.declare_parameter('track_half', 0.12)
+        self.declare_parameter('yaw_scale', 1.0)
         # モーターの正転（Motor HAT の + 出力）でカウントが減るなら -1
         self.declare_parameter('count_sign', -1)
 
@@ -136,16 +170,18 @@ class EncoderOdomNode(Node):
         cpr = float(self.get_parameter('counts_per_rev').value)
         self.m_per_count = 2.0 * math.pi * float(self.get_parameter('wheel_radius').value) / cpr
         self.k = (float(self.get_parameter('wheel_base_half').value)
-                  + float(self.get_parameter('track_half').value))
+                  + float(self.get_parameter('track_half').value)) / float(
+            self.get_parameter('yaw_scale').value)
 
         ctx = mp.get_context('spawn')
         self.counts = ctx.Array('q', len(pins), lock=False)
         self.errors = ctx.Array('q', len(pins), lock=False)
+        self.dropped = ctx.Value('q', 0, lock=False)
         self.alive = ctx.Value('i', 0, lock=False)
         self.proc = ctx.Process(
             target=count_worker, daemon=True,
             args=(str(self.get_parameter('gpio_chip').value), pins,
-                  self.counts, self.errors, self.alive))
+                  self.counts, self.errors, self.dropped, self.alive))
         self.proc.start()
 
         self.x = self.y = self.yaw = 0.0
@@ -218,11 +254,12 @@ class EncoderOdomNode(Node):
         if self.alive.value == -1 or not self.proc.is_alive():
             self.get_logger().error('エンコーダーを数えるプロセスが止まっています')
             return
-        total = sum(self.errors)
+        total = sum(self.errors) + self.dropped.value
         if total > self._errors_logged:
             names = [w for w, _ in self.wheels]
             self.get_logger().warn(
                 f'エンコーダーの読みとばし: {dict(zip(names, self.errors))}'
+                f'、取りこぼし {self.dropped.value}'
                 f'（カウント {dict(zip(names, self.counts))}）')
             self._errors_logged = total
 
