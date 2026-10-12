@@ -144,8 +144,8 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 
 | 信号 | 前（0x30） | 後（0x31） |
 | --- | --- | --- |
-| VIN 3V3 | pin 1（IMU と分岐） | pin 17 |
-| GND | pin 14 | pin 25 |
+| VIN 3V3 | Motor HAT (3V3 power) | Motor HAT (3V3 power) |
+| GND | Motor HAT (Ground) | Motor HAT (Ground) |
 | SDA / SCL | pin 3 / 5（I2C バス 1 共有） | pin 3 / 5 |
 | XSHUT | pin 11（GPIO17） | pin 13（GPIO27） |
 

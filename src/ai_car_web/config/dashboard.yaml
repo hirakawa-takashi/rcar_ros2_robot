@@ -73,6 +73,17 @@ drive_mode_node:
     cliff_guard: true        # 段差を検出した向き（前 / 後）への移動を止め、AUTO は STOP
     cliff_timeout: 1.0       # 段差判定がこれより古ければ使わない（配線済みなら AUTO を拒否 / STOP）
 
+motor_driver_node:
+  ros__parameters:
+    # /cmd_vel を Motor HAT の M1〜M4 に出す（メカナムの逆運動学、エンコーダーなしのオープンループ）
+    cmd_vel_topic: "/cmd_vel"
+    status_topic: "/motor_status"
+    motor_hat_config: ""     # 空なら share/ai_car_web/config/motor_hat.yaml
+    max_linear_speed: 0.3    # dashboard_node と同じ値。この速さで出力 100 %
+    max_angular_speed: 1.0
+    max_duty: 1.0            # 出力 100 % のときの PWM（0〜1）
+    timeout: 0.5             # /cmd_vel がこの秒数届かないと止める
+
 autonomy_node:
   ros__parameters:
     # Level 1: LiDAR 反応型（地図なし）。AUTO モードのときだけ /cmd_vel に中継される

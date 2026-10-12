@@ -40,6 +40,7 @@ def generate_launch_description():
     use_imu = LaunchConfiguration('use_imu')
     use_cliff = LaunchConfiguration('use_cliff')
     use_drive_mode = LaunchConfiguration('use_drive_mode')
+    use_motor = LaunchConfiguration('use_motor')
     use_autonomy = LaunchConfiguration('use_autonomy')
     use_slam = LaunchConfiguration('use_slam')
 
@@ -127,6 +128,8 @@ def generate_launch_description():
                               description='落下防止センサー（VL53L1X ×2）ノードを起動する'),
         DeclareLaunchArgument('use_drive_mode', default_value='true',
                               description='運転モード管理（手動/自動/停止 → /cmd_vel）を起動する'),
+        DeclareLaunchArgument('use_motor', default_value='true',
+                              description='モーター制御ノード（/cmd_vel → Motor HAT）を起動する'),
         DeclareLaunchArgument('use_autonomy', default_value='true',
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
         DeclareLaunchArgument('use_slam', default_value='false',
@@ -201,6 +204,16 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_drive_mode),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='motor_driver_node',
+            name='motor_driver_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_motor),
         ),
         Node(
             package='ai_car_web',

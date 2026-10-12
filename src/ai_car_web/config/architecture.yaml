@@ -19,7 +19,7 @@ overview:
     - {state: done, text: 障害物判定（LiDAR + Hailo-8 物体検出）とサーマル制御}
     - {state: done, text: F710 ゲームパッド手動操作}
     - {state: done, text: 運転モード管理（手動 / 自動 / 停止）と Level 1 自律走行}
-    - {state: todo, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
+    - {state: done, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
     - {state: todo, text: エンコーダー読み取り・オドメトリ（/odom）}
     - {state: todo, text: SLAM（slam_toolbox）}
     - {state: todo, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション）}
@@ -369,6 +369,18 @@ nodes:
       - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にし、AUTO は STOP}
       - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 段差判定が古ければ使わない（配線済みなら AUTO を拒否 / STOP）}
     layer: control
+  - id: motor_driver_node
+    label: motor_driver_node
+    file: ai_car_web/motor_driver_node.py
+    role: /cmd_vel をメカナムの逆運動学で 4 輪の出力にし、Motor HAT（PCA9685 + TB6612、I2C 0x60）の M1〜M4 を PWM で回す（エンコーダーなし）。割り付けと向きは motor_hat.yaml。/cmd_vel が途絶えたら止める
+    publishes: [/motor_status]
+    subscribes: [/cmd_vel]
+    params:
+      - {name: max_linear_speed, ref: motor_driver_node.max_linear_speed, unit: m/s, desc: この速さの指令で出力 100 %}
+      - {name: max_angular_speed, ref: motor_driver_node.max_angular_speed, unit: rad/s, desc: この旋回の指令で出力 100 %}
+      - {name: max_duty, ref: motor_driver_node.max_duty, unit: '', desc: 出力 100 % のときの PWM（0〜1）}
+      - {name: timeout, ref: motor_driver_node.timeout, unit: s, desc: /cmd_vel がこの秒数届かないと止める}
+    layer: control
   - id: autonomy_node
     label: autonomy_node
     file: ai_car_web/autonomy_node.py
@@ -603,7 +615,7 @@ status:
     - /odom 未実装のためオドメトリは null。SLAM はスキャンの照合だけで位置を出すので、速く動かすと位置を見失う
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
     - IMU の搭載向きが imu_link と一致しておらず軸補正が必要
-    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 1/14/3/5/11 前、17/25/3/5/13 後）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
+    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
