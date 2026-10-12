@@ -40,12 +40,6 @@ from ai_car_web.dev_diary import find_repo, load_dev_diary
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
 
-try:
-    from slam_toolbox.srv import SaveMap
-except ImportError:
-    SaveMap = None
-
-
 MAX_SCAN_POINTS = 720
 
 
@@ -212,6 +206,34 @@ def _occupancy_table():
 OCCUPANCY_TABLE = _occupancy_table()
 
 
+def _map_server_table():
+    """OccupancyGrid の値 → map_server の trinary の .pgm（占有 ≥ 65 は 0、空き ≤ 19 は 254、ほかは 205）。"""
+    table = bytearray(256)
+    for u in range(256):
+        table[u] = 205 if u > 100 else 0 if u >= 65 else 254 if u <= 19 else 205
+    return bytes(table)
+
+
+MAP_SERVER_TABLE = _map_server_table()
+
+
+def write_map_files(name, grid):
+    """地図を map_server の形（name.pgm と name.yaml）で書く。grid は _map_cb で取っておいたもの。"""
+    width, height = grid['width'], grid['height']
+    pixels = grid['data'].translate(MAP_SERVER_TABLE)
+    rows = b''.join(pixels[r * width:(r + 1) * width] for r in range(height - 1, -1, -1))
+    with open(name + '.pgm', 'wb') as f:
+        f.write(b'P5\n%d %d\n255\n' % (width, height) + rows)
+    with open(name + '.yaml', 'w', encoding='utf-8') as f:
+        f.write(f'image: {os.path.basename(name)}.pgm\n'
+                'mode: trinary\n'
+                f'resolution: {grid["resolution"]:.3f}\n'
+                f'origin: [{grid["origin_x"]:.3f}, {grid["origin_y"]:.3f}, {grid["origin_yaw"]:.4f}]\n'
+                'negate: 0\n'
+                'occupied_thresh: 0.65\n'
+                'free_thresh: 0.196\n')
+
+
 def occupancy_png(width, height, data):
     """OccupancyGrid の data を 8 bit グレーの PNG にする（画像の上が地図の +y）。"""
     pixels = bytes(data).translate(OCCUPANCY_TABLE)
@@ -288,7 +310,6 @@ class DashboardNode(Node):
         # SLAM（slam_toolbox）の地図と自己位置。空で無効
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('slam_pose_topic', '/pose')
-        self.declare_parameter('slam_save_service', '/slam_toolbox/save_map')
         # スタックちゃんのカードに出す会話の様子（Jetson の stackchan_bridge）。空なら Jetson が送ってくる IP アドレスの 8003
         self.declare_parameter('stackchan_bridge_url', '')
         # 1 眼の奥行きの AI の距離（perception_node が出す）。空で無効
@@ -388,10 +409,6 @@ class DashboardNode(Node):
                 PoseWithCovarianceStamped, slam_pose_topic, self._slam_pose_cb, 10)
         self.map_save_dir = self.get_parameter('map_save_dir').value or os.path.join(
             os.path.expanduser('~'), 'maps')
-        self.slam_save_client = None
-        if SaveMap is not None:
-            self.slam_save_client = self.create_client(
-                SaveMap, self.get_parameter('slam_save_service').value)
         depth_topic = self.get_parameter('stereo_depth_topic').value
         if depth_topic:
             self.create_subscription(String, depth_topic, self._stereo_depth_cb, 10)
@@ -433,6 +450,7 @@ class DashboardNode(Node):
         self._jetson_upgrade_at = None
         self._map = None
         self._map_png = None
+        self._map_grid = None
         self._map_stamp = 0.0
         self._slam_pose = None
         self._slam_pose_stamp = 0.0
@@ -519,6 +537,15 @@ class DashboardNode(Node):
                 'frame_id': msg.header.frame_id,
             }
             self._map_png = png
+            self._map_grid = {
+                'width': info.width,
+                'height': info.height,
+                'resolution': info.resolution,
+                'origin_x': info.origin.position.x,
+                'origin_y': info.origin.position.y,
+                'origin_yaw': yaw,
+                'data': bytes(msg.data),
+            }
             self._map_stamp = time.time()
 
     def _slam_pose_cb(self, msg: PoseWithCovarianceStamped):
@@ -544,7 +571,7 @@ class DashboardNode(Node):
             'map_age': round(map_age, 1) if map_age is not None else None,
             'pose': self._slam_pose,
             'pose_age': round(pose_age, 1) if pose_age is not None else None,
-            'can_save': self.slam_save_client is not None,
+            'can_save': self._map_grid is not None,
             'saved': self._map_saved,
         }
 
@@ -552,27 +579,19 @@ class DashboardNode(Node):
         with self._lock:
             return self._map_png
 
-    def save_map(self, timeout: float = 10.0):
-        """slam_toolbox の save_map を呼んで、地図を map_save_dir に .pgm / .yaml で保存する。"""
-        if self.slam_save_client is None:
-            return {'ok': False, 'reason': 'slam_toolbox が入っていない'}
-        if not self.slam_save_client.service_is_ready():
-            return {'ok': False, 'reason': 'slam_toolbox が起動していない（use_slam:=true）'}
-        os.makedirs(self.map_save_dir, exist_ok=True)
+    def save_map(self):
+        """最後に届いた /map を map_save_dir に map_server の形（.pgm / .yaml）で保存する。"""
+        with self._lock:
+            grid = self._map_grid
+        if grid is None:
+            return {'ok': False, 'reason': '地図がまだ届いていない（use_slam:=true）'}
         name = os.path.join(self.map_save_dir, time.strftime('map_%Y%m%d_%H%M%S'))
-        request = SaveMap.Request()
-        request.name = String(data=name)
-        done = threading.Event()
-        future = self.slam_save_client.call_async(request)
-        future.add_done_callback(lambda _: done.set())
-        if not done.wait(timeout):
-            return {'ok': False, 'reason': '保存の応答がない'}
-        result = future.result()
-        if result is None:
-            ok, reason = False, '保存の応答が空'
-        else:
-            ok = result.result == SaveMap.Response.RESULT_SUCCESS
-            reason = '' if ok else f'保存に失敗（result {result.result}）'
+        try:
+            os.makedirs(self.map_save_dir, exist_ok=True)
+            write_map_files(name, grid)
+            ok, reason = True, ''
+        except OSError as exc:
+            ok, reason = False, f'保存に失敗（{exc}）'
         saved = {'ok': ok, 'name': name, 'stamp': round(time.time(), 1), 'reason': reason}
         with self._lock:
             self._map_saved = saved

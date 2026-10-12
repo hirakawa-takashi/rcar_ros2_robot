@@ -15,6 +15,7 @@
 - プロジェクト説明（`architecture.yaml`・`PROJECT_STATUS.md`・3D の README）とダッシュボードの「2眼の距離」の表示を、Camera Module 3 Wide と 1 眼の距離に直した
 
 ### Fixed
+- ダッシュボードの「地図を保存」が失敗していた。`slam_toolbox` の `save_map` は `map_saver_cli` を別プロセスで起こし、`/map` を 2 秒しか待たないので、UDP だけの ROS 通信では見つける前に時間切れになっていた（`Failed to spin map subscription`）。`dashboard_node` が受けている最後の `/map` から、map_server の形（trinary・占有 ≥ 0.65・空き ≤ 0.196）の `.pgm` / `.yaml` を `map_save_dir` に直接書く。`slam_save_service` パラメーターは消した
 - ダッシュボードの SLAM の地図が、車が止まると消えていた。`slam_toolbox` は動いてスキャンを足したときだけ `/pose` を出すので、`/pose` が 5 秒来ないと「途絶」にして地図を描かなかった。`/map`（2 秒ごと）が 5 秒以内に来ていれば動いているとみなし、最後の自己位置を出す。
 - `/odom` の向きがその場回転で実際の約 0.7 倍だった（床で /odom 380° のとき実際 540°）。`encoder_odom_node` に `yaw_scale`（向きの変化の倍率）を足し、1.42 にした
 - `/odom` の距離が実際の約 0.57 倍だった（床で 1.8 m 走って /odom 1.03 m、4 輪平均 約 10,000 カウント）。`counts_per_rev` を 2,464（11 × 4 × 56）から 1,408（11 × 4 × 32 相当）にした
