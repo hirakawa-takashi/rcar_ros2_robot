@@ -23,6 +23,7 @@ AXIS_MAP_SIGN = 0x42
 CALIB_OFFSETS = 0x55
 CALIB_SIZE = 22
 CONFIG_MODE = 0x00
+IMU_MODE = 0x08
 NDOF_MODE = 0x0C
 
 
@@ -38,6 +39,7 @@ class ImuNode(Node):
         self.declare_parameter('publish_rate', 50.0)
         self.declare_parameter('axis_map_config', 0x24)
         self.declare_parameter('axis_map_sign', 0x00)
+        self.declare_parameter('operation_mode', NDOF_MODE)
         self.declare_parameter('calibration_file', '~/.ros/bno055_calibration.json')
         self.declare_parameter('calibration_save_interval', 600.0)
 
@@ -48,6 +50,7 @@ class ImuNode(Node):
         publish_rate = float(self.get_parameter('publish_rate').value)
         self.axis_map_config = int(self.get_parameter('axis_map_config').value)
         self.axis_map_sign = int(self.get_parameter('axis_map_sign').value)
+        self.operation_mode = int(self.get_parameter('operation_mode').value)
         self.calibration_file = os.path.expanduser(
             str(self.get_parameter('calibration_file').value))
         self.calibration_save_interval = float(
@@ -97,7 +100,7 @@ class ImuNode(Node):
         self._write_reg(AXIS_MAP_CONFIG, self.axis_map_config)
         self._write_reg(AXIS_MAP_SIGN, self.axis_map_sign)
         self._load_calibration()
-        self._write_reg(OPR_MODE, NDOF_MODE)
+        self._write_reg(OPR_MODE, self.operation_mode)
         time.sleep(0.03)
 
     def _load_calibration(self):
@@ -116,6 +119,11 @@ class ImuNode(Node):
             raise OSError('BNO055 補正値の書き込み失敗')
         self.get_logger().info(f'BNO055 の補正を読みこみました: {self.calibration_file}')
 
+    def _calibration_done(self) -> bool:
+        if self.operation_mode == IMU_MODE:
+            return self._calibration[1:3] == (3, 3)
+        return self._calibration[1:] == (3, 3, 3)
+
     def _save_calibration(self, now: float):
         self._calib_saved_at = now
         self._write_reg(OPR_MODE, CONFIG_MODE)
@@ -123,7 +131,7 @@ class ImuNode(Node):
         try:
             offsets = self._read_reg(CALIB_OFFSETS, CALIB_SIZE)
         finally:
-            self._write_reg(OPR_MODE, NDOF_MODE)
+            self._write_reg(OPR_MODE, self.operation_mode)
             time.sleep(0.02)
         tmp = self.calibration_file + '.tmp'
         try:
@@ -233,15 +241,16 @@ class ImuNode(Node):
                 self._next_retry = now + 2.0
                 return
         try:
-            if self._read_reg(OPR_MODE, 1)[0] != NDOF_MODE:
+            mode = self._read_reg(OPR_MODE, 1)[0]
+            if mode != self.operation_mode:
                 self.get_logger().warn(
-                    'BNO055 が NDOF モードでない（リセットされた）ので設定し直します')
+                    f'BNO055 の動作モードが 0x{mode:02x} になった（リセットされた）ので設定し直します')
                 self._disconnect()
                 self._next_retry = now
                 return
             data = self._read_reg(0x08, 46)
             self._publish_data(data)
-            if (self._calibration[1:] == (3, 3, 3)
+            if (self._calibration_done()
                     and (self._calib_saved_at is None
                          or now - self._calib_saved_at >= self.calibration_save_interval)):
                 self._save_calibration(now)
