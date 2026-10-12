@@ -263,9 +263,8 @@
   .voicebtns { display: flex; justify-content: space-between; align-items: flex-start; }
   #jt_voice_btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .voicebtns .k { color: #9fb0c7; font-family: system-ui, sans-serif; font-size: 14px; }
-  .voicebtns button { padding: 3px 6px; font-size: 12px; letter-spacing: 0; }
-  .voicebtns button.active { background: #2b5d9e; border-color: #4a90d9; }
-  .voicebtns button:disabled { opacity: .4; }
+  .voicebtns select { padding: 3px 6px; font-size: 13px; max-width: 100%; }
+  .voicebtns select:disabled { opacity: .4; }
   .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
   .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
   .aiswitch button:disabled { opacity: .4; }
@@ -1518,18 +1517,18 @@ function renderVoiceBtns(pc) {
   const key = v.choices.map(c => c.speaker).join(',');
   if (box.dataset.key !== key) {
     box.dataset.key = key;
-    box.innerHTML = v.choices.map(c => `<button data-speaker="${c.speaker}" title="${esc(c.name)}">${esc(c.name)}</button>`).join('');
-    box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    box.innerHTML = `<select id="jt_voice_sel">${v.choices.map(c => `<option value="${c.speaker}">${esc(c.name)}</option>`).join('')}</select>`;
+    box.querySelector('select').addEventListener('change', e => {
       voiceBusy = true;
-      apiPost(`/api/stackchan/pc_voice?speaker=${b.dataset.speaker}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+      e.target.disabled = true;
+      apiPost(`/api/stackchan/pc_voice?speaker=${e.target.value}`).then(r => r && r.json().then(j => [r, j])).then(res => {
         if (res && !res[0].ok) alert(res[1].detail || '声を変えられませんでした');
       }).finally(() => { voiceBusy = false; pollStackchan(); });
-    }));
+    });
   }
-  box.querySelectorAll('button').forEach(b => {
-    b.disabled = voiceBusy;
-    b.classList.toggle('active', Number(b.dataset.speaker) === v.speaker);
-  });
+  const sel = box.querySelector('select');
+  sel.disabled = voiceBusy;
+  if (!voiceBusy && document.activeElement !== sel) sel.value = String(v.speaker);
 }
 
 ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
