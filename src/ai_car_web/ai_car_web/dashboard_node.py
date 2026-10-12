@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan
-from std_msgs.msg import String
+from std_msgs.msg import Float32, String
 
 from ai_car_web.architecture import load_architecture
 from ai_car_web.dev_diary import find_repo, load_dev_diary
@@ -55,6 +55,12 @@ class CmdVelRequest(BaseModel):
     linear_x: float = 0.0
     linear_y: float = 0.0
     angular_z: float = 0.0
+
+
+class DriveOutputRequest(BaseModel):
+    """ダッシュボードの「出力」（10〜100 %）。手動・ゲームパッド・自動の最大の速さ。"""
+
+    percent: float
 
 
 class DriveModeRequest(BaseModel):
@@ -256,6 +262,9 @@ class DashboardNode(Node):
         self.declare_parameter('max_linear_speed', 0.3)
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
+        # 「出力」の初期値（%）。手動・ゲームパッド・自動の最大の速さ = max_* × 出力
+        self.declare_parameter('output_percent', 50.0)
+        self.declare_parameter('drive_output_topic', '/drive_output')
         self.declare_parameter('telemetry_rate', 5.0)
         # LiDAR 点群をブラウザに送るときの上限点数（間引き）
         self.declare_parameter('scan_max_points', MAX_SCAN_POINTS)
@@ -295,6 +304,7 @@ class DashboardNode(Node):
         self.max_linear = float(self.get_parameter('max_linear_speed').value)
         self.max_angular = float(self.get_parameter('max_angular_speed').value)
         self.cmd_timeout = float(self.get_parameter('cmd_timeout').value)
+        self._output = self._clamp_output(float(self.get_parameter('output_percent').value) / 100.0)
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
         self.scan_max_points = max(1, int(self.get_parameter('scan_max_points').value))
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
@@ -325,6 +335,10 @@ class DashboardNode(Node):
 
         self.cmd_vel_pub = self.create_publisher(
             Twist, self.get_parameter('cmd_vel_topic').value, 10)
+        self.output_pub = self.create_publisher(
+            Float32, self.get_parameter('drive_output_topic').value,
+            QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL))
+        self.output_pub.publish(Float32(data=self._output))
         self.status_pub = self.create_publisher(String, '~/status', 10)
         jetson_topic = self.get_parameter('jetson_detections_topic').value
         self.jetson_pub = (self.create_publisher(String, jetson_topic, 10)
@@ -1037,15 +1051,29 @@ class DashboardNode(Node):
         state['upgrade_pending'] = self._jetson_upgrade_at is not None
         return state
 
+    @staticmethod
+    def _clamp_output(value: float) -> float:
+        return max(0.1, min(1.0, value))
+
+    def set_drive_output(self, percent: float):
+        """「出力」を変え、drive_mode_node（自動の上限）へも送る。"""
+        with self._lock:
+            self._output = self._clamp_output(percent / 100.0)
+            output = self._output
+        self.output_pub.publish(Float32(data=output))
+        return {'output_percent': round(output * 100)}
+
     def publish_cmd_vel(self, linear_x: float, linear_y: float, angular_z: float):
-        """正規化済み (-1.0〜1.0) の指令値を最大速度にスケールして publish する。"""
+        """正規化済み (-1.0〜1.0) の指令値を「出力」と最大速度にスケールして publish する。"""
         twist = Twist()
+        with self._lock:
+            output = self._output
         forward = self._clamp(linear_x)
         if forward > 0.0:
             forward *= self._forward_scale()
-        twist.linear.x = forward * self.max_linear
-        twist.linear.y = self._clamp(linear_y) * self.max_linear
-        twist.angular.z = self._clamp(angular_z) * self.max_angular
+        twist.linear.x = forward * output * self.max_linear
+        twist.linear.y = self._clamp(linear_y) * output * self.max_linear
+        twist.angular.z = self._clamp(angular_z) * output * self.max_angular
         self.cmd_vel_pub.publish(twist)
         with self._lock:
             self._last_cmd = twist
@@ -1124,6 +1152,7 @@ class DashboardNode(Node):
                 'limits': {
                     'max_linear_speed': self.max_linear,
                     'max_angular_speed': self.max_angular,
+                    'output_percent': round(self._output * 100),
                 },
             }
 
@@ -1215,6 +1244,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/cmd_vel', dependencies=[Depends(require_token)])
     def cmd_vel(req: CmdVelRequest):
         return node.publish_cmd_vel(req.linear_x, req.linear_y, req.angular_z)
+
+    @app.post('/api/drive_output', dependencies=[Depends(require_token)])
+    def drive_output(req: DriveOutputRequest):
+        return node.set_drive_output(req.percent)
 
     @app.post('/api/stop', dependencies=[Depends(require_token)])
     def stop():

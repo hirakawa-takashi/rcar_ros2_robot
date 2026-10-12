@@ -340,6 +340,7 @@ nodes:
       - {name: max_linear_speed, ref: dashboard_node.max_linear_speed, unit: m/s, desc: 正規化指令 1.0 のときの並進速度}
       - {name: max_angular_speed, ref: dashboard_node.max_angular_speed, unit: rad/s, desc: 正規化指令 1.0 のときの旋回速度}
       - {name: cmd_timeout, ref: dashboard_node.cmd_timeout, unit: s, desc: 無指令でゼロ速度を送るまでの時間}
+      - {name: output_percent, ref: dashboard_node.output_percent, unit: '%', desc: 「出力」の初期値。手動・ゲームパッド・自動の最大の速さ = max_* × 出力}
       - {name: api_token, ref: dashboard_node.api_token, unit: '', desc: POST API のトークン（空なら認証なし）, secret: true}
     layer: ui
   - id: joy_teleop_node
@@ -349,7 +350,7 @@ nodes:
     publishes: [/joy_cmd, /drive_mode_request]
     subscribes: [/drive_mode]
     params:
-      - {name: speed_scale, ref: joy_teleop_node.speed_scale, unit: '', desc: 通常時の出力割合（RB で全速）}
+      - {name: speed_scale, ref: joy_teleop_node.speed_scale, unit: '', desc: スティックを倒しきったときの割合（1.0 = ダッシュボードの「出力」）}
       - {name: mode_hold_sec, ref: joy_teleop_node.mode_hold_sec, unit: s, desc: START 長押し時間}
     layer: ui
   - id: drive_mode_node
@@ -365,6 +366,7 @@ nodes:
       - {name: joy_timeout, ref: drive_mode_node.joy_timeout, unit: s, desc: ゲームパッド未接続判定}
       - {name: auto_requires_joy, ref: drive_mode_node.auto_requires_joy, unit: '', desc: AUTO にゲームパッド接続を必須にする}
       - {name: manual_override, ref: drive_mode_node.manual_override, unit: '', desc: AUTO 中の手動指令で MANUAL へ復帰}
+      - {name: default_output, ref: drive_mode_node.default_output, unit: '', desc: ダッシュボードの「出力」（/drive_output）が届くまでの上限の割合}
       - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: stop / LiDAR データなし（unknown）/ 判定の途絶中は前進を 0 にする}
       - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にし、AUTO は STOP}
       - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 段差判定が古ければ使わない（配線済みなら AUTO を拒否 / STOP）}
