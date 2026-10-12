@@ -393,6 +393,7 @@ nodes:
       - {name: wheel_radius, ref: encoder_odom_node.wheel_radius, unit: m, desc: 車輪の半径}
       - {name: wheel_base_half, ref: encoder_odom_node.wheel_base_half, unit: m, desc: 中心から車輪まで（前後）}
       - {name: track_half, ref: encoder_odom_node.track_half, unit: m, desc: 中心から車輪まで（左右）}
+      - {name: yaw_scale, ref: encoder_odom_node.yaw_scale, unit: 倍, desc: 向きの変化にかける倍率（床の回転で合わせた値）}
       - {name: publish_tf, ref: encoder_odom_node.publish_tf, unit: '', desc: odom → base_footprint の TF も出す}
     layer: sensor
   - id: autonomy_node

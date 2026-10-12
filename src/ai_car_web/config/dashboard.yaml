@@ -106,6 +106,7 @@ encoder_odom_node:
     wheel_radius: 0.0403     # メカナムホイール Ø80.59 mm
     wheel_base_half: 0.11    # 車体の中心から車輪の中心まで 前後
     track_half: 0.12         # 同 左右
+    yaw_scale: 1.42          # その場回転はローラーがすべる。床で /odom 380° のとき実際 540°（1.5 回転）
     count_sign: -1           # モーターの正転でカウントが減る（2026/10/12 確認）
 
 autonomy_node:
