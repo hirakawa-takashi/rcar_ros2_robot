@@ -48,6 +48,7 @@ setup(
             'drive_mode_node = ai_car_web.drive_mode_node:main',
             'autonomy_node = ai_car_web.autonomy_node:main',
             'lidar_watchdog_node = ai_car_web.lidar_watchdog_node:main',
+            'motor_driver_node = ai_car_web.motor_driver_node:main',
         ],
     },
 )
