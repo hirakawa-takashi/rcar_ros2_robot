@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- 1 眼の距離: 車の傾き（カメラの下向きの角度）を毎回出して、床の三角形の距離と高さに使う（`mono_auto_pitch`）。LiDAR が当たった物（0.3〜2 m）の、AI の値が LiDAR の所と 4 % 以内のまま下へ続く行の下のはし（床とのさかい目）を、カメラの高さ 11.2 cm と LiDAR の距離から出る行とくらべ、点ごとの差の中央値（最近 5 回）にする。AI は物の下のはしを床にとけこませるので、平らな床で出る -2.7° を引く（`mono_pitch_bias_deg`）。10 点より少ない・ばらつき 3° より大きいときは `mono_camera_pitch_deg`（0°）。`/stereo/depth_status` の `pitch`、ダッシュボードの「1眼の距離」のマウスの説明に出す。実機（10/12）: 平らな床で -0.5〜+0.3°。前輪の下に 7 mm を入れると -4.1〜-4.2°（映像の窓のずれ 26 px では -3.7°）。そのとき白い箱は、角度 0° のままだと 0.58 → 0.43 m（-26 %）と出たのが 0.60〜0.62 m（+3〜6 %）、袋は 0.41 → 0.30 m が 0.39 m。床の行の AI の値のかたむきから角度を出す方法は、7 mm でも +0.4° しか動かず使えなかった。LiDAR で AI の値を m に合わせる方法も、床で 2.1〜2.4 倍遠く出て使えなかった
+
 ### Removed
 - USB 2 眼カメラ（ELP 3D USB Camera）を今後使わないので、2 眼だけのものを消した: `stereo_camera_node`・`stereo_depth_node`・`stereo_calibrate`（`setup.py` の入口も）、キャリブレーションの資料と市松模様の PDF（`docs/calib`）、ダッシュボードの「撮影」の API（`POST /api/camera/calib_capture`）、`dashboard.launch.py` の `camera_type`・`use_stereo_depth`（カメラは `use_camera` で Camera Module 3 Wide の `camera_ros` だけ）、`dashboard.yaml` の `stereo_camera_node`・`stereo_depth_node` の設定、3D の 2 眼用の板・カバー（`cam_mount_stereo.stl`・`cover_stereo.stl`、`front_cam="stereo"`）。Camera Module 3 Wide 用の STL は形が変わらないことを確かめた（OpenSCAD で出し直して頂点が同じ）
 - 1 眼の奥行きの AI（SC-Depth v3）が使う `/stereo/depth_status`・`/stereo/depth/compressed` と `stereo_guard` などの名前は、安全の判定を変えないようにそのまま残した。物の枠の距離のマス（`stereo_grid_topic`）は出すノードがないので空にした（物の枠の距離は今までどおり LiDAR）

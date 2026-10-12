@@ -202,6 +202,9 @@ class PerceptionNode(Node):
         self.declare_parameter('mono_depth_guard', False)
         self.declare_parameter('mono_camera_height_m', 0.112)
         self.declare_parameter('mono_camera_pitch_deg', 0.0)
+        self.declare_parameter('mono_auto_pitch', False)
+        self.declare_parameter('mono_pitch_bias_deg', 0.0)
+        self.declare_parameter('mono_lidar_height_m', 0.175)
         self.declare_parameter('mono_nearer_ratio', 1.07)
         self.declare_parameter('mono_min_height_m', 0.02)
         self.declare_parameter('mono_fill_ratio', 0.5)
@@ -325,10 +328,13 @@ class PerceptionNode(Node):
             self._mono_tracker = mono_depth.ObjectTracker(
                 int(g('mono_confirm_count').value), float(g('mono_confirm_window_s').value),
                 float(g('mono_hold_s').value))
-            self._mono_down, self._mono_left = mono_depth.camera_rays(
-                self._depth.input_height, self._depth.input_width,
-                float(g('camera_hfov_deg').value), CAMERA_ASPECT,
-                float(g('mono_camera_pitch_deg').value))
+            self.mono_pitch = float(g('mono_camera_pitch_deg').value)
+            self.mono_auto_pitch = bool(g('mono_auto_pitch').value)
+            self.mono_pitch_bias = float(g('mono_pitch_bias_deg').value)
+            self.mono_lidar_height = float(g('mono_lidar_height_m').value)
+            self._mono_pitches = deque(maxlen=5)
+            self._mono_rays = {}
+            self._mono_down, self._mono_left = self._mono_camera_rays(self.mono_pitch)
             self._depth_status_pub = self.create_publisher(String, stereo_topic, 10)
             self._depth_image_pub = self.create_publisher(
                 CompressedImage, g('mono_depth_image_topic').value, sensor_qos)
@@ -732,7 +738,8 @@ class PerceptionNode(Node):
             raw = self._depth.infer(rgb)
             infer_ms = (time.perf_counter() - t0) * 1000.0
             disp = mono_depth.sc_disparity(np.asarray(raw, dtype=np.float32)[0, :, :, 0])
-            down, left = self._mono_down, self._mono_left
+            pitch = self._mono_frame_pitch(disp)
+            down, left = self._mono_camera_rays(pitch['deg'])
             bottom, top, obst = mono_depth.obstacle_columns(
                 disp, down, self.mono_height, self.mono_nearer, self.mono_min_height,
                 self.mono_fill)
@@ -779,12 +786,48 @@ class PerceptionNode(Node):
                 'max_range_m': self.mono_max_range,
                 'corridor_half_width_m': self.mono_half_width,
                 'min_height_m': self.mono_min_height,
+                'pitch': pitch,
             }, ensure_ascii=False)
             self._depth_status_pub.publish(msg)
         except Exception as exc:  # noqa: BLE001 - 推論失敗でノードを落とさない
             self.get_logger().warning(f'1 眼の奥行きの推論エラー: {exc}')
         finally:
             self._depth_busy = False
+
+    def _mono_camera_rays(self, pitch_deg):
+        """下向きの角度（0.1 度ごと）の camera_rays。同じ角度は作り直さない。"""
+        key = round(pitch_deg, 1)
+        rays = self._mono_rays.get(key)
+        if rays is None:
+            if len(self._mono_rays) > 200:
+                self._mono_rays.clear()
+            rays = mono_depth.camera_rays(
+                self._depth.input_height, self._depth.input_width,
+                float(self.get_parameter('camera_hfov_deg').value), CAMERA_ASPECT, key)
+            self._mono_rays[key] = rays
+        return rays
+
+    def _mono_frame_pitch(self, disp):
+        """このコマのカメラの下向きの角度。LiDAR の点と床のさかい目から出し、最近 1 秒の
+        中央値（最近 5 回・1 秒以内）。出せないときは決めた角度（mono_camera_pitch_deg）。"""
+        now = time.monotonic()
+        out = {'deg': self.mono_pitch, 'source': 'fixed', 'points': 0, 'spread_deg': None}
+        if not self.mono_auto_pitch:
+            return out
+        with self._lock:
+            bearings = self._scan_bearings
+            scan_stamp = self._scan_stamp
+        if time.time() - scan_stamp <= self.scan_max_age:
+            off, n, spread = mono_depth.contact_pitch(
+                disp, self._mono_down, self._mono_left, bearings, self.mono_height,
+                self.mono_lidar_height)
+            out.update(points=n, spread_deg=None if spread is None else round(spread, 2))
+            if off is not None:
+                self._mono_pitches.append((now, max(-10.0, min(10.0, off - self.mono_pitch_bias))))
+        recent = [d for t, d in self._mono_pitches if now - t <= 1.0]
+        if recent:
+            out.update(deg=round(self.mono_pitch + float(np.median(recent)), 2), source='lidar')
+        return out
 
     def _parse_detections(self, raw, geom):
         """HAILO NMS BY CLASS 出力（正規化座標）を検出リストへ変換する。"""

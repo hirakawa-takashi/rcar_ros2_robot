@@ -1923,6 +1923,14 @@ document.getElementById('sd_view').addEventListener('click', () => {
   if (camStreaming) document.getElementById('cam').src = camSrc();
 });
 
+// 1 眼の距離に使ったカメラの下向きの角度（mono_auto_pitch）
+function monoPitchText(p) {
+  if (!p) return '';
+  return p.source === 'lidar'
+    ? `カメラの下向き ${fmt(p.deg, 1)}°（LiDAR の ${p.points} 点の床とのさかい目から）。`
+    : `カメラの下向き ${fmt(p.deg, 1)}°（決めた角度${p.points ? `・LiDAR ${p.points} 点では出せない` : ''}）。`;
+}
+
 // 1 眼の奥行きの AI の距離（perception_node が出す）
 function renderStereoDepth(sd, judge) {
   const cell = document.getElementById('sd_val');
@@ -1950,7 +1958,7 @@ function renderStereoDepth(sd, judge) {
     : `${fmt(sd.max_range_m, 1)} m 以内になし`;
   cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
     `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
-    (mono ? `1 眼の奥行きの AI（推論 ${fmt(sd.infer_ms, 1)} ms）。`
+    (mono ? `1 眼の奥行きの AI（推論 ${fmt(sd.infer_ms, 1)} ms）。${monoPitchText(sd.pitch)}`
       : `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。`) +
     (judge ? `LiDAR ${fmt(judge.lidar_distance)} m。減速 ${fmt(judge.slow_distance)} m / 停止 ${fmt(judge.stop_distance)} m` +
       (judge.enabled ? '' : `。${mono ? 'mono_depth_guard' : 'stereo_guard'} が false なので速度制限には使わない`) : '');
