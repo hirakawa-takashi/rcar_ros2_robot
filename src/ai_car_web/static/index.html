@@ -2106,11 +2106,12 @@ function drawMotorHat(m) {
   const W = 1000, H = 500, cx = W / 2, cy = 230;
   const hat = { w: 300, h: 150 };
   // 端子ごとの配線経路（横走り高さ・縦走り位置）をずらして重なりを避ける
-  const route = { M1: { dy: 28, dx: 44 }, M2: { dy: 44, dx: 44 }, M3: { dy: 60, dx: 24 }, M4: { dy: 76, dx: 24 } };
+  const route = { M1: { dy: 28, dx: 44 }, M2: { dy: 76, dx: 24 }, M3: { dy: 44, dx: 24 }, M4: { dy: 60, dx: 44 } };
   const wheel = { w: 44, h: 96, dx: 250, dy: 150 };
-  // 端子位置（HAT 下辺の端子台: M1 M2 | 電源 | M3 M4）
+  // 端子位置（HAT 下辺の端子台: M1 M2 M3 M4 | 電源）
   const termY = cy + hat.h / 2;
-  const termX = { M1: cx - 105, M2: cx - 65, M3: cx + 65, M4: cx + 105 };
+  const termX = { M1: cx - 120, M2: cx - 78, M3: cx - 36, M4: cx + 6 };
+  const pwrX = cx + 80;
   const byWheel = {};
   m.motors.forEach(mo => { byWheel[mo.wheel] = mo; });
   const wheels = [
@@ -2134,12 +2135,13 @@ function drawMotorHat(m) {
     const tx = termX[mo.channel];
     if (tx == null) return;
     const [cp, cn] = [wireHex(mo.colors[0], '#e53935'), wireHex(mo.colors[1], '#f5f5f5')];
+    const [cl, cr] = mo.minus_left ? [cn, cp] : [cp, cn];
     const side = wx < cx ? -1 : 1;
     const ex = wx - side * wheel.w / 2;
     const rt = route[mo.channel];
     const midY = termY + rt.dy;
     const vx = ex - side * rt.dx;
-    for (const [off, col] of [[-3, cp], [3, cn]]) {
+    for (const [off, col] of [[-3, cl], [3, cr]]) {
       const d = `M ${tx + off} ${termY} L ${tx + off} ${midY + off} L ${vx + off} ${midY + off} L ${vx + off} ${wy + off} L ${ex} ${wy + off}`;
       out += `<path d="${d}" fill="none" stroke="#8a97a8" stroke-width="5" stroke-linejoin="round"/>`;
       out += `<path d="${d}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round"/>`;
@@ -2193,14 +2195,14 @@ function drawMotorHat(m) {
   // 電源端子（+/−）
   const pw = m.hat.power || {};
   const [pp, pn] = [wireHex((pw.colors || [])[0], '#e53935'), wireHex((pw.colors || [])[1], '#111')];
-  out += `<rect x="${cx - 24}" y="${termY - 30}" width="48" height="30" rx="3" fill="#0e6655" stroke="#556" stroke-width="1.5"/>`;
-  out += `<text x="${cx}" y="${termY - 36}" text-anchor="middle" font-size="11" fill="#e8eaed">+  −</text>`;
-  out += `<circle cx="${cx - 10}" cy="${termY - 15}" r="3" fill="#ccc"/><circle cx="${cx + 10}" cy="${termY - 15}" r="3" fill="#ccc"/>`;
-  for (const [px, col] of [[cx - 10, pp], [cx + 10, pn]]) {
+  out += `<rect x="${pwrX - 24}" y="${termY - 30}" width="48" height="30" rx="3" fill="#0e6655" stroke="#556" stroke-width="1.5"/>`;
+  out += `<text x="${pwrX}" y="${termY - 36}" text-anchor="middle" font-size="11" fill="#e8eaed">+  −</text>`;
+  out += `<circle cx="${pwrX - 10}" cy="${termY - 15}" r="3" fill="#ccc"/><circle cx="${pwrX + 10}" cy="${termY - 15}" r="3" fill="#ccc"/>`;
+  for (const [px, col] of [[pwrX - 10, pp], [pwrX + 10, pn]]) {
     out += `<line x1="${px}" y1="${termY}" x2="${px}" y2="${H - 30}" stroke="#8a97a8" stroke-width="5"/>`;
     out += `<line x1="${px}" y1="${termY}" x2="${px}" y2="${H - 30}" stroke="${col}" stroke-width="3"/>`;
   }
-  out += `<text x="${cx}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#9fb0c7">${esc(pw.source || 'モーター電源')}</text>`;
+  out += `<text x="${pwrX}" y="${H - 12}" text-anchor="middle" font-size="12" fill="#9fb0c7">${esc(pw.source || 'モーター電源')}</text>`;
   svg.innerHTML = out;
 }
 

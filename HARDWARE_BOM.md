@@ -101,7 +101,7 @@ Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− 
 
 - VCC / GND は Motor HAT (3V3 power) / Motor HAT (Ground) を使う（`motor_hat.yaml` の `power_board: Motor HAT`）。VCC は **3V3**（4 台共通）。仕様上は 5V も可だが Encoder A/B 出力が GPIO 直結のため 5V は使わない
 - I2C（pin 3/5）は避けている
-- Motor+ 黒は 4 台とも HAT の M 端子の同じ側に挿す（真ん中の GND には挿さない）。こうすると、正転指令で左（M1・M3）は前進、右（M2・M4）は後退し（`reversed: true`）、エンコーダーのカウントは 4 台とも負になる（2026/10/12 確認）
+- HAT の M 端子のネジの並びは、M1・M3 が左から 黒 / 赤、M2・M4 が左から 赤 / 黒（実配線。真ん中の GND には挿さない。`motor_hat.yaml` の `minus_left`）。こうすると、正転指令で左（M1・M3）は前進、右（M2・M4）は後退し（`reversed: true`）、エンコーダーのカウントは 4 台とも負になる（2026/10/12 確認）
 - GPIO ヘッダー表（ダッシュボード）では VCC / GND のピンは Motor HAT 側に挿すため空き表示、Encoder A / B のみ使用中
 
 > Pi 側のピン割り付けは暫定値。M1 は白 Motor HAT (3V3 power) / 黄 Motor HAT (Ground) / 橙 GPIO5 / 緑 GPIO6 で A/B 相パルスを確認済み（車輪 1 回転あたり約 2,200 カウント、4 逓倍の概算。前進方向の手回しでカウントは負）。A/B の逆相（カウント方向）はエンコーダー読み取りノードで符号を合わせる。

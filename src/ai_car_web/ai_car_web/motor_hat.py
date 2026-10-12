@@ -161,6 +161,7 @@ def load_motor_hat(path):
             'position': {'x': x, 'y': y},
             'reversed': bool(entry.get('reversed', False)),
             'colors': colors,
+            'minus_left': bool(entry.get('minus_left', False)),
             'label': tag,
             'note': entry.get('note') or '',
             'pwm_channel': pwm,
