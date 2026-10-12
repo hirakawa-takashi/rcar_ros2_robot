@@ -3,6 +3,9 @@
 AI の奥行きは「何倍か」がわからず（縮尺なし）、遠くほど縮んで出る。そこで距離は AI から
 読まない。同じ行（床なら同じ距離）の真ん中の値より手前に見える所を「物」とし、物が床に
 ついている一番下の行を、カメラの高さと下向きの角度から床の距離に直す。
+
+LiDAR が届いているときは、LiDAR の点が写る画素で「LiDAR の m × AI の値」を毎回くらべて
+倍率を出し（lidar_scale）、AI の奥行きをそのまま m にして物の距離にする。
 """
 
 import math
@@ -28,6 +31,46 @@ def camera_rays(rows, cols, hfov_deg, aspect, pitch_deg=0.0):
     down = (v + math.tan(p)) / (1.0 - v * math.tan(p))
     left = -((np.arange(cols) + 0.5) / cols * 2.0 - 1.0) * t
     return down, left
+
+
+def lidar_scale(disp, down, left, points, camera_height, lidar_height, min_points=8,
+                max_spread=0.25, max_range=4.0):
+    """AI の値（disp、距離の逆数に比例）を m にする倍率 k（距離 = k / disp）。
+
+    points は LiDAR の点の（カメラから見た方位 [rad]・左が正, 前方の距離 [m]）。LiDAR の光は
+    カメラより lidar_height - camera_height 高いので、その点が写る行と列の値と比べる。
+    点ごとの k の中央値を使う。点が min_points より少ないか、点ごとの k のばらつき
+    （中央値からの差の中央値の割合）が max_spread より大きいときは k = None。
+    返り値は (k, 使った点の数, ばらつき)。
+    """
+    rows, cols = disp.shape
+    rise = lidar_height - camera_height
+    ks = []
+    for bearing, x in points:
+        if not 0.15 <= x <= max_range:
+            continue
+        r = int(np.searchsorted(down, -rise / x))
+        c = int(np.searchsorted(-left, -math.tan(bearing)))
+        if not (1 <= r < rows - 1 and 1 <= c < cols - 1):
+            continue
+        ks.append(x * float(np.median(disp[r - 1:r + 2, c - 1:c + 2])))
+    if len(ks) < min_points:
+        return None, len(ks), None
+    ks = np.asarray(ks)
+    k = float(np.median(ks))
+    spread = float(np.median(np.abs(ks / k - 1.0)))
+    return (k if spread <= max_spread else None), len(ks), spread
+
+
+def floor_ratio(depth, obst, down, camera_height, near=0.2, far=1.0):
+    """床の行（near〜far m）の、m にした AI の距離 ÷ 床の三角形の距離の中央値。1 に近いほど合う。"""
+    floor_dist = camera_height / np.where(down > 0.0, down, np.nan)
+    rows = np.nonzero((floor_dist >= near) & (floor_dist <= far))[0]
+    if not len(rows):
+        return None
+    ratios = depth[rows] / floor_dist[rows, None]
+    ratios = ratios[~obst[rows]]
+    return float(np.median(ratios)) if ratios.size else None
 
 
 def obstacle_columns(disp, down, camera_height, nearer=1.15, min_height=0.02, fill=0.7,
@@ -66,12 +109,24 @@ def obstacle_columns(disp, down, camera_height, nearer=1.15, min_height=0.02, fi
 
 
 def group_objects(bottom, top, down, left, camera_height, max_range, min_cols=3,
-                  min_width=0.02, gap_ratio=0.15):
-    """となりの列で距離が近いものをまとめて、物のリスト（近い順）にする。"""
+                  min_width=0.02, gap_ratio=0.15, depth=None, obst=None):
+    """となりの列で距離が近いものをまとめて、物のリスト（近い順）にする。
+
+    depth（m にした AI の奥行き）と obst があれば、列の距離は物の画素の depth の中央値。
+    なければ、物が床につく行の床の距離。どちらでも床の距離を floor_distance_m に入れる。
+    """
     cols = len(bottom)
     dist = np.full(cols, np.nan)
     has = bottom >= 0
-    dist[has] = camera_height / down[bottom[has]]
+    floor = np.full(cols, np.nan)
+    floor[has] = camera_height / down[bottom[has]]
+    if depth is None:
+        dist = floor.copy()
+    else:
+        for c in np.nonzero(has)[0]:
+            lo = max(top[c], 0)
+            col = depth[lo:bottom[c] + 1, c][obst[lo:bottom[c] + 1, c]]
+            dist[c] = float(np.median(col)) if col.size else floor[c]
     dist[dist > max_range] = np.nan
     groups, cur = [], []
     for c in range(cols):
@@ -100,6 +155,7 @@ def group_objects(bottom, top, down, left, camera_height, max_range, min_cols=3,
         bearing = np.degrees(np.arctan(left[g]))
         found.append({
             'distance_m': round(near, 3),
+            'floor_distance_m': round(float(np.nanpercentile(floor[g], 10)), 3),
             'lateral_m': round(float(np.median(lateral)), 3),
             'height_m': round(float(np.median(heights)), 3),
             'width_m': round(width, 3),

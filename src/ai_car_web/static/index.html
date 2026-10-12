@@ -1923,6 +1923,16 @@ document.getElementById('sd_view').addEventListener('click', () => {
   if (camStreaming) document.getElementById('cam').src = camSrc();
 });
 
+// 1 眼の距離の出し方（LiDAR で m に合わせたか、床の三角形か）
+function monoScaleText(sd) {
+  const s = sd.lidar_scale || {};
+  if (sd.distance_source === 'lidar') {
+    return `距離は LiDAR ${s.points} 点で m に合わせた AI の値（ばらつき ${fmt((s.spread || 0) * 100, 0)}%・` +
+      `床で確かめ ${fmt(s.floor_ratio, 2)} 倍）。`;
+  }
+  return `距離は床の三角形（LiDAR で合わせられない: 点 ${s.points || 0}）。`;
+}
+
 // 1 眼の奥行きの AI の距離（perception_node が出す）
 function renderStereoDepth(sd, judge) {
   const cell = document.getElementById('sd_val');
@@ -1944,13 +1954,14 @@ function renderStereoDepth(sd, judge) {
   const verdict = !n || !judge || judge.distance == null ? ''
     : !judge.low ? ' LiDAR にも見える'
     : judge.level === 'clear' ? ' 低い物' : ` → ${LEVEL_TEXT[judge.level] || judge.level}${mode}`;
+  const how = mono ? (sd.distance_source === 'lidar' ? 'LiDAR 合わせ・' : '床・') : '';
   cell.textContent = n
-    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）${verdict}` +
+    ? `${fmt(n.distance_m, 2)} m（${how}${side}・高さ ${fmt(n.height_m, 2)} m）${verdict}` +
       ((sd.objects || []).length > 1 ? `・近くに ${sd.objects.length} 個` : '')
     : `${fmt(sd.max_range_m, 1)} m 以内になし`;
   cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
     `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
-    (mono ? `1 眼の奥行きの AI（推論 ${fmt(sd.infer_ms, 1)} ms）。`
+    (mono ? `1 眼の奥行きの AI（推論 ${fmt(sd.infer_ms, 1)} ms）。` + monoScaleText(sd)
       : `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。`) +
     (judge ? `LiDAR ${fmt(judge.lidar_distance)} m。減速 ${fmt(judge.slow_distance)} m / 停止 ${fmt(judge.stop_distance)} m` +
       (judge.enabled ? '' : `。${mono ? 'mono_depth_guard' : 'stereo_guard'} が false なので速度制限には使わない`) : '');

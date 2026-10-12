@@ -202,6 +202,8 @@ class PerceptionNode(Node):
         self.declare_parameter('mono_depth_guard', False)
         self.declare_parameter('mono_camera_height_m', 0.112)
         self.declare_parameter('mono_camera_pitch_deg', 0.0)
+        self.declare_parameter('mono_lidar_scale', False)
+        self.declare_parameter('mono_lidar_height_m', 0.175)
         self.declare_parameter('mono_nearer_ratio', 1.07)
         self.declare_parameter('mono_min_height_m', 0.02)
         self.declare_parameter('mono_fill_ratio', 0.5)
@@ -315,6 +317,8 @@ class PerceptionNode(Node):
             self.mono_rate = float(g('mono_depth_rate').value)
             self.mono_guard = bool(g('mono_depth_guard').value)
             self.mono_height = float(g('mono_camera_height_m').value)
+            self.mono_lidar_scale = bool(g('mono_lidar_scale').value)
+            self.mono_lidar_height = float(g('mono_lidar_height_m').value)
             self.mono_nearer = float(g('mono_nearer_ratio').value)
             self.mono_min_height = float(g('mono_min_height_m').value)
             self.mono_fill = float(g('mono_fill_ratio').value)
@@ -736,9 +740,24 @@ class PerceptionNode(Node):
             bottom, top, obst = mono_depth.obstacle_columns(
                 disp, down, self.mono_height, self.mono_nearer, self.mono_min_height,
                 self.mono_fill)
+            scale = {'k': None, 'points': 0, 'spread': None, 'floor_ratio': None}
+            depth = None
+            if self.mono_lidar_scale:
+                with self._lock:
+                    bearings = self._scan_bearings
+                    scan_stamp = self._scan_stamp
+                if time.time() - scan_stamp <= self.scan_max_age:
+                    k, n, spread = mono_depth.lidar_scale(
+                        disp, down, left, bearings, self.mono_height, self.mono_lidar_height)
+                    scale.update(points=n, spread=None if spread is None else round(spread, 3))
+                    if k is not None:
+                        depth = k / disp
+                        ratio = mono_depth.floor_ratio(depth, obst, down, self.mono_height)
+                        scale.update(k=round(k, 4),
+                                     floor_ratio=None if ratio is None else round(ratio, 3))
             objects = mono_depth.group_objects(
                 bottom, top, down, left, self.mono_height, self.mono_max_range,
-                self.mono_min_cols)
+                self.mono_min_cols, depth=depth, obst=obst)
             raw_nearest = mono_depth.in_corridor(
                 objects, self.mono_center_y, self.mono_half_width)
             objects = self._mono_tracker.update(objects, time.monotonic())
@@ -769,6 +788,8 @@ class PerceptionNode(Node):
                 'ok': True,
                 'reason': '',
                 'source': 'mono',
+                'distance_source': 'lidar' if depth is not None else 'floor',
+                'lidar_scale': scale,
                 'nearest': nearest,
                 'nearest_raw': raw_nearest,
                 'objects': objects[:5],

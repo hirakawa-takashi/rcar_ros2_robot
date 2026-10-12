@@ -235,6 +235,10 @@ perception_node:
     mono_depth_guard: false
     mono_camera_height_m: 0.112
     mono_camera_pitch_deg: 0.0
+    # LiDAR の点が写る画素で、AI の値を毎回 m に合わせて物の距離にする（LiDAR がないときは床の三角形の距離）。
+    # LiDAR の光の高さ（床から、URDF の laser_h と同じ）
+    mono_lidar_scale: true
+    mono_lidar_height_m: 0.175
     mono_nearer_ratio: 1.07
     mono_min_height_m: 0.02
     mono_fill_ratio: 0.5
