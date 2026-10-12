@@ -235,6 +235,13 @@ perception_node:
     mono_depth_guard: false
     mono_camera_height_m: 0.112
     mono_camera_pitch_deg: 0.0
+    # 車が傾いても距離がずれないよう、カメラの下向きの角度を毎回出す。LiDAR が当たった物
+    # （0.3〜2 m）と床のさかい目の行を、カメラの高さと LiDAR の距離から出る行とくらべる。
+    # AI は物の下のはしを床にとけこませるので、平らな床で出る -2.7° を引く（mono_pitch_bias_deg）。
+    # 実機（10/12）: 平らな床で -0.5〜+0.3°、前輪の下に 7 mm で -4.1°（映像のずれでは -3.7°）
+    mono_auto_pitch: true
+    mono_pitch_bias_deg: -2.7
+    mono_lidar_height_m: 0.175
     mono_nearer_ratio: 1.07
     mono_min_height_m: 0.02
     mono_fill_ratio: 0.5
