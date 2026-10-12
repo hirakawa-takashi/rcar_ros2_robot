@@ -6,7 +6,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -41,6 +41,7 @@ def generate_launch_description():
     use_cliff = LaunchConfiguration('use_cliff')
     use_drive_mode = LaunchConfiguration('use_drive_mode')
     use_motor = LaunchConfiguration('use_motor')
+    use_odom = LaunchConfiguration('use_odom')
     use_autonomy = LaunchConfiguration('use_autonomy')
     use_slam = LaunchConfiguration('use_slam')
 
@@ -103,6 +104,8 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(
                 get_package_share_directory('ai_car_web'), 'launch', 'slam.launch.py')),
+            launch_arguments={'odom_source': PythonExpression(
+                ["'topic' if '", use_odom, "'.lower() == 'true' else 'none'"])}.items(),
             condition=IfCondition(use_slam),
         ),
     ] if slam_available else []
@@ -130,6 +133,8 @@ def generate_launch_description():
                               description='運転モード管理（手動/自動/停止 → /cmd_vel）を起動する'),
         DeclareLaunchArgument('use_motor', default_value='true',
                               description='モーター制御ノード（/cmd_vel → Motor HAT）を起動する'),
+        DeclareLaunchArgument('use_odom', default_value='true',
+                              description='エンコーダーのオドメトリ（/odom・odom → base_footprint の TF）を起動する'),
         DeclareLaunchArgument('use_autonomy', default_value='true',
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
         DeclareLaunchArgument('use_slam', default_value='false',
@@ -214,6 +219,16 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             condition=IfCondition(use_motor),
+        ),
+        Node(
+            package='ai_car_web',
+            executable='encoder_odom_node',
+            name='encoder_odom_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_odom),
         ),
         Node(
             package='ai_car_web',

@@ -49,6 +49,7 @@ setup(
             'autonomy_node = ai_car_web.autonomy_node:main',
             'lidar_watchdog_node = ai_car_web.lidar_watchdog_node:main',
             'motor_driver_node = ai_car_web.motor_driver_node:main',
+            'encoder_odom_node = ai_car_web.encoder_odom_node:main',
         ],
     },
 )

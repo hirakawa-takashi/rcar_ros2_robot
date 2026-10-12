@@ -20,7 +20,7 @@ overview:
     - {state: done, text: F710 ゲームパッド手動操作}
     - {state: done, text: 運転モード管理（手動 / 自動 / 停止）と Level 1 自律走行}
     - {state: done, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
-    - {state: todo, text: エンコーダー読み取り・オドメトリ（/odom）}
+    - {state: done, text: エンコーダー読み取り・オドメトリ（/odom）}
     - {state: todo, text: SLAM（slam_toolbox）}
     - {state: todo, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション）}
   stack:
@@ -383,6 +383,19 @@ nodes:
       - {name: max_duty, ref: motor_driver_node.max_duty, unit: '', desc: 出力 100 % のときの PWM（0〜1）}
       - {name: timeout, ref: motor_driver_node.timeout, unit: s, desc: /cmd_vel がこの秒数届かないと止める}
     layer: control
+  - id: encoder_odom_node
+    label: encoder_odom_node
+    file: ai_car_web/encoder_odom_node.py
+    role: 4 輪のエンコーダー（A/B 相、ピンは motor_hat.yaml）を別プロセスで 4 逓倍に数え、メカナムの順運動学で /odom と odom → base_footprint の TF を 20 Hz で出す
+    publishes: [/odom, /tf]
+    subscribes: []
+    params:
+      - {name: counts_per_rev, ref: encoder_odom_node.counts_per_rev, unit: カウント, desc: 車輪 1 回転のカウント（11 パルス × 4 × 56）}
+      - {name: wheel_radius, ref: encoder_odom_node.wheel_radius, unit: m, desc: 車輪の半径}
+      - {name: wheel_base_half, ref: encoder_odom_node.wheel_base_half, unit: m, desc: 中心から車輪まで（前後）}
+      - {name: track_half, ref: encoder_odom_node.track_half, unit: m, desc: 中心から車輪まで（左右）}
+      - {name: publish_tf, ref: encoder_odom_node.publish_tf, unit: '', desc: odom → base_footprint の TF も出す}
+    layer: sensor
   - id: autonomy_node
     label: autonomy_node
     file: ai_car_web/autonomy_node.py
@@ -485,7 +498,7 @@ nodes:
   - id: slam_toolbox
     label: slam_toolbox
     file: launch/slam.launch.py
-    role: 地図と自己位置（online async SLAM）。use_slam:=true のときだけ起動。/odom がまだ無いので odom → base_footprint は固定の TF にして、位置はスキャンの照合だけで出す。robot_state_publisher が URDF から base_link → laser の TF を出す
+    role: 地図と自己位置（online async SLAM）。use_slam:=true のときだけ起動。odom → base_footprint は encoder_odom_node の TF（use_odom:=false なら固定の TF にしてスキャンの照合だけ）。robot_state_publisher が URDF から base_link → laser の TF を出す
     publishes: [/map, /pose, /tf]
     subscribes: [/scan, /tf]
     params:
@@ -529,7 +542,7 @@ topics:
   - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz・transient local）}
   - {name: /cmd_vel, type: geometry_msgs/Twist, desc: 最終速度指令（drive_mode_node のみが publish）}
   - {name: /autonomy_status, type: std_msgs/String (JSON), desc: 自律行動・セクター距離・自動指令}
-  - {name: /odom, type: nav_msgs/Odometry, desc: オドメトリ（未実装、現在は publisher なし）}
+  - {name: /odom, type: nav_msgs/Odometry, desc: 車輪のオドメトリ（encoder_odom_node、20 Hz）}
   - {name: /map, type: nav_msgs/OccupancyGrid, desc: SLAM の地図（5 cm / セル、2 秒ごと、transient local）}
   - {name: /pose, type: geometry_msgs/PoseWithCovarianceStamped, desc: 地図の上の自己位置（slam_toolbox）}
 
@@ -614,7 +627,7 @@ api:
 status:
   known_issues:
     - 実機の電源不足（Undervoltage 検出）。公式 27W PD 電源と LiDAR の別系統給電が必要
-    - /odom 未実装のためオドメトリは null。SLAM はスキャンの照合だけで位置を出すので、速く動かすと位置を見失う
+    - /odom の距離・旋回は寸法からの計算値で、床での合わせ（1 m 走らせる）はまだ
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
     - IMU の搭載向きが imu_link と一致しておらず軸補正が必要
     - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
@@ -622,7 +635,7 @@ status:
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
     - 実配線に合わせた motor_hat.yaml / gpio_pins.yaml の修正
-    - エンコーダー読み取りノード → /odom（できたら slam.launch.py を odom_source:=topic、minimum_travel_* を 0.2 に）
+    - 床で 1 m 走らせて /odom の counts_per_rev を合わせ、SLAM を /odom つきで試す（minimum_travel_* を 0.2 に）
     - 実機で自動モードの旋回方向・速度・しきい値を調整
   docs:
     - {name: README.md, desc: セットアップ・実行・各デバイスの導入手順}

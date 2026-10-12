@@ -70,13 +70,12 @@
 
 ## 未実装機能
 - モーター制御ノード（Adafruit Motor HAT / メカナム逆運動学。`/cmd_vel` を購読する）
-- エンコーダー読み取り・オドメトリ発行
 - SLAM（slam_toolbox）
 - Level 2 自律走行（Nav2 による地図ベースのナビゲーション）。現在は Level 1（LiDAR 反応型）のみ
 
 ## 既知の問題
 - Pi には rviz2 が未インストール（ros-base のみ）。RViz2 は開発PC側での表示を想定
-- `/odom` のノードが未実装のため、オドメトリのテレメトリは現状 null
+- `/odom`（encoder_odom_node）の距離・旋回は寸法からの計算値。床で 1 m 走らせての合わせはまだ
 - LiDAR は `ros-jazzy-rplidar-ros` の導入と `super` の `dialout` グループ所属が必要
 - AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。温度は HailoRT C API `hailo_get_chip_temperature()` で取得済み。NPU 使用率と電力はダッシュボードでは扱わない（使用率は `HAILO_MONITOR=1` の推論アプリがある間のみ `hailortcli monitor` で参照可）。電力は未取得（`measure-power` は `UNSUPPORTED_OPCODE`、`query_health_stats()`/`query_performance_stats()` は HAILO8 非対応、`hatctl` は Ubuntu に存在せず Hailo 専用 hwmon も無し、PMIC に HAT 専用レール無し。外付け INA219 等が必要）
 - 検出物体の距離は LiDAR の方位角対応による概算で、カメラとLiDARの外部キャリブレーションは未実施（設置が同軸・同方向である前提）
