@@ -136,7 +136,7 @@ class EncoderOdomNode(Node):
         self.declare_parameter('gpio_chip', '')
         self.declare_parameter('publish_rate', 20.0)
         # 車輪 1 回転のカウント（11 パルス × 4 逓倍 × 減速 56）
-        self.declare_parameter('counts_per_rev', 2464.0)
+        self.declare_parameter('counts_per_rev', 1408.0)
         self.declare_parameter('wheel_radius', 0.0403)
         # 車体の中心から車輪の中心まで（前後 lx・左右 ly）
         self.declare_parameter('wheel_base_half', 0.11)
