@@ -15,7 +15,6 @@ dashboard_node:
     # ブラウザへの MJPEG 配信レート（カメラ取り込み 15fps と同じ）
     camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
-    obstacle_guard: true
     # LiDAR の取り付け向きの補正。画面の「前方」= 前方カメラの正面。カメラの画面の真ん中に置いたボトルが
     # LiDAR で右 4°・0.47 m に見えたことから求めた値（2026/10 実機で測定）。perception / autonomy も同じ値にする
     scan_angle_offset_deg: -1.7
@@ -71,7 +70,7 @@ drive_mode_node:
     joy_timeout: 1.0
     auto_requires_joy: true  # ゲームパッド切断で AUTO → STOP
     manual_override: true    # AUTO 中の手動指令で MANUAL へ復帰
-    obstacle_guard: true     # 最終段で stop 判定中の前進を止める
+    obstacle_guard: true     # 最終段で LiDAR 360°: 動く向き・回転に物が近ければ止める（手動は近づくと半分の速さ）
     cliff_topic: "/cliff_status"
     cliff_guard: true        # 段差を検出した向き（前 / 後）への移動を止め、AUTO は STOP
     cliff_timeout: 1.0       # 段差判定がこれより古ければ使わない（配線済みなら AUTO を拒否 / STOP）
@@ -253,6 +252,14 @@ perception_node:
     front_angle_deg: 60.0
     stop_distance: 0.35
     slow_distance: 0.8
+    # 360° の見張り（drive_mode_node の obstacle_guard が使う）。車体の箱は LiDAR の中心から [後ろ, 前, 右, 左] の端 [m]
+    # （battery_lidar_mount.scad / ai_car.xacro: 天板 200 x 154 mm + 前後のバンパー 32.8 mm + 車輪の外側まで。左は LiDAR の左 17 cm に出ている箱まで）
+    body_box_m: [-0.176, 0.090, -0.135, 0.190]
+    move_step_deg: 5.0
+    move_side_margin: 0.03   # 通り道の左右に足すゆとり
+    move_stop_gap: 0.25      # 動く向きの車体の端から物までがこれ以下で、その向きの動きを止める
+    move_slow_gap: 0.7       # 手動ではこれ以下で半分の速さ
+    turn_stop_gap: 0.03      # 回ると角が描く円から物までがこれ以下で、その場の回転を止める
     # 物の名前を当てる YOLO（yolov8m.hef）は使わない。AI HAT+ は 1 眼の奥行きの AI だけに使う
     hef_path: ""
     # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）

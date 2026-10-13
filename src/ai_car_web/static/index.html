@@ -847,6 +847,8 @@ function renderDriveMode(m) {
   }
   if (alive && m.last_reject) {
     rej.textContent = `自動への切替を拒否: ${m.last_reject.reason}`;
+  } else if (alive && m.guard) {
+    rej.textContent = `障害物で止めた: ${m.guard}`;
   } else if (alive && mode !== 'auto' && m.auto_block_reasons && m.auto_block_reasons.length) {
     rej.textContent = `自動へ切替不可: ${m.auto_block_reasons.join(' / ')}`;
   } else {

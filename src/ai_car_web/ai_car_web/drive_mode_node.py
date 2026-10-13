@@ -21,6 +21,7 @@
 """
 
 import json
+import math
 import threading
 import time
 
@@ -32,6 +33,24 @@ from std_msgs.msg import Float32, String
 
 MODES = ('manual', 'auto', 'stop')
 LABELS = {'manual': '手動', 'auto': '自動', 'stop': '停止'}
+
+
+DIRECTIONS = ('前', '左前', '左', '左後ろ', '後ろ', '右後ろ', '右', '右前')
+
+
+def _direction_name(deg: float) -> str:
+    return DIRECTIONS[int(round(deg / 45.0)) % 8]
+
+
+def _gap_toward(move: dict, deg: float):
+    """move の gaps（前 0° から左回り step_deg ごと）で、deg の向きと両どなりのいちばん小さいすき間。"""
+    gaps = move.get('gaps') or []
+    step = float(move.get('step_deg') or 0.0)
+    if not gaps or step <= 0.0:
+        return None
+    near = [g for k, g in enumerate(gaps)
+            if g is not None and abs((k * step - deg + 180.0) % 360.0 - 180.0) <= step]
+    return min(near) if near else None
 
 
 def _moving(msg: Twist, eps: float = 1e-3) -> bool:
@@ -65,7 +84,8 @@ class DriveModeNode(Node):
         self.declare_parameter('auto_requires_joy', True)
         # AUTO 中に手動指令が来たら MANUAL へ戻す（手動優先）
         self.declare_parameter('manual_override', True)
-        # 最終段の障害物ガード（"stop" 判定で前進を止める）
+        # 最終段の障害物ガード。LiDAR の 360° で動く向き・その場の回転に物が近ければその動きを止め、
+        # 手動のときは近づくと半分の速さにする（/obstacle_status の move）
         self.declare_parameter('obstacle_guard', True)
         # 落下防止センサー（cliff_node）。空で無効
         self.declare_parameter('cliff_topic', '/cliff_status')
@@ -111,6 +131,7 @@ class DriveModeNode(Node):
         self._cliff_stamp = 0.0
         self._last_out = Twist()
         self._last_out_time = 0.0
+        self._guard = None
 
         self.cmd_pub = self.create_publisher(
             Twist, self.get_parameter('cmd_vel_topic').value, 10)
@@ -317,11 +338,11 @@ class DriveModeNode(Node):
         with self._lock:
             lin = self.max_linear * self._output
             ang = self.max_angular * self._output
+            manual = self._mode == 'manual'
         out.linear.x = max(-lin, min(lin, msg.linear.x))
         out.linear.y = max(-lin, min(lin, msg.linear.y))
         out.angular.z = max(-ang, min(ang, msg.angular.z))
-        if self.obstacle_guard and out.linear.x > 0.0 and self._obstacle_stop():
-            out.linear.x = 0.0
+        guard = self._move_guard(out, manual) if self.obstacle_guard else None
         if self.cliff_guard and out.linear.x != 0.0:
             block_forward, block_backward = self._cliff_block()
             if (out.linear.x > 0.0 and block_forward) or (out.linear.x < 0.0 and block_backward):
@@ -329,15 +350,42 @@ class DriveModeNode(Node):
         with self._lock:
             self._last_out = out
             self._last_out_time = time.monotonic()
+            self._guard = guard
         self.cmd_pub.publish(out)
 
-    def _obstacle_stop(self) -> bool:
+    def _move_guard(self, out: Twist, manual: bool):
+        """動く向きに物が近ければ、その動きを 0 にする（手動は近づくと半分）。止めた理由を返す。"""
         with self._lock:
             obstacle = self._obstacle
             age = time.monotonic() - self._obstacle_stamp if self._obstacle_stamp else None
-        if not obstacle or age is None or age > self.obstacle_timeout:
-            return True
-        return obstacle.get('level') in ('stop', 'unknown')
+        moving = out.linear.x != 0.0 or out.linear.y != 0.0
+        move = (obstacle or {}).get('move')
+        if (not obstacle or age is None or age > self.obstacle_timeout
+                or obstacle.get('level') == 'unknown' or not move):
+            if moving:
+                out.linear.x = out.linear.y = 0.0
+                return 'LiDAR のデータがない'
+            return None
+        guard = None
+        if out.linear.x > 0.0 and obstacle.get('level') == 'stop':
+            out.linear.x = 0.0
+            guard = obstacle.get('reason') or '前に物がある'
+        if out.linear.x != 0.0 or out.linear.y != 0.0:
+            heading = math.degrees(math.atan2(out.linear.y, out.linear.x))
+            gap = _gap_toward(move, heading)
+            if gap is not None and gap <= move.get('stop_gap', 0.25):
+                out.linear.x = out.linear.y = 0.0
+                guard = f'{_direction_name(heading)} {gap:.2f} m に物がある'
+            elif manual and gap is not None and gap <= move.get('slow_gap', 0.7):
+                out.linear.x *= 0.5
+                out.linear.y *= 0.5
+            elif manual and out.linear.x > 0.0:
+                out.linear.x *= float(obstacle.get('speed_scale', 1.0))
+        turn_gap = move.get('turn_gap')
+        if out.angular.z != 0.0 and turn_gap is not None and turn_gap <= move.get('turn_stop_gap', 0.03):
+            out.angular.z = 0.0
+            guard = f'回ると角が {turn_gap:.2f} m の物に当たる'
+        return guard
 
     def _cliff_block(self):
         """段差で止める向き (前進, 後退) を返す。判定が古い・未配線なら止めない。"""
@@ -364,6 +412,7 @@ class DriveModeNode(Node):
                 'source': self._source,
                 'reason': self._reason,
                 'last_reject': self._last_reject,
+                'guard': self._guard,
                 'inputs': {
                     'joy_connected': joy_connected,
                     'auto_alive': auto_alive,

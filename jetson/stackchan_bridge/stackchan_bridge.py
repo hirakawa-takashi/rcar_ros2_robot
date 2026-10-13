@@ -781,6 +781,9 @@ def drive_car(url, cmd, stop):
                 reason = 'エンコーダーか IMU のデータが止まったから、止まったよ。'
                 break
             dm = st.get('drive_mode') or {}
+            if dm.get('guard') and time.monotonic() - t0 > 0.5:
+                reason = f"{dm['guard']}から、止まったよ。"
+                break
             if dm.get('mode') != 'manual' and time.monotonic() - t0 > 0.5:
                 why = (st.get('obstacle') or {}).get('reason') or dm.get('reason_label') or dm.get('reason')
                 reason = f'ラズパイが止めたよ（{why}）。' if why else 'ラズパイが止めたよ。'
