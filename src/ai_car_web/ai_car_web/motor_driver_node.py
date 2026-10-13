@@ -4,17 +4,21 @@
 メカナムホイールの逆運動学で 4 輪の出力（-1〜1）を出し、PWM のデューティにする
 （エンコーダーを使わないオープンループ）。端子と車輪の割り付け・向き（reversed）は
 motor_hat.yaml。/cmd_vel が timeout 秒届かないと全モーターを止める。
+旋回の指令が 0 で前後・左右に動くあいだは、IMU（/imu/data）の向きを動き始めの向きに
+保つように旋回を足す（heading_hold）。IMU が届かないときは足さない。
 I2C は /dev/i2c-N を直接使う（smbus2 などの追加ライブラリなし）。
 """
 
 import fcntl
 import json
+import math
 import os
 import time
 
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Imu
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -73,6 +77,17 @@ class PCA9685:
         self._write(ALL_LED_OFF_H, 0x10)
 
 
+def _wrap(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def heading_correction(target: float, yaw: float, yaw_rate: float,
+                       kp: float, kd: float, limit: float) -> float:
+    """向き target [rad] にもどす旋回 [rad/s]（左回り +）を返す。"""
+    w = kp * _wrap(target - yaw) - kd * yaw_rate
+    return max(-limit, min(limit, w))
+
+
 def mecanum(vx: float, vy: float, wz: float) -> dict:
     """前 +・左 +・左回り + の正規化指令から 4 輪の出力（-1〜1）を返す。"""
     out = {
@@ -100,6 +115,15 @@ class MotorDriverNode(Node):
         self.declare_parameter('max_duty', 1.0)
         # /cmd_vel がこの秒数届かないと止める
         self.declare_parameter('timeout', 0.5)
+        # 旋回の指令が 0 で動くあいだ、IMU の向きを保つ
+        self.declare_parameter('heading_hold', True)
+        self.declare_parameter('imu_topic', '/imu/data')
+        # 向きのずれ 1 rad あたりの旋回 [rad/s]・回る速さを打ち消す強さ・足す旋回の上限 [rad/s]
+        self.declare_parameter('heading_kp', 2.0)
+        self.declare_parameter('heading_kd', 0.1)
+        self.declare_parameter('heading_max_correction', 0.3)
+        # IMU がこの秒数届かないと向きを保たない
+        self.declare_parameter('imu_timeout', 0.5)
 
         path = self.get_parameter('motor_hat_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'motor_hat.yaml')
@@ -118,12 +142,22 @@ class MotorDriverNode(Node):
         self.max_angular = float(self.get_parameter('max_angular_speed').value)
         self.max_duty = max(0.0, min(1.0, float(self.get_parameter('max_duty').value)))
         self.timeout = float(self.get_parameter('timeout').value)
+        self.heading_hold = bool(self.get_parameter('heading_hold').value)
+        self.heading_kp = float(self.get_parameter('heading_kp').value)
+        self.heading_kd = float(self.get_parameter('heading_kd').value)
+        self.heading_limit = float(self.get_parameter('heading_max_correction').value)
+        self.imu_timeout = float(self.get_parameter('imu_timeout').value)
 
         self.pca = None
         self.error = ''
         self._next_open = 0.0
-        self._cmd = {m['wheel']: 0.0 for m in self.motors}
+        self._twist = (0.0, 0.0, 0.0)
         self._cmd_time = 0.0
+        self._yaw = None
+        self._yaw_rate = 0.0
+        self._imu_time = 0.0
+        self._hold_target = None
+        self._correction = 0.0
         self._written = {}
         self._connect()
 
@@ -131,6 +165,9 @@ class MotorDriverNode(Node):
             String, self.get_parameter('status_topic').value, 10)
         self.create_subscription(
             Twist, self.get_parameter('cmd_vel_topic').value, self._cmd_cb, 10)
+        if self.heading_hold:
+            self.create_subscription(
+                Imu, self.get_parameter('imu_topic').value, self._imu_cb, 10)
         self.create_timer(0.05, self._update)
         self.create_timer(0.2, self._publish_status)
         self.get_logger().info(
@@ -154,16 +191,41 @@ class MotorDriverNode(Node):
             self.error = str(e)
 
     def _cmd_cb(self, msg: Twist):
-        vx = msg.linear.x / self.max_linear if self.max_linear > 0 else 0.0
-        vy = msg.linear.y / self.max_linear if self.max_linear > 0 else 0.0
-        wz = msg.angular.z / self.max_angular if self.max_angular > 0 else 0.0
-        self._cmd = mecanum(vx, vy, wz)
+        self._twist = (msg.linear.x, msg.linear.y, msg.angular.z)
         self._cmd_time = time.monotonic()
+
+    def _imu_cb(self, msg: Imu):
+        q = msg.orientation
+        self._yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                               1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        self._yaw_rate = msg.angular_velocity.z
+        self._imu_time = time.monotonic()
+
+    def _update_heading(self, vx: float, vy: float, wz: float) -> float:
+        """向きを保つために足す旋回 [rad/s] を返す。保たないときは目標の向きを捨てる。"""
+        moving = abs(vx) > 1e-3 or abs(vy) > 1e-3
+        imu_ok = (self._yaw is not None
+                  and time.monotonic() - self._imu_time <= self.imu_timeout)
+        if not (self.heading_hold and moving and abs(wz) <= 1e-3 and imu_ok):
+            self._hold_target = None
+            return 0.0
+        if self._hold_target is None:
+            self._hold_target = self._yaw
+        return heading_correction(self._hold_target, self._yaw, self._yaw_rate,
+                                  self.heading_kp, self.heading_kd, self.heading_limit)
 
     def _targets(self) -> dict:
         if time.monotonic() - self._cmd_time > self.timeout:
+            self._hold_target = None
+            self._correction = 0.0
             return {m['wheel']: 0.0 for m in self.motors}
-        return {m['wheel']: self._cmd.get(m['wheel'], 0.0) for m in self.motors}
+        vx, vy, wz = self._twist
+        self._correction = self._update_heading(vx, vy, wz)
+        cmd = mecanum(
+            vx / self.max_linear if self.max_linear > 0 else 0.0,
+            vy / self.max_linear if self.max_linear > 0 else 0.0,
+            (wz + self._correction) / self.max_angular if self.max_angular > 0 else 0.0)
+        return {m['wheel']: cmd.get(m['wheel'], 0.0) for m in self.motors}
 
     def _drive(self, motor: dict, value: float):
         if motor['reversed']:
@@ -199,11 +261,19 @@ class MotorDriverNode(Node):
 
     def _publish_status(self):
         targets = self._targets()
+        holding = self._hold_target is not None
         msg = String()
         msg.data = json.dumps({
             'connected': self.pca is not None,
             'error': self.error,
             'output': {k: round(v, 3) for k, v in targets.items()},
+            'heading_hold': {
+                'enabled': self.heading_hold,
+                'active': holding,
+                'error_deg': round(math.degrees(_wrap(self._hold_target - self._yaw)), 2)
+                if holding else None,
+                'correction': round(self._correction, 3),
+            },
         }, ensure_ascii=False)
         self.status_pub.publish(msg)
 
