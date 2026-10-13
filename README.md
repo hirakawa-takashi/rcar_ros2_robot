@@ -147,9 +147,11 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 | VIN 3V3 | 白 | Motor HAT (3V3 power) | Motor HAT (3V3 power) |
 | GND | 黄 | Motor HAT (Ground) | Motor HAT (Ground) |
 | SCL | 灰 | pin 5（I2C バス 1 共有） | pin 5 |
-| SDA | 橙 | pin 3（I2C バス 1 共有） | pin 3 |
+| SDA | 青 | pin 3（I2C バス 1 共有） | pin 3 |
 | GPIO1（INT） | － | つながない | つながない |
-| XSHUT | 前 青 / 後 緑 | pin 11（GPIO17） | pin 13（GPIO27） |
+| XSHUT | 緑 | pin 11（GPIO17） | pin 13（GPIO27） |
+
+pin 3（SDA）は IMU の白と前後の青、pin 5（SCL）は IMU と前後の灰を、それぞれ 3 又でまとめて挿す（SDA と SCL を同じ 3 又に入れない）。
 
 VL53L1X の初期アドレス 0x29 は BNO055 と同じなので、`cliff_node` が XSHUT を 1 台ずつ上げ、
 起動直後に 0x30 / 0x31 へ変える。モジュールの XSHUT は基板上で引き上げられていることが多く、
