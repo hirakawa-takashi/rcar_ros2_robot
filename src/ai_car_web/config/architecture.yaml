@@ -101,7 +101,7 @@ hardware:
     - {id: camera, label: Camera Module 3 Wide（SC0874）, sub: IMX708 / 横 102° / 960×540 30fps, bus: CSI（フラットケーブル）, power: 3V3（Pi から）, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
-    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線・配線色未定）, power: 3V3, jump: gpio, side: bottom}
+    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線）, power: 3V3, jump: gpio, side: bottom}
     - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
     - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
@@ -603,7 +603,7 @@ api:
   rest:
     - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
     - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam / jetson_host / joy）, auth: false}
-    - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーの配線表, auth: false}
+    - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーと Motor HAT の 3V3 / GND（各 6 本）の配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
     - {method: GET, path: '/api/program?file=…', desc: プログラム一覧に登録したファイルの中身（一覧にないファイルは 404）, auth: false}
@@ -632,7 +632,7 @@ status:
     - 実機の電源不足（Undervoltage 検出）。公式 27W PD 電源と LiDAR の別系統給電が必要
     - /odom の距離・旋回は寸法からの計算値で、床での合わせ（1 m 走らせる）はまだ
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
-    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意し、配線色は未定。配線したら cliff_node.wired を true にする
+    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意した。配線色は VIN 白・GND 黄（エンコーダーの電源と同じ）・SCL 灰・SDA 青・XSHUT 緑（前 pin 11 / 後 pin 13）（GPIO1 は使わない）。配線したら cliff_node.wired を true にする
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
