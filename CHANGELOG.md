@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- 360° の見張りを、安全な向きなら動けるようにした: 動く向きのすき間は両どなりの向きを使わず、いちばん近い 5° の向きだけで見る（後ろに下がるとき、少し右にかたむいただけで、右にくっついた物で止まっていた）。ななめが止まっても、前後・横の空いている分だけ動く。車体の横にある物を「前にある」と数えていたのも直した。その場の回転は、角の円ではなく、左・右それぞれ 1° ずつ回して箱に点が入るか見て（`turn_center_m`・`turn_stop_deg` 5°、`turn_stop_gap` はやめた）、当たる向きだけ止める。`/obstacle_status` の `move.turn_gap` は `turn_free_deg {left, right}` になった。「出力」の初めの値を 50 → 25 %（`output_percent`・`default_output`）
 - 360° の見張り: `drive_mode_node` の `obstacle_guard` が、前進だけでなく後退・横・ななめ・その場の回転でも、LiDAR で動く向きに物が近ければその動きを止める（車体の端から 0.25 m `move_stop_gap`、回ると角が当たる 0.03 m `turn_stop_gap`）。手動（ボタン・ゲームパッド・声）は 0.7 m（`move_slow_gap`）以内で半分の速さ。すき間は `perception_node` が車体の箱 `body_box_m` を 5° ごとの向きへ動かして求め、`/obstacle_status` の `move` に出す。止めた理由は `/drive_mode` の `guard`（ダッシュボードの運転モードの下に「障害物で止めた: …」、スタックちゃんの声の走行も「後ろ 0.20 m に物があるから、止まったよ。」）。LiDAR データなしのときは前進だけでなく前後左右の動きを止める。`dashboard_node` の前進だけの減速（`obstacle_guard`・`speed_scale`）は drive_mode_node へまとめた
 - `motor_driver_node`: 旋回の指令が 0 で前後・左右に動くあいだ、IMU（`/imu/data`）の向きを動き始めの向きに保つように旋回を足す（`heading_hold` 既定 true、`heading_kp` 2.0・`heading_kd` 0.1・上限 0.3 rad/s）。手動の前進ボタン・ゲームパッド・自動走行のどれでも効く。IMU が 0.5 秒届かないときは足さない。`/motor_status` に `heading_hold`（ずれ deg・足した旋回）を出す。
 - `motor_driver_node` の heading_hold で車が左右に大きく振れた（尻振り）ので弱くした: `heading_kp` 2.0 → 0.8・`heading_kd` 0.1 → 0.2・上限 0.3 → 0.15 rad/s、1° までのずれは直さない（`heading_deadband_deg`）。`heading_*` は実行中に `ros2 param set` で変えられる。
