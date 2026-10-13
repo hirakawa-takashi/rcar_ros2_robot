@@ -631,7 +631,7 @@ status:
     - 実機の電源不足（Undervoltage 検出）。公式 27W PD 電源と LiDAR の別系統給電が必要
     - /odom の距離・旋回は寸法からの計算値で、床での合わせ（1 m 走らせる）はまだ
     - motor_hat.yaml / gpio_pins.yaml のモーター・エンコーダー配線は暫定値。実配線と照合が必要
-    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意した。配線色は VIN 赤・GND 黒・SCL 灰・SDA 白・XSHUT 前 黄 / 後 緑（GPIO1 は使わない）。配線したら cliff_node.wired を true にする
+    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意した。配線色は VIN 白・GND 黄（エンコーダーの電源と同じ）・SCL 灰・SDA 橙・XSHUT 前 青 / 後 緑（GPIO1 は使わない）。配線したら cliff_node.wired を true にする
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
   next:
     - モーター制御ノード（/cmd_vel → Motor HAT）の実装
