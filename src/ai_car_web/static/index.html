@@ -2572,7 +2572,21 @@ function renderNodes(a) {
   const rows = topics.map(t => [esc(t.name), esc(t.type || '-'), esc(t.desc || '-'),
     liveTopic(t, live) ? '<span class="topiclive">● live</span>' : '<span class="topicdead">● planned</span>']);
   return `<h3>ROS 2 ノード / Topic グラフ</h3>${svg}<div id="arch_detail" class="archdetail">ノードまたは Topic をクリックすると詳細を表示します。</div><h3>Topic 一覧</h3>` +
-    aboutTable(['名前', '型', '説明', '状態'], rows);
+    aboutTable(['名前', '型', '説明', '状態'], rows) + renderPrograms(a.programs || []);
+}
+function renderPrograms(programs) {
+  if (!programs.length) return '';
+  const fmt = n => Number(n).toLocaleString('ja-JP');
+  const totals = {};
+  programs.forEach(p => { if (Number.isFinite(p.lines)) totals[p.place] = (totals[p.place] || 0) + p.lines; });
+  const total = Object.values(totals).reduce((s, n) => s + n, 0);
+  const rows = programs.map(p => [esc(p.place || '-'), esc(p.name || '-'),
+    p.external ? `外部パッケージ ${esc(p.external)}` : `<code>${esc(p.file || '-')}</code>`, esc(p.role || '-'),
+    `<span style="display:block;text-align:right">${p.external ? '外部' : Number.isFinite(p.lines) ? fmt(p.lines) : '-'}</span>`]);
+  rows.push(['<b>合計</b>', '', '', esc(Object.entries(totals).map(([k, n]) => `${k} ${fmt(n)}`).join(' / ')),
+    `<b style="display:block;text-align:right">${fmt(total)}</b>`]);
+  return `<h3>プログラム一覧</h3>${aboutTable(['動く所', '名前', 'ファイル', '役割', '行数'], rows)}` +
+    '<div class="note">行数は空行・コメントもふくむファイルの行数（wc -l と同じ）。表示するときにラズパイのファイルから数えます。</div>';
 }
 function renderDrive(a) {
   const d = a.drive_modes || {}, states = d.states || [], transitions = d.transitions || [], current = latestTelemetry.drive_mode?.mode;
