@@ -35,7 +35,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan, MagneticField
 from std_msgs.msg import Float32, String
 
-from ai_car_web.architecture import load_architecture
+from ai_car_web.architecture import load_architecture, read_program
 from ai_car_web.dev_diary import find_repo, load_dev_diary
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
@@ -1284,6 +1284,13 @@ def create_app(node: DashboardNode) -> FastAPI:
         data = node.architecture()
         if isinstance(data.get('print3d'), dict):
             data['print3d']['rev'] = print3d_rev()
+        return data
+
+    @app.get('/api/program')
+    def program(file: str):
+        data = read_program(node.architecture_config, node.repo_dir, file)
+        if data is None:
+            raise HTTPException(status_code=404, detail='一覧にないファイルか、読めません')
         return data
 
     @app.get('/api/dev_diary')
