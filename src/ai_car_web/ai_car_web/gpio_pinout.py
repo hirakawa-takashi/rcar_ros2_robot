@@ -54,12 +54,18 @@ _HEADER = [
 ]
 
 
+def _load_yaml(path):
+    if not path or not os.path.exists(path):
+        return None, f'{path} が見つかりません' if path else '配線設定ファイル未指定'
+    with open(path, encoding='utf-8') as f:
+        return yaml.safe_load(f) or {}, None
+
+
 def load_connections(path):
     """配線設定 YAML を読み、物理ピン番号 -> 配線情報リストの辞書を返す。"""
-    if not path or not os.path.exists(path):
-        return {}, f'{path} が見つかりません' if path else '配線設定ファイル未指定'
-    with open(path, encoding='utf-8') as f:
-        data = yaml.safe_load(f) or {}
+    data, error = _load_yaml(path)
+    if data is None:
+        return {}, error
     by_pin = {}
     for entry in data.get('connections') or []:
         pins = entry.get('pins')
@@ -73,6 +79,19 @@ def load_connections(path):
                 'note': entry.get('note') or '',
             })
     return by_pin, None
+
+
+def load_hat_power(path):
+    """Motor HAT の 3V3 power / Ground 端子につなぐ線の一覧を返す。"""
+    data, _ = _load_yaml(path)
+    return [{
+        'device': e.get('device') or '',
+        'signal': e.get('signal') or '',
+        'vcc_color': e.get('vcc_color') or '',
+        'gnd_color': e.get('gnd_color') or '',
+        'wired': bool(e.get('wired')),
+        'note': e.get('note') or '',
+    } for e in ((data or {}).get('hat_power') or [])]
 
 
 def build_pinout(config_path):
@@ -98,4 +117,5 @@ def build_pinout(config_path):
         'error': error,
         'used_count': sum(1 for p in pins if p['in_use']),
         'pins': pins,
+        'hat_power': load_hat_power(config_path),
     }

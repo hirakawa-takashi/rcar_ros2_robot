@@ -602,7 +602,7 @@ api:
   rest:
     - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
     - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam / jetson_host / joy）, auth: false}
-    - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーの配線表, auth: false}
+    - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーと Motor HAT の 3V3 / GND（各 6 本）の配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
     - {method: GET, path: '/api/program?file=…', desc: プログラム一覧に登録したファイルの中身（一覧にないファイルは 404）, auth: false}
