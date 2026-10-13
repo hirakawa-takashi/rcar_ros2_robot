@@ -1218,7 +1218,7 @@ class DashboardNode(Node):
         except (OSError, yaml.YAMLError, AttributeError):
             pass
         params.setdefault('dashboard_node', {})['api_token'] = bool(self.api_token)
-        data = load_architecture(self.architecture_config, params)
+        data = load_architecture(self.architecture_config, params, self.repo_dir)
         try:
             topics = []
             for name, _ in self.get_topic_names_and_types():
