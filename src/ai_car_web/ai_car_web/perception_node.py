@@ -209,7 +209,7 @@ class PerceptionNode(Node):
         self.declare_parameter('slow_distance', 0.8)
         # 360° の見張り: 車体の箱（LiDAR の中心から、x 前・y 左）[x_min, x_max, y_min, y_max] を
         # 各向きへ動かしたときのすき間と、その場で回ったとき角が描く円までのすき間を /obstacle_status の move に出す
-        self.declare_parameter('body_box_m', [-0.176, 0.090, -0.135, 0.119])
+        self.declare_parameter('body_box_m', [-0.176, 0.090, -0.135, 0.190])
         self.declare_parameter('move_step_deg', 5.0)
         self.declare_parameter('move_side_margin', 0.03)
         self.declare_parameter('move_stop_gap', 0.25)
