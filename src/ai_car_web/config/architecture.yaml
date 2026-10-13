@@ -384,6 +384,7 @@ nodes:
       - {name: heading_hold, ref: motor_driver_node.heading_hold, unit: '', desc: 旋回の指令が 0 で動くあいだ、IMU の向きを動き始めの向きに保つ}
       - {name: heading_kp, ref: motor_driver_node.heading_kp, unit: (rad/s)/rad, desc: 向きのずれに対する旋回の強さ}
       - {name: heading_max_correction, ref: motor_driver_node.heading_max_correction, unit: rad/s, desc: 向きを保つために足す旋回の上限}
+      - {name: heading_deadband_deg, ref: motor_driver_node.heading_deadband_deg, unit: deg, desc: このずれまでは直さない}
     layer: control
   - id: encoder_odom_node
     label: encoder_odom_node
