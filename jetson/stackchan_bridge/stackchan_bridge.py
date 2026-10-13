@@ -37,7 +37,11 @@ XiaoZhi の 2 つの口をまねる:
   bridge を 10 秒ごとに見て、動いていれば声・ネット/ローカルの選択をまね、スタックちゃんが呼びかけ待ちなら切って
   ミニコンへつなぎ直させる。
 
-AI-CAR の走行・安全停止には何も送らない。
+- 声で走る: 「前に 1 メートル進んで」「右に 90 度回って」「左に寄って」などを聞くと、ダッシュボードの
+  `POST /api/cmd_vel`（0.2 秒ごと、正規化 −1〜1。速さはダッシュボードの「出力」まで）で動かす。進んだ量は
+  `/api/status` の odom（エンコーダー）、回った角度は IMU の yaw で見て、着いたら止める。「止まって」「ストップ」は
+  呼びかけなしでも、すぐ `POST /api/stop`。障害物・落下防止・LiDAR の止まりは、いつもどおりラズパイが止める。
+  この受け口が落ちても、ラズパイの手動の時間切れ（1 秒）で止まる。自動走行中は動かさない。
 """
 import argparse
 import asyncio
@@ -45,6 +49,7 @@ import concurrent.futures
 import html
 import io
 import json
+import math
 import os
 import queue
 import random
@@ -240,6 +245,27 @@ SHOT_TOOL = 'self.camera.countdown_photo'
 SHOT_PATH = '/camera/shot'
 SHOT_SECONDS = 5
 SHOOT = re.compile(r'(?:撮影|さつえい|写真(?:を|お)?(?:撮|と)(?:って|る|ろ))')
+# 声で走る: 向き＋動きのことば（「進んで」「回って」など）がそろった短い文だけを命令にする
+DRIVE_STOP = re.compile(r'止ま|とま[っれり]|停止|ストップ|すとっぷ|stop', re.I)
+DRIVE_VERB = re.compile(r'(?:進ん|すすん|行っ|いっ|走っ|はしっ|動い|うごい|下がっ|さがっ|回っ|まわっ|向い|むい|'
+                        r'曲がっ|まがっ|寄っ|よっ|バックし|ばっくし|回転し|かいてんし)(?:て|で)|進め|すすめ|回れ|まわれ|走れ|バック')
+# 命令のことばのあとに続いてよいもの（「行ってきた話」のような文は命令にしない）
+DRIVE_TAIL = re.compile(r'(?:くれ|ください|下さい|ほしい|欲しい|ちょうだい|みて|ね|よ|な|ってば)*')
+DRIVE_TURN = re.compile(r'回|まわ|向い|むい|曲が|まが|ターン')
+DRIVE_DIRS = (('back', r'後ろ|うしろ|後退|こうたい|バック|ばっく|下が|さが'), ('forward', r'前|まえ|ぜんしん|まっすぐ'),
+              ('right', r'右|みぎ'), ('left', r'左|ひだり'))
+DRIVE_NUM = r'(\d+(?:\.\d+)?|[一二三四五六七八九十半]+)'
+DRIVE_MAX_CHARS = 30
+DRIVE_LIMITS = {'m': 2.0, 'deg': 720.0, 's': 10.0}
+DRIVE_DEFAULT = {'move': 0.5, 'turn': 90.0}
+DRIVE_SPEED = {'move': 1.0, 'turn': 0.5}
+DRIVE_SLOW = {'move': (0.10, 0.5), 'turn': (20.0, 0.5)}  # 残りがこれより少ないと、この割合に落とす
+DRIVE_DONE = {'move': 0.01, 'turn': 3.0}
+DRIVE_PERIOD = 0.2
+DRIVE_TIMEOUT = {'move': 60.0, 'turn': 30.0}
+DRIVE_STALL = (3.0, {'move': 0.02, 'turn': 3.0})  # 3 秒でこれだけも動かなければ止める
+DRIVE_STALE = 1.0
+DIR_WORDS = {'forward': '前に', 'back': '後ろに', 'right': '右に', 'left': '左に'}
 FACE_ID_URL = os.environ.get('FACE_ID_URL', 'http://127.0.0.1:8090')
 FACE_ID_TIMEOUT = 10.0
 NAME_MAX = 20
@@ -626,6 +652,172 @@ def car_status(url):
     else:
         lines.append('Jetson: 未接続')
     return '\n'.join(lines)
+
+
+def _ja_num(t):
+    """「1.5」「三」「十五」「半」を数にする。"""
+    if t == '半':
+        return 0.5
+    try:
+        return float(t)
+    except ValueError:
+        pass
+    d = {c: i + 1 for i, c in enumerate('一二三四五六七八九')}
+    if '十' in t:
+        a, _, b = t.partition('十')
+        return (d.get(a, 1) if a else 1) * 10 + (d.get(b, 0) if b else 0)
+    return float(d.get(t, 0)) or None
+
+
+def drive_command(text):
+    """聞き取りから走る命令を作る。命令でなければ None。
+
+    {'kind': 'stop'} か {'kind': 'move' | 'turn', 'dir': ..., 'm' | 'deg' | 's': 量, 'words': 先に言う文}。
+    """
+    t = re.sub(r'[\s、。,.!！?？]', '', text or '').replace('名前', '')
+    if not t or len(t) > DRIVE_MAX_CHARS:
+        return None
+    if DRIVE_STOP.search(t) and len(t) <= 12:
+        return {'kind': 'stop'}
+    if re.search(r'回れ右|まわれみぎ', t):
+        return {'kind': 'turn', 'dir': 'right', 'deg': 180.0, 'words': '回れ右をするよ。'}
+    verbs = list(DRIVE_VERB.finditer(t))
+    if not verbs or not DRIVE_TAIL.fullmatch(t[verbs[-1].end():]):
+        return None
+    dirs = [d for d, pat in DRIVE_DIRS if re.search(pat, t)]
+    turn = bool(DRIVE_TURN.search(t))
+    m = re.search(DRIVE_NUM + r'?回転', t)
+    if turn and m:
+        n = _ja_num(m.group(1)) if m.group(1) else 1.0
+        if re.search(r'半回転', t):
+            n = 0.5
+        deg = min(DRIVE_LIMITS['deg'], 360.0 * (n or 1.0))
+        d = 'right' if 'right' in dirs else 'left'
+        return {'kind': 'turn', 'dir': d, 'deg': deg, 'words': f'{DIR_WORDS[d]} {deg:g} 度回るよ。'}
+    if turn and dirs and dirs[0] in ('right', 'left') or turn and not dirs:
+        d = dirs[0] if dirs else 'left'
+        m = re.search(DRIVE_NUM + r'(?:度|°)', t)
+        deg = _ja_num(m.group(1)) if m else None
+        if deg is None:
+            deg = 45.0 if re.search(r'少し|すこし|ちょっと', t) else DRIVE_DEFAULT['turn']
+        deg = min(DRIVE_LIMITS['deg'], deg)
+        return {'kind': 'turn', 'dir': d, 'deg': deg, 'words': f'{DIR_WORDS[d]} {deg:g} 度回るよ。'}
+    if not dirs:
+        return None
+    d = dirs[0]
+    cmd = {'kind': 'move', 'dir': d}
+    if (m := re.search(DRIVE_NUM + r'(メートル|m|ｍ|センチ|cm)', t, re.I)) and _ja_num(m.group(1)):
+        v = _ja_num(m.group(1)) / (100.0 if m.group(2).lower() in ('センチ', 'cm') else 1.0)
+        cmd['m'] = min(DRIVE_LIMITS['m'], v)
+    elif (m := re.search(DRIVE_NUM + r'秒', t)) and _ja_num(m.group(1)):
+        cmd['s'] = min(DRIVE_LIMITS['s'], _ja_num(m.group(1)))
+    else:
+        cmd['m'] = 0.2 if re.search(r'少し|すこし|ちょっと', t) else DRIVE_DEFAULT['move']
+    amount = f"{cmd['m'] * 100:g} センチ" if 'm' in cmd and cmd['m'] < 1 else \
+        f"{cmd['m']:g} メートル" if 'm' in cmd else f"{cmd['s']:g} 秒"
+    cmd['words'] = f'{DIR_WORDS[d]} {amount}{"下がる" if d == "back" else "進む"}よ。'
+    return cmd
+
+
+def car_api(url, path, body=None, timeout=2.0):
+    """ダッシュボードの API を呼んで JSON を返す（POST は X-API-Token つき）。"""
+    data = None if body is None else json.dumps(body).encode()
+    req = urllib.request.Request(url.rstrip('/') + path, data, {
+        'Content-Type': 'application/json', 'X-API-Token': os.environ.get('AI_CAR_API_TOKEN', '')})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read() or b'null')
+
+
+def _car_pose(st):
+    """(odom の x, y, IMU の yaw [度], データが新しいか)。"""
+    o, imu = st.get('odom') or {}, st.get('imu') or {}
+    now = st.get('stamp') or 0
+    fresh = all(x.get('stamp') is not None and now - x['stamp'] < DRIVE_STALE for x in (o, imu))
+    return o.get('x'), o.get('y'), imu.get('yaw_deg'), fresh
+
+
+def drive_car(url, cmd, stop):
+    """命令どおりに AI-CAR を動かし、終わりに話す 1 文を返す。stop（threading.Event）が立つとすぐ止める。"""
+    kind = cmd['kind']
+    vel = {'forward': (1, 0, 0), 'back': (-1, 0, 0), 'left': (0, 1, 0), 'right': (0, -1, 0)}[cmd['dir']]
+    if kind == 'turn':
+        vel = (0, 0, 1 if cmd['dir'] == 'left' else -1)
+    goal = cmd.get('deg') or cmd.get('m')
+    try:
+        st = car_api(url, '/api/status')
+        mode = (st.get('drive_mode') or {}).get('mode')
+        if mode == 'auto':
+            return '今は自動走行中だから、声では動かさないよ。'
+        if mode != 'manual':
+            car_api(url, '/api/drive_mode', {'mode': 'manual'})
+        x0, y0, yaw, fresh = _car_pose(st)
+        if not fresh or x0 is None or yaw is None:
+            return 'エンコーダーか IMU のデータが来ていないから、動けないよ。'
+    except Exception as e:  # noqa: BLE001 - つながらなければ動かない
+        log(f'走行のエラー: {e}')
+        return 'AI-CAR につながらないから、動けないよ。'
+    t0 = time.monotonic()
+    last_yaw, turned, done, errors = yaw, 0.0, 0.0, 0
+    stall_at, stall_done = t0, 0.0
+    reason = None
+    try:
+        while True:
+            if stop.is_set():
+                car_api(url, '/api/stop')
+                return '止まったよ。'
+            try:
+                st = car_api(url, '/api/status')
+                errors = 0
+            except Exception as e:  # noqa: BLE001 - 3 回続けてだめなら止める
+                errors += 1
+                if errors >= 3:
+                    log(f'走行のエラー: {e}')
+                    reason = 'AI-CAR の様子がわからなくなったから、止まったよ。'
+                    break
+                time.sleep(DRIVE_PERIOD)
+                continue
+            x, y, yaw, fresh = _car_pose(st)
+            if not fresh or x is None or yaw is None:
+                reason = 'エンコーダーか IMU のデータが止まったから、止まったよ。'
+                break
+            dm = st.get('drive_mode') or {}
+            if dm.get('mode') != 'manual' and time.monotonic() - t0 > 0.5:
+                why = (st.get('obstacle') or {}).get('reason') or dm.get('reason_label') or dm.get('reason')
+                reason = f'ラズパイが止めたよ（{why}）。' if why else 'ラズパイが止めたよ。'
+                break
+            turned += (yaw - last_yaw + 180.0) % 360.0 - 180.0
+            last_yaw = yaw
+            done = abs(turned) if kind == 'turn' else math.hypot(x - x0, y - y0)
+            now = time.monotonic()
+            if 's' in cmd:
+                if now - t0 >= cmd['s']:
+                    break
+            elif goal - done <= DRIVE_DONE[kind]:
+                break
+            if now - t0 > DRIVE_TIMEOUT[kind]:
+                reason = '時間がかかりすぎたから、止まったよ。'
+                break
+            if done - stall_done >= DRIVE_STALL[1][kind]:
+                stall_at, stall_done = now, done
+            elif now - stall_at > DRIVE_STALL[0]:
+                reason = '動けないみたいだから、止まったよ。'
+                break
+            k = DRIVE_SPEED[kind]
+            if 's' not in cmd and goal - done < DRIVE_SLOW[kind][0]:
+                k *= DRIVE_SLOW[kind][1]
+            car_api(url, '/api/cmd_vel', {'linear_x': vel[0] * k, 'linear_y': vel[1] * k, 'angular_z': vel[2] * k})
+            time.sleep(max(0.0, DRIVE_PERIOD - (time.monotonic() - now)))
+    finally:
+        for _ in range(2):
+            try:
+                car_api(url, '/api/cmd_vel', {'linear_x': 0.0, 'linear_y': 0.0, 'angular_z': 0.0})
+            except Exception:  # noqa: BLE001 - 届かなくてもラズパイの時間切れで止まる
+                pass
+    if reason:
+        return reason
+    if kind == 'turn':
+        return f'{abs(turned):.0f} 度回ったよ。'
+    return f'{done * 100:.0f} センチ動いたよ。'
 
 
 def llm_sentences(model, messages):
@@ -1243,6 +1435,8 @@ class Session:
         self.sid = uuid.uuid4().hex[:12]
         self.dec = opuslib.Decoder(IN_RATE, 1)
         self.enc = opuslib.Encoder(OUT_RATE, 1, opuslib.APPLICATION_VOIP)
+        self.drive_task = None
+        self.drive_stop = None
         self.listening = False
         self.mode = 'auto'
         self.speech = []
@@ -1701,6 +1895,38 @@ class Session:
         await sending
         head.cancel()
 
+    async def start_drive(self, cmd):
+        """声の走る命令。前の走りは止めてから始める。「止まって」はすぐ止める。"""
+        if self.drive_stop:
+            self.drive_stop.set()
+        if self.drive_task:
+            await self.drive_task
+        if cmd['kind'] == 'stop':
+            try:
+                await asyncio.to_thread(car_api, self.args.car_url, '/api/stop')
+                log('走行: 止めました')
+                await self.say('止まったよ。')
+            except Exception as e:  # noqa: BLE001 - 止められなくても会話は続ける
+                log(f'走行のエラー: {e}')
+                await self.say('AI-CAR につながらないよ。')
+            return
+        log(f'走行: {cmd}')
+        await self.say(cmd['words'])
+        self.drive_stop = threading.Event()
+        self.drive_task = asyncio.create_task(self.drive(cmd, self.drive_stop))
+
+    async def drive(self, cmd, stop):
+        try:
+            words = await asyncio.to_thread(drive_car, self.args.car_url, cmd, stop)
+            log(f'走行: {words}')
+            if not (self.cancel.is_set() and stop.is_set()):
+                await self.say(words)
+        except ConnectionClosed:
+            pass
+        finally:
+            if self.drive_stop is stop:
+                self.drive_task = self.drive_stop = None
+
     async def countdown_shot(self):
         """「撮影して」: 正面を向いて SHOT_SECONDS 秒数えて撮ってもらい、だれの顔かを見る。"""
         self.shooting = True
@@ -1863,6 +2089,10 @@ class Session:
             log(f'聞き取り（{stt_s:.2f} 秒、声 {len(samples) / IN_RATE:.1f} 秒）: {text}')
             if not text or NOISE_TEXT.fullmatch(text):
                 return
+            if self.drive_stop and DRIVE_STOP.search(text):
+                log('走行: 「止まって」')
+                self.drive_stop.set()
+                return
             if asleep:
                 if not is_call(self.wake, text):
                     log('呼びかけがないので返事しません')
@@ -1875,6 +2105,11 @@ class Session:
                 await self.send(type='stt', text=text)
                 await self.say(WAKE_REPLY)
                 await self.need_cloud()
+                return
+            drive = drive_command(self.wake.sub('', text) if self.wake else text)
+            if drive:
+                await self.send(type='stt', text=text)
+                await self.start_drive(drive)
                 return
             if await self.need_cloud():
                 await self.cloud_speech(samples)
@@ -2000,6 +2235,8 @@ async def handler(ws, args):
         pass
     finally:
         s.cancel.set()
+        if s.drive_stop:
+            s.drive_stop.set()
         if s.keep_task:
             s.keep_task.cancel()
         cloud, s.cloud = s.cloud, None
