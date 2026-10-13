@@ -42,15 +42,13 @@ def _direction_name(deg: float) -> str:
     return DIRECTIONS[int(round(deg / 45.0)) % 8]
 
 
-def _gap_toward(move: dict, deg: float):
-    """move の gaps（前 0° から左回り step_deg ごと）で、deg の向きと両どなりのいちばん小さいすき間。"""
+def _gap_toward(move: dict, vx: float, vy: float):
+    """move の gaps（前 0° から左回り step_deg ごと）で、(vx, vy) の向きにいちばん近い向きのすき間。止まっていれば None。"""
     gaps = move.get('gaps') or []
     step = float(move.get('step_deg') or 0.0)
-    if not gaps or step <= 0.0:
+    if (vx == 0.0 and vy == 0.0) or not gaps or step <= 0.0:
         return None
-    near = [g for k, g in enumerate(gaps)
-            if g is not None and abs((k * step - deg + 180.0) % 360.0 - 180.0) <= step]
-    return min(near) if near else None
+    return gaps[int(round(math.degrees(math.atan2(vy, vx)) / step)) % len(gaps)]
 
 
 def _moving(msg: Twist, eps: float = 1e-3) -> bool:
@@ -95,7 +93,7 @@ class DriveModeNode(Node):
         self.declare_parameter('cliff_timeout', 1.0)
         # ダッシュボードの「出力」（0.1〜1.0）。どのモードでも |速さ| ≤ max_* × 出力
         self.declare_parameter('drive_output_topic', '/drive_output')
-        self.declare_parameter('default_output', 0.5)
+        self.declare_parameter('default_output', 0.25)
         self.declare_parameter('max_linear_speed', 0.3)
         self.declare_parameter('max_angular_speed', 1.0)
 
@@ -370,21 +368,31 @@ class DriveModeNode(Node):
         if out.linear.x > 0.0 and obstacle.get('level') == 'stop':
             out.linear.x = 0.0
             guard = obstacle.get('reason') or '前に物がある'
-        if out.linear.x != 0.0 or out.linear.y != 0.0:
-            heading = math.degrees(math.atan2(out.linear.y, out.linear.x))
-            gap = _gap_toward(move, heading)
-            if gap is not None and gap <= move.get('stop_gap', 0.25):
-                out.linear.x = out.linear.y = 0.0
-                guard = f'{_direction_name(heading)} {gap:.2f} m に物がある'
-            elif manual and gap is not None and gap <= move.get('slow_gap', 0.7):
-                out.linear.x *= 0.5
-                out.linear.y *= 0.5
-            elif manual and out.linear.x > 0.0:
-                out.linear.x *= float(obstacle.get('speed_scale', 1.0))
-        turn_gap = move.get('turn_gap')
-        if out.angular.z != 0.0 and turn_gap is not None and turn_gap <= move.get('turn_stop_gap', 0.03):
+        stop_gap = move.get('stop_gap', 0.25)
+        vx, vy = out.linear.x, out.linear.y
+        gap = _gap_toward(move, vx, vy)
+        if gap is not None and gap <= stop_gap:
+            guard = f'{_direction_name(math.degrees(math.atan2(vy, vx)))} {gap:.2f} m に物がある'
+            gx, gy = _gap_toward(move, vx, 0.0), _gap_toward(move, 0.0, vy)
+            keep_x = vx != 0.0 and vy != 0.0 and (gx is None or gx > stop_gap)
+            keep_y = vx != 0.0 and vy != 0.0 and (gy is None or gy > stop_gap)
+            out.linear.x = vx if keep_x else 0.0
+            out.linear.y = vy if keep_y else 0.0
+            if keep_x and gy is not None:
+                guard = f'{_direction_name(90.0 if vy > 0.0 else -90.0)} {gy:.2f} m に物がある'
+            elif keep_y and gx is not None:
+                guard = f'{_direction_name(0.0 if vx > 0.0 else 180.0)} {gx:.2f} m に物がある'
+            gap = _gap_toward(move, out.linear.x, out.linear.y)
+        if manual and gap is not None and gap <= move.get('slow_gap', 0.7):
+            out.linear.x *= 0.5
+            out.linear.y *= 0.5
+        elif manual and out.linear.x > 0.0:
+            out.linear.x *= float(obstacle.get('speed_scale', 1.0))
+        free = (move.get('turn_free_deg') or {}).get(
+            'left' if out.angular.z > 0.0 else 'right') if out.angular.z != 0.0 else None
+        if free is not None and free < move.get('turn_stop_deg', 5.0):
+            guard = f'{"左" if out.angular.z > 0.0 else "右"}に回ると {free:.0f}° で物に当たる'
             out.angular.z = 0.0
-            guard = f'回ると角が {turn_gap:.2f} m の物に当たる'
         return guard
 
     def _cliff_block(self):

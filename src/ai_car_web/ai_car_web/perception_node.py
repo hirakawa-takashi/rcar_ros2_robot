@@ -71,11 +71,12 @@ def scan_point_in_camera(r, angle, offset_x, offset_y):
     return math.atan2(cy, cx), cx
 
 
-def move_clearance(xs, ys, box, step_deg, margin):
-    """車体の箱を各向きへまっすぐ動かしたときと、その場で回ったときの、物までのすき間 [m]。
+def move_clearance(xs, ys, box, step_deg, margin, center=(0.0, 0.0), turn_max_deg=30.0):
+    """車体の箱を各向きへまっすぐ動かしたときの物までのすき間 [m] と、その場で回れる角度 [deg]。
 
     xs / ys は LiDAR の点（LiDAR の中心、x 前・y 左）、box は車体の (x_min, x_max, y_min, y_max)。
     向きは前 0° から左回りに step_deg ごと。点がない向きは None。箱の中の点（車体）は使わない。
+    回れる角度は center のまわりに左・右へ 1° ずつ回して、箱に点が入る手前まで（turn_max_deg まで）。
     """
     x0, x1, y0, y1 = box
     inside = (xs >= x0) & (xs <= x1) & (ys >= y0) & (ys <= y1)
@@ -105,13 +106,21 @@ def move_clearance(xs, ys, box, step_deg, margin):
             edge = ca[i] + t * (ca[j] - ca[i])
             front = np.where(on, np.maximum(front, edge), front)
             back = np.where(on, np.minimum(back, edge), back)
-        ahead = a > (front + back) / 2.0
+        ahead = a >= front - 1e-6
         gaps.append(round(max(0.0, float(np.min(a[ahead] - front[ahead]))), 3) if ahead.any() else None)
-    turn = None
-    if xs.size:
-        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-        radius = math.hypot(x1 - cx, y1 - cy)
-        turn = round(max(0.0, float(np.min(np.hypot(xs - cx, ys - cy))) - radius), 3)
+    tx, ty = center
+    dx, dy = xs - tx, ys - ty
+    turn = {}
+    for name, sign in (('left', 1.0), ('right', -1.0)):
+        free = turn_max_deg
+        for deg in range(1, int(turn_max_deg) + 1):
+            th = math.radians(-sign * deg)
+            c, s = math.cos(th), math.sin(th)
+            rx, ry = tx + dx * c - dy * s, ty + dx * s + dy * c
+            if np.any((rx >= x0) & (rx <= x1) & (ry >= y0) & (ry <= y1)):
+                free = deg - 1.0
+                break
+        turn[name] = free
     return gaps, turn
 
 
@@ -214,7 +223,8 @@ class PerceptionNode(Node):
         self.declare_parameter('move_side_margin', 0.03)
         self.declare_parameter('move_stop_gap', 0.25)
         self.declare_parameter('move_slow_gap', 0.7)
-        self.declare_parameter('turn_stop_gap', 0.03)
+        self.declare_parameter('turn_center_m', [-0.043, -0.008])
+        self.declare_parameter('turn_stop_deg', 5.0)
         self.declare_parameter('hef_path', '')
         self.declare_parameter('inference_rate', 4.0)
         self.declare_parameter('score_threshold', 0.5)
@@ -411,7 +421,8 @@ class PerceptionNode(Node):
         self.move_side_margin = float(self.get_parameter('move_side_margin').value)
         self.move_stop_gap = float(self.get_parameter('move_stop_gap').value)
         self.move_slow_gap = float(self.get_parameter('move_slow_gap').value)
-        self.turn_stop_gap = float(self.get_parameter('turn_stop_gap').value)
+        self.turn_center = tuple(float(v) for v in self.get_parameter('turn_center_m').value)
+        self.turn_stop_deg = float(self.get_parameter('turn_stop_deg').value)
         self.inference_rate = float(self.get_parameter('inference_rate').value)
         self.score_threshold = float(self.get_parameter('score_threshold').value)
         self.detect_confirm_frames = max(
@@ -453,7 +464,7 @@ class PerceptionNode(Node):
             'slow_distance': lambda v: setattr(self, 'slow_distance', float(v)),
             'move_stop_gap': lambda v: setattr(self, 'move_stop_gap', float(v)),
             'move_slow_gap': lambda v: setattr(self, 'move_slow_gap', float(v)),
-            'turn_stop_gap': lambda v: setattr(self, 'turn_stop_gap', float(v)),
+            'turn_stop_deg': lambda v: setattr(self, 'turn_stop_deg', float(v)),
             'inference_rate': lambda v: setattr(self, 'inference_rate', float(v)),
             'score_threshold': lambda v: setattr(self, 'score_threshold', float(v)),
             'detect_confirm_frames': lambda v: setattr(
@@ -524,9 +535,10 @@ class PerceptionNode(Node):
                 else:
                     sectors['front'].append(r)
         gaps, turn = move_clearance(
-            np.array(xs), np.array(ys), self.body_box, self.move_step, self.move_side_margin)
+            np.array(xs), np.array(ys), self.body_box, self.move_step, self.move_side_margin,
+            self.turn_center)
         with self._lock:
-            self._scan_move = {'gaps': gaps, 'turn_gap': turn}
+            self._scan_move = {'gaps': gaps, 'turn_free_deg': turn}
             self._scan_front = min(front) if front else None
             self._scan_sectors = {
                 k: (round(min(v), 3) if v else None) for k, v in sectors.items()}
@@ -988,7 +1000,7 @@ class PerceptionNode(Node):
             'sectors': sectors,
             'move': dict(
                 move, step_deg=self.move_step, stop_gap=self.move_stop_gap,
-                slow_gap=self.move_slow_gap, turn_stop_gap=self.turn_stop_gap,
+                slow_gap=self.move_slow_gap, turn_stop_deg=self.turn_stop_deg,
             ) if scan_valid and move else None,
             'stop_distance': self.stop_distance,
             'slow_distance': self.slow_distance,

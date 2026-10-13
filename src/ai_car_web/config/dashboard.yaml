@@ -22,7 +22,7 @@ dashboard_node:
     max_angular_speed: 1.0
     cmd_timeout: 0.7
     # 「出力」の初期値（%）。手動（Web・ゲームパッド）は max_* × 出力、自動も drive_mode_node でこれ以下にする
-    output_percent: 50.0
+    output_percent: 25.0
     drive_output_topic: "/drive_output"
     # CPU 負荷軽減のため画面更新 5Hz、LiDAR 点群は 360 点に間引き
     telemetry_rate: 10.0
@@ -76,7 +76,7 @@ drive_mode_node:
     cliff_timeout: 1.0       # 段差判定がこれより古ければ使わない（配線済みなら AUTO を拒否 / STOP）
     # ダッシュボードの「出力」で、どのモードでも |速さ| ≤ max_* × 出力（自動走行の上限）
     drive_output_topic: "/drive_output"
-    default_output: 0.5      # 「出力」が届くまでの値
+    default_output: 0.25     # 「出力」が届くまでの値
     max_linear_speed: 0.3    # dashboard_node と同じ値
     max_angular_speed: 1.0
 
@@ -259,7 +259,8 @@ perception_node:
     move_side_margin: 0.03   # 通り道の左右に足すゆとり
     move_stop_gap: 0.25      # 動く向きの車体の端から物までがこれ以下で、その向きの動きを止める
     move_slow_gap: 0.7       # 手動ではこれ以下で半分の速さ
-    turn_stop_gap: 0.03      # 回ると角が描く円から物までがこれ以下で、その場の回転を止める
+    turn_center_m: [-0.043, -0.008]  # その場で回る中心（天板の真ん中）
+    turn_stop_deg: 5.0       # その向きに回れる角度がこれより小さいと、その向きの回転を止める（反対向きは回れる）
     # 物の名前を当てる YOLO（yolov8m.hef）は使わない。AI HAT+ は 1 眼の奥行きの AI だけに使う
     hef_path: ""
     # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）

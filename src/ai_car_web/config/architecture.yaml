@@ -366,7 +366,7 @@ nodes:
       - {name: auto_requires_joy, ref: drive_mode_node.auto_requires_joy, unit: '', desc: AUTO にゲームパッド接続を必須にする}
       - {name: manual_override, ref: drive_mode_node.manual_override, unit: '', desc: AUTO 中の手動指令で MANUAL へ復帰}
       - {name: default_output, ref: drive_mode_node.default_output, unit: '', desc: ダッシュボードの「出力」（/drive_output）が届くまでの上限の割合}
-      - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: LiDAR 360°（perception_node の move）で、動く向きの車体の端から物まで move_stop_gap 以下ならその向きの動き、回ると角が当たる（turn_stop_gap 以下）なら回転を 0 にする。手動は move_slow_gap 以下で半分の速さ。LiDAR データなし（unknown）・判定の途絶中は前後左右の動きを 0。止めた理由は /drive_mode の guard}
+      - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: LiDAR 360°（perception_node の move）で、動く向きの車体の端から物まで move_stop_gap 以下ならその向きの動き、その向きに回ると箱に点が入る（turn_stop_deg 未満）ならその向きの回転を 0 にする。ななめが止まっても前後・横の空いている分は動く。手動は move_slow_gap 以下で半分の速さ。LiDAR データなし（unknown）・判定の途絶中は前後左右の動きを 0。止めた理由は /drive_mode の guard}
       - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にし、AUTO は STOP}
       - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 段差判定が古ければ使わない（配線済みなら AUTO を拒否 / STOP）}
     layer: control
@@ -430,7 +430,7 @@ nodes:
       - {name: body_box_m, ref: perception_node.body_box_m, unit: m, desc: 360° の見張りの車体の箱（LiDAR の中心から 後ろ・前・右・左 の端）}
       - {name: move_stop_gap, ref: perception_node.move_stop_gap, unit: m, desc: 動く向きの車体の端から物までがこれ以下で、その向きの動きを止める}
       - {name: move_slow_gap, ref: perception_node.move_slow_gap, unit: m, desc: 手動ではこれ以下で半分の速さ}
-      - {name: turn_stop_gap, ref: perception_node.turn_stop_gap, unit: m, desc: 回ると角が描く円から物までがこれ以下で、その場の回転を止める}
+      - {name: turn_stop_deg, ref: perception_node.turn_stop_deg, unit: deg, desc: その向きに回れる角度がこれより小さいと、その向きの回転を止める（反対向きは回れる）}
       - {name: danger_distance, ref: perception_node.danger_distance, unit: m, desc: 検出枠・LiDAR の点を「危険」の色にする距離}
       - {name: living_guard, ref: perception_node.living_guard, unit: '', desc: 人・動物の検出で減速・停止する（false は表示のみ）}
       - {name: living_slow_distance, ref: perception_node.living_slow_distance, unit: m, desc: 人・動物がこの距離以内で減速}
@@ -581,7 +581,7 @@ drive_modes:
     - {name: 自動 watchdog, where: drive_mode_node, ref: drive_mode_node.auto_timeout, unit: s, desc: AUTO 中の自動指令途絶で STOP}
     - {name: LiDAR 途絶, where: drive_mode_node, ref: drive_mode_node.obstacle_timeout, unit: s, desc: 障害物判定が古ければ AUTO を拒否 / STOP}
     - {name: ゲームパッド切断, where: drive_mode_node, ref: drive_mode_node.joy_timeout, unit: s, desc: AUTO 中の切断で STOP}
-    - {name: 障害物最終ガード, where: drive_mode_node / dashboard_node, ref: '', unit: '', desc: どのモードでも、LiDAR 360° で動く向き（前後左右・ななめ）の車体の端から 0.25 m 以内に物があればその向きの動きを、回ると角が当たるなら回転を 0 にする。手動は 0.7 m 以内で半分の速さ（前進は 1 眼の低い物などの speed_scale も使う）}
+    - {name: 障害物最終ガード, where: drive_mode_node / dashboard_node, ref: '', unit: '', desc: どのモードでも、LiDAR 360° で動く向き（前後左右・ななめ）の車体の端から 0.25 m 以内に物があればその向きの動きを、その向きに回ると当たるならその向きの回転を 0 にする。手動は 0.7 m 以内で半分の速さ（前進は 1 眼の低い物などの speed_scale も使う）}
     - {name: 段差ガード, where: drive_mode_node, ref: drive_mode_node.cliff_guard, unit: '', desc: 前のセンサーが段差なら前進、後ろなら後退を 0 にする。AUTO は STOP。未配線・判定が古いときは止めない}
     - {name: モード遷移時のゼロ速度, where: drive_mode_node, ref: '', unit: '', desc: 遷移時と起動時に必ず一度ゼロ速度を publish}
     - {name: サーマル制御, where: perception_node, ref: '', unit: '', desc: CPU 70℃ / Hailo 75℃ で推論 40%、78℃ / 85℃ で推論停止（LiDAR 判定は継続）}

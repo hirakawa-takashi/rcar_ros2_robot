@@ -285,7 +285,7 @@ class DashboardNode(Node):
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
         # 「出力」の初期値（%）。手動・ゲームパッド・自動の最大の速さ = max_* × 出力
-        self.declare_parameter('output_percent', 50.0)
+        self.declare_parameter('output_percent', 25.0)
         self.declare_parameter('drive_output_topic', '/drive_output')
         self.declare_parameter('telemetry_rate', 5.0)
         # LiDAR 点群をブラウザに送るときの上限点数（間引き）
