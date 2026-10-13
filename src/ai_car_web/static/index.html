@@ -2577,13 +2577,16 @@ function renderNodes(a) {
 function renderPrograms(programs) {
   if (!programs.length) return '';
   const fmt = n => Number(n).toLocaleString('ja-JP');
-  const totals = {};
+  const totals = {}, counts = {};
+  programs.forEach(p => { if (!p.external) counts[p.place] = (counts[p.place] || 0) + 1; });
   programs.forEach(p => { if (Number.isFinite(p.lines)) totals[p.place] = (totals[p.place] || 0) + p.lines; });
+  const count = Object.values(counts).reduce((s, n) => s + n, 0), externals = programs.length - count;
   const total = Object.values(totals).reduce((s, n) => s + n, 0);
   const rows = programs.map(p => [esc(p.place || '-'), esc(p.name || '-'),
     p.external ? `外部パッケージ ${esc(p.external)}` : `<code>${esc(p.file || '-')}</code>`, esc(p.role || '-'),
     `<span style="display:block;text-align:right">${p.external ? '外部' : Number.isFinite(p.lines) ? fmt(p.lines) : '-'}</span>`]);
-  rows.push(['<b>合計</b>', '', '', esc(Object.entries(totals).map(([k, n]) => `${k} ${fmt(n)}`).join(' / ')),
+  rows.push(['<b>合計</b>', `<b>${fmt(count)} 本</b>${externals ? `（外部 ${fmt(externals)}）` : ''}`,
+    esc(Object.entries(counts).map(([k, n]) => `${k} ${fmt(n)} 本`).join(' / ')), esc(Object.entries(totals).map(([k, n]) => `${k} ${fmt(n)}`).join(' / ')),
     `<b style="display:block;text-align:right">${fmt(total)}</b>`]);
   return `<h3>プログラム一覧</h3>${aboutTable(['動く所', '名前', 'ファイル', '役割', '行数'], rows)}` +
     '<div class="note">行数は空行・コメントもふくむファイルの行数（wc -l と同じ）。表示するときにラズパイのファイルから数えます。</div>';
