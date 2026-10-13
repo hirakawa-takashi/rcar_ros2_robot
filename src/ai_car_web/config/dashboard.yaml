@@ -94,9 +94,11 @@ motor_driver_node:
     # 旋回の指令が 0 で前後・左右に動くあいだ、IMU の向きを動き始めの向きに保つ（まっすぐ進む）
     heading_hold: true
     imu_topic: "/imu/data"
-    heading_kp: 2.0          # 向きのずれ 1 rad（約 57°）あたりの旋回 [rad/s]。5° ずれると約 0.17 rad/s
-    heading_kd: 0.1          # 回る速さを打ち消す強さ（ゆれ止め）
-    heading_max_correction: 0.3  # 足す旋回の上限 [rad/s]
+    heading_kp: 0.8          # 向きのずれ 1 rad（約 57°）あたりの旋回 [rad/s]。5° ずれると約 0.06 rad/s
+    heading_kd: 0.2          # 回る速さを打ち消す強さ（ゆれ止め）
+    heading_max_correction: 0.15  # 足す旋回の上限 [rad/s]
+    heading_deadband_deg: 1.0  # このずれ [deg] までは直さない
+    # heading_* は実行中に ros2 param set /motor_driver_node で変えられる
     imu_timeout: 0.5         # IMU がこの秒数届かないと向きを保たない
 
 encoder_odom_node:

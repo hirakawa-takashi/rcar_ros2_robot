@@ -18,9 +18,10 @@ import time
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
-from sensor_msgs.msg import Imu
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from sensor_msgs.msg import Imu
 from std_msgs.msg import String
 
 from ai_car_web.motor_hat import load_motor_hat
@@ -82,9 +83,11 @@ def _wrap(angle: float) -> float:
 
 
 def heading_correction(target: float, yaw: float, yaw_rate: float,
-                       kp: float, kd: float, limit: float) -> float:
-    """向き target [rad] にもどす旋回 [rad/s]（左回り +）を返す。"""
-    w = kp * _wrap(target - yaw) - kd * yaw_rate
+                       kp: float, kd: float, limit: float, deadband: float = 0.0) -> float:
+    """向き target [rad] にもどす旋回 [rad/s]（左回り +）を返す。ずれが deadband [rad] 以下は 0。"""
+    err = _wrap(target - yaw)
+    err = math.copysign(max(0.0, abs(err) - deadband), err)
+    w = kp * err - kd * yaw_rate
     return max(-limit, min(limit, w))
 
 
@@ -119,9 +122,12 @@ class MotorDriverNode(Node):
         self.declare_parameter('heading_hold', True)
         self.declare_parameter('imu_topic', '/imu/data')
         # 向きのずれ 1 rad あたりの旋回 [rad/s]・回る速さを打ち消す強さ・足す旋回の上限 [rad/s]
-        self.declare_parameter('heading_kp', 2.0)
-        self.declare_parameter('heading_kd', 0.1)
-        self.declare_parameter('heading_max_correction', 0.3)
+        # 実行中に ros2 param set で変えられる
+        self.declare_parameter('heading_kp', 0.8)
+        self.declare_parameter('heading_kd', 0.2)
+        self.declare_parameter('heading_max_correction', 0.15)
+        # このずれ [deg] までは直さない（IMU のゆれで左右に振らないように）
+        self.declare_parameter('heading_deadband_deg', 1.0)
         # IMU がこの秒数届かないと向きを保たない
         self.declare_parameter('imu_timeout', 0.5)
 
@@ -146,6 +152,7 @@ class MotorDriverNode(Node):
         self.heading_kp = float(self.get_parameter('heading_kp').value)
         self.heading_kd = float(self.get_parameter('heading_kd').value)
         self.heading_limit = float(self.get_parameter('heading_max_correction').value)
+        self.heading_deadband = math.radians(float(self.get_parameter('heading_deadband_deg').value))
         self.imu_timeout = float(self.get_parameter('imu_timeout').value)
 
         self.pca = None
@@ -168,11 +175,25 @@ class MotorDriverNode(Node):
         if self.heading_hold:
             self.create_subscription(
                 Imu, self.get_parameter('imu_topic').value, self._imu_cb, 10)
+        self.add_on_set_parameters_callback(self._on_set_parameters)
         self.create_timer(0.05, self._update)
         self.create_timer(0.2, self._publish_status)
         self.get_logger().info(
             f'Motor HAT i2c-{self.bus} 0x{self.address:02X}: '
             + ', '.join(f'{m["label"]}{"（逆）" if m["reversed"] else ""}' for m in self.motors))
+
+    def _on_set_parameters(self, params):
+        """heading_hold の強さを実行中に変えられるようにする。"""
+        attrs = {
+            'heading_kp': lambda v: setattr(self, 'heading_kp', float(v)),
+            'heading_kd': lambda v: setattr(self, 'heading_kd', float(v)),
+            'heading_max_correction': lambda v: setattr(self, 'heading_limit', float(v)),
+            'heading_deadband_deg': lambda v: setattr(self, 'heading_deadband', math.radians(float(v))),
+        }
+        for p in params:
+            if p.name in attrs:
+                attrs[p.name](p.value)
+        return SetParametersResult(successful=True)
 
     def _connect(self):
         now = time.monotonic()
@@ -212,7 +233,8 @@ class MotorDriverNode(Node):
         if self._hold_target is None:
             self._hold_target = self._yaw
         return heading_correction(self._hold_target, self._yaw, self._yaw_rate,
-                                  self.heading_kp, self.heading_kd, self.heading_limit)
+                                  self.heading_kp, self.heading_kd, self.heading_limit,
+                                  self.heading_deadband)
 
     def _targets(self) -> dict:
         if time.monotonic() - self._cmd_time > self.timeout:
