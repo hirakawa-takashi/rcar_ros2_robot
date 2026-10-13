@@ -22,6 +22,9 @@ overview:
     - {state: done, text: モーター制御ノード（/cmd_vel → Motor HAT、メカナム逆運動学）}
     - {state: done, text: エンコーダー読み取り・オドメトリ（/odom）}
     - {state: done, text: SLAM（slam_toolbox、/odom つき）}
+    - {state: done, text: LiDAR 360° の見張り（動く向き・回る向きに物が近ければ止める）}
+    - {state: done, text: IMU で向きを保ってまっすぐ走る（heading_hold）}
+    - {state: done, text: スタックちゃんに話して走る（「前に 1 メートル進んで」など）}
     - {state: todo, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション）}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
@@ -48,15 +51,17 @@ system:
         - LiDAR（A1M8）で障害物までの距離
         - Camera Module 3 Wide（960×540・30 fps）
         - AI HAT+ の YOLOv8m（人・動物など 80 種類）
-        - 運転モード・自律走行・安全ガード
+        - 運転モード・自律走行・安全ガード（LiDAR 360° の見張り）
+        - IMU（BNO055）で向きを保ってまっすぐ走る
         - ダッシュボード（8080 番）
     - id: jetson
       label: ミニコン（Jetson Orin Nano Super）
       sub: JetPack 6.2 / メモリ 8GB / 25W
       state: done
       items:
-        - 声→文字（whisper-server、whisper.cpp small・GPU）・会話（Ollama の qwen2.5:3b）・文字→声（Kokoro・GPU）。スタックちゃんの会話に使う（jetson-stackchan.service。AI-CAR にはまだつないでいない）
+        - 声→文字（whisper-server、whisper.cpp small・GPU）・会話（Ollama の qwen2.5:3b）・文字→声（Kokoro・GPU）。スタックちゃんの会話に使う（jetson-stackchan.service）
         - スタックちゃんの受け口（stackchan_bridge）。「ミニコンにして」「パソコンにして」で考える所を、「ネットにして」「ローカルにして」で会話の AI（ネットの XiaoZhi か家の AI）を切り替える。2 つは別々に選べる。パソコンのときの「ネット」は、会話はパソコンの AI のまま、天気・ニュースなど新しいことだけミニコンがネットで調べて渡す。声を選ぶと話し方・性格もその声のキャラクターになる
+        - 「前に 1 メートル進んで」「右に 90 度回って」「止まって」を AI-CAR の速度の指令にする。進んだ距離はエンコーダー、回った角度は IMU で見て止める
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
         - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 1 秒ごとに AI-CAR へ送る（jetson-status.service）
         - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
@@ -74,18 +79,18 @@ system:
       sub: WSL Ubuntu 26.04 / RTX 4080 SUPER 16GB
       state: done
       items:
-        - 声→文字 whisper large-v3・会話 qwen2.5:14b（GPU）・文字→声 VOICEVOX ずんだもん（CPU）
+        - 声→文字 whisper large-v3・会話 qwen2.5:14b（GPU）・文字→声 VOICEVOX（43 人からダッシュボードで選ぶ、CPU）
         - 温度・負荷率・メモリ・更新を 1 秒ごとに AI-CAR へ送る（pc-status.service）
     - {id: browser, label: ブラウザ（PC・スマホ）, sub: ダッシュボード・手動操作, state: done}
-    - {id: person, label: 家の人, sub: 声で話しかける, state: planned}
+    - {id: person, label: 家の人, sub: 声で話しかける, state: done}
   links:
     - {from: ai_car, to: jetson, short: 画像, desc: カメラの画像（JPEG 640×360）。Jetson が 1 秒に 5 回取りに行く, via: 'GET /api/camera/snapshot', state: done}
     - {from: jetson, to: ai_car, short: 名前・位置, desc: 見つけた物の名前・信頼度・画面の位置。AI-CAR が LiDAR の距離を付けて表示する（速度には使わない）, via: 'POST /api/jetson/detections（API トークン）', state: done}
-    - {from: jetson, to: ai_car, short: 命令（予定）, desc: 声の命令（「前に進んで」「止まって」）を速度の指令にする。AI-CAR の安全ガードはそのまま効く, via: 'POST /api/cmd_vel・/api/stop（API トークン）', state: planned}
+    - {from: jetson, to: ai_car, short: 命令, desc: 声の命令（「前に 1 メートル進んで」「止まって」）を 1 秒に 5 回の速度の指令にする。AI-CAR の安全ガード（LiDAR 360°・段差・途絶）はそのまま効き、Jetson が止まってもラズパイが 1 秒で止める。走るあいだは /api/status で進んだ距離・向きを見る, via: 'POST /api/cmd_vel・/api/stop、GET /api/status（API トークン）', state: done}
     - {from: stackchan, to: jetson, short: 声, desc: マイクの声（Opus 16 kHz）。カメラの映像はダッシュボードを見ている間だけ（HTTP 8003 /camera/frame）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: stackchan, short: 返事, desc: 返事の声（Opus 24 kHz）と顔の表情（考え中・笑顔）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（5 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
-    - {from: jetson, to: pc, short: 聞き取り・返事・声, desc: パソコンを選んでいて、動いているときだけ。マイクの声を文字にし（whisper large-v3）、返事を作り（qwen2.5:14b）、返事の声を作る（VOICEVOX ずんだもん。ネットの会話のときも、ネットの声のかわりに読む）。10 秒ごとに見て、だめならミニコン, via: 'HTTP 8178・11434・50021（Tailscale）', state: done, both: true}
+    - {from: jetson, to: pc, short: 聞き取り・返事・声, desc: パソコンを選んでいて、動いているときだけ。マイクの声を文字にし（whisper large-v3）、返事を作り（qwen2.5:14b）、返事の声を作る（VOICEVOX のえらんだ声。ネットの会話のときも、ネットの声のかわりに読む）。10 秒ごとに見て、だめならミニコン, via: 'HTTP 8178・11434・50021（Tailscale）', state: done, both: true}
     - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・AI の部品・更新の状況。パソコンを選んでいるとき、ダッシュボードのミニコンのカードをパソコンの値で出す, via: 'POST /api/mypc/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
     - {from: person, to: stackchan, short: 話す, desc: 「スタックちゃん」と呼んで会話モードにし、声で話しかけて返事を聞く（30 秒だまると「じゃあ、またね。」）, via: 声, state: done, both: true}
@@ -98,12 +103,12 @@ hardware:
     - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
     - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
     - {id: camera, label: Camera Module 3 Wide（SC0874）, sub: IMX708 / 横 102° / 960×540 30fps, bus: CSI（フラットケーブル）, power: 3V3（Pi から）, side: left}
-    - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
+    - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz（AMG モード、向きはラズパイで計算）, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線）, power: 3V3, jump: gpio, side: bottom}
     - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
     - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
-    - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C, power: 5V, side: top}
+    - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C（PD なし。ラズパイは 3 A の電源と見る）, power: 5V, side: top}
 
 print3d:
   dir: hardware/3d/battery_lidar_mount
@@ -421,7 +426,7 @@ nodes:
   - id: perception_node
     label: perception_node
     file: ai_car_web/perception_node.py
-    role: 前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
+    role: LiDAR 360° を 5° ごとに、車体の端（body_box_m）から物までの空き（move）と、左右に回れる角度（turn_free_deg）を出す。前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
     subscribes: [/scan, /camera/image_raw/compressed, /system_status, /stereo/depth_status, /jetson_detections]
     params:
@@ -484,7 +489,7 @@ nodes:
   - id: imu_node
     label: imu_node
     file: ai_car_web/imu_node.py
-    role: GY-BNO055（I2C 0x29）を読み /imu/data を 20 Hz で publish
+    role: GY-BNO055（I2C 0x29）を AMG モード（加速度・ジャイロ・磁気の生の値）で読み、向きはラズパイで計算して /imu/data・/imu/mag を 20 Hz で publish
     publishes: [/imu/data, /imu/mag]
     subscribes: []
     params: []
@@ -523,15 +528,6 @@ nodes:
     subscribes: []
     params: []
     layer: sensor
-  - id: motor_control_node
-    label: motor_control_node（未実装）
-    file: ''
-    role: /cmd_vel を購読しメカナム逆運動学で M1〜M4 を駆動する予定（motor_hat.yaml の割り付けを参照）
-    publishes: []
-    subscribes: [/cmd_vel]
-    params: []
-    layer: actuator
-    planned: true
 
 topics:
   - {name: /scan, type: sensor_msgs/LaserScan, desc: LiDAR 360° スキャン（約 8 Hz）}
@@ -603,7 +599,8 @@ autonomy:
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
-    - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 60 mm・左 30 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 63 mm・横 0 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - LiDAR /scan → 360° を 5° ごとに車体の端からの空き（move）と左右に回れる角度（turn_free_deg）→ drive_mode_node が動く向き・回る向きごとに止める
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（表示）
 
 api:
@@ -618,6 +615,17 @@ api:
     - {method: GET, path: /api/drive_mode, desc: 現在の運転モード, auth: false}
     - {method: GET, path: '/print3d/{file}', desc: 3D プリント部品の STL・図・OpenSCAD ソース（hardware/3d/battery_lidar_mount）, auth: false}
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
+    - {method: POST, path: /api/drive_output, desc: 'ダッシュボードの「出力」{percent}（手動・ゲームパッド・自動・声の最大の速さ）', auth: true}
+    - {method: POST, path: /api/slam/save, desc: 今の SLAM の地図を .pgm / .yaml で保存, auth: true}
+    - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
+    - {method: GET, path: /api/camera/depth_stream, desc: 1 眼の奥行きの距離の色の映像（MJPEG）, auth: false}
+    - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
+    - {method: POST, path: '/api/mypc/{action}', desc: パソコンの再起動・更新（reboot / upgrade）を頼む（次に状態が届いたときの返事で伝える）, auth: true}
+    - {method: POST, path: /api/stackchan/backend, desc: スタックちゃんの考える所を Jetson / パソコンに切り替える, auth: true}
+    - {method: POST, path: /api/stackchan/pc_voice, desc: パソコンの声（VOICEVOX の話者）を選ぶ, auth: true}
+    - {method: POST, path: /api/stackchan/photo, desc: スタックちゃんで 5 秒数えて撮影する（GET /api/stackchan/photo.jpg で写真）, auth: true}
+    - {method: POST, path: /api/stackchan/enroll, desc: 撮った写真の顔を名前で登録する, auth: true}
+    - {method: POST, path: /api/stackchan/stream, desc: スタックちゃんのカメラの配信を始める・止める（GET /api/stackchan/frame.jpg で今の 1 枚）, auth: true}
     - {method: POST, path: /api/stop, desc: 全モード停止（ゼロ速度 + stop モード要求）, auth: true}
     - {method: POST, path: /api/drive_mode, desc: 'モード切替 {mode: manual|auto|stop}', auth: true}
     - {method: POST, path: /api/jetson/detections, desc: Jetson（NanoOWL）の物体検出 → /jetson_detections, auth: true}
