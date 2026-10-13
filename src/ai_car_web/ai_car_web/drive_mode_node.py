@@ -93,7 +93,7 @@ class DriveModeNode(Node):
         self.declare_parameter('cliff_timeout', 1.0)
         # ダッシュボードの「出力」（0.1〜1.0）。どのモードでも |速さ| ≤ max_* × 出力
         self.declare_parameter('drive_output_topic', '/drive_output')
-        self.declare_parameter('default_output', 0.25)
+        self.declare_parameter('default_output', 0.15)
         self.declare_parameter('max_linear_speed', 0.3)
         self.declare_parameter('max_angular_speed', 1.0)
 
