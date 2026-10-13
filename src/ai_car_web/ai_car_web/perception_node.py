@@ -71,6 +71,50 @@ def scan_point_in_camera(r, angle, offset_x, offset_y):
     return math.atan2(cy, cx), cx
 
 
+def move_clearance(xs, ys, box, step_deg, margin):
+    """車体の箱を各向きへまっすぐ動かしたときと、その場で回ったときの、物までのすき間 [m]。
+
+    xs / ys は LiDAR の点（LiDAR の中心、x 前・y 左）、box は車体の (x_min, x_max, y_min, y_max)。
+    向きは前 0° から左回りに step_deg ごと。点がない向きは None。箱の中の点（車体）は使わない。
+    """
+    x0, x1, y0, y1 = box
+    inside = (xs >= x0) & (xs <= x1) & (ys >= y0) & (ys <= y1)
+    xs, ys = xs[~inside], ys[~inside]
+    corners = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+    gaps = []
+    for k in range(int(round(360.0 / step_deg))):
+        th = math.radians(k * step_deg)
+        c, s = math.cos(th), math.sin(th)
+        along = xs * c + ys * s
+        lat = ys * c - xs * s
+        ca = corners[:, 0] * c + corners[:, 1] * s
+        cl = corners[:, 1] * c - corners[:, 0] * s
+        hit = (lat >= cl.min() - margin) & (lat <= cl.max() + margin)
+        if not hit.any():
+            gaps.append(None)
+            continue
+        a, l_ = along[hit], np.clip(lat[hit], cl.min(), cl.max())
+        front = np.full(a.shape, -np.inf)
+        back = np.full(a.shape, np.inf)
+        for i in range(4):
+            j = (i + 1) % 4
+            if abs(cl[j] - cl[i]) < 1e-9:
+                continue
+            t = (l_ - cl[i]) / (cl[j] - cl[i])
+            on = (t >= -1e-9) & (t <= 1.0 + 1e-9)
+            edge = ca[i] + t * (ca[j] - ca[i])
+            front = np.where(on, np.maximum(front, edge), front)
+            back = np.where(on, np.minimum(back, edge), back)
+        ahead = a > (front + back) / 2.0
+        gaps.append(round(max(0.0, float(np.min(a[ahead] - front[ahead]))), 3) if ahead.any() else None)
+    turn = None
+    if xs.size:
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        radius = math.hypot(x1 - cx, y1 - cy)
+        turn = round(max(0.0, float(np.min(np.hypot(xs - cx, ys - cy))) - radius), 3)
+    return gaps, turn
+
+
 def _iou(a, b):
     """検出枠または [x_min, y_min, x_max, y_max] 同士の IoU を返す。"""
     box_a = a['box'] if isinstance(a, dict) else a
@@ -163,6 +207,14 @@ class PerceptionNode(Node):
         self.declare_parameter('front_angle_deg', 60.0)
         self.declare_parameter('stop_distance', 0.35)
         self.declare_parameter('slow_distance', 0.8)
+        # 360° の見張り: 車体の箱（LiDAR の中心から、x 前・y 左）[x_min, x_max, y_min, y_max] を
+        # 各向きへ動かしたときのすき間と、その場で回ったとき角が描く円までのすき間を /obstacle_status の move に出す
+        self.declare_parameter('body_box_m', [-0.176, 0.090, -0.135, 0.119])
+        self.declare_parameter('move_step_deg', 5.0)
+        self.declare_parameter('move_side_margin', 0.03)
+        self.declare_parameter('move_stop_gap', 0.25)
+        self.declare_parameter('move_slow_gap', 0.7)
+        self.declare_parameter('turn_stop_gap', 0.03)
         self.declare_parameter('hef_path', '')
         self.declare_parameter('inference_rate', 4.0)
         self.declare_parameter('score_threshold', 0.5)
@@ -241,6 +293,7 @@ class PerceptionNode(Node):
         self._lock = threading.Lock()
         self._scan_front = None
         self._scan_sectors = None
+        self._scan_move = None
         self._scan_stamp = 0.0
         self._scan_bearings = []
         self._frame = None
@@ -353,6 +406,12 @@ class PerceptionNode(Node):
         self.front_angle = math.radians(float(self.get_parameter('front_angle_deg').value))
         self.stop_distance = float(self.get_parameter('stop_distance').value)
         self.slow_distance = float(self.get_parameter('slow_distance').value)
+        self.body_box = tuple(float(v) for v in self.get_parameter('body_box_m').value)
+        self.move_step = float(self.get_parameter('move_step_deg').value)
+        self.move_side_margin = float(self.get_parameter('move_side_margin').value)
+        self.move_stop_gap = float(self.get_parameter('move_stop_gap').value)
+        self.move_slow_gap = float(self.get_parameter('move_slow_gap').value)
+        self.turn_stop_gap = float(self.get_parameter('turn_stop_gap').value)
         self.inference_rate = float(self.get_parameter('inference_rate').value)
         self.score_threshold = float(self.get_parameter('score_threshold').value)
         self.detect_confirm_frames = max(
@@ -392,6 +451,9 @@ class PerceptionNode(Node):
             'front_angle_deg': lambda v: setattr(self, 'front_angle', math.radians(float(v))),
             'stop_distance': lambda v: setattr(self, 'stop_distance', float(v)),
             'slow_distance': lambda v: setattr(self, 'slow_distance', float(v)),
+            'move_stop_gap': lambda v: setattr(self, 'move_stop_gap', float(v)),
+            'move_slow_gap': lambda v: setattr(self, 'move_slow_gap', float(v)),
+            'turn_stop_gap': lambda v: setattr(self, 'turn_stop_gap', float(v)),
             'inference_rate': lambda v: setattr(self, 'inference_rate', float(v)),
             'score_threshold': lambda v: setattr(self, 'score_threshold', float(v)),
             'detect_confirm_frames': lambda v: setattr(
@@ -442,6 +504,7 @@ class PerceptionNode(Node):
         front = []
         sectors = {'left': [], 'front': [], 'right': []}
         bearings = []
+        xs, ys = [], []
         for i, r in enumerate(msg.ranges):
             if not math.isfinite(r) or r <= msg.range_min or r > msg.range_max:
                 continue
@@ -450,6 +513,8 @@ class PerceptionNode(Node):
             point = scan_point_in_camera(r, angle, self.camera_offset_x, self.camera_offset_y)
             if point is not None:
                 bearings.append(point)
+            xs.append(r * math.cos(angle))
+            ys.append(r * math.sin(angle))
             if abs(angle) <= half:
                 front.append(r)
                 if angle > half / 3.0:
@@ -458,7 +523,10 @@ class PerceptionNode(Node):
                     sectors['right'].append(r)
                 else:
                     sectors['front'].append(r)
+        gaps, turn = move_clearance(
+            np.array(xs), np.array(ys), self.body_box, self.move_step, self.move_side_margin)
         with self._lock:
+            self._scan_move = {'gaps': gaps, 'turn_gap': turn}
             self._scan_front = min(front) if front else None
             self._scan_sectors = {
                 k: (round(min(v), 3) if v else None) for k, v in sectors.items()}
@@ -874,6 +942,7 @@ class PerceptionNode(Node):
         with self._lock:
             front = self._scan_front
             sectors = self._scan_sectors
+            move = self._scan_move
             scan_age = now - self._scan_stamp if self._scan_stamp else None
             detections = list(self._detections)
             det_age = now - self._detection_stamp if self._detection_stamp else None
@@ -917,6 +986,10 @@ class PerceptionNode(Node):
             'reason': reason,
             'front_distance': round(front, 3) if front is not None else None,
             'sectors': sectors,
+            'move': dict(
+                move, step_deg=self.move_step, stop_gap=self.move_stop_gap,
+                slow_gap=self.move_slow_gap, turn_stop_gap=self.turn_stop_gap,
+            ) if scan_valid and move else None,
             'stop_distance': self.stop_distance,
             'slow_distance': self.slow_distance,
             'danger_distance': self.danger_distance,

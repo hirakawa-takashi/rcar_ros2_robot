@@ -281,7 +281,6 @@ class DashboardNode(Node):
         self.declare_parameter('camera_topic', '/camera/image_raw/compressed')
         self.declare_parameter('camera_stream_rate', 10.0)
         self.declare_parameter('obstacle_topic', '/obstacle_status')
-        self.declare_parameter('obstacle_guard', True)
         self.declare_parameter('max_linear_speed', 0.3)
         self.declare_parameter('max_angular_speed', 1.0)
         self.declare_parameter('cmd_timeout', 0.7)
@@ -330,7 +329,6 @@ class DashboardNode(Node):
         self.telemetry_rate = float(self.get_parameter('telemetry_rate').value)
         self.scan_max_points = max(1, int(self.get_parameter('scan_max_points').value))
         self.camera_stream_rate = float(self.get_parameter('camera_stream_rate').value)
-        self.obstacle_guard = bool(self.get_parameter('obstacle_guard').value)
         self.api_token = str(self.get_parameter('api_token').value) or os.environ.get(
             'AI_CAR_API_TOKEN', '')
         self.stackchan_bridge_url = str(self.get_parameter('stackchan_bridge_url').value).rstrip('/')
@@ -634,18 +632,6 @@ class DashboardNode(Node):
         with self._lock:
             self._obstacle = obstacle
             self._obstacle_stamp = self.get_clock().now().nanoseconds * 1e-9
-
-    def _forward_scale(self) -> float:
-        """障害物判定に応じた前進方向の速度制限係数を返す。"""
-        if not self.obstacle_guard:
-            return 1.0
-        now = self.get_clock().now().nanoseconds * 1e-9
-        with self._lock:
-            obstacle = self._obstacle
-            age = now - self._obstacle_stamp if self._obstacle_stamp else None
-        if not obstacle or age is None or age > 2.0:
-            return 1.0
-        return float(obstacle.get('speed_scale', 1.0))
 
     def _drive_mode_cb(self, msg: String):
         try:
@@ -1116,10 +1102,7 @@ class DashboardNode(Node):
         twist = Twist()
         with self._lock:
             output = self._output
-        forward = self._clamp(linear_x)
-        if forward > 0.0:
-            forward *= self._forward_scale()
-        twist.linear.x = forward * output * self.max_linear
+        twist.linear.x = self._clamp(linear_x) * output * self.max_linear
         twist.linear.y = self._clamp(linear_y) * output * self.max_linear
         twist.angular.z = self._clamp(angular_z) * output * self.max_angular
         self.cmd_vel_pub.publish(twist)
