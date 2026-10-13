@@ -22,7 +22,7 @@ dashboard_node:
     max_angular_speed: 1.0
     cmd_timeout: 0.7
     # 「出力」の初期値（%）。手動（Web・ゲームパッド）は max_* × 出力、自動も drive_mode_node でこれ以下にする
-    output_percent: 25.0
+    output_percent: 15.0
     drive_output_topic: "/drive_output"
     # CPU 負荷軽減のため画面更新 5Hz、LiDAR 点群は 360 点に間引き
     telemetry_rate: 10.0
@@ -76,7 +76,7 @@ drive_mode_node:
     cliff_timeout: 1.0       # 段差判定がこれより古ければ使わない（配線済みなら AUTO を拒否 / STOP）
     # ダッシュボードの「出力」で、どのモードでも |速さ| ≤ max_* × 出力（自動走行の上限）
     drive_output_topic: "/drive_output"
-    default_output: 0.25     # 「出力」が届くまでの値
+    default_output: 0.15     # 「出力」が届くまでの値
     max_linear_speed: 0.3    # dashboard_node と同じ値
     max_angular_speed: 1.0
 
