@@ -701,6 +701,15 @@
       <tbody id="gpio_rows"></tbody>
     </table>
     </div>
+    <h3 style="margin:14px 0 6px;font-size:14px">Motor HAT の 3V3 power / Ground（各 6 本） <span class="badge" id="hatpow_used">-</span></h3>
+    <div class="pinwrap">
+    <table class="pins">
+      <thead><tr>
+        <th>番号</th><th>接続先</th><th>3V3 power</th><th>Ground</th><th>状態</th><th>信号 / 備考</th>
+      </tr></thead>
+      <tbody id="hatpow_rows"></tbody>
+    </table>
+    </div>
     <div class="note" id="gpio_note"></div>
   </div>
 
@@ -2144,6 +2153,19 @@ function renderGpio(g) {
       `<td>${colors}</td>` +
       `<td>${p.devices.map(esc).join(' / ')}</td>` +
       `<td>${sig}${notes ? `<div class="note" style="margin:0">${notes}</div>` : ''}</td>` +
+      '</tr>';
+  }).join('');
+  const hp = g.hat_power || [];
+  document.getElementById('hatpow_used').textContent = `使用 ${hp.filter(e => e.wired).length} / ${hp.length}（未配線 ${hp.filter(e => !e.wired).length}）`;
+  document.getElementById('hatpow_rows').innerHTML = hp.map((e, i) => {
+    const hide = gpioQuery && ![e.device, e.signal].some(t => t.toLowerCase().includes(gpioQuery.toLowerCase()));
+    return `<tr class="${e.wired ? 'used' : ''}${hide ? ' gpio_hide' : ''}">` +
+      `<td class="num">${i + 1}</td>` +
+      `<td>${esc(e.device)}</td>` +
+      `<td>${e.vcc_color ? wireSwatch(e.vcc_color) : '<span class="badge warn">未設定</span>'}</td>` +
+      `<td>${e.gnd_color ? wireSwatch(e.gnd_color) : '<span class="badge warn">未設定</span>'}</td>` +
+      `<td>${e.wired ? '<span class="badge ok">配線済み</span>' : '<span class="badge warn">未配線</span>'}</td>` +
+      `<td>${esc(e.signal)}${e.note ? `<div class="note" style="margin:0">${esc(e.note)}</div>` : ''}</td>` +
       '</tr>';
   }).join('');
   document.getElementById('gpio_note').textContent = g.error

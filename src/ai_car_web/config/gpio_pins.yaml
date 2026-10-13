@@ -101,3 +101,13 @@ connections:
     signal: XSHUT (GPIO27)
     color: 緑
     note: 未配線。libgpiod 出力（gpiochip4 pinctrl-rp1）
+
+# Motor HAT の 3V3 power / Ground の端子（各 6 本）。40 ピンの表の下の「Motor HAT の 3V3 / GND」の表に出す。
+# 各項目: device（接続先）・signal（相手の基板の印字 VCC / GND の名前）・vcc_color / gnd_color（配線色）・wired（配線済みか）・note
+hat_power:
+  - {device: M1 前左, signal: エンコーダー VCC / GND, vcc_color: 白, gnd_color: 黄, wired: true}
+  - {device: M2 前右, signal: エンコーダー VCC / GND, vcc_color: 白, gnd_color: 黄, wired: true}
+  - {device: M3 後左, signal: エンコーダー VCC / GND, vcc_color: 白, gnd_color: 黄, wired: true}
+  - {device: M4 後右, signal: エンコーダー VCC / GND, vcc_color: 白, gnd_color: 黄, wired: true}
+  - {device: VL53L1X 前, signal: VIN / GND, vcc_color: 白, gnd_color: 黄, wired: false, note: 'アドレス 0x30'}
+  - {device: VL53L1X 後, signal: VIN / GND, vcc_color: 白, gnd_color: 黄, wired: false, note: 'アドレス 0x31'}
