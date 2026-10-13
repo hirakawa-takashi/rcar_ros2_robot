@@ -140,14 +140,16 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 自動運転は停止モードにする。
 
 現在は未配線で、`cliff_node.wired: false` の間は I2C / GPIO に触らず「未配線」だけを配信する
-（ダッシュボードの「落下防止センサー」カードに表示）。予定のピン割り付けは `gpio_pins.yaml`（配線色は未定）。
+（ダッシュボードの「落下防止センサー」カードに表示）。予定のピン割り付けと配線色は `gpio_pins.yaml`。基板のピンは上から VIN・GND・SCL・SDA・GPIO1・XSHUT の 6 本。
 
-| 信号 | 前（0x30） | 後（0x31） |
-| --- | --- | --- |
-| VIN 3V3 | Motor HAT (3V3 power) | Motor HAT (3V3 power) |
-| GND | Motor HAT (Ground) | Motor HAT (Ground) |
-| SDA / SCL | pin 3 / 5（I2C バス 1 共有） | pin 3 / 5 |
-| XSHUT | pin 11（GPIO17） | pin 13（GPIO27） |
+| 基板のピン | 配線色 | 前（0x30） | 後（0x31） |
+| --- | --- | --- | --- |
+| VIN 3V3 | 赤 | Motor HAT (3V3 power) | Motor HAT (3V3 power) |
+| GND | 黒 | Motor HAT (Ground) | Motor HAT (Ground) |
+| SCL | 灰 | pin 5（I2C バス 1 共有） | pin 5 |
+| SDA | 白 | pin 3（I2C バス 1 共有） | pin 3 |
+| GPIO1（INT） | － | つながない | つながない |
+| XSHUT | 前 黄 / 後 緑 | pin 11（GPIO17） | pin 13（GPIO27） |
 
 VL53L1X の初期アドレス 0x29 は BNO055 と同じなので、`cliff_node` が XSHUT を 1 台ずつ上げ、
 起動直後に 0x30 / 0x31 へ変える。モジュールの XSHUT は基板上で引き上げられていることが多く、
