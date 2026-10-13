@@ -69,7 +69,6 @@
 ## 現在作業中
 
 ## 未実装機能
-- モーター制御ノード（Adafruit Motor HAT / メカナム逆運動学。`/cmd_vel` を購読する）
 - Level 2 自律走行（Nav2 による地図ベースのナビゲーション）。現在は Level 1（LiDAR 反応型）のみ
 
 ## 既知の問題
@@ -79,13 +78,13 @@
 - AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。温度は HailoRT C API `hailo_get_chip_temperature()` で取得済み。NPU 使用率と電力はダッシュボードでは扱わない（使用率は `HAILO_MONITOR=1` の推論アプリがある間のみ `hailortcli monitor` で参照可）。電力は未取得（`measure-power` は `UNSUPPORTED_OPCODE`、`query_health_stats()`/`query_performance_stats()` は HAILO8 非対応、`hatctl` は Ubuntu に存在せず Hailo 専用 hwmon も無し、PMIC に HAT 専用レール無し。外付け INA219 等が必要）
 - 検出物体の距離は LiDAR の方位角対応による概算で、カメラとLiDARの外部キャリブレーションは未実施（設置が同軸・同方向である前提）
 - `perception_node` の推論には HailoRT の Python バインディング（`hailo_platform`）が必要。apt には無いため HailoRT 4.24.0 のソースからビルドして導入する（手順は README 参照）。未導入の場合は LiDAR 判定のみで動作し、`/obstacle_status` の `note` に理由を表示する
-- 実機の電源が不足している。ダッシュボード（カメラ＋LiDAR＋Hailo 推論）起動と同時に `hwmon3: Undervoltage detected!` が連発し、2026/09/14 19:22 に shutdown シーケンスなしで電源断した（前回起動だけで 198 回発生、EXT5V は 4.75、5.11V、`get_throttled=0x50000`）。`usb_max_current_enable=0` で 5A PD として認識されておらず、Pi 5 が制限モード（USB 周辺機器 合計 600mA）で動作している。公式 27W USB-C PD 電源への交換と、RPLIDAR の別系統（セルフパワーハブ等）給電が必要
+- 電源は PD なし（バッテリー PD 12V → DROK 5.2V/5A → USB-A → ラズパイの USB-C。USB-A には PD のやりとりがない）。ラズパイは 3 A の電源と見ている（device tree `chosen/power/max_current` 3000）。`usb_max_current_enable=1` で USB に 1.6 A まで流す。2026/09 の電圧低下・電源断（USB 2 眼カメラのころ）は、Camera Module 3 Wide にしてからは出ていない（2026/10 の 3 日間で `Undervoltage detected` 0 回、`get_throttled=0x0`、EXT5V 4.83V）
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
-- `vcgencmd get_throttled` が `0x50000` = 過去に低電圧/スロットリングを検出（現在は正常）
-- `motor_hat.yaml` の割り付け（M1〜M4 と車輪位置、`reversed`、配線色）は暫定値。実機のモーター配線と照合し、モーター制御ノード実装時に回転方向を確認して修正が必要
-- 520 モーターエンコーダーの GPIO 割り付け（`motor_hat.yaml` `encoder` / `gpio_pins.yaml`）は未使用ピンから選んだ暫定値。配線色はエンコーダー基板のコネクタ印字（S2 / S1 / GND / VCC / M− / M+ = 緑 / 橙 / 黄 / 白 / 赤 / 黒）から Motor+ 黒 / Motor− 赤 / VCC 白 / GND 黄 / Encoder A（S1）橙 / Encoder B（S2）緑（Motor+/− は黒-赤間 4Ω・手回し発電で確認。黄を VCC として給電した試験では橙・緑が電源 −0.6V のまま変化せず、逆接続だったと判断。2026/09/24 に M1 を白 VCC 3V3 / 黄 GND で Pi GPIO5/6 に直結し、手回しで A/B 相のパルス（位相差あり）を確認。車輪 1 回転あたり約 2,200 カウント（4 逓倍、手回しのため概算）。前進方向の手回しでカウントは負になる）。公式色表（白 GND / 黄 C1 / 緑 C2 / 青 VCC）は本機のケーブルには適用しない。エンコーダー読み取りノードは未実装
-- `gpio_pins.yaml` の配線内容（Motor HAT / BNO055 の I2C・電源・GND、配線色）は HARDWARE_BOM からの暫定値。実配線と照合して修正が必要。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）。AI HAT+ の ID EEPROM ピン（27/28）はヘッダー直挿しのため配線色は `PIN` 表記
+- モーター M1〜M4・エンコーダーの割り付けと配線色（`motor_hat.yaml` / `gpio_pins.yaml`）は、Motor HAT 交換のとき実機で確かめた（下の「テスト結果」）。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）。AI HAT+ の ID EEPROM ピン（27/28）はヘッダー直挿しのため配線色は `PIN` 表記
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
+- 落下防止センサー（VL53L1X ×2）は未配線（`cliff_node.wired: false`）。配線したら true にする
+- LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある（1 眼の奥行きの低い物は表示だけ）
+- IMU（BNO055、AMG モード）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で 110〜156 µT（地球の約 3 倍）あり、磁気の向きは目安だけ
 - Motor HAT（Adafruit DC & Stepper Motor HAT）の出力故障（2026/09/25）は、同型品（Adafruit 2348）への交換で解決した（2026/10/12、下の「テスト結果」）
 
 ## テスト結果
@@ -127,10 +126,13 @@
 - 低負荷設定（カメラ 15fps・推論 5Hz・テレメトリ 5Hz・LiDAR 360 点）時の参考値: dashboard CPU 18.4〜21.1%、camera_node 約18.1%、perception_node 約16.5%、dashboard_node 約16.8%
 
 ## 次回作業
-- 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する（モーター配線後）
-- モーター制御ノード（`/cmd_vel` 購読 → Motor HAT 駆動）を実装する。`motor_hat.yaml` の割り付け（`channel` / `wheel` / `reversed`）を参照してメカナム逆運動学の出力を各端子へ振り分ける
-- 実配線（M1〜M4とエンコーダージャンパー線）に合わせて `motor_hat.yaml` / `gpio_pins.yaml` を修正する
-- エンコーダー読み取りノード（libgpiod で A/B 相をカウントし `/wheel_ticks` 等を publish）を実装し、カウント方向を確認する
+- 360° の見張りを床で確かめる（出力 15 %。前後・左右・ななめ・回転で 0.25 m の所で止まるか、物から離れる向きには動けるか）
+- スタックちゃんの声で走るのを床で確かめる（「前に 50 センチ進んで」「右に 90 度回って」「止まって」）
+- SLAM の地図を部屋 1 周で作って、壁が二重にならないか確かめる
+- 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する
+- VL53L1X を配線して `cliff_node.wired` を true にし、前後の段差で止まるか確かめる
+- `/odom` の横移動を床で合わせる
+- 保存した地図で「今どこにいるか」を出し、行き先まで行く（Nav2、Level 2）
 
 ## 変更ファイル
 - `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/drive_mode_node.py` - 新規作成（運転モード管理）
