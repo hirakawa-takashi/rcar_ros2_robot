@@ -26,19 +26,52 @@ def _resolve_refs(value, params):
     return value
 
 
-def count_lines(repo_dir, rel_path):
-    """リポジトリの中のファイルの行数（wc -l と同じ数え方）。数えられなければ None。"""
+def _repo_file(repo_dir, rel_path):
     if not repo_dir or not rel_path:
         return None
     root = os.path.realpath(repo_dir)
     path = os.path.realpath(os.path.join(root, rel_path))
     if os.path.commonpath([root, path]) != root:
         return None
+    return path
+
+
+def count_lines(repo_dir, rel_path):
+    """リポジトリの中のファイルの行数（wc -l と同じ数え方）。数えられなければ None。"""
+    path = _repo_file(repo_dir, rel_path)
+    if not path:
+        return None
     try:
         with open(path, 'rb') as f:
             return f.read().count(b'\n')
     except OSError:
         return None
+
+
+def read_program(path, repo_dir, rel_path, max_bytes=1_000_000):
+    """programs に登録したファイルだけ、中身を返す。登録外・読めないときは None。"""
+    try:
+        with open(path, encoding='utf-8') as f:
+            programs = (yaml.safe_load(f) or {}).get('programs') or []
+    except (OSError, yaml.YAMLError, AttributeError):
+        return None
+    program = next((p for p in programs
+                    if isinstance(p, dict) and p.get('file') == rel_path), None)
+    file_path = _repo_file(repo_dir, rel_path) if program else None
+    if not file_path:
+        return None
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read(max_bytes + 1)
+    except OSError:
+        return None
+    return {
+        'name': program.get('name'),
+        'place': program.get('place'),
+        'file': rel_path,
+        'text': data[:max_bytes].decode('utf-8', errors='replace'),
+        'truncated': len(data) > max_bytes,
+    }
 
 
 def _add_line_counts(programs, repo_dir):
