@@ -60,7 +60,7 @@ connections:
   - pins: [3]
     device: GY-BNO055 IMU
     signal: I2C SDA
-    color: 白
+    color: 青
     note: アドレス 0x29（Motor HAT と I2C バス共有）
   - pins: [5]
     device: GY-BNO055 IMU
@@ -68,7 +68,7 @@ connections:
     color: 灰
     note: アドレス 0x29（Motor HAT と I2C バス共有）
 
-  # --- 落下防止センサー Dovhmoh VL53L1X ×2（I2C 0x30 前 / 0x31 後）。未配線。配線色は前後とも VIN 白・GND 黄（エンコーダーの電源と同じ）・SCL 灰・SDA 青（IMU と同じ）、XSHUT 緑（前後で同じ色）。pin 3 は IMU の白と前後の青、pin 5 は灰 3 本を 3 又でまとめる。GPIO1（INT）は使わない
+  # --- 落下防止センサー Dovhmoh VL53L1X ×2（I2C 0x30 前 / 0x31 後）。未配線。配線色は前後とも VIN 白・GND 黄（エンコーダーの電源と同じ）・SCL 灰・SDA 青（IMU と同じ）、XSHUT 緑（前後で同じ色）。pin 3 は IMU と前後の青 3 本、pin 5 は灰 3 本を 3 又でまとめる。GPIO1（INT）は使わない
   #     初期アドレス 0x29 は BNO055 と同じ。XSHUT を GPIO で 1 台ずつ上げ、cliff_node が起動時に変更する。
   #     VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground) に挿すため Pi ヘッダー側には載せない ---
   - pins: [3]
