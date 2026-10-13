@@ -123,9 +123,9 @@ class MotorDriverNode(Node):
         self.declare_parameter('imu_topic', '/imu/data')
         # 向きのずれ 1 rad あたりの旋回 [rad/s]・回る速さを打ち消す強さ・足す旋回の上限 [rad/s]
         # 実行中に ros2 param set で変えられる
-        self.declare_parameter('heading_kp', 0.8)
-        self.declare_parameter('heading_kd', 0.2)
-        self.declare_parameter('heading_max_correction', 0.15)
+        self.declare_parameter('heading_kp', 0.25)
+        self.declare_parameter('heading_kd', 0.05)
+        self.declare_parameter('heading_max_correction', 0.05)
         # このずれ [deg] までは直さない（IMU のゆれで左右に振らないように）
         self.declare_parameter('heading_deadband_deg', 1.0)
         # IMU がこの秒数届かないと向きを保たない
