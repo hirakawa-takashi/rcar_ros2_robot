@@ -153,6 +153,13 @@
                    padding: 6px; white-space: nowrap; }
   .abouttable td { white-space: normal; padding: 6px; border-bottom: 1px solid #252c36;
                    vertical-align: top; }
+  .proglink { color: #9cc4f0; cursor: pointer; }
+  #program { z-index: 21; }
+  .proghead { font-size: 12px; color: #9fb0c7; margin-left: 12px; }
+  .progcode { margin: 0; padding: 12px 0; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+              white-space: pre; overflow-x: auto; tab-size: 4; }
+  .progcode .ln { display: inline-block; width: 5ch; padding-right: 12px; margin-right: 10px; text-align: right;
+                  color: #5f6f86; border-right: 1px solid #2c3340; user-select: none; }
   .check { color: #777; margin-right: 6px; }
   .check.done { color: #8fe0a4; }
   .aboutsvg { width: 100%; height: auto; background: #11161d; border-radius: 8px;
@@ -350,6 +357,14 @@
       <button id="diary_close" class="aboutclose" aria-label="閉じる">×</button></div>
     <div id="diary_tabs" class="abouttabs"></div>
     <div id="diary_body" class="aboutbody"><span class="badge">読み込み中...</span></div>
+  </div>
+</div>
+
+<div id="program" class="modal hidden">
+  <div class="aboutpanel" role="dialog" aria-modal="true" aria-labelledby="program_title">
+    <div class="abouthead"><h2 id="program_title">プログラム</h2><span id="program_file" class="proghead"></span>
+      <button id="program_close" class="aboutclose" aria-label="閉じる">×</button></div>
+    <pre id="program_body" class="progcode"></pre>
   </div>
 </div>
 
@@ -2582,14 +2597,15 @@ function renderPrograms(programs) {
   programs.forEach(p => { if (Number.isFinite(p.lines)) totals[p.place] = (totals[p.place] || 0) + p.lines; });
   const count = Object.values(counts).reduce((s, n) => s + n, 0), externals = programs.length - count;
   const total = Object.values(totals).reduce((s, n) => s + n, 0);
-  const rows = programs.map(p => [esc(p.place || '-'), esc(p.name || '-'),
+  const rows = programs.map(p => [esc(p.place || '-'),
+    p.file && !p.external ? `<a href="#" class="proglink" data-file="${esc(p.file)}" title="クリックで中身を見る">${esc(p.name || p.file)}</a>` : esc(p.name || '-'),
     p.external ? `外部パッケージ ${esc(p.external)}` : `<code>${esc(p.file || '-')}</code>`, esc(p.role || '-'),
     `<span style="display:block;text-align:right">${p.external ? '外部' : Number.isFinite(p.lines) ? fmt(p.lines) : '-'}</span>`]);
   rows.push(['<b>合計</b>', `<b>${fmt(count)} 本</b>${externals ? `（外部 ${fmt(externals)}）` : ''}`,
     esc(Object.entries(counts).map(([k, n]) => `${k} ${fmt(n)} 本`).join(' / ')), esc(Object.entries(totals).map(([k, n]) => `${k} ${fmt(n)}`).join(' / ')),
     `<b style="display:block;text-align:right">${fmt(total)}</b>`]);
   return `<h3>プログラム一覧</h3>${aboutTable(['動く所', '名前', 'ファイル', '役割', '行数'], rows)}` +
-    '<div class="note">行数は空行・コメントもふくむファイルの行数（wc -l と同じ）。表示するときにラズパイのファイルから数えます。</div>';
+    '<div class="note">行数は空行・コメントもふくむファイルの行数（wc -l と同じ）。表示するときにラズパイのファイルから数えます。名前をクリックすると、プログラムの中身を出します。</div>';
 }
 function renderDrive(a) {
   const d = a.drive_modes || {}, states = d.states || [], transitions = d.transitions || [], current = latestTelemetry.drive_mode?.mode;
@@ -3311,7 +3327,35 @@ fetch('/api/architecture').then(r => r.json()).then(a => {
   document.getElementById('developer').innerHTML = developerHtml(a.overview);
 }).catch(() => {});
 document.getElementById('about').addEventListener('click', ev => { if (ev.target.id === 'about') closeAbout(); });
-document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeAbout(); });
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (!document.getElementById('program').classList.contains('hidden')) closeProgram();
+  else closeAbout();
+});
+
+function closeProgram() { document.getElementById('program').classList.add('hidden'); }
+function openProgram(file) {
+  const body = document.getElementById('program_body');
+  document.getElementById('program_title').textContent = 'プログラム';
+  document.getElementById('program_file').textContent = file;
+  body.textContent = '読み込み中...';
+  document.getElementById('program').classList.remove('hidden');
+  fetch(`/api/program?file=${encodeURIComponent(file)}`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
+    document.getElementById('program_title').textContent = `${d.name || file}（${d.place || '-'}）`;
+    const lines = d.text.replace(/\n$/, '').split('\n');
+    body.innerHTML = lines.map((line, i) => `<span class="ln">${i + 1}</span>${esc(line)}`).join('\n') +
+      (d.truncated ? '\n\n（大きすぎるので、ここまで）' : '');
+    body.parentElement.scrollTop = 0;
+  }).catch(() => { body.textContent = '/api/program の取得に失敗しました'; });
+}
+document.getElementById('about_body').addEventListener('click', ev => {
+  const link = ev.target.closest('.proglink');
+  if (!link) return;
+  ev.preventDefault();
+  openProgram(link.dataset.file);
+});
+document.getElementById('program_close').addEventListener('click', closeProgram);
+document.getElementById('program').addEventListener('click', ev => { if (ev.target.id === 'program') closeProgram(); });
 
 const DIARY_TAGS = ['すべて', '3D プリント', '配線', 'ダッシュボード', 'ソフト', 'ドキュメント'];
 let diaryData = null;
