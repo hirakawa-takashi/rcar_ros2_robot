@@ -195,8 +195,21 @@ print3d:
         - 右側面の充電口（72 × 33 mm）から、カバーを付けたままバッテリーの USB-C に差せる
         - 前面にカメラの窓（Camera Module 3 Wide の画角 横 102°・縦 67° が通る大きさ）、Pi の上に六角の通気口、左の壁に Pi 5 の電源ボタンを押す穴（18 × 11 mm）、上面に「AI-CAR」の文字
         - LiDAR の右隣に、上のバッテリーの残量表示の窓（17 × 16 mm。ほぼ真上から見る）
+        - 右の壁の Pi の横に、USB スイッチ 2 個のボタンとランプの窓（29 × 16 mm が上下 2 つ）。カバーを付けたまま指で押せる
         - 手で触る縁（外側の角と稜線、壁の下端、充電口のふち）は 1 mm の面取り
       mount: 工具不要。フックは左右とも、後ろは天板の後ろの端から 54 mm（電源ボタンの穴をよける）、前は前の端から 30 mm。右前のフック（充電口の下）は固定の爪なので、右側を先に斜めに入れて掛け、左側を押し下げると左の 2 個と右後ろのフックが外へたわんで天板の端の裏に掛かる。外すときは左の指かけを外へ引いて左側から持ち上げる
+    - id: sw_holder
+      label: USB スイッチの受け
+      file: sw_holder.stl
+      qty: 1
+      color: '#e07b00'
+      material: PLA / PETG
+      orient: 背中を下（STL の向きのまま）。サポート不要
+      holds:
+        - LOYELEY の USB-C スイッチ（47.2 × 17.9 × 13.5 mm）×2 を、Pi の右に横にねかせて上下 2 段。下がバッテリー → DROK（ラズパイ）、上がバッテリー → Motor HAT（モーター）
+        - ボタンはカバーの右の壁の窓から押せる（ボタンの先は壁の内側から 1 mm 手前）
+        - 前後の端の壁に、線を通す幅 8 mm の切り欠き。床の下は天板から 9 mm 空けて、右の端に沿う線を通す
+      mount: 天板の右側の 2 穴（X 145 / Y 90 mm はラズパイ台の腕の上、X 143 / Y 11 mm は後ろのバンパーの腕の上）に、長い M4（前は 7.3 mm、後ろは 3.3 mm 長く）で共締め
     - id: test_stand
       label: 試験台（車輪を浮かせる台）
       file: test_stand.stl
@@ -298,7 +311,8 @@ print3d:
   gallery:
     - {file: assembly.png, label: 組み立てイメージ}
     - {file: cover_assembly.png, label: 上面カバーを付けた状態}
-    - {file: cover_right.png, label: カバーの充電口（右側面）}
+    - {file: cover_right.png, label: カバーの右側面（充電口と USB スイッチの窓）}
+    - {file: usb_switch.png, label: USB スイッチ 2 個の受け（Pi の右、カバーなし）}
     - {file: cover_rear.png, label: カバーの通気口（後ろ斜め）}
     - {file: cover_hook.png, label: カバーのフック（天板の端の裏に掛かる）}
     - {file: battery_display.png, label: バッテリーの残量表示の窓（右後ろ上から）}

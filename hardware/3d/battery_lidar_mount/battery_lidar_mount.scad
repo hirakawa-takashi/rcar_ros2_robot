@@ -8,8 +8,9 @@
 //       openscad -D 'part="cam_mount"' -o cam_mount.stl battery_lidar_mount.scad（カメラの板。裏を下にした向き）
 //       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
 //       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
+//       openscad -D 'part="sw_holder"' -o sw_holder.stl battery_lidar_mount.scad（USB スイッチ 2 個の受け、背中を下にした向き）
 
-part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "sw_holder" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
 
@@ -748,6 +749,27 @@ cov_rib_x = [[21, 25], [129, 133]];  // ふたの前後の縁をはさんで前�
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
 cov_vent = [9, 79, 28, 72];          // Pi の上の六角の通気口の範囲
 
+// ---- USB スイッチ（LOYELEY USB-C、ケーブルの途中の箱）2 個の受け。Pi の右、カバーの右の壁の内側に横にねかせて上下 2 段 ----
+sw_body = [47.2, 17.9, 13.5];  // 箱の長さ（Y）・幅（Z）・厚さ（X）（実測）
+sw_btn = [13, 3];              // ボタンの太さ・出っぱり（実測。箱の長さの真ん中と仮定）
+sw_clr = 0.3;
+sw_btn_gap = 1;                // ボタンの先とカバーの壁の内側のすき間（カバーを真上から被せるとき当たらない）
+sw_y0 = 54;                    // 箱の後ろの端
+sw_x1 = plate_w + cov_clr - sw_btn_gap - sw_btn[1];  // 箱のボタンの面
+sw_x0 = sw_x1 - sw_body[2];
+sw_wall = 1.6;                 // 背中・棚の厚さ
+sw_end = 2;                    // 前後の端の壁（線の出口の切り欠き付き）
+sw_slot = 8;                   // 線を通す切り欠きの幅（カバーの側へ開ける）
+sw_floor = [9, 13.5];          // 床の下面・上面。下に 6 mm（天板の右の端に沿う USB・12V の線）、床の中に M4 のネジ頭
+sw_shelf_x1 = sw_x1 + 1.2;     // 棚の前の端
+sw_pocket = sw_body[1] + 2 * sw_clr;
+sw_zc = [for (i = [0, 1]) sw_floor[1] + i * (sw_pocket + sw_wall) + sw_pocket / 2];  // 箱の中心の高さ（下・上）
+sw_top = sw_floor[1] + 2 * sw_pocket + 2 * sw_wall;
+sw_holes = [[pi_mount_holes[3], pi_base_t], [pi_mount_holes[1], flange_t + bump_t]];  // 共締めする天板の穴（台の腕の上、後ろのバンパーの腕の上）
+sw_cb = [8.5, 3.2];            // M4 のネジ頭の座ぐり（太さ・深さ）
+sw_win = [sw_y0 + sw_body[0] / 2 - 11.6, sw_y0 + sw_body[0] / 2 + 17.4, 16];  // カバーの窓の Y の範囲（ランプの側を前へ長く）と高さ
+sw_win_r = 4;
+
 cov_ox0 = -cov_clr - cov_t;
 cov_ox1 = plate_w + cov_clr + cov_t;
 cov_oy0 = cov_y0 - cov_t;
@@ -865,6 +887,12 @@ module cover() {
             y = cov_vent[2] + j * 5.2;
             if (x <= cov_vent[1] && y <= cov_vent[3]) translate([x, y, cov_top - 1]) cylinder(r = 2.4, h = cov_t + 2, $fn = 6);
         }
+        // USB スイッチのボタンとランプの窓（右の壁、2 段）
+        for (z = sw_zc) {
+            translate([plate_w - 1, 0, 0]) rotate([0, 90, 0]) linear_extrude(cov_t + cov_clr + 2) sw_win_2d(z);
+            hull() for (d = [[cov_ox1 - cov_edge, 0], [cov_ox1 + 0.01, cov_edge + 0.01]])
+                translate([d[0], 0, 0]) rotate([0, 90, 0]) linear_extrude(0.01) offset(delta = d[1]) sw_win_2d(z);
+        }
         // Pi の電源ボタン（左の壁）
         let (y0 = pi_cy - pi_board[1] / 2 + pi_btn_y[0], y1 = pi_cy - pi_board[1] / 2 + pi_btn_y[1],
              z0 = pi_z + pi_btn_z[0], z1 = pi_z + pi_btn_z[1], r = 3)
@@ -876,6 +904,48 @@ module cover() {
     }
 }
 
+// rotate([0, 90, 0]) で X に向ける 2D の窓（-Z が 2D の X）
+module sw_win_2d(z) {
+    translate([-z - sw_win[2] / 2, sw_win[0]]) offset(r = sw_win_r) offset(delta = -sw_win_r) square([sw_win[2], sw_win[1] - sw_win[0]]);
+}
+
+module sw_holder() {
+    xb = sw_x0 - sw_clr - sw_wall;
+    y0 = sw_y0 - sw_clr - sw_end;
+    y1 = sw_y0 + sw_body[0] + sw_clr + sw_end;
+    rh = sw_holes[1][0];
+    difference() {
+        union() {
+            // 背中
+            translate([xb, y0, sw_floor[0]]) cube([sw_wall, y1 - y0, sw_top - sw_floor[0]]);
+            // 床（ネジ頭の分厚い）・中の棚・上の棚
+            translate([xb, y0, sw_floor[0]]) cube([sw_shelf_x1 - xb, y1 - y0, sw_floor[1] - sw_floor[0]]);
+            for (i = [1, 2]) translate([xb, y0, sw_floor[1] + i * sw_pocket + (i - 1) * sw_wall]) cube([sw_shelf_x1 - xb, y1 - y0, sw_wall]);
+            // 前後の端の壁
+            for (y = [y0, y1 - sw_end]) translate([xb, y, sw_floor[0]]) cube([sw_shelf_x1 - xb, sw_end, sw_top - sw_floor[0]]);
+            // 後ろの穴まで伸ばす腕（床と同じ高さ）
+            translate([xb, rh[1] - 5.5, sw_floor[0]]) cube([rh[0] + 5.5 - xb, y0 - rh[1] + 5.5, sw_floor[1] - sw_floor[0]]);
+            // 天板の穴の上の足（背中の面まで伸ばして、背中を下にして印刷できるようにする）
+            for (h = sw_holes) translate([xb, h[0][1] - 5.5, h[1]]) cube([h[0][0] + 5.5 - xb, 11, sw_floor[0] - h[1] + 0.01]);
+        }
+        // 線の出口（カバーの側へ開いた切り欠き）
+        for (z = sw_zc, y = [y0 - 1, y1 - sw_end - 1]) translate([sw_x0 + sw_body[2] / 2 - sw_slot / 2, y, z - sw_slot / 2]) cube([20, sw_end + 2, sw_slot]);
+        // M4 の通し穴と座ぐり
+        for (h = sw_holes) translate([h[0][0], h[0][1], 0]) {
+            translate([0, 0, h[1] - 1]) cylinder(d = mount_hole_d, h = sw_floor[1]);
+            translate([0, 0, sw_floor[1] - sw_cb[1]]) cylinder(d = sw_cb[0], h = sw_cb[1] + 1);
+        }
+    }
+}
+
+module sw_ghost() {
+    for (z = sw_zc) {
+        color("black") translate([sw_x0, sw_y0, z - sw_body[1] / 2]) cube([sw_body[2], sw_body[0], sw_body[1]]);
+        color("dimgray") translate([sw_x1, sw_y0 + sw_body[0] / 2, z]) rotate([0, 90, 0]) cylinder(d = sw_btn[0], h = sw_btn[1]);
+        color("blue") translate([sw_x1, sw_y0 + sw_body[0] / 2 + 15, z]) rotate([0, 90, 0]) cylinder(d = 2, h = 0.3);
+    }
+}
+
 if (part == "box") box();
 else if (part == "lid") lid();
 else if (part == "pi_base") pi_base();
@@ -883,6 +953,7 @@ else if (part == "cam_mount") translate([0, 0, -scam_mnt_y0]) rotate([90, 0, 0])
 else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]) bumper();
 else if (part == "cover") translate([0, cov_oy0 + cov_oy1, cov_oz]) rotate([180, 0, 0]) cover();
 else if (part == "cover_asm") cover();
+else if (part == "sw_holder") translate([0, 0, -(sw_x0 - sw_clr - sw_wall)]) rotate([0, -90, 0]) sw_holder();
 else {
     plate();
     color("royalblue") box();
@@ -897,6 +968,8 @@ else {
     if (show_cables) cable_ghost();
     color("dimgray") both_bumpers();
     tof_ghost();
+    color("darkorange") sw_holder();
+    sw_ghost();
     if (show_cover) color("#3c4452") cover();
 }
 
