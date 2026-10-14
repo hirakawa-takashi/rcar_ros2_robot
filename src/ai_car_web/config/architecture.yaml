@@ -238,7 +238,7 @@ print3d:
       color: '#2f3440'
   assembly_views:
     - label: 組み立て図
-      note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 5 種類・6 個の部品を組み立てた位置で表示。天板の下に、車輪・モーター・モーターの台（購入品、OSOYOO の図面の寸法）も参考に表示（バッテリー・Pi・センサーなどほかの購入品は表示しない）
+      note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 6 種類・7 個の部品を組み立てた位置で表示。天板の下に、車輪・モーター・モーターの台（購入品、OSOYOO の図面の寸法）も参考に表示（バッテリー・Pi・センサーなどほかの購入品は表示しない）
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
         - {part: box}
@@ -247,6 +247,7 @@ print3d:
         - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
+        - {part: sw_holder, rotate_y: 90, translate: [134.9, 0, 0]}
         - {part: wheels}
         - {part: motors}
         - {part: holders}
@@ -260,6 +261,7 @@ print3d:
         - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
+        - {part: sw_holder, rotate_y: 90, translate: [134.9, 0, 0]}
         - {part: wheels}
         - {part: motors}
         - {part: holders}
@@ -274,6 +276,7 @@ print3d:
         - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
+        - {part: sw_holder, rotate_y: 90, translate: [134.9, 0, 0]}
         - {part: wheels}
         - {part: motors}
         - {part: holders}
