@@ -739,26 +739,27 @@ cov_skirt_z = 11;         // 前後の壁の下端。バンパー上面（7 mm�
 cov_ch = 6;               // 上面の角の面取り
 cov_edge = 1;             // 手で触る縁（外側の角、下端、充電口）の面取り
 cov_rear = [38.4, 18];    // 後ろの斜面: 後ろの壁の上端の高さ、斜面が上面に届く Y（外側）
-cov_hook_y = [54, plate_l - 30];  // フックの位置（左右とも。後ろは Pi の電源ボタンの穴をよけて天板の後ろの端から 54 mm、前は前の端から 30 mm）
+cov_hook_y = [[54, plate_l - 30], [72, plate_l - 30]];  // フックの位置（[左, 右]。左の後ろは Pi の電源ボタンの穴をよけて天板の後ろの端から 54 mm、右の後ろは USB スイッチの窓をよけて 72 mm、前は前の端から 30 mm）
 cov_hook_w = 12;
 cov_hook_root = 28;       // フックの付け根の高さ（ここから下がたわむ）
 cov_hook_lip = 2;         // 天板の裏にかかる深さ
 // 天板の上面に載せる受け（[左, 右]）。フックの両隣と中央
-cov_stop_y = [[42, 66, 100, 158, 182], [42, 66, 100, 158, 182]];
+cov_stop_y = [[42, 66, 100, 158, 182], [60, 84, 100, 158, 182]];
 cov_rib_x = [[21, 25], [129, 133]];  // ふたの前後の縁をはさんで前後の位置を決めるリブ
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
 cov_vent = [9, 79, 28, 72];          // Pi の上の六角の通気口の範囲
 
 // ---- USB スイッチ（LOYELEY USB-C、ケーブルの途中の箱）2 個の受け。Pi の右、カバーの右の壁の内側に横にねかせて上下 2 段 ----
-sw_body = [47.2, 17.9, 13.5];  // 箱の長さ（Y）・幅（Z）・厚さ（X）（実測）
+sw_body = [47.2, 17.4, 13.5];  // 箱の長さ（Y）・幅（Z）・厚さ（X）（実測）
 sw_btn = [13, 3];              // ボタンの太さ・出っぱり（実測。箱の長さの真ん中と仮定）
 sw_clr = 0.3;
 sw_btn_gap = 1;                // ボタンの先とカバーの壁の内側のすき間（カバーを真上から被せるとき当たらない）
-sw_y0 = 54;                    // 箱の後ろの端
 sw_x1 = plate_w + cov_clr - sw_btn_gap - sw_btn[1];  // 箱のボタンの面
 sw_x0 = sw_x1 - sw_body[2];
 sw_wall = 1.6;                 // 背中・棚の厚さ
 sw_end = 2;                    // 前後の端の壁（線の出口の切り欠き付き）
+sw_cable = 15;                 // 受けの後ろの端とカバーの後ろの壁の内側のすき間（スイッチの線を曲げる所）
+sw_y0 = cov_y0 + sw_cable + sw_end + sw_clr;  // 箱の後ろの端（後ろへできるだけ寄せる）
 sw_slot = 8;                   // 線を通す切り欠きの幅（カバーの側へ開ける）
 sw_floor = [9, 13.5];          // 床の下面・上面。下に 6 mm（天板の右の端に沿う USB・12V の線）、床の中に M4 のネジ頭
 sw_shelf_x1 = sw_x1 + 1.2;     // 棚の前の端
@@ -844,7 +845,7 @@ module cover() {
                     translate([-cov_clr, y[0], -10]) cube([plate_w + 2 * cov_clr, y[1] - y[0], 10 + cov_skirt_z]);
             }
             // フック
-            for (x = [0, 1], y = cov_hook_y)
+            for (x = [0, 1], y = cov_hook_y[x])
                 translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0]) cover_hook();
             // 天板の上面に載る受け（下は平ら、上は 45° で壁へ）
             for (x = [0, 1], y = cov_stop_y[x])
@@ -856,7 +857,7 @@ module cover() {
                 translate([r[0], y[0], box_h + 1]) cube([r[1] - r[0], y[1] - y[0], cov_top - box_h - 0.99]);
         }
         // フックのまわりの切れ目（1 mm）
-        for (x = [0, 1], y = cov_hook_y) if (!cov_hook_fixed(x, y))
+        for (x = [0, 1], y = cov_hook_y[x]) if (!cov_hook_fixed(x, y))
             translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0])
                 for (s = [-1, 1]) translate([cov_ox0 - 3, s > 0 ? cov_hook_w / 2 : -cov_hook_w / 2 - 1, -10])
                     cube([cov_t + 3 + cov_clr + 0.01, 1, 10 + cov_hook_root]);
@@ -913,7 +914,6 @@ module sw_holder() {
     xb = sw_x0 - sw_clr - sw_wall;
     y0 = sw_y0 - sw_clr - sw_end;
     y1 = sw_y0 + sw_body[0] + sw_clr + sw_end;
-    rh = sw_holes[1][0];
     difference() {
         union() {
             // 背中
@@ -923,8 +923,9 @@ module sw_holder() {
             for (i = [1, 2]) translate([xb, y0, sw_floor[1] + i * sw_pocket + (i - 1) * sw_wall]) cube([sw_shelf_x1 - xb, y1 - y0, sw_wall]);
             // 前後の端の壁
             for (y = [y0, y1 - sw_end]) translate([xb, y, sw_floor[0]]) cube([sw_shelf_x1 - xb, sw_end, sw_top - sw_floor[0]]);
-            // 後ろの穴まで伸ばす腕（床と同じ高さ）
-            translate([xb, rh[1] - 5.5, sw_floor[0]]) cube([rh[0] + 5.5 - xb, y0 - rh[1] + 5.5, sw_floor[1] - sw_floor[0]]);
+            // 受けの外の穴まで伸ばす腕（床と同じ高さ）
+            for (h = sw_holes) let(ya = min(h[0][1] - 5.5, y0), yb = max(h[0][1] + 5.5, y1))
+                translate([xb, ya, sw_floor[0]]) cube([h[0][0] + 5.5 - xb, yb - ya, sw_floor[1] - sw_floor[0]]);
             // 天板の穴の上の足（背中の面まで伸ばして、背中を下にして印刷できるようにする）
             for (h = sw_holes) translate([xb, h[0][1] - 5.5, h[1]]) cube([h[0][0] + 5.5 - xb, 11, sw_floor[0] - h[1] + 0.01]);
         }
