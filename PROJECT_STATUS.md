@@ -82,7 +82,7 @@
 - カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
 - モーター M1〜M4・エンコーダーの割り付けと配線色（`motor_hat.yaml` / `gpio_pins.yaml`）は、Motor HAT 交換のとき実機で確かめた（下の「テスト結果」）。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）。AI HAT+ の ID EEPROM ピン（27/28）はヘッダー直挿しのため配線色は `PIN` 表記
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
-- 落下防止センサー（VL53L1X ×2）は未配線（`cliff_node.wired: false`）。配線したら true にする
+- 落下防止センサー（VL53L1X ×2）は後ろだけ配線済み（`cliff_node.wired: true`・`front_wired: false`）。前は未配線で、前の段差では止まらない。配線したら `front_wired` を true にする
 - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある（1 眼の奥行きの低い物は表示だけ）
 - IMU（BNO055、AMG モード）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で 110〜156 µT（地球の約 3 倍）あり、磁気の向きは目安だけ
 - Motor HAT（Adafruit DC & Stepper Motor HAT）の出力故障（2026/09/25）は、同型品（Adafruit 2348）への交換で解決した（2026/10/12、下の「テスト結果」）
@@ -130,7 +130,7 @@
 - スタックちゃんの声で走るのを床で確かめる（「前に 50 センチ進んで」「右に 90 度回って」「止まって」）
 - SLAM の地図を部屋 1 周で作って、壁が二重にならないか確かめる
 - 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する
-- VL53L1X を配線して `cliff_node.wired` を true にし、前後の段差で止まるか確かめる
+- 前の VL53L1X を配線して `cliff_node.front_wired` を true にし、前後の段差で止まるか確かめる（後ろは配線済み）
 - `/odom` の横移動を床で合わせる
 - 保存した地図で「今どこにいるか」を出し、行き先まで行く（Nav2、Level 2）
 

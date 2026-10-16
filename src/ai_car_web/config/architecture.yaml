@@ -514,7 +514,7 @@ nodes:
   - id: cliff_node
     label: cliff_node
     file: ai_car_web/cliff_node.py
-    role: 前後バンパーの VL53L1X ×2（I2C 0x30 / 0x31、XSHUT で起動時にアドレス変更）で 45° 前方の床までの距離を測り、段差（床の途切れ）を /cliff_status に 20 Hz で publish。未配線の間（wired false）は I2C / GPIO に触らず「未配線」だけを配信
+    role: 前後バンパーの VL53L1X ×2（I2C 0x30 / 0x31、XSHUT で起動時にアドレス変更）で 45° 前方の床までの距離を測り、段差（床の途切れ）を /cliff_status に 20 Hz で publish。front_wired / rear_wired で配線したほうだけを使う（未配線の側は level unwired）。使う側の XSHUT はノードが動くあいだ握ったままにし、つなぎ直しのときも L にもどす（離すと 0x29 で起きて BNO055 とぶつかる）。wired false の間は I2C / GPIO に触らず「未配線」だけを配信
     publishes: [/cliff_status]
     subscribes: []
     params:
@@ -662,7 +662,7 @@ api:
 status:
   known_issues:
     - 電源は PD なし（バッテリー PD 12V → DROK 5.2V → USB-A → ラズパイ）。ラズパイは 3 A の電源と見ている（usb_max_current_enable=1 で USB に 1.6 A まで）。Camera Module 3 Wide にしてからは電圧低下 0 回だが、余裕は少ない
-    - 落下防止センサー（VL53L1X ×2）は未配線。ソフトと配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意した。配線色は VIN 白・GND 黄（エンコーダーの電源と同じ）・SCL 灰・SDA 青・XSHUT 緑（前 pin 11 / 後 pin 13）（GPIO1 は使わない）。配線したら cliff_node.wired を true にする
+    - 落下防止センサー（VL53L1X ×2）は後ろだけ配線済み（0x31 で距離が読める）。前は未配線で、前の段差では止まらない。配線表（pin 3/5/11 前、3/5/13 後。VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground)）だけ用意した。配線色は VIN 白・GND 黄（エンコーダーの電源と同じ）・SCL 灰・SDA 青・XSHUT 緑（前 pin 11 / 後 pin 13）（GPIO1 は使わない）。前を配線したら cliff_node.front_wired を true にする
     - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある（1 眼の奥行きの低い物は表示だけ）
     - /odom の横移動は寸法からの計算値（前後は 1.8 m、旋回は 1.5 回転で床合わせ済み）
     - IMU（BNO055）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で地球の約 3 倍あり、向きは目安だけ
@@ -672,7 +672,7 @@ status:
     - スタックちゃんの声で走るのを床で確かめる（「前に 50 センチ進んで」「右に 90 度回って」「止まって」）
     - SLAM の地図を部屋 1 周で作って、壁が二重にならないか確かめる
     - 実機で自動モードの旋回方向・速度・しきい値を調整
-    - VL53L1X を配線して cliff_node.wired を true にし、前後の段差で止まるか確かめる
+    - 前の VL53L1X を配線して cliff_node.front_wired を true にし、前後の段差で止まるか確かめる（後ろは配線済み）
     - 保存した地図で「今どこにいるか」を出し、行き先まで行く（Nav2、Level 2）
   docs:
     - {name: README.md, desc: セットアップ・実行・各デバイスの導入手順}
