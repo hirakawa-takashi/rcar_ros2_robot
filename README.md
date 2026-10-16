@@ -139,8 +139,9 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 `confirm_count` 回続くと段差とする。`drive_mode_node` は前が段差なら前進、後ろが段差なら後退を止め、
 自動運転は停止モードにする。
 
-現在は未配線で、`cliff_node.wired: false` の間は I2C / GPIO に触らず「未配線」だけを配信する
-（ダッシュボードの「落下防止センサー」カードに表示）。予定のピン割り付けと配線色は `gpio_pins.yaml`。基板のピンは上から VIN・GND・SCL・SDA・GPIO1・XSHUT の 6 本。
+前後とも配線済み（`cliff_node.wired: true`・`front_wired: true`・`rear_wired: true`）。`wired: false` の間は I2C / GPIO に触らず
+「未配線」だけを配信し、`front_wired` / `rear_wired` を false にした側も「未配線」になる
+（ダッシュボードの「落下防止センサー」カードに表示）。ピン割り付けと配線色は `gpio_pins.yaml`。基板のピンは上から VIN・GND・SCL・SDA・GPIO1・XSHUT の 6 本。
 
 | 基板のピン | 配線色 | 前（0x30） | 後（0x31） |
 | --- | --- | --- | --- |
@@ -154,9 +155,9 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 pin 3（SDA）は IMU と前後の青、pin 5（SCL）は IMU と前後の灰を、それぞれ 3 又でまとめて挿す（SDA と SCL を同じ 3 又に入れない）。
 
 VL53L1X の初期アドレス 0x29 は BNO055 と同じなので、`cliff_node` が XSHUT を 1 台ずつ上げ、
-起動直後に 0x30 / 0x31 へ変える。モジュールの XSHUT は基板上で引き上げられていることが多く、
-配線したのに `cliff_node` が動いていないと 0x29 で BNO055 とぶつかる。配線したら
-`dashboard.yaml` の `cliff_node.wired` を `true` にしてサービスを再起動し、`i2cdetect -y 1` で
+起動直後に 0x30 / 0x31 へ変える。モジュールの XSHUT は基板上で引き上げられていて、
+配線したのに `cliff_node` がその側を使っていない（`front_wired` / `rear_wired` が false）と、0x29 で BNO055 とぶつかり
+IMU が止まる。配線したら `dashboard.yaml` の `cliff_node.wired` と、その側の `*_wired` を `true` にしてサービスを再起動し、`i2cdetect -y 1` で
 0x29（BNO055）・0x30・0x31・0x60（Motor HAT）が見えることを確かめる。
 `dashboard.launch.py` の `use_cliff`（既定 `true`）で起動する。
 
