@@ -7,7 +7,7 @@ Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボッ
 | パッケージ | 内容 |
 |-----------|------|
 | `ai_car_description` | URDF/Xacro モデル、表示用 Launch、RViz2 設定 |
-| `ai_car_web` | FastAPI による Web ダッシュボード（テレメトリ表示・手動操作・システム監視） |
+| `ai_car_web` | ROS 2 ノード一式（モーター・エンコーダー・LiDAR の見張り・段差・IMU・運転モード・自律走行・知覚）と FastAPI の Web ダッシュボード |
 
 ## ビルド
 
@@ -59,17 +59,34 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 
 `dashboard_node`
 
-- Publish: `/cmd_vel` (`geometry_msgs/Twist`)、`~/status` (`std_msgs/String`)
-- Subscribe: `/scan` (`sensor_msgs/LaserScan`)、`/imu/data` (`sensor_msgs/Imu`)、`/odom` (`nav_msgs/Odometry`)、`/system_status` (`std_msgs/String`)、`/camera/image_raw/compressed` (`sensor_msgs/CompressedImage`)
-- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`GET /api/program?file=…`（プログラム一覧のファイルの中身）、`GET /api/dev_diary`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`
+- Publish: `/cmd_vel_manual` (`geometry_msgs/Twist`、Web・ゲームパッド・スタックちゃんの手動指令。`/cmd_vel` にするのは `drive_mode_node` だけ)、`/drive_output` (`std_msgs/Float32`、「出力」0.1〜1.0)、`/drive_mode_request`、`~/status` (`std_msgs/String`)
+- Subscribe: `/scan`、`/imu/data`、`/imu/mag`、`/odom`、`/map`、`/pose`、`/system_status`、`/camera/image_raw/compressed`、`/obstacle_status`、`/cliff_status`、`/drive_mode`、`/autonomy_status`、`/motor_status`、`/joy_cmd`
+- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`GET /api/program?file=…`（プログラム一覧のファイルの中身）、`GET /api/dev_diary`、`POST /api/cmd_vel`、`POST /api/stop`、`POST /api/drive_output`、`POST /api/drive_mode`、`POST /api/slam/save`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws` など（全部はプロジェクト説明の「Web API」タブ）
 - パラメータ: `src/ai_car_web/config/dashboard.yaml`
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。
 `cmd_timeout`（既定 0.7 秒）の間に新しい指令が来ない場合は自動的に停止する。
-画面上部の「プロジェクト説明」ボタンから、`architecture.yaml` に基づく構成・安全機構・API・開発状況の7タブを確認できる。
+ダッシュボードの「出力」は初め 15 %（`dashboard_node.output_percent: 15.0`・`drive_mode_node.default_output: 0.15`）で、手動・ゲームパッド・自動の最大の速さにかける。
+画面上部の「プロジェクト説明」ボタンから、`architecture.yaml` に基づく概要・システム構成・ハードウェア構成・3D プリント・ソフトウェア構成・運転モードと安全機構・知覚と自律走行・Web API・開発状況の 9 タブを確認できる。
 `dashboard_node.api_token` または環境変数 `AI_CAR_API_TOKEN` を設定すると、POST `/api/*` に
 `X-API-Token`（または Bearer）ヘッダーが必要になる。UI は `http://<PI_IP>:8080/?token=...` を
 一度開くとトークンを localStorage に保存する。
+
+ほかのノード（`dashboard.launch.py` で起動。`use_*` で個別に止められる）
+
+| ノード | 役割 |
+|--------|------|
+| `drive_mode_node` | `/cmd_vel_manual` と `/cmd_vel_auto` の片方を `/cmd_vel` にする（manual / auto / stop）。最後に LiDAR 360° の見張り（車体の端から 0.25 m で、その向きの動き・回転だけを 0。手動は 0.7 m から半分の速さ）と段差ガードをかける |
+| `motor_driver_node` | `/cmd_vel` → メカナムの逆運動学 → Motor HAT M1〜M4。旋回 0 のあいだ IMU の向きを保つ（`heading_hold`）。`/motor_status` |
+| `encoder_odom_node` | 4 輪のエンコーダー（GPIO v2 uAPI）→ `/odom`・TF `odom → base_footprint`（20 Hz） |
+| `cliff_node` | 前後の VL53L1X（0x30 / 0x31）→ `/cliff_status`（20 Hz） |
+| `imu_node` | BNO055（0x29）→ `/imu/data`（20 Hz）・`/imu/mag` |
+| `perception_node` | `/scan` → `/obstacle_status`。カメラ画像で 1 眼の奥行きの AI（SC-Depth v3・Hailo-8、表示だけ） |
+| `autonomy_node` | Level 1 自律走行（LiDAR の反応で前進・旋回）→ `/cmd_vel_auto` |
+| `joy_teleop_node` | Logitech F710 → `/joy_cmd` |
+| `lidar_watchdog_node` | `/scan` が止まったら rplidar を起動し直し、だめなら USB の電気を入れ直す |
+| `system_monitor_node` | 下を参照 |
+| SLAM（`slam_toolbox`） | `/scan` + `/odom` → `/map`・`/pose`（`use_slam`、既定 true） |
 
 `system_monitor_node`
 
@@ -102,8 +119,8 @@ sudo usermod -aG dialout super
 ```
 
 GPIO チップは `pinctrl-rp1` のラベルから自動検出する（通常は `gpiochip4`）。
-`dashboard.launch.py` の `use_seg_display`（既定 `true`）で起動し、
-無効化する場合は `use_seg_display:=false` を指定する。
+今は TM1637 を外しているので、`dashboard.launch.py` の `use_seg_display` は既定 `false`。
+つないだときだけ `use_seg_display:=true` を指定する。
 
 表示コード:
 
@@ -238,7 +255,7 @@ curl -L -o ~/AI-CAR_ws/models/yolov8m.hef \
   https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8m.hef
 ```
 
-標準設定は YOLOv8m で、パスは `config/dashboard.yaml` の `perception_node.hef_path` で指定する。YOLOv8s / YOLOv8n を使う場合は `hef_path` をそれぞれ `~/AI-CAR_ws/models/yolov8s.hef` / `~/AI-CAR_ws/models/yolov8n.hef` に変更する（未設定なら LiDAR 判定のみで動作）。
+今の設定では `config/dashboard.yaml` の `perception_node.hef_path` を空（`""`）にして YOLO は止めている。AI HAT+ は 1 眼の奥行きの AI（SC-Depth v3、`mono_depth_hef: ~/AI-CAR_ws/models/scdepthv3.hef`、15 Hz、表示だけ）に使う。YOLOv8m / s / n を使うときは `hef_path` に `~/AI-CAR_ws/models/yolov8m.hef` などを書く。
 
 ## 依存
 
@@ -266,3 +283,19 @@ pip3 install --user --break-system-packages "websockets>=13"
 - 実装状況: `PROJECT_STATUS.md`
 - ハードウェア構成: `HARDWARE_BOM.md`
 - 変更履歴: `CHANGELOG.md`
+- 部品の形: `hardware/3d/`（STL・組み立て図）
+
+## Jetson 側（`jetson/`）
+
+Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それぞれの README に入れ方がある。
+
+| フォルダ | サービス | 役割 |
+|----------|----------|------|
+| `stackchan_bridge` | `jetson-stackchan.service` | スタックちゃんの会話（聞き取り・会話の AI・声）、話して走る、パソコンが動いていればパソコンで処理 |
+| `status_reporter` | `jetson-status.service`・`jetson-upgrade.service` | Jetson の状態をラズパイのダッシュボードへ 1 秒ごとに送る・更新 |
+| `oled_panel` | `jetson-oled.service` | ケースの OLED に CPU・温度・メモリ・SSD・IP |
+| `ollama` | `ollama.service`・`ollama-preload.service` | 会話の AI（qwen2.5:3b）を読み込んだままにする |
+| `health_log` | `jetson-health.service`・`.timer` | 前の起動の記録と 1 分ごとの様子 |
+| `owl_detector` | `jetson-owl.service` | NanoOWL の物体検出（ラズパイへ `/jetson_detections`）。メモリを空けるため 2026/10 から止めている（disabled） |
+| `power_saving` | - | Wi-Fi の省電力を切る |
+| `voice_chat` | - | Bluetooth のスピーカー＆マイクで話す（試し） |

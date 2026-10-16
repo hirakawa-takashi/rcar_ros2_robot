@@ -30,14 +30,14 @@ overview:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
     - {name: FastAPI + uvicorn, role: Web ダッシュボード / REST / WebSocket}
-    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8m）}
+    - {name: HailoRT 4.24, role: AI HAT+ 推論（1 眼の奥行きの AI SC-Depth v3。YOLOv8m は hef_path を空にして止めている）}
     - {name: libcamera (rpicam), role: Camera Module 3 Wide 取り込み（camera_ros）}
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
 
 system:
   summary:
     - AI-CAR（Raspberry Pi 5）・ミニコン（Jetson Orin Nano Super）・パソコン（Windows 11 の WSL Ubuntu、RTX 4080 SUPER）・M5 スタックちゃんを、家の Wi-Fi と Tailscale でつなぐ。ローカルのときはクラウドを使わず、家の中で動かす
-    - AI-CAR は走る・測る・止まるを受け持つ。安全の判定（LiDAR・AI HAT+ の YOLO・段差）は AI-CAR の中だけで行い、ほかの機械が止まっても安全に止まる
+    - AI-CAR は走る・測る・止まるを受け持つ。安全の判定（LiDAR 360° の見張り・前後の段差センサー・指令の途絶）は AI-CAR の中だけで行い、ほかの機械が止まっても安全に止まる
     - ミニコンは重い AI（声→文字・会話・文字→声、言葉で物を探す NanoOWL）を受け持つ。結果は表示と命令だけで、AI-CAR の安全の判定は変えない
     - パソコンを選ぶと（ダッシュボードのボタンか「パソコンにして」）、声→文字・会話・文字→声をもっと大きい AI でパソコンがする。パソコンが止まっていれば、自動でミニコンにもどる
     - M5 スタックちゃんは顔・耳・口（画面・マイク・スピーカー・首振り）。つなぐ先はミニコン（jetson-stackchan.service）で、考えるのはミニコンかパソコン。ミニコンが落ちたら、パソコン（pc-stackchan.service）に直接つないで、パソコンだけで話す
@@ -50,7 +50,8 @@ system:
       items:
         - LiDAR（A1M8）で障害物までの距離
         - Camera Module 3 Wide（960×540・30 fps）
-        - AI HAT+ の YOLOv8m（人・動物など 80 種類）
+        - AI HAT+ の 1 眼の奥行きの AI（SC-Depth v3）で床から出っぱった低い物を見つける（表示だけ）
+        - 落下防止センサー（VL53L1X）前後 2 個で段差を見る（20 Hz）
         - 運転モード・自律走行・安全ガード（LiDAR 360° の見張り）
         - IMU（BNO055）で向きを保ってまっすぐ走る
         - ダッシュボード（8080 番）
@@ -105,7 +106,7 @@ hardware:
     - {id: camera, label: Camera Module 3 Wide（SC0874）, sub: IMX708 / 横 102° / 960×540 30fps, bus: CSI（フラットケーブル）, power: 3V3（Pi から）, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz（AMG モード、向きはラズパイで計算）, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
-    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27（未配線）, power: 3V3, jump: gpio, side: bottom}
+    - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27, power: 3V3, jump: gpio, side: bottom}
     - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
     - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C（PD なし。ラズパイは 3 A の電源と見る）, power: 5V, side: top}
@@ -346,7 +347,6 @@ print3d:
     - バンパーの板ばねの硬さ（PLA・0.8 mm で計算上 約 8 N、ひずみ 約 1.1 %）
     - 車体や車輪にバンパーの壁が当たらないか、床からセンサーまでの高さ
     - バッテリーの残量表示の位置（ポートの短辺から 7〜20 mm は実測、右の長辺から 9〜21 mm のうち 21 mm は写真からの推定）
-    - LiDAR を左へ 8 mm ずらしたので、TF（base_link → laser）の横オフセットも直す必要がある
     - モーター取付ネジの頭が、図面の 28 × 28 mm の範囲に収まり、高さ 3 mm 以下か（くぼみは 29 × 29 × 3.5 mm）
     - カバー：バッテリーの USB-C の口の位置（右側面の充電口は、箱の右の開口に合わせて広めに開けた）、天板の端の裏のすき間（板の厚さは実測の 2 mm で爪を掛ける）、フックの固さ、カバーを付けたときの Pi 5 と AI HAT+ の温度、カバーの左の穴から Pi 5 の電源ボタンが押せるか（ボタンの位置は図面に寸法がなく、広めに見込んだ）、右の USB / LAN にストレートのプラグを差してカバーが付くか
 
@@ -465,7 +465,7 @@ nodes:
       - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
       - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
       - {name: detect_history_frames, ref: perception_node.detect_history_frames, unit: frame, desc: 検出確認に使う履歴長}
-      - {name: model_gops, ref: perception_node.model_gops, unit: GOP, desc: YOLOv8m 640x640 の演算量}
+      - {name: model_gops, ref: perception_node.model_gops, unit: GOP, desc: YOLOv8m 640x640 の演算量（YOLO を使うときだけ。今は hef_path が空）}
       - {name: cpu_temp_warn, ref: perception_node.cpu_temp_warn, unit: ℃, desc: 推論 40% へ}
       - {name: cpu_temp_crit, ref: perception_node.cpu_temp_crit, unit: ℃, desc: 推論停止（LiDAR 判定は継続）}
       - {name: hailo_temp_warn, ref: perception_node.hailo_temp_warn, unit: ℃, desc: 推論 40% へ}
@@ -519,6 +519,8 @@ nodes:
     subscribes: []
     params:
       - {name: wired, ref: cliff_node.wired, unit: '', desc: 配線済みなら true（false の間はセンサーを読まない）}
+      - {name: front_wired, ref: cliff_node.front_wired, unit: '', desc: 前のセンサー（0x30・XSHUT GPIO17）を使う}
+      - {name: rear_wired, ref: cliff_node.rear_wired, unit: '', desc: 後ろのセンサー（0x31・XSHUT GPIO27）を使う}
       - {name: cliff_distance_m, ref: cliff_node.cliff_distance_m, unit: m, desc: 測った距離がこれを超えたら段差}
       - {name: floor_distance_m, ref: cliff_node.floor_distance_m, unit: m, desc: 平らな床までの距離の目安（表示用）}
       - {name: confirm_count, ref: cliff_node.confirm_count, unit: 回, desc: 連続で超えたら段差と確定}
@@ -563,6 +565,8 @@ topics:
   - {name: /drive_mode_request, type: std_msgs/String (JSON), desc: 'モード切替要求 {mode: manual|auto|stop|toggle, source}'}
   - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz・transient local）}
   - {name: /cmd_vel, type: geometry_msgs/Twist, desc: 最終速度指令（drive_mode_node のみが publish）}
+  - {name: /drive_output, type: std_msgs/Float32, desc: ダッシュボードの「出力」の割合（0.1〜1.0）。drive_mode_node が手動・ゲームパッド・自動の最大の速さに使う}
+  - {name: /motor_status, type: std_msgs/String (JSON), desc: motor_driver_node の 4 輪の出力・Motor HAT のつながり・heading_hold の様子}
   - {name: /autonomy_status, type: std_msgs/String (JSON), desc: 自律行動・セクター距離・自動指令}
   - {name: /odom, type: nav_msgs/Odometry, desc: 車輪のオドメトリ（encoder_odom_node、20 Hz）}
   - {name: /map, type: nav_msgs/OccupancyGrid, desc: SLAM の地図（5 cm / セル、2 秒ごと、transient local）}
@@ -616,7 +620,7 @@ autonomy:
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
-    - カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 63 mm・横 0 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - （YOLO を使うときだけ。今は hef_path が空で止めている）カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 63 mm・横 0 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
     - LiDAR /scan → 360° を 5° ごとに車体の端からの空き（move）と左右に回れる角度（turn_free_deg）→ drive_mode_node が動く向き・回る向きごとに止める
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（表示）
 
@@ -667,12 +671,14 @@ status:
     - /odom の横移動は寸法からの計算値（前後は 1.8 m、旋回は 1.5 回転で床合わせ済み）
     - IMU（BNO055）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で地球の約 3 倍あり、向きは目安だけ
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
+    - Jetson のケースの OLED（I2C）は、ときどき書きこみがタイムアウトする（24 時間で 31 回）。画面が 1 回更新されないだけで、ほかには影響しない
   next:
     - 360° の見張りを床で確かめる（出力 15 %。前後・左右・ななめ・回転で 0.25 m の所で止まるか、物から離れる向きには動けるか）
     - スタックちゃんの声で走るのを床で確かめる（「前に 50 センチ進んで」「右に 90 度回って」「止まって」）
     - SLAM の地図を部屋 1 周で作って、壁が二重にならないか確かめる
     - 実機で自動モードの旋回方向・速度・しきい値を調整
     - 前後の VL53L1X で、段差の前で止まるかを床で確かめる（台の端に向けて「出力」15 % でゆっくり）
+    - /odom の横移動を床で合わせる
     - 保存した地図で「今どこにいるか」を出し、行き先まで行く（Nav2、Level 2）
   docs:
     - {name: README.md, desc: セットアップ・実行・各デバイスの導入手順}

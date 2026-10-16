@@ -1,5 +1,7 @@
 # Jetson の物体検出（NanoOWL）
 
+> 今は止めている（`jetson-owl.service` は disabled。Jetson のメモリを会話・顔の見分けに空けるため、2026/10 から）。AI-CAR 側も YOLOv8m は止めている（`perception_node.hef_path` が空）。
+
 AI-CAR のカメラ画像を Jetson Orin Nano Super で NanoOWL（言葉で物を探す AI）にかけ、
 「段ボール箱」「袋」のような名前と画面の位置を AI-CAR へ送ります。AI-CAR の YOLOv8m（80 種類）に
 ない物も、`prompts.json` に英語の言葉を足せば探せます。
