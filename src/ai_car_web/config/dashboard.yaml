@@ -265,7 +265,7 @@ perception_node:
     turn_stop_deg: 5.0       # その向きに回れる角度がこれより小さいと、その向きの回転を止める（反対向きは回れる）
     # 物の名前を当てる YOLO（yolov8m.hef）は使わない。AI HAT+ は 1 眼の奥行きの AI だけに使う
     hef_path: ""
-    # 推論レート上限。CPU 負荷軽減のため 5Hz（検出確定は 3 フレーム中 2 回で約 0.4〜0.6s。YOLOv8m の実効上限は約 12Hz）
+    # 推論レート上限（YOLO を使うとき。検出確定は 3 フレーム中 2 回。YOLOv8m の実効上限は約 12Hz）
     inference_rate: 15.0
     score_threshold: 0.5
     detect_confirm_frames: 2

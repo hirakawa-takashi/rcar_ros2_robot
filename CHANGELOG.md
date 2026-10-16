@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Docs
+- 機能の開発がひと区切りしたので、README・PROJECT_STATUS・HARDWARE_BOM・プロジェクト説明（`architecture.yaml`）・`gpio_pins.yaml`・`jetson/owl_detector/README.md` を今の main と実機に合わせた: 前後の VL53L1X は配線済み（「未配線」を消した）、YOLOv8m は `hef_path` を空にして止めていて AI HAT+ は SC-Depth v3 に使う、カメラは Camera Module 3 Wide、ゲームパッドは F710、Motor HAT とエンコーダーの配線は実配線（「暫定値」を消した、1 回転 1,408 カウント）、電源は PD 12V → DROK → USB-A の 1 本と Motor HAT の 12V、USB スイッチ 2 個・Jetson・スタックちゃん・パソコンを BOM に足した。README にノードの表・Jetson のサービスの表、`/drive_output`・`/motor_status` を足し、`use_seg_display` の既定（false）・`dashboard_node` の出す先（`/cmd_vel_manual`）・プロジェクト説明のタブ数（9）を直した。`architecture.yaml` の「LiDAR の横オフセットを直す」（URDF の `laser_y` 0.008 で直っている）を消し、`cliff_node` の `front_wired` / `rear_wired` を設定の表に足した。PROJECT_STATUS に 2026/10/17 の確かめ（VL53L1X・IMU・後ろ右のエンコーダー・ラズパイ / Jetson の記録）を足した
+
 ### Added
 - 「出力」の初めの値を 25 → 15 %（`output_percent`・`default_output`・画面のつまみ）
 - 360° の見張りを、安全な向きなら動けるようにした: 動く向きのすき間は両どなりの向きを使わず、いちばん近い 5° の向きだけで見る（後ろに下がるとき、少し右にかたむいただけで、右にくっついた物で止まっていた）。ななめが止まっても、前後・横の空いている分だけ動く。車体の横にある物を「前にある」と数えていたのも直した。その場の回転は、角の円ではなく、左・右それぞれ 1° ずつ回して箱に点が入るか見て（`turn_center_m`・`turn_stop_deg` 5°、`turn_stop_gap` はやめた）、当たる向きだけ止める。`/obstacle_status` の `move.turn_gap` は `turn_free_deg {left, right}` になった。「出力」の初めの値を 50 → 25 %（`output_percent`・`default_output`）

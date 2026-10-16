@@ -1,16 +1,17 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- 更新日: 2026/09/19
-- 更新概要: 2026/10/12、Motor HAT を同型品に交換し、M1〜M4 のモーター・エンコーダーを確認（既知の問題を解決済みに）。以前: 2026/09/25、プロジェクト説明に「3D プリント」タブ（STL ダウンロード・三面図・立体図・3D 表示・印刷設定・ネジ・組み立て手順）と `GET /print3d/{file}` を追加。以前: 2026/09/25、Motor HAT の出力故障を切り分け、交換を決定（既知の問題に記録）。Motor HAT 配線表に 1 本ごとの「備考」列を追加。エンコーダー VCC / GND の接続先表記を「Motor HAT (3V3 power)」「Motor HAT (Ground)」に統一（ダッシュボード・BOM・設定コメント）。以前: 2026/09/23、モーター 6 本の配線色をエンコーダー基板のコネクタ印字に基づき修正（Motor+ 黒 / Motor− 赤 / VCC 白 / GND 黄 / Encoder A 橙 / Encoder B 緑）。`motor_hat.yaml`・`gpio_pins.yaml`・BOM を更新。以前: 2026/09/23、エンコーダー基板印字（M+ / M− / VCC / GND / S1 / S2）から読み取ったモーター 6 本の配線色を確定（Motor+ 緑 / Motor− 橙 / VCC 黄 / GND 白 / Encoder A 赤 / Encoder B 黒）。`motor_hat.yaml`・`gpio_pins.yaml`・BOM を更新、接続図・一覧表は再読込で反映。以前: CPU 使用率 20% 以下を目標に、カメラ取り込み 15fps、推論 5Hz、テレメトリ 5Hz、LiDAR 点群 最大360点、IMU 20Hz、autonomy / joy 10Hz、液晶 2Hzへ周期を見直し。実機測定でダッシュボード CPU は概ね 18〜21%まで低下。以前:
-- 更新概要: プロジェクト説明モーダル（7タブ）と `/api/architecture` を追加。GPIO 40 ピン / Motor HAT 接続図カードはメイン画面からハードウェア構成タブへ移動、LiDAR 表示の距離リングに数値ラベルを追加。以前: 状態表示器を TM1637 7 セグから ZJY-IPS130-V2.0（ST7789 1.3 インチ 240×240 IPS 液晶、SPI0、7 ピン CS なし）へ変更。新規 `lcd_display_node`（spidev + libgpiod + Pillow）が運転モード / 自律行動 / 前方距離 / 障害物 / 電圧 / CPU 温度 / パッド接続 / IP を描画し、従来と同じコードを `/display_state` に publish。配線: VCC pin17 赤、GND pin20 黒、SCL pin23(GPIO11) 橙、SDA pin19(GPIO10) 黄、RES pin18(GPIO24) 緑、DC pin22(GPIO25) 青、BLK pin16(GPIO23) 紫。launch 既定を `use_lcd_display=true` / `use_seg_display=false` に変更（GPIO23/24 共用のため同時起動不可）。`gpio_pins.yaml`・BOM・README を更新。以前: 運転モード管理 `drive_mode_node`（手動 / 自動 / 停止、`/cmd_vel` を発行する唯一のノード）と Level 1 自律走行 `autonomy_node`（LiDAR 反応型、`/cmd_vel_auto`）を追加。`dashboard_node` の手動指令出力を `/cmd_vel_manual` に変更し、`GET/POST /api/drive_mode` とテレメトリ `drive_mode` / `autonomy` を追加。ゲームパッドは START 長押し（2 秒）で手動 ⇄ 自動、BACK（自動中は B も）で停止。画面に運転モードバッジ・3 ボタン・自律走行カードを追加、7 セグに `AUto` / `StoP` を追加。以前: Motor HAT 接続図・一覧表を「1 モーター 6 本（Motor+ / Motor− / VCC / GND / Encoder A / Encoder B）」をすべて明示する形に変更（`GET /api/motor_hat` の各モーターに `wires` 6 件、`encoder` に `vcc` / `gnd` を追加、GND はモーターごとに pin 30/34/39/25 を割り当て、VCC は pin 17 共通。VCC / GND は Motor HAT 上の 3V3 / GND ピンに接続する表記に変更し、Pi GPIO ヘッダー表では該当ピンを空きとして表示）。表示から「520 モーター」の文言を削除し、ラベルは「M1 前左 Encoder A」形式。以前: モーターの配線色をメーカー資料に合わせて確定（赤 Motor+ / 白 Motor− / 青 VCC / GND 黒 / 緑 Encoder A / 黄 Encoder B）し、車輪表記を進行方向基準の「M1 前左」形式（前左 / 前右 / 後左 / 後右）に統一。接続図・一覧表・BOM・GPIO 表の表記を Motor+ / Motor− / Encoder A / B に揃えた。以前: OSOYOO 520 モーター内蔵エンコーダー（A/B 相）の Pi GPIO 直結割り付けを追加（`motor_hat.yaml` の `encoder`、`gpio_pins.yaml`。M1: 29/31、M2: 33/35、M3: 37/32、M4: 36/38、VCC 3V3 pin17、GND 30/34/39/25）。Motor HAT 接続図・一覧表・GPIO ヘッダー図にエンコーダーピンを表示。以前: ダッシュボードに「Motor HAT 接続図」カード（Adafruit Motor HAT の M1〜M4 と車輪位置の割り付け・配線図・一覧表）を追加。割り付けは `config/motor_hat.yaml`（M1=前左 / M2=前右 / M3=後左 / M4=後右、右側は `reversed: true`）で編集し `GET /api/motor_hat` で取得。以前: TM1637 4桁7セグメントLED用 `seg_display_node`（`/display_state`）と GY-BNO055 用 `imu_node`（I2C 0x29、`/imu/data`）を追加。Logitech F710 ゲームパッドによる手動操作（`joy_teleop_node`）を追加。以前: ダッシュボードに Raspberry Pi 5 の GPIO 40 ピンヘッダー図（横向き、上段 2〜40 / 下段 1〜39）と 40 ピン一覧表（使用中・配線色・接続先・信号）を追加。配線は `config/gpio_pins.yaml` で編集、`GET /api/gpio` で取得。以前: ダッシュボードの systemd 自動起動サービスと respawn 対応を追記。カメラと LiDAR のカードを先頭に移動し横幅を2列分に拡大。LiDAR の取り付け向きを 180° 補正し、カメラ検出物体の距離推定をクラスタ中央値に変更。CPU カードに入力電圧・入力電流と低電圧・スロットリング警告を追加し、CPU / AI HAT+ カードの注記行を削除。CPU カードのロードアベレージを削除し PD 対応（5A）の 〇 / × 表示に変更。
+- 更新日: 2026/10/17
+- 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin
 
 ## システム構成
 - 実行環境: Raspberry Pi 5
 - ROS: ROS2 Jazzy（ros-base）
 - ナビゲーション: Nav2（未導入）
-- センサー: LiDAR（RPLIDAR A1M8）、カメラ（v3）、IMU（BNO055）
+- センサー: LiDAR（RPLIDAR A1M8）、カメラ（Camera Module 3 Wide、IMX708）、IMU（BNO055）、落下防止センサー（VL53L1X ×2、前後）、エンコーダー（520 モーター ×4）
+- 駆動: Adafruit DC & Stepper Motor HAT（M1〜M4、メカナム 4 輪）
+- 外の機械: Jetson Orin Nano Super（スタックちゃんの会話・状態）、パソコン（WSL・RTX 4080 SUPER、使えるときだけ聞き取り・会話・声）、M5 スタックちゃん（CoreS3）
 - Web: FastAPI + uvicorn
 - 開発環境: VS Code Remote-SSH
 - AI: Cline + LM Studio + DeepSeek 32B Q4_K_M
@@ -22,7 +23,7 @@
   - RViz2設定（`rviz/ai_car.rviz`）: RobotModel / TF / LaserScan
 - ai_car_web
   - `dashboard_node`: FastAPI サーバー（別スレッド）+ rclpy ノード
-  - 「プロジェクト説明」ボタンと8タブの全画面モーダルを追加（「3D プリント」タブは STL ダウンロード・三面図・立体図・ドラッグで回せる 3D 表示・印刷設定・組み立て手順）。`architecture.yaml` と `/api/architecture` から構成を表示し、`dashboard.yaml` の実値（秘密値はマスク）と実機の生存ノード / Topic を反映
+  - 「プロジェクト説明」ボタンと 9 タブの全画面モーダルを追加（「3D プリント」タブは STL ダウンロード・三面図・立体図・ドラッグで回せる 3D 表示・印刷設定・組み立て手順）。`architecture.yaml` と `/api/architecture` から構成を表示し、`dashboard.yaml` の実値（秘密値はマスク）と実機の生存ノード / Topic を反映
   - Publish: `/cmd_vel_manual`（geometry_msgs/Twist、手動指令。`/cmd_vel` は `drive_mode_node` が発行）、`/drive_mode_request`、`~/status`
   - `drive_mode_node`（運転モード管理）: `/cmd_vel_manual`（Web + ゲームパッド）と `/cmd_vel_auto`（自律走行）のどちらか一方だけを `/cmd_vel` に中継する。モードは manual / auto / stop（起動時 manual）。状態は `/drive_mode`（JSON, transient local, 5Hz）、切替要求は `/drive_mode_request`（JSON `{mode: manual|auto|stop|toggle, source}`）。安全機構: 自動へ入る条件（`/obstacle_status` が新鮮で stop / unknown でない・ゲームパッド接続中・スティック中立・`/cmd_vel_auto` 生存）を満たさないと拒否（`last_reject` に理由）、自動指令が `auto_timeout` 0.5 秒途絶／ゲームパッド切断／障害物判定途絶で STOP、自動中に手動指令を検出すると手動へ復帰（`manual_override`）、モード遷移時はゼロ速度を publish、最終段で LiDAR の 360° を使い、動く向き（前後左右・ななめ）の車体の端から 0.25 m（`move_stop_gap`）以内に物があればその向きの動きを、その向きに回ると車体の箱に点が入る（1° ずつ回して `turn_center_m` のまわりに確かめる、回れる角度が 5° `turn_stop_deg` より小さい）ならその向きの回転だけを 0 にする。ななめの向きが止まっても、前後・横の片方が空いていればその分だけ動く。手動は 0.7 m（`move_slow_gap`）以内で半分の速さ。LiDAR データなし（unknown）・判定の途絶中は前後左右の動きを 0 にする（`obstacle_guard`、手動・ゲームパッド・声・自動のどれも。止めた理由は `/drive_mode` の `guard`）。すき間は `perception_node` が車体の箱 `body_box_m`（LiDAR の中心から 後ろ 0.176・前 0.090・右 0.135・左 0.190 m。左は LiDAR の左 17 cm の箱まで）を 5° ごとの向きへ動かして求め、`/obstacle_status` の `move` に出す。launch 引数 `use_drive_mode`
   - `autonomy_node`（Level 1 自律走行・LiDAR 反応型）: `/scan` を前 / 左 / 右 / 後セクターに分けて最短距離を求め、前進（0.15 m/s）→ 0.8 m 以内で減速（0.08 m/s、空いている側へ緩く曲がる）→ 0.35 m 以内で空いている側へその場旋回（0.6 rad/s、前方 0.9 m 以上空くまで）→ 前進を繰り返す。前後左右とも 0.25 m 以内なら後退。LiDAR が 1 秒以上途絶えると停止。`/cmd_vel_auto` に 10Hz で常時 publish（AUTO 以外はゼロ速度で待機）、状態は `/autonomy_status`（JSON: behavior / sectors / cmd）。地図・自己位置は使わない。launch 引数 `use_autonomy`
@@ -38,7 +39,7 @@
   - 検出物体の距離: LiDAR の距離（画面に「（LiDAR）」）。LiDAR は床から 17.5 cm の 1 本の線なので、高い所の物（テレビなど）では手前の低い物の距離になることがある。LiDAR の距離: 画像の横位置を `camera_hfov_deg`（102°）で方位角に変換し、LiDAR の同方位の距離を採用（LiDAR の点は、LiDAR の中心から見たカメラの位置 `camera_offset_x_m` 0.063 / `camera_offset_y_m` 0.0（真ん前 63 mm。Camera Module 3 Wide のレンズの先、CAD 値）に移し、カメラから見た方位で照合する。距離はカメラのレンズから前方への距離）。カメラ映像に検出枠と距離を重畳し（枠の色は LiDAR の図の点と同じ距離の色: `danger_distance` 以内 赤 #ff5c6c / 停止距離以内 橙 #ff8a4c / 減速距離以内 黄 #f5b942 / それより遠い 水色 #35d6ff、距離不明 灰色。1 眼の低い物の枠も同じ）、LiDAR 点群マップでは前方 ±30°（`front_angle_deg` 60°）内かつ 0.3m 以内の点を赤点で表示。点群マップには前方／後方／左／右のラベルを表示（上＝前方）。方位角範囲内の点は距離でクラスタリングし（`cluster_gap` 0.25m）、最も手前のまとまりの中央値を採用する。スキャンが `scan_max_age`（1秒）より古い場合は距離を出さない。LiDAR の取り付け向きは `scan_angle_offset_deg` で補正する。画面の「前方」は前方カメラの正面とし、カメラの画面の真ん中に置いたボトルが LiDAR で右 4°・0.47 m に見えたことから −1.7° とした（2026/10 実測。`dashboard_node`・`perception_node`・`autonomy_node` と URDF の `laser` の向きで同じ値）
   - 人・動物の早めの減速・停止: カメラの前方（画面の中央半分）に写った人・犬・猫・鳥（`living_labels`）の LiDAR 距離が 1.5 m（`living_slow_distance`）以内で減速、0.6 m（`living_stop_distance`）以内で停止と判定し、`/obstacle_status` の `living` に出す。`living_guard: true` のときだけ LiDAR の判定より厳しい方を `level`・`speed_scale` に使う（既定は false で表示のみ）
   - 1 眼の距離: `perception_node` が AI HAT+ の 1 眼の奥行きの AI（SC-Depth v3、`mono_depth_hef`）で床から出っぱった低い物を見つけ、`/stereo/depth_status`（いちばん近い物・`objects`）と `/stereo/depth/compressed`（距離の色の画像）に出す（トピック名は前の 2 眼カメラのときのまま）。ダッシュボードのカメラカードの「1眼の距離」の行に出し、「距離の画像」ボタンで映像を距離の色に切り替える（`GET /api/camera/depth_stream`）。減速・停止に使うのは `stereo_guard` と `mono_depth_guard` の両方が true のときだけ（今は `mono_depth_guard: false` で表示だけ）。車の傾きは、LiDAR が当たった物と床のさかい目の行から毎回出して距離の計算に使う（`mono_auto_pitch`、出せないときは `mono_camera_pitch_deg`）
-  - システム構成（プロジェクト説明の「システム構成」タブ、`architecture.yaml` の `system`）: AI-CAR・Jetson Orin Nano Super・M5 スタックちゃんの役割とやりとり（① 画像 ② 名前・位置は稼働中、スタックちゃんとの声も稼働中、スタックちゃんのカメラの映像も稼働中、声の命令は予定）を図と表で出す
+  - システム構成（プロジェクト説明の「システム構成」タブ、`architecture.yaml` の `system`）: AI-CAR・Jetson Orin Nano Super・M5 スタックちゃんの役割とやりとり（① 画像 ② 名前・位置・スタックちゃんとの声・スタックちゃんのカメラの映像・声の命令（話して走る）はどれも稼働中）を図と表で出す
   - 液晶（ZJY-IPS130-V2.0、ST7789）は 2026/10 に取り外し、`lcd_display_node`・launch の `use_lcd_display`・`dashboard.yaml` の設定・`gpio_pins.yaml` の配線（pin 16/17/18/19/20/22/23）を消した。旧 TM1637 の `seg_display_node` は残っている（既定では起動しない）
   - Jetson の物体検出（表示のみ）: Jetson Orin Nano Super の `jetson/owl_detector`（NanoOWL、`jetson-owl.service`）が AI-CAR のカメラ画像から `prompts.json` の物（段ボール箱・袋など）を探し、`POST /api/jetson/detections` → `/jetson_detections` → `perception_node` が LiDAR の距離を付けて `/obstacle_status` の `jetson` に出す。2 秒以上届かないと「未接続」。速度制限には使わない。LiDAR の図にもカメラの見える範囲（扇形）と物の位置を点で重ねる（名前・距離の吹き出しは出さない）。2 眼の物（`/obstacle_status.stereo.objects`）も、色を距離、直径を横幅の 2 倍にした白ふちの点で描く
   - Jetson の状態（表示のみ）: Jetson の `jetson/status_reporter`（`jetson-status.service`）が 1 秒ごとに温度・CPU / GPU の使用率・メモリ・スワップ・消費電力・AI の部品（whisper-server・Ollama・Kokoro。声→文字・文字→声は仕組みの名前（例: whisper.cpp small（GPU）・Kokoro TTS 1.0.0）、会話の AI はモデル名と GPU / CPU で動く割合も）・セキュリティ更新の残り・再起動が必要か・IP アドレスを `POST /api/jetson/status` へ送り、ダッシュボードの「Jetson Orin Nano Super — AI 担当」カード（「Raspberry Pi 5 — CPU」の右）に出す。5 秒以上届かないと「未接続」。速度や安全の判定には使わない。NanoOWL は 2026/10 からメモリを空けるため止めている（電源モード・ファン・NanoOWL の値も送るが、カードには出さない）
@@ -50,13 +51,16 @@
   - 更新の進み具合: ボタンの更新のあいだ「更新中 45 %」のように出す（ダウンロード 0〜30 %、インストール 30〜100 %。`/run/ai-car-upgrade.progress`・`/run/jetson-upgrade.progress`）
   - ラズパイの更新: 「Raspberry Pi 5 — CPU」カードに「セキュリティ更新」（`apt-check`、1 時間に 1 回とボタンの更新のあと）「再起動」（必要 / いらない）と「ラズパイを更新」ボタン（確認の画面あり、API トークンが必要、走行中・自動運転中は断る）。ボタンは `ai-car-upgrade.service`（`systemd/ai-car-upgrade.sh`、ROS 2 も含めて更新、消える部品があるときはやめる）を始める。自動のセキュリティ更新は Ubuntu の unattended-upgrades（自動の再起動なし）
   - SLAM（地図と自己位置）: `use_slam`（既定 true）で `slam_toolbox` を起動し、ダッシュボードの「地図と自己位置（SLAM）」に地図と自己位置を出す。地図は `~/AI-CAR_ws/maps` に保存できる。位置はエンコーダーの `/odom` とスキャンの照合で出し、0.1 m か 0.1 rad 動くたびにスキャンを地図に足す（`minimum_travel_*`）。止まっていても `/map` は 2 秒ごとに届くので地図は出たまま。自律走行にはまだ使わない
-  - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。`dashboard_node` は `speed_scale` を前進指令に適用する（`obstacle_guard`）
+  - サーマル制御: CPU 70℃ / AI HAT+ 75℃ で推論レート 40%、CPU 78℃ / AI HAT+ 85℃ で推論停止（LiDAR 判定は継続）。減速・停止は `/obstacle_status` を通して `drive_mode_node` の `obstacle_guard` が最後に `/cmd_vel` にかける
   - 画面（`static/index.html`）: 手動操作カードは LiDAR カードの直下（4 列固定グリッド、幅 2 列分）に配置。メカナム方向操作（前後・平行移動・旋回）、出力ゲイン、テレメトリ表示
   - 安全機構: `cmd_timeout`（既定0.7秒）無指令で自動停止
-  - ゲームパッド手動操作（`joy_teleop_node`）: Logitech F710（XInput モード、`/dev/input/js0`）を Linux joystick API で直接読み（追加の Python 依存なし）、正規化済み Twist を `/joy_cmd` に 10Hz で publish。`dashboard_node` が `/joy_cmd` を購読して Web 操作と同じ `publish_cmd_vel()` 経路で `/cmd_vel` に変換するため、最大速度・障害物ガード（減速／停止）・`cmd_timeout` 停止が同様に適用される。割り当て: 左スティック上下=前後、左スティック左右=平行移動、右スティック左右=旋回、十字キー=前後・平行移動（デジタル）、RB=全速（通常は `speed_scale` 0.5）、B=停止（押している間。自動中は STOP モード要求）、START 長押し 2 秒=手動 ⇄ 自動、BACK=STOP モード、`button_enable` でデッドマンボタンも設定可（既定は無効）。F710 未接続でも起動し、抜き差しを検出して再接続（切断時は指令を出さない）。画面の手動操作カードに接続状態（未接続／接続中／操作中）を表示。launch 引数 `use_joy` で無効化可
+  - ゲームパッド手動操作（`joy_teleop_node`）: Logitech F710（XInput モード、`/dev/input/js0`）を Linux joystick API で直接読み（追加の Python 依存なし）、正規化済み Twist を `/joy_cmd` に 10Hz で publish。`dashboard_node` が `/joy_cmd` を購読して Web 操作と同じ `publish_cmd_vel()` 経路で `/cmd_vel_manual` に出し、`drive_mode_node` が `/cmd_vel` にするため、最大速度×「出力」・360° の見張り・段差ガード・`cmd_timeout` 停止が同じようにかかる。割り当て: 左スティック上下=前後、左スティック左右=平行移動、右スティック左右=旋回、十字キー=前後・平行移動（デジタル）、RB=全速（`speed_scale` 1.0 = ダッシュボードの「出力」）、B=停止（押している間。自動中は STOP モード要求）、START 長押し 2 秒=手動 ⇄ 自動、BACK=STOP モード、`button_enable` でデッドマンボタンも設定可（既定は無効）。F710 未接続でも起動し、抜き差しを検出して再接続（切断時は指令を出さない）。画面の手動操作カードに接続状態（未接続／接続中／操作中）を表示。launch 引数 `use_joy` で無効化可
+  - `motor_driver_node`（モーター制御）: `/cmd_vel` をメカナムの逆運動学で 4 輪に分け、Motor HAT（PCA9685 0x60）の M1〜M4 を PWM で回す（右側 2 輪は `reversed`）。`/cmd_vel` が `timeout` 届かないと止める。旋回 0 で動くあいだは IMU の向きを保つ（`heading_hold`、床で合わせた `heading_kp` 0.25・`heading_kd` 0.05・上限 0.05 rad/s・1° の遊び）。様子は `/motor_status`（JSON 5 Hz）
+  - `encoder_odom_node`（オドメトリ）: 4 輪の A/B 相 8 本を GPIO v2 uAPI でまとめて両エッジで数え（別プロセス、イベントの取りこぼしと相のとび越しを数えて 10 秒ごとに記録）、メカナムの順運動学で `/odom` と TF `odom → base_footprint` を 20 Hz で出す（`counts_per_rev` 1408・`yaw_scale` 1.42、床で合わせた値）
+  - `cliff_node`（落下防止）: 前後バンパーの VL53L1X ×2 を XSHUT（前 GPIO17・後 GPIO27）で 1 個ずつ起こして 0x30 / 0x31 にし、`/cliff_status` を 20 Hz で出す。0.15 m より遠い（床が途切れた）と段差。`front_wired` / `rear_wired` は両方 true（2026/10/17 配線済み）。前が段差なら前進、後ろなら後退を `drive_mode_node` が 0 にし、自動は STOP
+  - スタックちゃんに話して走る: Jetson の `stackchan_bridge` が「前に 1 メートル進んで」「右に 90 度回って」「止まって」を聞き分け、ダッシュボードの `POST /api/cmd_vel` / `POST /api/stop` で動かす（言わなければ 0.5 m・90°。1 回の上限は 2 m・720°・10 秒。進んだ量は `/odom`、回った角度は IMU で見て、のこりが少ないと半分の速さにし、3 秒動かなければ止める）。ラズパイの安全ガード（360° の見張り・段差・指令の途絶）はそのまま効く
   - `seg_display_node`（旧表示器、既定では起動しない）: TM1637 4桁7セグメントLEDを libgpiod で駆動し、`/system_status`・`/obstacle_status`・`/joy_cmd`・`/cmd_vel` と `/drive_mode` から状態を判定して `/display_state`（std_msgs/String）へ publish。表示: boot / rdy / HAnd / AUto / StoP / ObSt / SLo / LoU / Err。`use_seg_display` で無効化可
   - パラメータ: `config/dashboard.yaml`（host/port/各トピック名/最大速度/タイムアウト/配信レート）
-  - 自動起動: `systemd/ai-car-dashboard.service`（`install_service.sh` で登録、`Restart=always`、USB デバイス待ちで起動を10秒遅延）。カメラ / LiDAR ノードは launch 側で `respawn`
   - 自動起動: `systemd/ai-car-dashboard.service`（`install_service.sh` で登録、`Restart=always`、USB デバイス待ちで起動を10秒遅延）。カメラ / LiDAR / IMU ノードは launch 側で `respawn`
   - `system_monitor_node`: Raspberry Pi 5 / AI HAT+ の状態監視（読み取りのみ）
     - Publish: `/system_status`（std_msgs/String, JSON、1Hz。IP アドレス `ips` は 30 秒ごとに調べる）
@@ -67,6 +71,7 @@
   - Motor HAT 接続図カード（同じく「配線詳細」に表示）: `ai_car_web/motor_hat.py` が `config/motor_hat.yaml` の割り付け（`channel` / `wheel` / `reversed` / `colors` / `note`）に端子ごとの固定情報（PCA9685 の PWM / IN1 / IN2 チャンネル、TB6612 ブリッジ）を重ねて `GET /api/motor_hat` で返す。割り付け: M1=前左（front_left）/ M2=前右（front_right）/ M3=後左（rear_left）/ M4=後右（rear_right）。右側 2 輪は左右対称取り付けのため `reversed: true`（モーター制御ノードで符号反転する前提）。画面は上面図の SVG（前方が上、中央に HAT の端子台 M1 M2 | +− | M3 M4、四隅に車輪、端子→車輪の配線を +/− の配線色で描画、電源端子→12V 系統）と一覧表（端子 / 車輪 / 回転 / 配線色 / PCA9685 ch / ブリッジ / 備考）。端子・車輪の重複や未割り付けは警告表示。各モーターの `encoder`（`a_pin` / `b_pin` / `colors`）と `hat.encoder`（`vcc_pin` / `gnd_pins`）で 520 モーターエンコーダーの Pi 直結ピンを定義し、BCM 番号へ解決・非 GPIO ピン・I2C/ID ピン・ピン重複・VCC が 3V3 以外を警告。接続図は車輪ごとに「M1 前左」＋ 6 本の線（名称・配線色・接続先）を列挙し、一覧表は 1 線 1 行（モーター / 線番号 / ピン名称 / 配線色 / 接続先 / 回転・ドライバ・備考）。パラメータ `motor_hat_config`（空なら share 内の `motor_hat.yaml`）
 
 ## 現在作業中
+- なし（2026/10/17 で機能の開発はひと区切り。のこりは下の「次回作業」の床での確かめ）
 
 ## 未実装機能
 - Level 2 自律走行（Nav2 による地図ベースのナビゲーション）。現在は Level 1（LiDAR 反応型）のみ
@@ -85,14 +90,18 @@
 - 落下防止センサー（VL53L1X ×2）は前後とも配線済み（0x30 / 0x31 で距離が読める）。段差の前で本当に止まるかは、床でまだ確かめていない
 - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある（1 眼の奥行きの低い物は表示だけ）
 - IMU（BNO055、AMG モード）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で 110〜156 µT（地球の約 3 倍）あり、磁気の向きは目安だけ
+- Jetson のケースの OLED（I2C）は、ときどき書きこみがタイムアウトする（2026/10/17 は 24 時間で 31 回）。画面が 1 回更新されないだけで、ほかのサービスには影響しない
 - Motor HAT（Adafruit DC & Stepper Motor HAT）の出力故障（2026/09/25）は、同型品（Adafruit 2348）への交換で解決した（2026/10/12、下の「テスト結果」）
 
 ## テスト結果
+- 落下防止センサー・IMU（実機、2026/10/17、車は床の上で止めたまま）: 前後の VL53L1X は XSHUT で 0x30（前）・0x31（後ろ）になり、距離は前 0.069 m・後ろ 0.085 m でどちらも「床あり」。IMU（0x29）は前のセンサーと取り合わずに動く（前を `front_wired: false` のままつないだときは、前のセンサーが 0x29 で起きて IMU が読めなくなった → PR #225 で直した）。段差の手前で止まるかは床でまだ試していない
+- 後ろ右のエンコーダー（実機、2026/10/17、モーターは回さない）: 止まっているとき 1 分で `/odom` は 0.0 mm（1 カウントのさかい目で +1 / −1 するだけ）。手でゆっくり 1,905 カウント回して数えそこね 0 回、強くはじいて約 3,890 カウントで数えそこね 9 回・取りこぼし 3 回（約 0.3 %、1 m で約 3 mm）。ふだんの走行では問題なしと判断
+- ラズパイ・Jetson の記録（2026/10/17）: ラズパイは電圧低下 0 回（throttled 0x0）、温度 56.5 °C、止まったサービスなし。Jetson は 2 日 12 時間動き続け、6 サービス（会話・顔の見分け・状態・OLED・ollama・whisper）とも自動の再起動 0 回、メモリ不足 0 回、温度 45 °C。ケースの OLED は 24 時間で 31 回書きこみに失敗（I2C のタイムアウト、画面が 1 回更新されないだけ）
 - Motor HAT 交換後（実機、2026/10/12）: 12V 投入で緑 LED 点灯、I2C 0x60 / 0x70 を検出（最初は Pi 側の線のゆるみで未検出 → 差し直しで検出）。タイヤを浮かせ、M1〜M4 を 1 台ずつ PWM 30% で 1 秒駆動（PCA9685 を i2cset で直接設定）。正転指令で M1 前左・M3 後左は前進、M2 前右・M4 後右は後退（`reversed` どおり）。エンコーダーは 1 秒で -2,580〜-2,800 カウント（約 1.2〜1.3 回転、4 台とも負で同じ向き）、`get_throttled=0x0`。M2・M4 は最初 Motor+/− が逆で、入れ替えて合わせた（M 端子の左から M1・M3 は 黒 / 赤、M2・M4 は 赤 / 黒）。M3 の Encoder A が 37 番ではなく 36 番に挿さっていたのを差し直した
 - `lcd_display_node`（実機、2026/09/15）: `python3-spidev` / `fonts-ipafont-gothic` を apt 導入、`/dev/spidev0.0` は dialout グループで super から書き込み可。サービス再起動後 `lcd_display_node` が起動し「ST7789 液晶表示を接続しました」、`/display_state` に `rdy ` を publish。`seg_display_node` は起動していないことを確認。2026/09/16 に配線（GND 黒 / VCC 赤 / SCL 橙 / SDA 黄 / RES 緑 / DC 青 / BLK 紫）後、ノード再起動で **正常表示を確認**（SPI モード 3、32MHz、rotation 270 = 反時計回り 90°、横 80px オフセット）。2026/09/17 に更に反時計回り 90° 回転させ rotation 180（縦 80px オフセット）に変更し、実機で **要望通りの向きで正常表示を確認**。配線後はパネル初期化のためノード再起動が必要（起動中に配線しても表示されない）
 - `seg_display_node`（実機、2026/09/15、旧表示器）: `python3-libgpiod` を apt 導入後、`gpiochip4 (pinctrl-rp1)` の GPIO23/24 を `seg_display_node` が output で確保（`gpioinfo` で確認）。起動 1 秒で `boot` → `/system_status` 受信後 `rdy` に遷移、`/display_state` を publish。TM1637 配線後に LED の点灯を確認。初回は CLK 線の挿し違いで消灯だった（GPIO24 にはモジュールのプルアップを検出、GPIO23 にはなし → CLK 未接続と判定）。スティック操作時の `HAnd` 表示は未確認
 - `imu_node`（実機、2026/09/15）: `i2cdetect -y 1` で 0x29 を検出、`BNO055 接続` ログ後に `/imu/data` を 50.0Hz で受信。加速度の合成値 約9.8m/s²、キャリブレーション gyr=3 まで進行を確認。`/api/status` の `imu` に roll/pitch/yaw・角速度・加速度が入ることを確認（ブラウザ表示は未確認）。`super` を `i2c` グループへ追加が必要（未所属だと Permission denied）
-- 取り付け向き: 静止時に加速度 x≈6.9 / y≈4.0 / z≈-5.8 と重力が z 軸に乗っておらず、センサーの搭載向きが `imu_link`（機体と同一向き）と一致していない。向き確定後に軸の入れ替え（またはURDF の `imu_joint` の rpy）で補正が必要
+- 取り付け向き（2026/09/15 の値）: 重力が z 軸に乗っていなかったので、PR #200 で BNO055 の軸の割り当て（x・y 反転）を `imu_link`（x 前・y 左）にそろえた
 - `colcon build --symlink-install`: 2パッケージ成功
 - `xacro ai_car.xacro`: URDF 生成成功（10リンク）
 - `ros2 launch ai_car_web dashboard.launch.py`: 起動成功
@@ -121,7 +130,7 @@
 - 解像度: 960x540 / JPEG 品質 80（IMX708 / Camera Module v3、`config/dashboard.yaml` の `width`/`height`/`jpeg_quality`）。1 枚 約42〜53KB
 - ROS 配信レート: 約 30Hz（`/camera/image_raw/compressed`、`FrameDurationLimits` [33333, 33333]、実測 30.04Hz）
 - ダッシュボード MJPEG: 30fps（`camera_stream_rate`）
-- AI HAT+ 推論: YOLOv8m、640x640 にレターボックスして 15Hz 設定（推論タイマー 0.02秒）。推論 約32.6ms、dashboard CPU 28〜33%、CPU 53.8〜54.3℃、Hailo 49.6〜50.7℃、サーマル状態 normal
+- AI HAT+ 推論（2026/09 の YOLOv8m のときの値。今は `hef_path` が空で YOLO は止め、1 眼の奥行きの AI SC-Depth v3 を 15 Hz で動かす）: YOLOv8m、640x640 にレターボックスして 15Hz 設定（推論タイマー 0.02秒）。推論 約32.6ms、dashboard CPU 28〜33%、CPU 53.8〜54.3℃、Hailo 49.6〜50.7℃、サーマル状態 normal
 - 電源: 12V 系 → DROK 降圧コンバータ 5.2V/5A → USB-C。`/boot/firmware/config.txt` に `usb_max_current_enable=1`（USB-A からなので PD のやりとりはなく、ラズパイが認識する電源の上限は 3 A。ダッシュボードの「電源の電流上限」は `power.supply` = device tree の `chosen/power/max_current`）。実測 入力電圧 4.96〜5.02V、`get_throttled=0x0`（低電圧履歴なし）。以前のモバイルバッテリー（CIO SMARTCOBY Pro SLIM 35W、5V 時 3A 上限）では 4.77〜4.90V・低電圧フラグが発生していた
 - 低負荷設定（カメラ 15fps・推論 5Hz・テレメトリ 5Hz・LiDAR 360 点）時の参考値: dashboard CPU 18.4〜21.1%、camera_node 約18.1%、perception_node 約16.5%、dashboard_node 約16.8%
 
@@ -135,6 +144,7 @@
 - 保存した地図で「今どこにいるか」を出し、行き先まで行く（Nav2、Level 2）
 
 ## 変更ファイル
+- 下は 2026/09 の最初の作業の記録（液晶・TM1637 は今は使っていない）。そのあとの変更は CHANGELOG.md と各 PR を見る
 - `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/drive_mode_node.py` - 新規作成（運転モード管理）
 - `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/autonomy_node.py` - 新規作成（Level 1 自律走行）
 - `/home/super/AI-CAR_ws/src/ai_car_web/ai_car_web/lcd_display_node.py` - 新規作成（ZJY-IPS130-V2.0 / ST7789 液晶表示）
