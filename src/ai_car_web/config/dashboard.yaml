@@ -213,9 +213,11 @@ imu_node:
 cliff_node:
   ros__parameters:
     # 落下防止センサー Dovhmoh VL53L1X ×2（前後バンパー、真下から進行方向へ 45° 前傾）。
-    # 未配線の間は wired: false（I2C / GPIO に触らず「未配線」だけを配信）。配線したら true にする。
+    # wired: false の間は I2C / GPIO に触らず「未配線」だけを配信。front_wired / rear_wired で配線したほうだけを使う。
     # 初期アドレス 0x29 は BNO055 と同じなので、XSHUT を 1 台ずつ上げて 0x30 / 0x31 に変える
-    wired: false
+    wired: true
+    front_wired: false       # 前は未配線
+    rear_wired: true
     i2c_bus: 1
     gpio_chip: ""            # 空なら pinctrl-rp1 を探す
     default_address: 0x29

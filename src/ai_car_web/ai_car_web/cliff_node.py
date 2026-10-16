@@ -183,6 +183,8 @@ class CliffNode(Node):
     def __init__(self):
         super().__init__('cliff_node')
         self.declare_parameter('wired', False)
+        self.declare_parameter('front_wired', True)
+        self.declare_parameter('rear_wired', True)
         self.declare_parameter('i2c_bus', 1)
         self.declare_parameter('gpio_chip', '')
         self.declare_parameter('default_address', 0x29)
@@ -200,7 +202,9 @@ class CliffNode(Node):
         self.declare_parameter('confirm_count', 2)
         self.declare_parameter('stale_timeout', 0.5)
 
-        self.wired = bool(self.get_parameter('wired').value)
+        wired = bool(self.get_parameter('wired').value)
+        self.active = [s for s in SENSORS if wired and self.get_parameter(f'{s}_wired').value]
+        self.wired = bool(self.active)
         self.i2c_bus = int(self.get_parameter('i2c_bus').value)
         self.gpio_chip = str(self.get_parameter('gpio_chip').value)
         self.default_address = int(self.get_parameter('default_address').value)
@@ -253,13 +257,9 @@ class CliffNode(Node):
     def _connect(self):
         if gpiod is None:
             raise OSError('python3-libgpiod がありません')
-        self._chip = self._find_chip()
-        for side in SENSORS:
-            line = self._chip.get_line(self.xshut[side])
-            line.request(consumer='cliff_node', type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
-            self._lines[side] = line
+        self._hold_xshut_low()
         time.sleep(0.01)
-        for side in SENSORS:
+        for side in self.active:
             self._lines[side].set_value(1)
             # 起動（最大 1.2 ms）を待ってから、0x29 のうちにアドレスを変える
             time.sleep(0.01)
@@ -272,16 +272,30 @@ class CliffNode(Node):
                 raise
             self._sensors[side] = sensor
         now = time.monotonic()
-        for side in SENSORS:
+        for side in self.active:
             self._state[side] = self._empty_state()
             self._state[side]['stamp'] = now
         self._error = None
         self.get_logger().info(
             'VL53L1X 接続: ' + ', '.join(
                 f'{LABELS[s]} 0x{self.addresses[s]:02x}（XSHUT GPIO{self.xshut[s]}）'
-                for s in SENSORS))
+                for s in self.active))
 
-    def _disconnect(self):
+    def _hold_xshut_low(self):
+        """XSHUT を L で握ったままにする。
+
+        XSHUT は基板で引き上げられていて、離すとセンサーが 0x29（BNO055 と同じ）で起きる。
+        """
+        if self._chip is None:
+            self._chip = self._find_chip()
+        for side in self.active:
+            if side not in self._lines:
+                line = self._chip.get_line(self.xshut[side])
+                line.request(consumer='cliff_node', type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
+                self._lines[side] = line
+            self._lines[side].set_value(0)
+
+    def _disconnect(self, release=False):
         for sensor in self._sensors.values():
             try:
                 sensor.stop()
@@ -292,13 +306,15 @@ class CliffNode(Node):
         for line in self._lines.values():
             try:
                 line.set_value(0)
-                line.release()
+                if release:
+                    line.release()
             except OSError:
                 pass
-        self._lines = {}
-        if self._chip is not None and hasattr(self._chip, 'close'):
-            self._chip.close()
-        self._chip = None
+        if release:
+            self._lines = {}
+            if self._chip is not None and hasattr(self._chip, 'close'):
+                self._chip.close()
+            self._chip = None
         for side in SENSORS:
             self._state[side] = self._empty_state()
 
@@ -331,7 +347,7 @@ class CliffNode(Node):
         sensors = {}
         for side in SENSORS:
             st = self._state[side]
-            if not self.wired:
+            if side not in self.active:
                 level = 'unwired'
             elif not self._sensors:
                 level = 'unknown'
@@ -355,6 +371,9 @@ class CliffNode(Node):
             reason = '・'.join(LABELS[s] for s in cliff) + 'に段差'
         else:
             level, reason = 'floor', '床あり'
+            unwired = [LABELS[s] for s in SENSORS if s not in self.active]
+            if unwired:
+                reason += f"（{'・'.join(unwired)}は未配線）"
         return {
             'stamp': round(time.time(), 3),
             'wired': self.wired,
@@ -390,7 +409,7 @@ class CliffNode(Node):
         self.pub.publish(msg)
 
     def destroy_node(self):
-        self._disconnect()
+        self._disconnect(release=True)
         super().destroy_node()
 
 
