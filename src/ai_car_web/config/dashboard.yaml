@@ -42,6 +42,7 @@ dashboard_node:
     joy_timeout: 1.0
     drive_mode_topic: "/drive_mode"
     drive_mode_request_topic: "/drive_mode_request"
+    nav_goal_topic: "/nav_goal"   # 地図の行き先（autonomy_node の Level 2）
     api_token: ""  # 空なら認証なし。設定すると POST /api/* に X-API-Token（または Bearer）ヘッダーが必要。環境変数 AI_CAR_API_TOKEN でも指定可
     autonomy_status_topic: "/autonomy_status"
     cliff_topic: "/cliff_status"
@@ -147,6 +148,13 @@ autonomy_node:
     cliff_backoff_m: 0.10
     cliff_turn_deg: 120.0
     cliff_escape_timeout: 20.0   # 下がる・回るのそれぞれ。こえたら（前がまだ段差なら止まったまま）ふつうの走行へ
+    # Level 2: ダッシュボードの地図の行き先（/nav_goal）へ Nav2 で向かう。Nav2 の速度（/cmd_vel_nav）を AUTO のときだけ中継
+    nav_goal_topic: "/nav_goal"
+    nav_cmd_topic: "/cmd_vel_nav"
+    nav_plan_topic: "/plan"
+    nav_frame: "map"
+    nav_cmd_timeout: 0.5   # Nav2 の速度がこれより古ければゼロ
+    nav_auto_wait: 5.0     # 「ここへ行く」から自動に入らないままこの秒数で行き先をやめる
 
 joy_teleop_node:
   ros__parameters:

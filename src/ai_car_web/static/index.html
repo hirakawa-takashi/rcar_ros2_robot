@@ -616,7 +616,7 @@
       <tr><td class="k">/cmd_vel 出力</td><td class="v" id="au_out">-</td></tr>
       <tr><td class="k">自動への切替</td><td class="v" id="au_ok">-</td></tr>
     </table>
-    <div class="note" id="au_note">Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。</div>
+    <div class="note" id="au_note">行き先がないときは Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。SLAM の地図で行き先を決めると Level 2（Nav2）で向かう。</div>
   </div>
 
   <div class="card wide">
@@ -666,8 +666,11 @@
       <tr><td class="k">自己位置 x / y [m] / 向き [°]</td><td class="v" id="sl_pose">-</td></tr>
       <tr><td class="k">地図の更新</td><td class="v" id="sl_age">-</td></tr>
       <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <span id="sl_saved"></span></td></tr>
+      <tr><td class="k">行き先 x / y [m]</td><td class="v" id="nv_goal">-</td></tr>
+      <tr><td class="k">道 / 残り [m]</td><td class="v" id="nv_state">-</td></tr>
+      <tr><td class="k">行き先へ</td><td class="v"><button id="nv_go" disabled>ここへ行く</button> <button id="nv_cancel" disabled>やめる</button> <span id="nv_msg"></span></td></tr>
     </table>
-    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。自律走行にはまだ使わない。</div>
+    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。</div>
   </div>
 
 
@@ -1823,6 +1826,16 @@ function renderSlam(sl) {
   document.getElementById('sl_save').disabled = !(sl && sl.alive && sl.can_save);
   const sv = sl && sl.saved;
   document.getElementById('sl_saved').textContent = sv ? (sv.ok ? `保存: ${sv.name}` : sv.reason) : '';
+  const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.alive ? latestTelemetry.autonomy.nav : null;
+  const g = nav && nav.goal;
+  document.getElementById('nv_goal').textContent = g ? `${fmt(g.x)} / ${fmt(g.y)}` : (navPick ? `${fmt(navPick.x)} / ${fmt(navPick.y)}` : '-');
+  document.getElementById('nv_state').textContent = nav
+    ? `${nav.label}${nav.path_m != null ? ` / 道 ${fmt(nav.path_m, 1)}` : ''}${nav.remaining_m != null && nav.state === 'active' ? ` / 残り ${fmt(nav.remaining_m, 1)}` : ''}${nav.reason ? `（${nav.reason}）` : ''}`
+    : '-';
+  const moving = nav && ['sending', 'active'].includes(nav.state);
+  document.getElementById('nv_go').disabled = !(nav && nav.available && navPick && !moving);
+  document.getElementById('nv_cancel').disabled = !(nav && (moving || ['planned', 'planning'].includes(nav.state)
+    || (latestTelemetry.autonomy.behavior || '').startsWith('nav_')));
   if (m && m.rev !== slamRev) {
     slamRev = m.rev;
     slamImg.src = `/api/slam/map.png?rev=${m.rev}`;
@@ -1842,6 +1855,27 @@ function drawSlam() {
   const ox = (W - m.width * s) / 2, oy = (H - m.height * s) / 2;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(slamImg, ox, oy, m.width * s, m.height * s);
+  const toPx = (x, y) => [ox + (x - m.origin_x) / m.resolution * s,
+    oy + (m.height - (y - m.origin_y) / m.resolution) * s];
+  slamView = {m, s, ox, oy};
+  const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.alive ? latestTelemetry.autonomy.nav : null;
+  if (nav && nav.path && nav.path.length > 1) {
+    ctx.strokeStyle = '#3ecf6a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    nav.path.forEach(([x, y], i) => { const [u, v] = toPx(x, y); if (i) ctx.lineTo(u, v); else ctx.moveTo(u, v); });
+    ctx.stroke();
+  }
+  const g = (nav && nav.goal) || navPick;
+  if (g) {
+    const [gx, gy] = toPx(g.x, g.y);
+    ctx.strokeStyle = '#ff5a5a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(gx - 6, gy - 6); ctx.lineTo(gx + 6, gy + 6);
+    ctx.moveTo(gx + 6, gy - 6); ctx.lineTo(gx - 6, gy + 6);
+    ctx.stroke();
+  }
   const p = sl.pose;
   if (!p) return;
   const px = ox + (p.x - m.origin_x) / m.resolution * s;
@@ -1856,6 +1890,36 @@ function drawSlam() {
   ctx.closePath();
   ctx.fill();
 }
+let navPick = null;
+let slamView = null;
+function navYaw(g) {
+  const p = latestTelemetry.slam && latestTelemetry.slam.pose;
+  return p ? Math.atan2(g.y - p.y, g.x - p.x) * 180 / Math.PI : 0;
+}
+function navPost(body) {
+  apiPost('/api/nav', body).then(r => r && r.json()).then(j => {
+    document.getElementById('nv_msg').textContent = j && j.ok === false ? (j.error || '') : '';
+  }).catch(() => {});
+}
+document.getElementById('slam_map').addEventListener('click', (ev) => {
+  if (!slamView) return;
+  const c = ev.currentTarget;
+  const r = c.getBoundingClientRect();
+  const u = (ev.clientX - r.left) * c.width / r.width, v = (ev.clientY - r.top) * c.height / r.height;
+  const {m, s, ox, oy} = slamView;
+  const x = m.origin_x + (u - ox) / s * m.resolution;
+  const y = m.origin_y + (m.height - (v - oy) / s) * m.resolution;
+  navPick = {x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100};
+  navPost({action: 'plan', ...navPick, yaw_deg: navYaw(navPick)});
+  drawSlam();
+});
+document.getElementById('nv_go').addEventListener('click', () => {
+  if (navPick) navPost({action: 'go', ...navPick, yaw_deg: navYaw(navPick)});
+});
+document.getElementById('nv_cancel').addEventListener('click', () => {
+  navPick = null;
+  navPost({action: 'cancel'});
+});
 document.getElementById('sl_save').addEventListener('click', () => {
   apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;

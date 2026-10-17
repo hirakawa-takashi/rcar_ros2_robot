@@ -12,8 +12,8 @@ overview:
     - Web ダッシュボード（FastAPI）でテレメトリ表示・手動操作・システム監視・配線図の確認を行う
     - 1 ノード 1 責務、既存の動作確認済みコードは削除しない、Topic / Launch の変更はユーザー承認制
   current_level:
-    label: Level 1（LiDAR 反応型・地図なし）
-    detail: 前進 → 接近で減速 → 停止距離内なら空いている側へ旋回。地図・自己位置推定・経路計画は使わない
+    label: Level 2（Nav2 で地図の行き先へ）＋ Level 1（LiDAR 反応型）
+    detail: 行き先がないときは Level 1（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回、地図なし）。ダッシュボードの地図をクリックすると Nav2 が道を考え、「ここへ行く」で自動にして slam_toolbox の地図と自己位置で行き先へ向かう（Level 2）。どちらも drive_mode_node の 360° の見張り・段差の止めを通る
   milestones:
     - {state: done, text: Web ダッシュボード（カメラ / LiDAR / CPU / AI HAT+ / IMU / GPIO / Motor HAT）}
     - {state: done, text: 障害物判定（LiDAR + Hailo-8 物体検出）とサーマル制御}
@@ -25,7 +25,7 @@ overview:
     - {state: done, text: LiDAR 360° の見張り（動く向き・回る向きに物が近ければ止める）}
     - {state: done, text: IMU で向きを保ってまっすぐ走る（heading_hold）}
     - {state: done, text: スタックちゃんに話して走る（「前に 1 メートル進んで」など）}
-    - {state: todo, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション）}
+    - {state: done, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション。床ではまだ走らせていない）}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
@@ -425,9 +425,9 @@ nodes:
   - id: autonomy_node
     label: autonomy_node
     file: ai_car_web/autonomy_node.py
-    role: Level 1 自律走行。/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退を決定して /cmd_vel_auto に 10 Hz で常時 publish（AUTO 以外はゼロ）。前が段差なら /odom で cliff_backoff_m 下がって cliff_turn_deg 回り、走行を続ける
+    role: 自律走行。行き先がないときは Level 1（/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退）。/nav_goal の plan は Nav2 の compute_path_to_pose で道だけ考え、go は navigate_to_pose で向かい、AUTO のあいだ /cmd_vel_nav を中継する（Level 2。着いた・行けない・やめたら止まって待つ。AUTO を抜けるとやめる）。/cmd_vel_auto に 10 Hz で常時 publish（AUTO 以外はゼロ）。前が段差なら /odom で cliff_backoff_m 下がって cliff_turn_deg 回る（行き先より先）
     publishes: [/cmd_vel_auto, /autonomy_status]
-    subscribes: [/scan, /obstacle_status, /drive_mode, /cliff_status, /odom]
+    subscribes: [/scan, /obstacle_status, /drive_mode, /cliff_status, /odom, /nav_goal, /cmd_vel_nav, /plan]
     params:
       - {name: cliff_backoff_m, ref: autonomy_node.cliff_backoff_m, unit: m, desc: 前が段差のとき /odom でこれだけ下がる}
       - {name: cliff_turn_deg, ref: autonomy_node.cliff_turn_deg, unit: °, desc: 下がったあと、空いている側へこれだけ回ってから走行を続ける}
@@ -442,6 +442,8 @@ nodes:
       - {name: backoff_distance, ref: autonomy_node.backoff_distance, unit: m, desc: 前後左右すべてこの距離以内なら後退}
       - {name: min_turn_sec, ref: autonomy_node.min_turn_sec, unit: s, desc: 旋回の最短継続時間}
       - {name: scan_max_age, ref: autonomy_node.scan_max_age, unit: s, desc: LiDAR がこれより古いと停止}
+      - {name: nav_cmd_timeout, ref: autonomy_node.nav_cmd_timeout, unit: s, desc: Nav2 の速度（/cmd_vel_nav）がこれより古ければゼロ}
+      - {name: nav_auto_wait, ref: autonomy_node.nav_auto_wait, unit: s, desc: 「ここへ行く」から自動に入らないままこの秒数で行き先をやめる}
     layer: control
   - id: perception_node
     label: perception_node
@@ -567,6 +569,9 @@ topics:
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
   - {name: /cmd_vel_auto, type: geometry_msgs/Twist, desc: 自律走行の速度指令（10 Hz、AUTO 以外はゼロ）}
+  - {name: /nav_goal, type: std_msgs/String (JSON), desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}（map 座標）。POST /api/nav から dashboard_node が流す'}
+  - {name: /cmd_vel_nav, type: geometry_msgs/Twist, desc: Nav2（controller_server）の速度指令。autonomy_node が AUTO で行き先があるときだけ /cmd_vel_auto へ中継}
+  - {name: /plan, type: nav_msgs/Path, desc: Nav2（planner_server）が考えた行き先までの道}
   - {name: /drive_mode_request, type: std_msgs/String (JSON), desc: 'モード切替要求 {mode: manual|auto|stop|toggle, source}'}
   - {name: /drive_mode, type: std_msgs/String (JSON), desc: 現在の運転モードと拒否理由（5 Hz・transient local）}
   - {name: /cmd_vel, type: geometry_msgs/Twist, desc: 最終速度指令（drive_mode_node のみが publish）}
@@ -646,6 +651,7 @@ api:
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
     - {method: POST, path: /api/drive_output, desc: 'ダッシュボードの「出力」{percent}（手動・ゲームパッド・自動・声の最大の速さ）', auth: true}
     - {method: POST, path: /api/slam/save, desc: 今の SLAM の地図を .pgm / .yaml で保存, auth: true}
+    - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: GET, path: /api/camera/depth_stream, desc: 1 眼の奥行きの距離の色の映像（MJPEG）, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
@@ -687,7 +693,7 @@ status:
     - 実機で自動モードの旋回方向・速度・しきい値を調整
     - 前後の VL53L1X で、段差の前で止まるかを床で確かめる（台の端に向けて「出力」15 % でゆっくり）
     - /odom の横移動を床で合わせる
-    - 保存した地図で「今どこにいるか」を出し、行き先まで行く（Nav2、Level 2）
+    - Nav2 の行き先へ床で走らせる（出力 15 %。部屋 1 周の地図のあと、地図をクリック →「ここへ行く」）
   docs:
     - {name: README.md, desc: セットアップ・実行・各デバイスの導入手順}
     - {name: PROJECT_STATUS.md, desc: 実装済み機能・既知の問題・テスト結果・次回作業}
@@ -705,7 +711,7 @@ programs:
   - {place: ラズパイ, name: drive_mode_node, file: src/ai_car_web/ai_car_web/drive_mode_node.py, role: 手動・自動・停止の切り替えと /cmd_vel の選択}
   - {place: ラズパイ, name: motor_driver_node, file: src/ai_car_web/ai_car_web/motor_driver_node.py, role: /cmd_vel → Motor HAT（メカナム逆運動学）}
   - {place: ラズパイ, name: encoder_odom_node, file: src/ai_car_web/ai_car_web/encoder_odom_node.py, role: 4 輪のエンコーダー → /odom と TF}
-  - {place: ラズパイ, name: autonomy_node, file: src/ai_car_web/ai_car_web/autonomy_node.py, role: Level 1 自律走行（LiDAR で減速・停止・旋回）}
+  - {place: ラズパイ, name: autonomy_node, file: src/ai_car_web/ai_car_web/autonomy_node.py, role: 自律走行（Level 1 は LiDAR で減速・停止・旋回、Level 2 は Nav2 の行き先へ）}
   - {place: ラズパイ, name: perception_node, file: src/ai_car_web/ai_car_web/perception_node.py, role: LiDAR と AI HAT+ の YOLO で障害物を判定}
   - {place: ラズパイ, name: mono_depth, file: src/ai_car_web/ai_car_web/mono_depth.py, role: 1 眼の奥行きの AI（SC-Depth v3）で低い物（表示だけ）}
   - {place: ラズパイ, name: seg_display_node, file: src/ai_car_web/ai_car_web/seg_display_node.py, role: TM1637 の 7 セグ LED に状態を出す（既定は使わない）}
@@ -719,11 +725,13 @@ programs:
   - {place: ラズパイ, name: motor_hat, file: src/ai_car_web/ai_car_web/motor_hat.py, role: Motor HAT の配線図}
   - {place: ラズパイ, name: dashboard.launch.py, file: src/ai_car_web/launch/dashboard.launch.py, role: 全部のノードを起動}
   - {place: ラズパイ, name: slam.launch.py, file: src/ai_car_web/launch/slam.launch.py, role: slam_toolbox を起動}
+  - {place: ラズパイ, name: nav2.launch.py, file: src/ai_car_web/launch/nav2.launch.py, role: Nav2（controller・planner・behavior・bt_navigator）を起動}
   - {place: ラズパイ, name: view_robot.launch.py, file: src/ai_car_description/launch/view_robot.launch.py, role: ロボットの形（URDF）を表示}
   - {place: ラズパイ, name: setup.py, file: src/ai_car_web/setup.py, role: ROS 2 パッケージの設定}
   - {place: ラズパイ, name: rplidar（rplidar_ros）, external: ros-jazzy-rplidar-ros, role: RPLIDAR A1M8 → /scan}
   - {place: ラズパイ, name: camera（camera_ros）, external: camera_ros + libcamera, role: Camera Module 3 Wide → 画像}
   - {place: ラズパイ, name: slam_toolbox, external: ros-jazzy-slam-toolbox, role: LiDAR と /odom で地図を作る}
+  - {place: ラズパイ, name: Nav2, external: ros-jazzy-navigation2, role: 地図の行き先までの道を考えて走る}
   - {place: ラズパイ, name: install_service.sh, file: systemd/install_service.sh, role: systemd のサービスを入れる}
   - {place: ラズパイ, name: ai-car-upgrade.sh, file: systemd/ai-car-upgrade.sh, role: 「ラズパイを更新」ボタンの更新}
   - {place: ラズパイ, name: ai-car-usb-power-cycle.sh, file: systemd/ai-car-usb-power-cycle.sh, role: USB の電気を入れ直す}
