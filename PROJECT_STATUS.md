@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.3.0（2026-10-18）
+- バージョン: 1.3.1（2026-10-18）
 - 更新日: 2026/10/17
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin
@@ -31,7 +31,7 @@
   - Level 2 自律走行（Nav2）: `nav2.launch.py`（`use_nav2` 既定 true、SLAM が active になる 40 秒後に起動）で `controller_server`（Regulated Pure Pursuit、0.15 m/s・旋回 0.6 rad/s）・`planner_server`（NavFn）・`behavior_server`（回る・下がる・待つ）・`bt_navigator` を `lifecycle_manager_navigation` が active にする。地図と自己位置は slam_toolbox。ダッシュボードの「地図と自己位置（SLAM）」で地図をクリックすると、`POST /api/nav` → `/nav_goal` → `autonomy_node` が `compute_path_to_pose` で道を考え、緑の線で出す（車は動かない）。「ここへ行く」で運転モードを自動にし、`navigate_to_pose` で向かう。Nav2 の速度は `/cmd_vel_nav` に出し、`autonomy_node` が AUTO のあいだだけ `/cmd_vel_auto` へ中継するので、`drive_mode_node` の 360° の見張り・段差の止めはそのまま効く。段差から離れる動きは行き先より先。着いた・行けない・やめたら止まって待ち、AUTO を抜ける（手動・停止）か 5 秒たっても自動に入らないと行き先をやめる
   - 運転モード UI: 手動操作カード上部にモードバッジ（手動 / 自動 / 停止）と 3 ボタン（`POST /api/drive_mode`）、拒否理由表示。自律走行カードに行動・各方向距離・自動指令・`/cmd_vel` 出力を表示
   - Subscribe: `/scan`、`/imu/data`、`/odom`、`/camera/image_raw/compressed`
-  - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate` / `axis_map_config` / `axis_map_sign`（BNO055 の軸の割り当て。基板は x 後ろ・y 右なので `0x24` / `0x06` で x・y を反転して imu_link にそろえる）・`operation_mode`（既定 `0x07` AMG。3 つのセンサーの生の値を読み、向きは imu_node がジャイロ＋加速度の Mahony フィルターで計算する（`filter_gain`、yaw は起動時からの相対）。磁気は `/imu/mag`（sensor_msgs/MagneticField）に出し、ダッシュボードの IMU のカードに x / y / z・強さ・向きを出す。`0x08` IMU は磁気が止まる。車の上は磁気の乱れが大きく NDOF では補正が進まない）。補正が 3 になったら補正値を `calibration_file`（`~/.ros/bno055_calibration.json`）に保存し、次につないだとき書きもどす
+  - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate` / `axis_map_config` / `axis_map_sign`（BNO055 の軸の割り当て。USB スイッチの受けの上の台では基板が x 左・y 後ろなので `0x21` / `0x04` で imu_link にそろえる）・`operation_mode`（既定 `0x07` AMG。3 つのセンサーの生の値を読み、向きは imu_node がジャイロ＋加速度の Mahony フィルターで計算する（`filter_gain`、yaw は起動時からの相対）。磁気は `/imu/mag`（sensor_msgs/MagneticField）に出し、ダッシュボードの IMU のカードに x / y / z・強さ・向きを出す。`0x08` IMU は磁気が止まる。車の上は磁気の乱れが大きく NDOF では補正が進まない）。補正が 3 になったら補正値を `calibration_file`（`~/.ros/bno055_calibration.json`）に保存し、次につないだとき書きもどす
   - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は 3 m で固定、3 m より遠い点は描かない）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
