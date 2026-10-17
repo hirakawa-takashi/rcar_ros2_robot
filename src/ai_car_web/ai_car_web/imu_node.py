@@ -5,11 +5,15 @@ import fcntl
 import json
 import math
 import os
+import statistics
 import time
+from collections import deque
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, MagneticField
+from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 I2C_SLAVE = 0x0703
 CHIP_ID = 0x00
@@ -46,6 +50,13 @@ class ImuNode(Node):
         self.declare_parameter('calibration_file', '~/.ros/bno055_calibration.json')
         self.declare_parameter('calibration_save_interval', 600.0)
         self.declare_parameter('filter_gain', 1.0)
+        self.declare_parameter('mag_status_topic', '/imu/mag_status')
+        self.declare_parameter('mag_calibrate_service', '/imu/mag_calibrate')
+        self.declare_parameter('mag_calibration_file', '~/.ros/bno055_mag_calibration.json')
+        self.declare_parameter('mag_calibration_s', 30.0)
+        self.declare_parameter('mag_average_s', 1.0)
+        self.declare_parameter('mag_disturb_ut', 5.0)
+        self.declare_parameter('mag_gain', 0.0)
 
         self.i2c_bus = int(self.get_parameter('i2c_bus').value)
         self.i2c_address = int(self.get_parameter('i2c_address').value)
@@ -61,6 +72,12 @@ class ImuNode(Node):
         self.calibration_save_interval = float(
             self.get_parameter('calibration_save_interval').value)
         self.filter_gain = float(self.get_parameter('filter_gain').value)
+        self.mag_calibration_file = os.path.expanduser(
+            str(self.get_parameter('mag_calibration_file').value))
+        self.mag_calibration_s = float(self.get_parameter('mag_calibration_s').value)
+        self.mag_average_s = float(self.get_parameter('mag_average_s').value)
+        self.mag_disturb_ut = float(self.get_parameter('mag_disturb_ut').value)
+        self.mag_gain = float(self.get_parameter('mag_gain').value)
 
         self.pub = self.create_publisher(Imu, imu_topic, 10)
         self.mag_pub = (self.create_publisher(MagneticField, mag_topic, 10)
@@ -75,7 +92,134 @@ class ImuNode(Node):
         self._calibration = None
         self._temperature_c = None
         self._calib_saved_at = None
+        self._mag_cal = self._load_mag_calibration()
+        self._mag_win = deque()
+        self._mag_time = None
+        self._mag_rec = None
+        self._mag_result = ''
+        self._mag_spread = None
+        self._mag_ok = False
+        self.mag_status_pub = None
+        if self.mag_pub is not None:
+            mag_status_topic = str(self.get_parameter('mag_status_topic').value)
+            if mag_status_topic:
+                self.mag_status_pub = self.create_publisher(String, mag_status_topic, 10)
+                self.create_timer(0.5, self._publish_mag_status)
+            service = str(self.get_parameter('mag_calibrate_service').value)
+            if service:
+                self.create_service(Trigger, service, self._start_mag_calibration)
         self.create_timer(1.0 / max(publish_rate, 1.0), self._timer_cb)
+
+    def _load_mag_calibration(self):
+        try:
+            with open(self.mag_calibration_file, encoding='utf-8') as f:
+                data = json.load(f)
+            cal = {'offset_ut': [float(v) for v in data['offset_ut']],
+                   'scale': [float(v) for v in data['scale']],
+                   'field_ut': float(data['field_ut']),
+                   'stamp': str(data.get('stamp', '')),
+                   'turned_deg': data.get('turned_deg')}
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            self.get_logger().warn(f'磁気の補正を読みこめません: {e}')
+            return None
+        if len(cal['offset_ut']) != 3 or len(cal['scale']) != 3:
+            return None
+        self.get_logger().info(f'磁気の補正を読みこみました: {self.mag_calibration_file}')
+        return cal
+
+    def _start_mag_calibration(self, request, response):
+        self._mag_rec = {'start': time.monotonic(), 'min': [math.inf] * 3,
+                         'max': [-math.inf] * 3, 'z_sum': 0.0, 'n': 0, 'turned': 0.0}
+        self._mag_result = ''
+        response.success = True
+        response.message = (f'{self.mag_calibration_s:.0f} 秒のあいだ、車を床の上で'
+                            'ゆっくり 1〜2 回まわしてください')
+        self.get_logger().info('磁気の補正の記録を始めました')
+        return response
+
+    def _finish_mag_calibration(self, rec: dict):
+        turned = math.degrees(rec['turned'])
+        radius = [(rec['max'][i] - rec['min'][i]) / 2.0 for i in (0, 1)]
+        if turned < 300.0:
+            self._mag_result = f'回った角度が {turned:.0f}° で足りません（360° 以上まわしてください）'
+        elif min(radius) < 5.0:
+            self._mag_result = '磁気の変わり方が小さすぎます（近くの磁石が強すぎる）'
+        else:
+            avg = sum(radius) / 2.0
+            z_mean = rec['z_sum'] / rec['n']
+            cal = {'offset_ut': [round((rec['max'][i] + rec['min'][i]) / 2.0, 2) for i in (0, 1)] + [0.0],
+                   'scale': [round(avg / r, 4) for r in radius] + [1.0],
+                   'field_ut': round(math.hypot(avg, z_mean), 1),
+                   'stamp': time.strftime('%Y-%m-%d %H:%M'),
+                   'turned_deg': round(turned)}
+            tmp = self.mag_calibration_file + '.tmp'
+            try:
+                os.makedirs(os.path.dirname(self.mag_calibration_file) or '.', exist_ok=True)
+                with open(tmp, 'w', encoding='utf-8') as f:
+                    json.dump(cal, f)
+                os.replace(tmp, self.mag_calibration_file)
+            except OSError as e:
+                self._mag_result = f'補正を保存できません: {e}'
+                return
+            self._mag_cal = cal
+            self._mag_win.clear()
+            self._mag_result = (f'補正しました（ずれ x {cal["offset_ut"][0]:.0f} / y {cal["offset_ut"][1]:.0f} µT、'
+                                f'{turned:.0f}° まわした）')
+        self.get_logger().info(f'磁気の補正: {self._mag_result}')
+
+    def _update_mag(self, raw: list, gz: float, now: float) -> list:
+        """補正（ずれと倍率）をかけ、mag_average_s のあいだ平均した磁気 [µT] を返す。"""
+        dt = 0.0 if self._mag_time is None else min(max(now - self._mag_time, 0.0), 0.2)
+        self._mag_time = now
+        rec = self._mag_rec
+        if rec is not None:
+            for i in range(3):
+                rec['min'][i] = min(rec['min'][i], raw[i])
+                rec['max'][i] = max(rec['max'][i], raw[i])
+            rec['z_sum'] += raw[2]
+            rec['n'] += 1
+            rec['turned'] += abs(gz) * dt
+            if now - rec['start'] >= self.mag_calibration_s:
+                self._mag_rec = None
+                self._finish_mag_calibration(rec)
+        cal = self._mag_cal
+        m = ([(raw[i] - cal['offset_ut'][i]) * cal['scale'][i] for i in range(3)]
+             if cal else list(raw))
+        self._mag_win.append((now, m, math.sqrt(sum(v * v for v in raw))))
+        while now - self._mag_win[0][0] > self.mag_average_s:
+            self._mag_win.popleft()
+        avg = [sum(s[1][i] for s in self._mag_win) / len(self._mag_win) for i in range(3)]
+        strengths = [s[2] for s in self._mag_win]
+        self._mag_spread = statistics.pstdev(strengths) if len(strengths) > 1 else None
+        field = math.sqrt(sum(v * v for v in avg))
+        self._mag_ok = (cal is not None and self._mag_spread is not None
+                        and self._mag_spread <= self.mag_disturb_ut
+                        and abs(field - cal['field_ut']) <= 0.3 * cal['field_ut'])
+        return avg
+
+    def _publish_mag_status(self):
+        cal = self._mag_cal
+        rec = self._mag_rec
+        now = time.monotonic()
+        status = {
+            'calibrated': cal is not None,
+            'calibrated_at': cal['stamp'] if cal else '',
+            'offset_ut': cal['offset_ut'] if cal else None,
+            'field_ut': cal['field_ut'] if cal else None,
+            'spread_ut': None if self._mag_spread is None else round(self._mag_spread, 1),
+            'ok': self._mag_ok,
+            'fusion': self.mag_gain > 0.0 and self._mag_ok,
+            'mag_gain': self.mag_gain,
+            'recording': rec is not None,
+            'remaining_s': round(max(self.mag_calibration_s - (now - rec['start']), 0.0), 1) if rec else None,
+            'turned_deg': round(math.degrees(rec['turned'])) if rec else None,
+            'result': self._mag_result,
+        }
+        msg = String()
+        msg.data = json.dumps(status, ensure_ascii=False)
+        self.mag_status_pub.publish(msg)
 
     def _write_reg(self, reg: int, value: int):
         if os.write(self._fd, bytes([reg, value])) != 2:
@@ -207,7 +351,11 @@ class ImuNode(Node):
         stamp = self.get_clock().now().to_msg()
         if self.operation_mode == AMG_MODE:
             gyr = self._remove_gyro_bias(gyr, acc)
-            quat_wxyz = self._update_orientation(gyr, acc)
+        if self.mag_pub is not None:
+            mag_ut = self._update_mag(mag_ut, gyr[2], time.monotonic())
+        if self.operation_mode == AMG_MODE:
+            use_mag = self.mag_gain > 0.0 and self._mag_ok
+            quat_wxyz = self._update_orientation(gyr, acc, mag_ut if use_mag else None)
         else:
             quat_wxyz = [self._i16(data, off) / 16384.0
                          for off in (24, 26, 28, 30)]
@@ -245,7 +393,7 @@ class ImuNode(Node):
             self._gyro_bias = [b + 0.05 * (g - b) for g, b in zip(gyr, self._gyro_bias)]
         return [g - b for g, b in zip(gyr, self._gyro_bias)]
 
-    def _update_orientation(self, gyr: list, acc: list) -> list:
+    def _update_orientation(self, gyr: list, acc: list, mag: list = None) -> list:
         now = time.monotonic()
         norm = math.sqrt(sum(a * a for a in acc))
         if self._q is None:
@@ -270,6 +418,20 @@ class ImuNode(Node):
             gx += self.filter_gain * (ay * vz - az * vy)
             gy += self.filter_gain * (az * vx - ax * vz)
             gz += self.filter_gain * (ax * vy - ay * vx)
+        mn = math.sqrt(sum(v * v for v in mag)) if mag else 0.0
+        if mn > 1e-3:
+            # Mahony: 磁気の水平の向きで yaw を直す（yaw 0 = 磁北）
+            mx, my, mz = (v / mn for v in mag)
+            hx = 2.0 * (mx * (0.5 - y * y - z * z) + my * (x * y - w * z) + mz * (x * z + w * y))
+            hy = 2.0 * (mx * (x * y + w * z) + my * (0.5 - x * x - z * z) + mz * (y * z - w * x))
+            bx = math.hypot(hx, hy)
+            bz = 2.0 * (mx * (x * z - w * y) + my * (y * z + w * x) + mz * (0.5 - x * x - y * y))
+            wx = 2.0 * (bx * (0.5 - y * y - z * z) + bz * (x * z - w * y))
+            wy = 2.0 * (bx * (x * y - w * z) + bz * (w * x + y * z))
+            wz = 2.0 * (bx * (w * y + x * z) + bz * (0.5 - x * x - y * y))
+            gx += self.mag_gain * (my * wz - mz * wy)
+            gy += self.mag_gain * (mz * wx - mx * wz)
+            gz += self.mag_gain * (mx * wy - my * wx)
         h = 0.5 * dt
         w, x, y, z = (w - h * (x * gx + y * gy + z * gz),
                       x + h * (w * gx + y * gz - z * gy),

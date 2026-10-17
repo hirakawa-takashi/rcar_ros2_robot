@@ -558,6 +558,8 @@
         <tr><td class="k">磁気 x / y / z [µT]</td><td class="v" id="i_mxyz">-</td></tr>
         <tr><td class="k">磁気の強さ [µT]</td><td class="v" id="i_mstr">-</td></tr>
         <tr><td class="k">磁気の向き [deg]</td><td class="v" id="i_mhead">-</td></tr>
+        <tr><td class="k">磁気のゆれ [µT]</td><td class="v" id="i_mspread">-</td></tr>
+        <tr><td class="k">磁気の補正</td><td class="v"><span id="i_mcal">-</span> <button id="i_mcal_btn">補正</button></td></tr>
       </table>
     </div>
 
@@ -1796,6 +1798,7 @@ function renderAll(d) {
     mg ? `${fmt(mg.x_ut, 0)} / ${fmt(mg.y_ut, 0)} / ${fmt(mg.z_ut, 0)}` : '-';
   document.getElementById('i_mstr').textContent = mg ? fmt(mg.strength_ut, 1) : '-';
   document.getElementById('i_mhead').textContent = mg ? fmt(mg.heading_deg, 0) : '-';
+  renderMagStatus(d.mag_status);
 
   renderCliff(d.cliff);
   renderSlam(d.slam);
@@ -1934,6 +1937,26 @@ document.getElementById('sl_clear').addEventListener('click', () => {
   navPick = null;
   apiPost('/api/slam/clear').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? 'クリアしました' : j.reason;
+  }).catch(() => {});
+});
+
+function renderMagStatus(s) {
+  const alive = s && s.alive;
+  const spread = document.getElementById('i_mspread');
+  spread.innerHTML = alive && s.spread_ut != null
+    ? `${fmt(s.spread_ut, 1)} <span class="badge ${s.ok ? 'ok' : 'warn'}">${s.ok ? (s.fusion ? '向きに使用中' : 'よい') : (s.calibrated ? '乱れ' : '未補正')}</span>`
+    : '-';
+  const cal = document.getElementById('i_mcal');
+  cal.textContent = !alive ? '-' : s.recording
+    ? `記録中 あと ${fmt(s.remaining_s, 0)} 秒・${s.turned_deg}° まわった`
+    : (s.calibrated ? `済（${s.calibrated_at}）` : '未補正');
+  cal.title = alive ? (s.result || '') : '';
+  document.getElementById('i_mcal_btn').disabled = !alive || s.recording;
+}
+document.getElementById('i_mcal_btn').addEventListener('click', () => {
+  if (!confirm('磁気の補正をします。車を床に置いて、30 秒のあいだにゆっくり 1〜2 回まわしてください（手でも、ゲームパッドの旋回でも）。始めますか？')) return;
+  apiPost('/api/imu/mag_calibrate').then(r => r && r.json()).then(j => {
+    if (j && !j.ok) alert(j.reason);
   }).catch(() => {});
 });
 

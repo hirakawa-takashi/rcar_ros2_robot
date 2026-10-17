@@ -225,6 +225,16 @@ imu_node:
     # 次につないだとき動作モードに入る前に書きもどす（BNO055 は電源が切れると補正を忘れる）
     calibration_file: "~/.ros/bno055_calibration.json"
     calibration_save_interval: 600.0
+    # 磁気の補正: ダッシュボードの「補正」で 30 秒のあいだ床でゆっくり 1〜2 回まわすと、x / y のずれと倍率を求めて保存する
+    mag_calibration_file: "~/.ros/bno055_mag_calibration.json"
+    mag_calibration_s: 30.0
+    # 磁気はこの秒数のあいだ平均して出す（LiDAR は 1 秒に約 7 回まわるので、そのゆれをならす）
+    mag_average_s: 1.0
+    # 平均のあいだの磁気の強さのゆれがこれより大きい、または補正のときの強さから 30 % 以上ちがうと「乱れ」
+    mag_disturb_ut: 5.0
+    # 磁気で yaw を直す強さ（0 で使わない）。いまの IMU は LiDAR の約 10 mm 下で ±25 µT ゆれるので 0。
+    # IMU を LiDAR から離して補正したら 0.05 くらいにする（yaw 0 = 磁北）
+    mag_gain: 0.0
 
 cliff_node:
   ros__parameters:
