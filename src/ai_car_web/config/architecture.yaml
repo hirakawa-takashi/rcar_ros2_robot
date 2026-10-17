@@ -118,7 +118,7 @@ print3d:
     - 天板（154 × 200 mm）の上に載せる 6 種類・8 個の部品。底板にはモーターが付いているので使わない
     - 試験台（test_stand）は車体に付けない治具。カバーとバンパーを付けたまま車体を載せ、車輪を浮かせて試す
     - 組み立て図の車輪・モーター・モーターの台は印刷しない購入品の参考の形（hardware/3d/drivetrain/drivetrain.scad、OSOYOO の図面の寸法）
-    - 前側にバッテリー 2 個の箱とふた（LiDAR・Camera Module 3 Wide・IMU・DROK を取り付け）、後ろ側に Pi 5 の 3 段（高さ 45 mm）、前後に衝撃を逃がすバンパー（VL53L1X 付き）。全体を上面カバーで覆い、左右のフックで天板の端の裏に引っかける（工具不要）
+    - 前側にバッテリー 2 個の箱とふた（LiDAR・Camera Module 3 Wide・IMU・DROK を取り付け）、後ろ側に Pi 5 の 3 段（高さ 45 mm）、前後に衝撃を逃がすバンパー（落下防止センサー VL53L1X 付き）。全体を上面カバーで覆い、左右のフックで天板の端の裏に引っかける（工具不要）
     - 図とダウンロードする STL は、どれも印刷する向き（STL の向き）のまま。寸法は STL から計算した外形（mm）
     - 部品の寸法はデータシートと商品画像から読み取ったもので、実物ではまだ確かめていない
   parts:
@@ -310,7 +310,7 @@ print3d:
     - Camera Module 3 Wide を端子を下にして、先にフラットケーブルの 15 ピン側（太いほう）を差してから、板（cam_mount）の支柱に前から M2 × 6 mm で 4 本留める（ナットで留めるときは M2 × 8〜10 mm にして、ナットを板の裏の六角のくぼみに入れる。ナットとネジの先は、ふた・箱の前の面の逃げ穴 Ø6.5・深さ 4 mm に入るので、ふたの組み上げに当たらない）。板の裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 mm で留める。ケーブルを LiDAR の前の柱の間からふたの上の結束バンド用ブリッジで通し、22 ピン側（細いほう）を Pi の CAM の口へ
     - Pi 5 に付けた M2.5 の六角支柱 4 本をラズパイ台のボスの丸い穴に 5 mm 差し込み、台の裏から M2.5 × 6 mm のネジで留める（台を天板に付ける前に行う）。ラズパイ台を天板の後ろ側 4 穴に長いネジで留める
     - IMU はピン下向き・ピンヘッダーの長辺を後ろ（Pi 側）にして、ジャンパー線を差したまま、後ろの開いた側から斜めに入れ、前の縁を前の壁の出っ張りの下に差し込んでから 3 辺の段に載せる（後ろの縁が浮く場合はテープかホットボンドで留める）。台はふたの上、LiDAR のヘッドの下の後ろの柱 2 本の間にあるので、LiDAR を付ける前に入れると楽
-    - VL53L1X をバンパーの受けに入れ、バンパーを前後に重ねて共締めする
+    - 落下防止センサー（VL53L1X）をバンパーの受けに入れ、バンパーを前後に重ねて共締めする
     - 上面カバーを、充電口が右（バッテリーのポート側）に来る向きで被せる。右側を先に斜めに入れて右前の固定の爪を天板の裏に掛け、左側をフックがカチッと掛かるまで押し下げる。外すときは左の指かけを外へ引きながら左側から持ち上げる
   gallery:
     - {file: assembly.png, label: 組み立てイメージ}
@@ -519,7 +519,7 @@ nodes:
   - id: cliff_node
     label: cliff_node
     file: ai_car_web/cliff_node.py
-    role: 前後バンパーの VL53L1X ×2（I2C 0x30 / 0x31、XSHUT で起動時にアドレス変更）で 45° 前方の床までの距離を測り、床を 0 cm とした高さに直して、2 cm 以上低い所（段差・床の途切れ）を /cliff_status に 20 Hz で publish。front_wired / rear_wired で配線したほうだけを使う（未配線の側は level unwired）。使う側の XSHUT はノードが動くあいだ握ったままにし、つなぎ直しのときも L にもどす（離すと 0x29 で起きて BNO055 とぶつかる）。wired false の間は I2C / GPIO に触らず「未配線」だけを配信
+    role: 前後バンパーの VL53L1X ×2（I2C 0x30 / 0x31、XSHUT で起動時にアドレス変更）で 45° 前方の床までの距離を測り、床を 0 mm とした高さに直して、20 mm 以上低い所（段差・床の途切れ）を /cliff_status に 20 Hz で publish。front_wired / rear_wired で配線したほうだけを使う（未配線の側は level unwired）。使う側の XSHUT はノードが動くあいだ握ったままにし、つなぎ直しのときも L にもどす（離すと 0x29 で起きて BNO055 とぶつかる）。wired false の間は I2C / GPIO に触らず「未配線」だけを配信
     publishes: [/cliff_status]
     subscribes: []
     params:
@@ -643,6 +643,7 @@ api:
     - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam / jetson_host / joy）, auth: false}
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーと Motor HAT の 3V3 / GND（各 6 本）の配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
+    - {method: GET, path: /api/version, desc: バージョン（package.xml）・公開日（CHANGELOG）・いまの git の版, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
     - {method: GET, path: '/api/program?file=…', desc: プログラム一覧に登録したファイルの中身（一覧にないファイルは 404）, auth: false}
     - {method: GET, path: /api/dev_diary, desc: 開発日記（main の PR マージ・コミットと CHANGELOG の追加行を日付ごとにまとめたもの）, auth: false}
@@ -692,7 +693,7 @@ status:
     - スタックちゃんの声で走るのを床で確かめる（「前に 50 センチ進んで」「右に 90 度回って」「止まって」）
     - SLAM の地図を部屋 1 周で作って、壁が二重にならないか確かめる
     - 実機で自動モードの旋回方向・速度・しきい値を調整
-    - 前後の VL53L1X で、段差の前で止まるかを床で確かめる（台の端に向けて「出力」15 % でゆっくり）
+    - 前後の落下防止センサー（VL53L1X）で、段差の前で止まるかを床で確かめる（台の端に向けて「出力」15 % でゆっくり）
     - /odom の横移動を床で合わせる
     - Nav2 の行き先へ床で走らせる（出力 15 %。部屋 1 周の地図のあと、地図をクリック →「ここへ行く」）
   docs:

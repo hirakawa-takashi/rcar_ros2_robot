@@ -42,6 +42,7 @@ except ImportError:
 
 from ai_car_web.architecture import load_architecture, read_program
 from ai_car_web.dev_diary import find_repo, load_dev_diary
+from ai_car_web.version import load_version
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
 
@@ -1336,7 +1337,13 @@ def create_app(node: DashboardNode) -> FastAPI:
         data = node.architecture()
         if isinstance(data.get('print3d'), dict):
             data['print3d']['rev'] = print3d_rev()
+        if isinstance(data.get('overview'), dict):
+            data['overview']['version'] = version()
         return data
+
+    @app.get('/api/version')
+    def version():
+        return load_version(get_package_share_directory('ai_car_web'), node.repo_dir)
 
     @app.get('/api/program')
     def program(file: str):

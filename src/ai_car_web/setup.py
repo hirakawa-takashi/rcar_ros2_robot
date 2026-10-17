@@ -1,16 +1,19 @@
 import os
+import re
 from glob import glob
 
 from setuptools import find_packages, setup
 
 package_name = 'ai_car_web'
+with open('package.xml', encoding='utf-8') as f:
+    version = re.search(r'<version>\s*([^<\s]+)\s*</version>', f.read()).group(1)
 print3d_src = os.path.join('..', '..', 'hardware', '3d', 'battery_lidar_mount')
 test_stand_src = os.path.join('..', '..', 'hardware', '3d', 'test_stand')
 drivetrain_src = os.path.join('..', '..', 'hardware', '3d', 'drivetrain')
 
 setup(
     name=package_name,
-    version='0.1.0',
+    version=version,
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
