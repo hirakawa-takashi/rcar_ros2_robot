@@ -597,7 +597,7 @@ drive_modes:
     - {from: stop, to: manual, trigger: Web「手動」/ START 長押し, condition: 常に}
     - {from: stop, to: auto, trigger: Web「自動」/ START 長押し, condition: 進入条件をすべて満たす}
   auto_entry_conditions:
-    - /obstacle_status が新鮮（obstacle_timeout 以内）で level が stop / unknown でない
+    - /obstacle_status が新鮮（obstacle_timeout 以内）で level が unknown でない（前に物があって stop でも入れる。入ったら空いている側へ回る）
     - ゲームパッドが接続中（auto_requires_joy）
     - スティック・手動操作がニュートラル
     - /cmd_vel_auto が生きている（autonomy_node 起動中）

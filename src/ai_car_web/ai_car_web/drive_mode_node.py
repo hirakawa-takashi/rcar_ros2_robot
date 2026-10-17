@@ -276,8 +276,9 @@ class DriveModeNode(Node):
     def _auto_block_reasons(self, entering: bool = False, continuing: bool = False):
         """AUTO を許可できない理由の一覧を返す（空なら許可）。
 
-        continuing=True は AUTO 継続判定で、障害物 "stop" と段差は理由に含めない
-        （最終段ガードでその向きの動きだけ止め、回避行動は autonomy_node に任せる）。
+        障害物 "stop" は入るときも続けるときも理由に含めない（最終段ガードでその向きの
+        動きだけ止め、空いている側へ回るのは autonomy_node に任せる）。
+        continuing=True は AUTO 継続判定で、段差も理由に含めない。
         """
         now = time.monotonic()
         reasons = []
@@ -300,10 +301,7 @@ class DriveModeNode(Node):
         if obstacle is None or obs_age is None or obs_age > self.obstacle_timeout:
             reasons.append('障害物判定（LiDAR）が受信できていません')
         else:
-            level = obstacle.get('level')
-            if level == 'stop' and not continuing:
-                reasons.append(f"前方に障害物（{obstacle.get('reason') or 'stop'}）")
-            elif level == 'unknown':
+            if obstacle.get('level') == 'unknown':
                 reasons.append('LiDAR データなし')
         if self.auto_requires_joy and (joy_age is None or joy_age > self.joy_timeout):
             reasons.append('ゲームパッドが未接続です')
