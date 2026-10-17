@@ -34,6 +34,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan, MagneticField
 from std_msgs.msg import Float32, String
+from std_srvs.srv import Trigger
 
 try:
     from slam_toolbox.srv import Reset as SlamReset
@@ -291,6 +292,8 @@ class DashboardNode(Node):
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('mag_topic', '/imu/mag')
+        self.declare_parameter('mag_status_topic', '/imu/mag_status')
+        self.declare_parameter('mag_calibrate_service', '/imu/mag_calibrate')
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('system_status_topic', '/system_status')
         self.declare_parameter('camera_topic', '/camera/image_raw/compressed')
@@ -390,6 +393,12 @@ class DashboardNode(Node):
         mag_topic = str(self.get_parameter('mag_topic').value)
         if mag_topic:
             self.create_subscription(MagneticField, mag_topic, self._mag_cb, sensor_qos)
+        mag_status_topic = str(self.get_parameter('mag_status_topic').value)
+        if mag_status_topic:
+            self.create_subscription(String, mag_status_topic, self._mag_status_cb, 10)
+        mag_calibrate_service = str(self.get_parameter('mag_calibrate_service').value)
+        self.mag_calibrate_client = (self.create_client(Trigger, mag_calibrate_service)
+                                     if mag_calibrate_service else None)
         self.create_subscription(
             Odometry, self.get_parameter('odom_topic').value, self._odom_cb, 10)
         self.create_subscription(
@@ -452,6 +461,8 @@ class DashboardNode(Node):
         self._imu = None
         self._imu_tilt = (0.0, 0.0)
         self._mag = None
+        self._mag_status = None
+        self._mag_status_stamp = 0.0
         self._odom = None
         self._system = None
         self._obstacle = None
@@ -705,6 +716,37 @@ class DashboardNode(Node):
         with self._lock:
             self._autonomy = payload
             self._autonomy_stamp = self.get_clock().now().nanoseconds * 1e-9
+
+    def _mag_status_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        with self._lock:
+            self._mag_status = payload
+            self._mag_status_stamp = self.get_clock().now().nanoseconds * 1e-9
+
+    def _mag_status_state(self):
+        if self._mag_status is None:
+            return None
+        state = dict(self._mag_status)
+        state['alive'] = self.get_clock().now().nanoseconds * 1e-9 - self._mag_status_stamp < 3.0
+        return state
+
+    def start_mag_calibration(self):
+        """imu_node に磁気の補正（床でまわしながら記録）を始めさせる。"""
+        client = self.mag_calibrate_client
+        if client is None or not client.service_is_ready():
+            return {'ok': False, 'reason': 'imu_node が応答しません'}
+        done = threading.Event()
+        future = client.call_async(Trigger.Request())
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(3.0):
+            return {'ok': False, 'reason': 'imu_node から返事がない'}
+        res = future.result()
+        if res is None or not res.success:
+            return {'ok': False, 'reason': res.message if res else '失敗'}
+        return {'ok': True, 'message': res.message}
 
     def _cliff_cb(self, msg: String):
         try:
@@ -1232,6 +1274,7 @@ class DashboardNode(Node):
                 'scan': self._scan,
                 'imu': self._imu,
                 'mag': self._mag,
+                'mag_status': self._mag_status_state(),
                 'odom': self._odom,
                 'system': self._system,
                 'obstacle': self._obstacle,
@@ -1434,6 +1477,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/slam/clear', dependencies=[Depends(require_token)])
     def slam_clear():
         return node.clear_map()
+
+    @app.post('/api/imu/mag_calibrate', dependencies=[Depends(require_token)])
+    def imu_mag_calibrate():
+        return node.start_mag_calibration()
 
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():
