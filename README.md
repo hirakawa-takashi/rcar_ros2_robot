@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.3.3（2026-10-18。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.4.0（2026-10-18。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -80,7 +80,7 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 |--------|------|
 | `drive_mode_node` | `/cmd_vel_manual` と `/cmd_vel_auto` の片方を `/cmd_vel` にする（manual / auto / stop）。最後に LiDAR 360° の見張り（車体の端から 0.25 m で、その向きの動き・回転だけを 0。手動は 0.7 m から半分の速さ）と段差ガードをかける |
 | `motor_driver_node` | `/cmd_vel` → メカナムの逆運動学 → Motor HAT M1〜M4。旋回 0 のあいだ IMU の向きを保つ（`heading_hold`）。`/motor_status` |
-| `encoder_odom_node` | 4 輪のエンコーダー（GPIO v2 uAPI）→ `/odom`・TF `odom → base_footprint`（20 Hz） |
+| `encoder_odom_node` | 4 輪のエンコーダー（GPIO v2 uAPI、距離）と IMU（`/imu/data`、回った向き）→ `/odom`・TF `odom → base_footprint`（20 Hz） |
 | `cliff_node` | 前後の VL53L1X（0x30 / 0x31）→ `/cliff_status`（20 Hz） |
 | `imu_node` | BNO055（0x29）→ `/imu/data`（20 Hz）・`/imu/mag` |
 | `perception_node` | `/scan` → `/obstacle_status`。カメラ画像で 1 眼の奥行きの AI（SC-Depth v3・Hailo-8、表示だけ） |

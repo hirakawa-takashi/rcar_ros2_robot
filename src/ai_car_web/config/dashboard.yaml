@@ -118,8 +118,14 @@ encoder_odom_node:
     wheel_radius: 0.0403     # メカナムホイール Ø80.59 mm
     wheel_base_half: 0.11    # 車体の中心から車輪の中心まで 前後
     track_half: 0.12         # 同 左右
-    yaw_scale: 1.42          # その場回転はローラーがすべる。床で /odom 380° のとき実際 540°（1.5 回転）
+    yaw_scale: 1.42          # その場回転はローラーがすべる。床で /odom 380° のとき実際 540°（1.5 回転）。車輪から向きを出すときだけ使う
     count_sign: -1           # モーターの正転でカウントが減る（2026/10/12 確認）
+    # 回った向きは IMU（ジャイロ＋磁気）の yaw の変わった分から取る。進んだ距離は車輪から。
+    # IMU が 0.5 秒来ない・1 回で 4 rad/s を超えてとんだ（起動のとき磁気で合わせた）ときは車輪にもどす
+    yaw_source: "imu"        # imu / wheel
+    imu_topic: "/imu/data"
+    imu_timeout: 0.5
+    imu_max_rate: 4.0
 
 autonomy_node:
   ros__parameters:

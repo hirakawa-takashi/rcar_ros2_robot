@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.3.3（2026-10-18）
+- バージョン: 1.4.0（2026-10-18）
 - 更新日: 2026/10/17
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin
@@ -80,7 +80,7 @@
 
 ## 既知の問題
 - Pi には rviz2 が未インストール（ros-base のみ）。RViz2 は開発PC側での表示を想定
-- `/odom`（encoder_odom_node）の距離は床で合わせた値（counts_per_rev 1408、実測 1.8 m ≒ 約 10,000 カウント）。旋回は yaw_scale 1.42（床で 1.5 回転して合わせた値）。横移動はまだ寸法からの計算値
+- `/odom`（encoder_odom_node）の距離は床で合わせた値（counts_per_rev 1408、実測 1.8 m ≒ 約 10,000 カウント）。旋回は IMU の yaw の変わった分（`yaw_source: imu`。IMU が使えないときだけ車輪から出し、yaw_scale 1.42（床で 1.5 回転して合わせた値）をかける）。横移動はまだ寸法からの計算値
 - LiDAR は `ros-jazzy-rplidar-ros` の導入と `super` の `dialout` グループ所属が必要
 - AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。温度は HailoRT C API `hailo_get_chip_temperature()` で取得済み。NPU 使用率と電力はダッシュボードでは扱わない（使用率は `HAILO_MONITOR=1` の推論アプリがある間のみ `hailortcli monitor` で参照可）。電力は未取得（`measure-power` は `UNSUPPORTED_OPCODE`、`query_health_stats()`/`query_performance_stats()` は HAILO8 非対応、`hatctl` は Ubuntu に存在せず Hailo 専用 hwmon も無し、PMIC に HAT 専用レール無し。外付け INA219 等が必要）
 - 検出物体の距離は LiDAR の方位角対応による概算で、カメラとLiDARの外部キャリブレーションは未実施（設置が同軸・同方向である前提）

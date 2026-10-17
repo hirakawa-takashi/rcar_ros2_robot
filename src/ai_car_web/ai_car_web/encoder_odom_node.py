@@ -6,6 +6,8 @@ A/B 相の両エッジを GPIO の v2 uAPI のイベントで読み、4 逓倍�
 別プロセス（spawn）で行い、カウントは共有メモリで受け取る。
 ピンと車輪の割り付け・向き（reversed）は motor_hat.yaml。
 4 輪の進んだ距離からメカナムの順運動学で、前後・左右の速さと旋回を出して積分する。
+回った向きは、メカナムのローラーがすべってずれやすいので、IMU（/imu/data、ジャイロ＋磁気）の
+yaw の変わった分を使う（yaw_source: imu）。IMU が届かないときや、向きがとんだときは車輪から出す。
 """
 
 import fcntl
@@ -23,6 +25,7 @@ from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from sensor_msgs.msg import Imu
 from tf2_ros import TransformBroadcaster
 
 from ai_car_web.motor_hat import load_motor_hat
@@ -144,6 +147,13 @@ class EncoderOdomNode(Node):
         self.declare_parameter('yaw_scale', 1.0)
         # モーターの正転（Motor HAT の + 出力）でカウントが減るなら -1
         self.declare_parameter('count_sign', -1)
+        # 回った向きを imu（/imu/data の yaw の変わった分）と wheel（車輪）のどちらから取るか
+        self.declare_parameter('yaw_source', 'imu')
+        self.declare_parameter('imu_topic', '/imu/data')
+        # この秒数 IMU が来なければ車輪にもどす
+        self.declare_parameter('imu_timeout', 0.5)
+        # 1 回の変わった分がこの速さ（rad/s）を超えたら、IMU の向きがとんだ（起動・磁気で合わせた）とみて車輪を使う
+        self.declare_parameter('imu_max_rate', 4.0)
 
         path = self.get_parameter('motor_hat_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'motor_hat.yaml')
@@ -185,6 +195,16 @@ class EncoderOdomNode(Node):
         self.proc.start()
 
         self.x = self.y = self.yaw = 0.0
+        self.use_imu = str(self.get_parameter('yaw_source').value) == 'imu'
+        self.imu_timeout = float(self.get_parameter('imu_timeout').value)
+        self.imu_max_rate = float(self.get_parameter('imu_max_rate').value)
+        self._imu_yaw = None
+        self._imu_time = None
+        self._imu_last_yaw = None
+        self._yaw_from_imu = None
+        if self.use_imu:
+            self.create_subscription(
+                Imu, self.get_parameter('imu_topic').value, self._imu_cb, 10)
         self._last = None
         self._last_time = None
         self._errors_logged = 0
@@ -206,6 +226,28 @@ class EncoderOdomNode(Node):
         return {w: (n - p) * sign * self.m_per_count
                 for (w, sign), n, p in zip(self.wheels, now, last)}
 
+    def _imu_cb(self, msg: Imu):
+        q = msg.orientation
+        self._imu_yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                   1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        self._imu_time = time.monotonic()
+
+    def _choose_dyaw(self, t: float, dt: float, wheel_dyaw: float) -> float:
+        """IMU の yaw が使えればその変わった分、使えなければ車輪の分を返す。"""
+        dyaw, from_imu = wheel_dyaw, False
+        if self.use_imu:
+            yaw = self._imu_yaw
+            fresh = yaw is not None and t - self._imu_time <= self.imu_timeout
+            last, self._imu_last_yaw = self._imu_last_yaw, (yaw if fresh else None)
+            if fresh and last is not None:
+                d = math.atan2(math.sin(yaw - last), math.cos(yaw - last))
+                if abs(d) <= self.imu_max_rate * dt:
+                    dyaw, from_imu = d, True
+        if self.use_imu and from_imu != self._yaw_from_imu:
+            self.get_logger().info('回った向き: ' + ('IMU' if from_imu else '車輪（IMU が使えない）'))
+        self._yaw_from_imu = from_imu
+        return dyaw
+
     def _update(self):
         if self.alive.value != 1 or not rclpy.ok():
             return
@@ -219,7 +261,7 @@ class EncoderOdomNode(Node):
         rl, rr = d['rear_left'], d['rear_right']
         dx = (fl + fr + rl + rr) / 4.0
         dy = (-fl + fr + rl - rr) / 4.0
-        dyaw = (-fl + fr - rl + rr) / (4.0 * self.k)
+        dyaw = self._choose_dyaw(t, dt, (-fl + fr - rl + rr) / (4.0 * self.k))
         mid = self.yaw + dyaw / 2.0
         self.x += dx * math.cos(mid) - dy * math.sin(mid)
         self.y += dx * math.sin(mid) + dy * math.cos(mid)
