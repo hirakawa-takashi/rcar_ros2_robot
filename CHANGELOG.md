@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-18
+
+### Fixed
+- スタックちゃんが、Jetson の USB につないでいても 10 分で電源が切れていた。Jetson の USB の電気だけでは足りず、電池も少し使う（discharging）ので、純正のファームが「電池で動いている」と思って、何もしない 600 秒（`idle_sec`）で切っていた。`jetson/stackchan_bridge/firmware/stackchan-no-shutdown-on-usb.patch` で、USB がささっているときは自分で電源を切らないようにした（「Power Saving」の「Allow auto power off while charging」を入にしたときだけ切る）
+
 ## [1.2.0] - 2026-10-18
 
 ### Changed

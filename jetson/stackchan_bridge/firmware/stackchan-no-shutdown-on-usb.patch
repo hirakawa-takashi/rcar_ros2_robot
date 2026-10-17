@@ -1,0 +1,17 @@
+diff --git a/main/hal/board/stackchan.cc b/main/hal/board/stackchan.cc
+index 88963ff..c2d0179 100644
+--- a/main/hal/board/stackchan.cc
++++ b/main/hal/board/stackchan.cc
+@@ -328,7 +328,11 @@ private:
+ 
+     bool ShouldEnablePowerSave(bool has_external_power, bool is_discharging) const
+     {
+-        return is_discharging || (has_external_power && xiaozhi_config_.allowShutdownWhenCharging);
++        // USB がささっていれば、USB の電気が足りず電池も使っている（discharging）ときでも自分で電源を切らない
++        if (has_external_power) {
++            return xiaozhi_config_.allowShutdownWhenCharging;
++        }
++        return is_discharging;
+     }
+ 
+     void UpdatePowerSaveEnabled(bool has_external_power, bool is_discharging)
