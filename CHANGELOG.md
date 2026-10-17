@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-18
+
+### Added
+- IMU の磁気の補正: ダッシュボードの IMU のカードの「補正」を押して、30 秒のあいだ床でゆっくり 1〜2 回まわすと、`imu_node` が x / y のずれと倍率を求めて `~/.ros/bno055_mag_calibration.json` に保存する（`/imu/mag_calibrate`、`POST /api/imu/mag_calibrate`）。`/imu/mag` は補正をかけて 1 秒平均（`mag_average_s`）にした
+- 磁気のゆれ（1 秒のあいだの強さのばらつき）と「よい / 乱れ / 未補正」を `/imu/mag_status` とカードに出す
+- `mag_gain` を 0 より大きくすると、磁気が「よい」ときだけ磁気で yaw を直す（Mahony）。いまは 0（IMU が LiDAR の約 10 mm 下にあり、LiDAR が回ると磁気が 40〜126 µT でゆれるため。止めると ±1.5 µT）
+
 ## [1.0.0] - 2026-10-17
 
 ### Added
