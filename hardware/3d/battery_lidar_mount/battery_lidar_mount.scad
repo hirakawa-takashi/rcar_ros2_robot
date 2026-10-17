@@ -688,12 +688,14 @@ wfpc_rx = [84.95, 84.6];         // ふたの後ろ半分の中心（IMU の台�
 wfpc_jog_y = [170, 184];
 wfpc_pi_x = pi_cx + pi_board[0] / 2 - 8.5;   // Pi の前から差し込む所の中心（GPIO のピンの右）
 wfpc_cam_port = [pi_cx - pi_board[0] / 2 + 52, pi_cy - 13, pi_z + 1.6 + 2];  // CAM/DISP 端子（目安）
+wfpc_loop = 10;                  // 端子が下のとき、折り返しが基板の下の端から下へ出る長さ（写真で 10 mm 以上）
+wfpc_rise = 20;                  // 板の上を越えたあと、板のうしろで上へ立ち上がる高さ（写真で見える分。板の上の端から）
 wfpc_pts = let(lt = box_h + lid_t, pz = pi_z + 1.6, cy = wcam_back_y - wcam_conn[1] / 2, by = scam_mnt_y0 + scam_mnt_t + 0.5) concat(
-    // 端子が下: 下へ出て折り返し、板と基板の裏の間（支柱の間）を上へ
-    wcam_fpc_down ? [[wcam_cx, cy, wcam_z0 + 1], [wcam_cx, cy, wcam_z0 - 2], [wcam_cx, by, wcam_z0 - 2], [wcam_cx, by, wcam_z1 + 2]]
+    // 端子が下: 下へ出て折り返し、板と基板の裏の間（支柱の間）を上へ。板を越えたら、うしろで上へ立ち上がってからふたの上へ
+    wcam_fpc_down ? [[wcam_cx, cy, wcam_z0 + 1], [wcam_cx, cy, wcam_z0 - wfpc_loop], [wcam_cx, by, wcam_z0 - wfpc_loop], [wcam_cx, by, wcam_z1 + 2]]
                   : [[wcam_cx, cy, wcam_z1 - 1], [wcam_cx, cy, wcam_z1 + 2]], [
     [wcam_cx, scam_mnt_y0 + 1, wcam_plate_top + 1.5],
-    [wcam_cx, scam_mnt_y0 - 3, lt + 0.8], [wcam_cx, wfpc_jog_y[1], lt + 0.8], [wfpc_rx[0], wfpc_jog_y[0], lt + tie_h + 1.8],
+    each (wcam_fpc_down ? [[wcam_cx, scam_mnt_y0 - 3, wcam_plate_top + wfpc_rise]] : [[wcam_cx, scam_mnt_y0 - 3, lt + 0.8]]), [wcam_cx, wfpc_jog_y[1], lt + 0.8], [wfpc_rx[0], wfpc_jog_y[0], lt + tie_h + 1.8],
     [wfpc_rx[0], 118.5, lt + tie_h + 1.8], [wfpc_rx[1], 116.5, lt + tie_h + 1.8], [wfpc_rx[1], rear_tie[1] - 4.5, lt + tie_h + 1.8], [wfpc_rx[1], box_y0 - 2, lt + 0.8],
     [wfpc_rx[1], 94, lt - 4], [wfpc_pi_x, pi_cy + pi_board[1] / 2 + 2, pz + 16], [wfpc_pi_x, pi_cy - 12, pz + 14.5]]);
 wfpc_len = plen(wfpc_pts) + 16 + norm([wfpc_pi_x - fpc_w / 2 - wfpc_cam_port[0], pi_cy - 12 - wfpc_cam_port[1], pi_z + 1.6 + 14.5 - wfpc_cam_port[2]]);
