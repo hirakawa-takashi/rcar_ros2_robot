@@ -116,6 +116,7 @@
   .headrow .status { margin: 0; }
   .developer { font-size: 12px; color: #9fb0c7; }
   .developer a { color: inherit; }
+  .appversion { font-size: 12px; color: #9fb0c7; border: 1px solid #3a4657; border-radius: 10px; padding: 2px 9px; white-space: nowrap; }
   .aboutbtn { margin-left: auto; padding: 8px 14px; font-size: 13px; }
   .aboutbtn.diarybtn { margin-left: 0; }
   .diaryday { margin-bottom: 18px; }
@@ -344,6 +345,7 @@
 <body>
 <div class="headrow">
   <h1>AI-CAR ダッシュボード</h1>
+  <span id="app_version" class="appversion"></span>
   <div class="status"><span id="dot" class="dot"></span><span id="conn">未接続</span></div>
   <span id="power_alert" class="badge" style="display:none"></span>
   <span id="developer" class="developer"></span>
@@ -563,9 +565,9 @@
       <h2>落下防止センサー (/cliff_status) <span class="badge" id="c_link">-</span></h2>
       <table>
         <tr><td class="k">状態</td><td class="v" id="c_level">-</td></tr>
-        <tr><td class="k">前 [cm]</td><td class="v" id="c_front">-</td></tr>
-        <tr><td class="k">後 [cm]</td><td class="v" id="c_rear">-</td></tr>
-        <tr><td class="k">しきい値 [cm]</td><td class="v" id="c_th">-</td></tr>
+        <tr><td class="k">前 [mm]</td><td class="v" id="c_front">-</td></tr>
+        <tr><td class="k">後 [mm]</td><td class="v" id="c_rear">-</td></tr>
+        <tr><td class="k">しきい値 [mm]</td><td class="v" id="c_th">-</td></tr>
       </table>
     </div>
   </div>
@@ -1949,13 +1951,13 @@ function renderCliff(c) {
     const cell = document.getElementById(side === 'front' ? 'c_front' : 'c_rear');
     const [scls, stext] = s ? (CLIFF_BADGE[s.level] || ['', s.level]) : ['', ''];
     cell.innerHTML = s && s.height_cm != null
-      ? `${fmt(s.height_cm, 1)} <span class="badge ${scls}">${esc(stext)}</span>`
+      ? `${fmt(s.height_cm * 10, 0)} <span class="badge ${scls}">${esc(stext)}</span>`
       : (s && s.level !== 'unwired' ? `- <span class="badge ${scls}">${esc(stext)}</span>` : '-');
     cell.title = s ? `${s.address}（XSHUT GPIO${s.xshut_gpio}）` +
-      (s.distance_m != null ? ` 測った距離 ${fmt(s.distance_m, 3)} m（床 ${fmt(s.floor_distance_m, 3)} m）` : '') : '';
+      (s.distance_m != null ? ` 測った距離 ${fmt(s.distance_m * 1000, 0)} mm（床 ${fmt(s.floor_distance_m * 1000, 0)} mm）` : '') : '';
   }
   document.getElementById('c_th').textContent = alive && c.cliff_height_cm != null
-    ? `${fmt(-c.cliff_height_cm, 1)} 以下で段差（床 0.0）` : '-';
+    ? `${fmt(-c.cliff_height_cm * 10, 0)} 以下で段差（床 0）` : '-';
 }
 
 function renderJoy(j) {
@@ -2449,12 +2451,18 @@ function developerHtml(o) {
   return `開発者：${esc(o.developer)}` + (gh ?
     `（GitHub: <a href="https://github.com/${encodeURIComponent(gh)}" target="_blank" rel="noopener">github.com/${esc(gh)}</a>）` : '');
 }
+function versionText(v) {
+  if (!v?.version) return '';
+  const extra = [v.released ? `${v.released} 公開` : '', v.commit ? `git ${v.commit}${v.commit_date ? ` ${v.commit_date}` : ''}` : ''].filter(Boolean);
+  return `v${v.version}${extra.length ? `（${extra.join('・')}）` : ''}`;
+}
 function renderOverview(a) {
   const o = a.overview || {};
   const milestones = (o.milestones || []).map(m =>
     `<li><span class="check ${m.state === 'done' ? 'done' : ''}">${m.state === 'done' ? '☑' : '☐'}</span>${esc(m.text)}</li>`).join('');
   return `<h3>${esc(o.title || 'AI-CAR')}</h3><p>${esc(o.subtitle || '')}</p>` +
     (o.developer ? `<p>${developerHtml(o)}</p>` : '') +
+    (o.version?.version ? `<p>バージョン ${esc(versionText(o.version))}</p>` : '') +
     `<h3>目的</h3>${aboutList(o.purpose)}<h3>現在の到達レベル</h3>` +
     `<p><span class="badge ok">${esc(o.current_level?.label || '-')}</span> ${esc(o.current_level?.detail || '')}</p>` +
     `<h3>マイルストーン</h3><ul>${milestones}</ul><h3>技術スタック</h3>` +
@@ -2602,7 +2610,7 @@ function renderHardware(a) {
   svg += `<text x="600" y="298" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(h.center?.sub || '')}</text>`;
   devices.forEach(d => { const p = positions[d.id]; if (p) svg += box(d, p[0], p[1]); });
   svg += '</svg>';
-  const rows = devices.map(d => [esc(d.label), esc(d.bus || '-'), `<span style="color:${powerColor(d.power)}">${esc(d.power || '-')}</span>`]);
+  const rows = devices.map(d => [esc(d.label), esc(d.bus || '-'), `<span class="pwrtxt" style="color:${powerColor(d.power)}">${esc(d.power || '-')}</span>`]);
   return `<h3>構成ブロック</h3>${svg}<div class="powerlegend"><span><i style="background:#e04b4b"></i>12V</span><span><i style="background:#f08b36"></i>5V</span><span><i style="background:#b4d455"></i>3V3</span><span><i style="background:#687383"></i>電源記載なし</span></div><h3>デバイス一覧</h3>` +
     aboutTable(['デバイス', 'バス', '電源'], rows) + '<h3>配線詳細</h3><div id="about_wiring"></div>';
 }
@@ -3392,6 +3400,10 @@ function writeAboutPdf(win) {
     .card { background: #fff !important; border-color: #bbb !important; color: #111 !important; box-shadow: none !important; }
     .card h2 { color: #0b3d5c !important; }
     .p3dgallery a { background: #fff !important; border-color: #bbb !important; }
+    .p3dpart, .archdetail { background: #fff !important; border-color: #bbb !important; color: #111 !important; }
+    table.pins td.num { color: #555 !important; }
+    .proglink { color: #0b3d5c !important; }
+    .pwrtxt { filter: brightness(.6); }
     .p3dgallery span { color: #111 !important; }
     .note, .powerlegend, .gpio_legend, .cover p { color: #444 !important; }
     .badge { background: #eee !important; color: #333 !important; border-color: #bbb !important; box-shadow: none !important; }
@@ -3403,7 +3415,7 @@ function writeAboutPdf(win) {
 </style></head><body>
 <div class="toolbar"><h1>AI-CAR プロジェクト説明（全タブ一括）</h1><button onclick="window.print()">PDF に保存 / 印刷</button><button onclick="window.close()">閉じる</button>
 <span class="hint">印刷ダイアログで「送信先: PDF に保存」を選ぶと PDF ファイルになります（各章は改ページ、画面では目次リンクで移動できます）。図の色をそのまま残すには印刷オプションの「背景のグラフィック」をオンにしてください。</span></div>
-<div class="doc"><div class="cover"><h1>AI-CAR プロジェクト説明</h1><p>${esc(architectureData.overview?.subtitle || '')}</p>${architectureData.overview?.developer ? `<p>${developerHtml(architectureData.overview)}</p>` : ''}<p>出力日時: ${stamp} ／ ダッシュボード ${esc(location.host)}</p></div>
+<div class="doc"><div class="cover"><h1>AI-CAR プロジェクト説明</h1><p>${esc(architectureData.overview?.subtitle || '')}</p>${architectureData.overview?.developer ? `<p>${developerHtml(architectureData.overview)}</p>` : ''}${architectureData.overview?.version?.version ? `<p>バージョン ${esc(versionText(architectureData.overview.version))}</p>` : ''}<p>出力日時: ${stamp} ／ ダッシュボード ${esc(location.host)}</p></div>
 <nav class="toc" id="toc"><h2>目次</h2><ol>${toc}</ol></nav>${sections}</div></body></html>`);
   win.document.close();
 }
@@ -3429,6 +3441,11 @@ document.getElementById('about_close').addEventListener('click', closeAbout);
 document.getElementById('about_pdf').addEventListener('click', openAboutPdf);
 fetch('/api/architecture').then(r => r.json()).then(a => {
   document.getElementById('developer').innerHTML = developerHtml(a.overview);
+}).catch(() => {});
+fetch('/api/version').then(r => r.json()).then(v => {
+  const el = document.getElementById('app_version');
+  el.textContent = v.version ? `v${v.version}` : '';
+  el.title = versionText(v);
 }).catch(() => {});
 document.getElementById('about').addEventListener('click', ev => { if (ev.target.id === 'about') closeAbout(); });
 document.addEventListener('keydown', ev => {

@@ -72,32 +72,32 @@ connections:
   #     初期アドレス 0x29 は BNO055 と同じ。XSHUT を GPIO で 1 台ずつ上げ、cliff_node が起動時に変更する。
   #     VIN 3V3・GND は前後とも Motor HAT (3V3 power / Ground) に挿すため Pi ヘッダー側には載せない ---
   - pins: [3]
-    device: VL53L1X 前
+    device: 落下防止センサー VL53L1X 前
     signal: I2C SDA
     color: 青
     note: アドレス 0x30（I2C バス共有）
   - pins: [5]
-    device: VL53L1X 前
+    device: 落下防止センサー VL53L1X 前
     signal: I2C SCL
     color: 灰
     note: アドレス 0x30（I2C バス共有）
   - pins: [11]
-    device: VL53L1X 前
+    device: 落下防止センサー VL53L1X 前
     signal: XSHUT (GPIO17)
     color: 緑
     note: libgpiod 出力（gpiochip4 pinctrl-rp1）
   - pins: [3]
-    device: VL53L1X 後
+    device: 落下防止センサー VL53L1X 後
     signal: I2C SDA
     color: 青
     note: アドレス 0x31（I2C バス共有）
   - pins: [5]
-    device: VL53L1X 後
+    device: 落下防止センサー VL53L1X 後
     signal: I2C SCL
     color: 灰
     note: アドレス 0x31（I2C バス共有）
   - pins: [13]
-    device: VL53L1X 後
+    device: 落下防止センサー VL53L1X 後
     signal: XSHUT (GPIO27)
     color: 緑
     note: libgpiod 出力（gpiochip4 pinctrl-rp1）
@@ -109,5 +109,5 @@ hat_power:
   - {device: M2 前右, signal: エンコーダー VCC / GND, vcc_color: 白, gnd_color: 黄, wired: true}
   - {device: M3 後左, signal: エンコーダー VCC / GND, vcc_color: 白, gnd_color: 黄, wired: true}
   - {device: M4 後右, signal: エンコーダー VCC / GND, vcc_color: 白, gnd_color: 黄, wired: true}
-  - {device: VL53L1X 前, signal: VIN / GND, vcc_color: 白, gnd_color: 黄, wired: true, note: 'アドレス 0x30'}
-  - {device: VL53L1X 後, signal: VIN / GND, vcc_color: 白, gnd_color: 黄, wired: true, note: 'アドレス 0x31'}
+  - {device: 落下防止センサー VL53L1X 前, signal: VIN / GND, vcc_color: 白, gnd_color: 黄, wired: true, note: 'アドレス 0x30'}
+  - {device: 落下防止センサー VL53L1X 後, signal: VIN / GND, vcc_color: 白, gnd_color: 黄, wired: true, note: 'アドレス 0x31'}
