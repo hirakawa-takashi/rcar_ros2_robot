@@ -234,7 +234,8 @@ FRAME_MS = 60
 CLOUD_HOLD = 6  # ネットの声は出はじめを 6 枚（0.36 秒）ためてから流す。Wi-Fi のゆれで途切れないように
 OUT_FRAME = OUT_RATE * FRAME_MS // 1000
 SENTENCE_END = re.compile(r'[。！？!?\n]')
-NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）')
+# whisper が雑音だけのときによく出す決まり文句も、声でないとみなす
+NOISE_TEXT = re.compile(r'[\s\W]*|\(.*\)|\[.*\]|（.*）|[\s\W]*(?:ご視聴ありがとうございました|チャンネル登録(?:お願いします|よろしくお願いします)?)[\s\W]*')
 PHOTO_TOOL = 'self.camera.take_photo'
 PHOTO_TIMEOUT = 15.0
 PHOTO_MAX_BYTES = 2 * 2 ** 20
@@ -340,8 +341,9 @@ BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend
 PC_VOICE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pc_voice.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
-TO_NET = re.compile(r'(?:インターネット|ネット|クラウド|net)' + _SWITCH, re.I)
-TO_LOCAL = re.compile(r'(?:ローカル|local)' + _SWITCH, re.I)
+# 聞きまちがい（ゲットにして・ヘッドにして・ロータルにして）も受けつける。「ゲットして」などと分けるため「に/へ」がいる
+TO_NET = re.compile(r'(?:(?:インターネット|ネット|クラウド|net)' + _SWITCH + r'|(?:ゲット|ヘッド|ネッド)[にへ]' + _SWITCH + ')', re.I)
+TO_LOCAL = re.compile(r'(?:(?:ローカル|local)' + _SWITCH + r'|(?:ロータル|ロカール|ローカン)[にへ]' + _SWITCH + ')', re.I)
 # 家の AI（ローカル）の聞き取り・返事をする所。ネット / ローカルとは別に切りかえる
 TO_MINI = re.compile(r'(?:ミニコン|ミニ・?コン|ジェットソン|jetson)' + _SWITCH, re.I)
 TO_PC = re.compile(r'(?:パソコン|ピーシー|pc)' + _SWITCH, re.I)
