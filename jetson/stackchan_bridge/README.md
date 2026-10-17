@@ -16,7 +16,9 @@ M5Stack の純正ファームウェア（StackChan 1.5.1、中の会話は XiaoZ
 - 2026/10 の実機: 聞き取り 約 0.3〜0.7 秒、話し終わってから声が出るまで 約 1.6〜2.8 秒。メモリ 約 37 MB
 - 返事の声: Kokoro のままだといちばん大きい所が上限の約 4 割（-7 dB）で小さかったので、文ごとに -1 dB にそろえる（`--peak-db`）
 - 声の区切り: まわりの音の 3 倍（最低 RMS 300）より大きいと話し始め、0.8 秒静かなら話し終わり（`--ratio`・`--min-level`・`--end-silence`）。
-  「(音楽)」のような文字だけの聞き取りは捨てる
+  「(音楽)」のような文字だけの聞き取りと、whisper が雑音でよく出す「ご視聴ありがとうございました」は捨てる
+- whisper-server は `--vad -vm models/ggml-silero-v5.1.2.bin`（Silero VAD、0.9 MB）で、区切った音の中の人の声の所だけを文字にする（音楽やテレビの所を言葉にしにくい）。Jetson（small）で試したとき: 雑音だけの音は 10 回中 5 回が空になった（今までは 10 回とも「(音楽)」）。12 秒の音楽の中の言葉は同じに聞き取れ、かかる時間は 0.4 → 0.8 秒。`--prompt` に「ネットにして」などの合図を入れると、音楽だけで「パソコンにして。」と出たので、合図は入れない（「スタックちゃん」は入れたまま。抜くと「つだくじゃん」になる）
+- 合図の聞きまちがい「ゲットにして」「ヘッドにして」（ネット）・「ロータルにして」（ローカル）も受けつける。「ゲットして」とは分けるため「に/へ」がいる
 - whisper の聞き取り: 毎回 `no_context=true` を送る（前の聞き取りを手がかりにすると、一度まちがえたあと、どの声も「(スタックちゃん)」のような決まった言葉になる）。5 分ごとに Kokoro の「スタックちゃん」（呼びかけが出るはず）と「今日の天気はどうですか」（出ないはず）を聞き取らせ、ちがえば `pkill -KILL -x whisper-server` で止める（`Restart=on-failure` で起動し直る）
 - 呼びかけ待ちの首ふり: スタックちゃんはいつも聞いている（listening）ので、純正の待ち受けの首ふりは動かない。bridge が 5〜10 秒ごとに `self.robot.set_head_angles` で首を動かす（純正の 4 種類をまねる）。動かしてから 1.2 秒は新しい声の区切りを始めない。居眠り中・会話中・撮影中は動かさない
 - 会話は 3 往復まで覚える（WebSocket が切れると忘れる）。今の日時をシステムの指示に入れる
@@ -64,6 +66,7 @@ curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/
 sudo dpkg -i cuda-keyring_1.1-1_all.deb && sudo apt update && sudo apt install -y cuda-toolkit-13-3
 mkdir -p ~/ai && cd ~/ai && git clone --depth 1 https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
 curl -fL -o models/ggml-large-v3.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin
+curl -fL -o models/ggml-silero-v5.1.2.bin https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
 PATH=/usr/local/cuda/bin:$PATH cmake -B build -DGGML_CUDA=1 -DCMAKE_CUDA_ARCHITECTURES=89 -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 24 --target whisper-server
 sudo install -m 644 pc/whisper-server.service /etc/systemd/system/   # このフォルダの pc/
