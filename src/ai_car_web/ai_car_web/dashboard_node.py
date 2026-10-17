@@ -63,6 +63,15 @@ class DriveModeRequest(BaseModel):
     mode: str
 
 
+class NavRequest(BaseModel):
+    """地図の行き先（map 座標）。plan は道だけ、go は自動にして向かう、cancel はやめる。"""
+
+    action: str
+    x: float = 0.0
+    y: float = 0.0
+    yaw_deg: float = 0.0
+
+
 class JetsonDetection(BaseModel):
     """Jetson の物体検出 1 件。box は画像に対する正規化座標 [x_min, y_min, x_max, y_max]。"""
 
@@ -302,6 +311,8 @@ class DashboardNode(Node):
         # 運転モード（drive_mode_node）。空で無効
         self.declare_parameter('drive_mode_topic', '/drive_mode')
         self.declare_parameter('drive_mode_request_topic', '/drive_mode_request')
+        # 地図の行き先（autonomy_node の Level 2）。空で無効
+        self.declare_parameter('nav_goal_topic', '/nav_goal')
         self.declare_parameter('api_token', '')
         # 自律走行の状態（autonomy_node）。空で無効
         self.declare_parameter('autonomy_status_topic', '/autonomy_status')
@@ -393,6 +404,9 @@ class DashboardNode(Node):
                 QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL))
             self.mode_request_pub = self.create_publisher(
                 String, self.get_parameter('drive_mode_request_topic').value, 10)
+        nav_goal_topic = self.get_parameter('nav_goal_topic').value
+        self.nav_goal_pub = (self.create_publisher(String, nav_goal_topic, 10)
+                             if nav_goal_topic else None)
         autonomy_topic = self.get_parameter('autonomy_status_topic').value
         if autonomy_topic:
             self.create_subscription(String, autonomy_topic, self._autonomy_cb, 10)
@@ -702,6 +716,21 @@ class DashboardNode(Node):
         self._publish_mode_request(mode)
         self.get_logger().info(f'運転モード切替要求: {mode}')
         return {'ok': True, 'mode': mode}
+
+    def request_nav(self, req: NavRequest):
+        """地図の行き先を autonomy_node へ送る。go のときは運転モードを自動にする。"""
+        if req.action not in ('plan', 'go', 'cancel'):
+            return {'ok': False, 'error': f'不明な指示: {req.action}'}
+        if self.nav_goal_pub is None:
+            return {'ok': False, 'error': '地図の行き先が無効です'}
+        msg = String()
+        msg.data = json.dumps({'action': req.action, 'x': req.x, 'y': req.y,
+                               'yaw_deg': req.yaw_deg})
+        self.nav_goal_pub.publish(msg)
+        self.get_logger().info(f'行き先 {req.action}: x {req.x:.2f} y {req.y:.2f}')
+        if req.action == 'go':
+            return self.request_drive_mode('auto')
+        return {'ok': True}
 
     def _publish_mode_request(self, mode: str):
         msg = String()
@@ -1339,6 +1368,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/drive_mode', dependencies=[Depends(require_token)])
     def set_drive_mode(req: DriveModeRequest):
         return node.request_drive_mode(req.mode)
+
+    @app.post('/api/nav', dependencies=[Depends(require_token)])
+    def nav(req: NavRequest):
+        return node.request_nav(req)
 
     @app.get('/api/slam/map.png')
     def slam_map():

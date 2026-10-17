@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""自律走行ノード（Level 1: LiDAR 反応型）。
+"""自律走行ノード（Level 1: LiDAR 反応型、Level 2: Nav2 で地図の行き先へ）。
 
-地図や自己位置を使わず、/scan と /obstacle_status だけで
+行き先がないときは、地図や自己位置を使わず、/scan と /obstacle_status だけで
   前進 → 接近したら減速 → 停止距離内なら空いている側へ旋回 → 前進
-を繰り返す。速度指令は /cmd_vel_auto に常時（20Hz）publish し、
+を繰り返す（Level 1）。
+/nav_goal（JSON: {"action": "plan" | "go" | "cancel", "x", "y", "yaw_deg"}、map 座標）で行き先を受けると、
+plan は Nav2 の compute_path_to_pose で道だけを考え（車は動かない）、go は navigate_to_pose で行き先へ向かう（Level 2）。
+go のあいだは Nav2 の速度指令（/cmd_vel_nav）を中継し、着いたら・行けなかったら・やめたら止まって待つ。
+AUTO を抜けると行き先をやめ、AUTO に入らないまま nav_auto_wait 秒たっても行き先をやめる。
+段差から離れる動き（cliff_back / cliff_turn）は行き先より先にする。
+速度指令は /cmd_vel_auto に常時（20Hz）publish し、
 drive_mode_node が AUTO モードのときだけ /cmd_vel へ中継する。
 AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し続ける
 （drive_mode_node の生存確認に使われる）。
@@ -18,6 +24,10 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
   cliff_turn  段差から下がったあと、空いている側へ cliff_turn_deg 回って走行を続ける
   cliff_stuck 前後とも段差・/odom なしなどで動けない（ゼロ速度）
   blocked   LiDAR 未受信などで停止
+  nav       Nav2 で地図の行き先へ向かう（/cmd_vel_nav を中継）
+  nav_done  行き先に着いた（ゼロ速度。AUTO を抜けるか次の行き先まで）
+  nav_failed  Nav2 が行き先へ行けなかった（ゼロ速度）
+  nav_stop  行き先をやめた（ゼロ速度）
 """
 
 import json
@@ -26,8 +36,11 @@ import threading
 import time
 
 import rclpy
-from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
+from action_msgs.msg import GoalStatus
+from geometry_msgs.msg import PoseStamped, Twist
+from nav2_msgs.action import ComputePathToPose, NavigateToPose
+from nav_msgs.msg import Odometry, Path
+from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -39,11 +52,31 @@ LABELS = {
     'backoff': '後退', 'blocked': '停止（センサー待ち）',
     'cliff_back': '段差から後退', 'cliff_turn': '段差から旋回',
     'cliff_stuck': '停止（段差で動けない）',
+    'nav': '行き先へ', 'nav_done': '行き先に着いた', 'nav_failed': '停止（行き先へ行けない）',
+    'nav_stop': '停止（行き先をやめた）',
 }
+NAV_LABELS = {
+    'idle': 'なし', 'unavailable': 'Nav2 が動いていない', 'planning': '道を考え中',
+    'planned': '道あり（まだ動かない）', 'no_path': '道が見つからない', 'sending': '送り中',
+    'active': '向かっている', 'succeeded': '着いた', 'aborted': '行けなかった', 'canceled': 'やめた',
+}
+NAV_END = {'succeeded': 'nav_done', 'aborted': 'nav_failed', 'canceled': 'nav_stop'}
+MAX_PATH_POINTS = 120
 
 
 def _wrap(a: float) -> float:
     return math.atan2(math.sin(a), math.cos(a))
+
+
+def _path_points(path: Path):
+    """道を MAX_PATH_POINTS 点までに間引いた [[x, y], ...] と長さ [m]。"""
+    pts = [(p.pose.position.x, p.pose.position.y) for p in path.poses]
+    length = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:]))
+    step = max(1, math.ceil(len(pts) / MAX_PATH_POINTS))
+    keep = pts[::step]
+    if pts and keep[-1] != pts[-1]:
+        keep.append(pts[-1])
+    return [[round(x, 2), round(y, 2)] for x, y in keep], length
 
 
 class AutonomyNode(Node):
@@ -82,6 +115,13 @@ class AutonomyNode(Node):
         self.declare_parameter('cliff_backoff_m', 0.10)
         self.declare_parameter('cliff_turn_deg', 120.0)
         self.declare_parameter('cliff_escape_timeout', 20.0)
+        # Level 2: Nav2 で地図の行き先へ。nav_goal_topic を空にすると無効
+        self.declare_parameter('nav_goal_topic', '/nav_goal')
+        self.declare_parameter('nav_cmd_topic', '/cmd_vel_nav')
+        self.declare_parameter('nav_plan_topic', '/plan')
+        self.declare_parameter('nav_frame', 'map')
+        self.declare_parameter('nav_cmd_timeout', 0.5)
+        self.declare_parameter('nav_auto_wait', 5.0)
 
         g = self.get_parameter
         self.offset = math.radians(float(g('scan_angle_offset_deg').value))
@@ -101,6 +141,9 @@ class AutonomyNode(Node):
         self.cliff_backoff_m = float(g('cliff_backoff_m').value)
         self.cliff_turn = math.radians(float(g('cliff_turn_deg').value))
         self.cliff_escape_timeout = float(g('cliff_escape_timeout').value)
+        self.nav_frame = g('nav_frame').value
+        self.nav_cmd_timeout = float(g('nav_cmd_timeout').value)
+        self.nav_auto_wait = float(g('nav_auto_wait').value)
 
         self._lock = threading.Lock()
         self._mode = None
@@ -117,6 +160,13 @@ class AutonomyNode(Node):
         self._pose = None      # (x, y, yaw)
         self._pose_stamp = 0.0
         self._escape = None    # 段差から離れる途中の状態
+        self._prev_mode = None
+        self._nav = self._nav_state('idle')
+        self._nav_seq = 0      # 古い行き先の返事を捨てるための番号
+        self._nav_handle = None
+        self._nav_hold = None  # 着いた・行けなかった・やめたあと止まって待つときの behavior
+        self._nav_cmd = Twist()
+        self._nav_cmd_stamp = 0.0
 
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -132,6 +182,13 @@ class AutonomyNode(Node):
         self.create_subscription(
             String, g('drive_mode_topic').value, self._mode_cb,
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.nav_client = self.plan_client = None
+        if g('nav_goal_topic').value:
+            self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+            self.plan_client = ActionClient(self, ComputePathToPose, 'compute_path_to_pose')
+            self.create_subscription(String, g('nav_goal_topic').value, self._nav_goal_cb, 10)
+            self.create_subscription(Twist, g('nav_cmd_topic').value, self._nav_cmd_cb, 10)
+            self.create_subscription(Path, g('nav_plan_topic').value, self._nav_plan_cb, 10)
         rate = float(g('publish_rate').value)
         self.create_timer(1.0 / max(rate, 1.0), self._timer_cb)
         self.create_timer(0.2, self._status_cb)
@@ -200,6 +257,167 @@ class AutonomyNode(Node):
             with self._lock:
                 self._mode = payload.get('mode')
 
+    # --- Level 2: Nav2 ---
+    def _nav_state(self, state, goal=None, reason='', path=None, length=None):
+        return {'state': state, 'goal': goal, 'reason': reason, 'path': path or [],
+                'path_m': round(length, 2) if length is not None else None,
+                'remaining_m': None, 'recoveries': 0, 'since': time.monotonic()}
+
+    def _nav_cmd_cb(self, msg: Twist):
+        with self._lock:
+            self._nav_cmd = msg
+            self._nav_cmd_stamp = time.monotonic()
+
+    def _nav_plan_cb(self, msg: Path):
+        if self._nav['state'] != 'active' or not msg.poses:
+            return
+        pts, length = _path_points(msg)
+        self._nav['path'] = pts
+        self._nav['path_m'] = round(length, 2)
+
+    def _nav_goal_cb(self, msg: String):
+        try:
+            req = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if not isinstance(req, dict):
+            return
+        action = req.get('action')
+        if action == 'cancel':
+            self._nav_cancel('やめる指示')
+            return
+        if action not in ('plan', 'go'):
+            return
+        try:
+            x, y = float(req['x']), float(req['y'])
+            yaw = math.radians(float(req.get('yaw_deg') or 0.0))
+        except (KeyError, TypeError, ValueError):
+            return
+        goal = {'x': round(x, 2), 'y': round(y, 2), 'yaw_deg': round(math.degrees(yaw), 1)}
+        client = self.nav_client if action == 'go' else self.plan_client
+        self._nav_cancel(None)
+        self._nav_seq += 1
+        seq = self._nav_seq
+        if not client.server_is_ready():
+            self._nav = self._nav_state('unavailable', goal, 'Nav2 が active ではありません')
+            return
+        pose = PoseStamped()
+        pose.header.frame_id = self.nav_frame
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.pose.position.x = x
+        pose.pose.position.y = y
+        pose.pose.orientation.z = math.sin(yaw / 2.0)
+        pose.pose.orientation.w = math.cos(yaw / 2.0)
+        if action == 'plan':
+            self._nav = self._nav_state('planning', goal)
+            req_msg = ComputePathToPose.Goal()
+            req_msg.goal = pose
+            req_msg.use_start = False
+            fut = client.send_goal_async(req_msg)
+            fut.add_done_callback(lambda f: self._plan_accepted(f, seq, goal))
+        else:
+            self._nav = self._nav_state('sending', goal, path=self._nav.get('path'))
+            req_msg = NavigateToPose.Goal()
+            req_msg.pose = pose
+            fut = client.send_goal_async(req_msg, feedback_callback=self._nav_feedback)
+            fut.add_done_callback(lambda f: self._nav_accepted(f, seq, goal))
+        self.get_logger().info(f'行き先（{action}）: x {x:.2f} y {y:.2f}')
+
+    def _plan_accepted(self, fut, seq, goal):
+        handle = fut.result()
+        if seq != self._nav_seq:
+            return
+        if not handle.accepted:
+            self._nav = self._nav_state('no_path', goal, 'Nav2 が受け付けませんでした')
+            return
+        handle.get_result_async().add_done_callback(lambda f: self._plan_done(f, seq, goal))
+
+    def _plan_done(self, fut, seq, goal):
+        if seq != self._nav_seq:
+            return
+        res = fut.result()
+        if res.status != GoalStatus.STATUS_SUCCEEDED or not res.result.path.poses:
+            self._nav = self._nav_state('no_path', goal, f'道が見つかりません（{res.result.error_code}）')
+            return
+        pts, length = _path_points(res.result.path)
+        self._nav = self._nav_state('planned', goal, path=pts, length=length)
+
+    def _nav_accepted(self, fut, seq, goal):
+        handle = fut.result()
+        if seq != self._nav_seq:
+            if handle.accepted:
+                handle.cancel_goal_async()
+            return
+        if not handle.accepted:
+            self._nav = self._nav_state('aborted', goal, 'Nav2 が受け付けませんでした')
+            return
+        self._nav_handle = handle
+        self._nav['state'] = 'active'
+        self._nav['since'] = time.monotonic()
+        handle.get_result_async().add_done_callback(lambda f: self._nav_done(f, seq, goal))
+
+    def _nav_feedback(self, fb):
+        if self._nav['state'] == 'active':
+            self._nav['remaining_m'] = round(fb.feedback.distance_remaining, 2)
+            self._nav['recoveries'] = fb.feedback.number_of_recoveries
+
+    def _nav_done(self, fut, seq, goal):
+        if seq != self._nav_seq:
+            return
+        res = fut.result()
+        self._nav_handle = None
+        state = {GoalStatus.STATUS_SUCCEEDED: 'succeeded',
+                 GoalStatus.STATUS_CANCELED: 'canceled'}.get(res.status, 'aborted')
+        reason = self._nav.get('reason') or ''
+        if state == 'aborted':
+            reason = f'Nav2 のエラー {res.result.error_code}'
+        self._nav = self._nav_state(state, goal, reason, path=self._nav.get('path'),
+                                    length=self._nav.get('path_m'))
+        if self._mode == 'auto':
+            self._nav_hold = NAV_END[state]
+        self.get_logger().info(f'行き先: {NAV_LABELS[state]} {reason}')
+
+    def _nav_cancel(self, reason):
+        """向かっている行き先・考え中の道をやめる。reason が None なら新しい行き先に替えるだけ。"""
+        self._nav_hold = None
+        if self._nav['state'] in ('planning', 'sending', 'active'):
+            self._nav_seq += 1
+            if self._nav_handle is not None:
+                self._nav_handle.cancel_goal_async()
+            self._nav_handle = None
+            if reason is not None:
+                self._nav = self._nav_state('canceled', self._nav['goal'], reason,
+                                            path=self._nav.get('path'))
+                if self._mode == 'auto':
+                    self._nav_hold = 'nav_stop'
+                self.get_logger().info(f'行き先をやめる: {reason}')
+        elif reason is not None:
+            self._nav = self._nav_state('idle')
+
+    def _nav_step(self, now, mode):
+        """Level 2 の速度。行き先がないときは None（Level 1 の走行）。"""
+        state = self._nav['state']
+        if self._prev_mode == 'auto' and mode != 'auto':
+            self._nav_hold = None
+            if state in ('sending', 'active'):
+                self._nav_cancel('自動を抜けた')
+        self._prev_mode = mode
+        state = self._nav['state']
+        if (mode != 'auto' and state in ('sending', 'active')
+                and now - self._nav['since'] > self.nav_auto_wait):
+            self._nav_cancel(f'{self.nav_auto_wait:.0f} 秒たっても自動に入らない')
+        if mode != 'auto':
+            return None
+        if self._nav['state'] in ('sending', 'active'):
+            self._set_behavior('nav')
+            with self._lock:
+                fresh = now - self._nav_cmd_stamp <= self.nav_cmd_timeout
+                return self._nav_cmd if fresh else Twist()
+        if self._nav_hold:
+            self._set_behavior(self._nav_hold)
+            return Twist()
+        return None
+
     # --- 行動決定 ---
     def _set_behavior(self, behavior: str):
         if behavior != self._behavior:
@@ -216,6 +434,7 @@ class AutonomyNode(Node):
             cliff = self._cliff if now - self._cliff_stamp <= self.cliff_timeout else None
             pose = self._pose if now - self._pose_stamp <= self.odom_timeout else None
         cmd = Twist()
+        nav_cmd = self._nav_step(now, mode)
         if mode != 'auto':
             self._escape = None
             self._set_behavior('standby')
@@ -233,6 +452,8 @@ class AutonomyNode(Node):
             esc_cmd = self._escape_step(now, s, pose, cliff_front, cliff_back)
             if esc_cmd is not None:
                 return esc_cmd
+        if nav_cmd is not None:
+            return nav_cmd
 
         front = s.get('front')
         left = s.get('left')
@@ -333,8 +554,9 @@ class AutonomyNode(Node):
         with self._lock:
             payload = {
                 'stamp': round(time.time(), 3),
-                'level': 1,
-                'method': 'LiDAR 反応型（地図なし）',
+                'level': 2 if self._behavior.startswith('nav') else 1,
+                'method': ('Nav2（地図の行き先へ）' if self._behavior.startswith('nav')
+                           else 'LiDAR 反応型（地図なし）'),
                 'mode': self._mode,
                 'behavior': self._behavior,
                 'behavior_label': LABELS.get(self._behavior, self._behavior),
@@ -350,6 +572,12 @@ class AutonomyNode(Node):
                     'linear_x': round(self._last_cmd.linear.x, 3),
                     'linear_y': round(self._last_cmd.linear.y, 3),
                     'angular_z': round(self._last_cmd.angular.z, 3),
+                },
+                'nav': {
+                    **{k: v for k, v in self._nav.items() if k != 'since'},
+                    'label': NAV_LABELS.get(self._nav['state'], self._nav['state']),
+                    'age_s': round(now - self._nav['since'], 1),
+                    'available': bool(self.nav_client and self.nav_client.server_is_ready()),
                 },
                 'params': {
                     'cruise_speed': self.cruise, 'slow_speed': self.slow,

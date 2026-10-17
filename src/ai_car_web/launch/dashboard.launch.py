@@ -3,7 +3,7 @@ import platform
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -44,6 +44,7 @@ def generate_launch_description():
     use_odom = LaunchConfiguration('use_odom')
     use_autonomy = LaunchConfiguration('use_autonomy')
     use_slam = LaunchConfiguration('use_slam')
+    use_nav2 = LaunchConfiguration('use_nav2')
 
     try:
         get_package_share_directory('camera_ros')
@@ -110,6 +111,25 @@ def generate_launch_description():
         ),
     ] if slam_available else []
 
+    try:
+        get_package_share_directory('nav2_bt_navigator')
+        nav2_available = slam_available
+    except PackageNotFoundError:
+        nav2_available = False
+
+    # slam_toolbox が active になる（slam_autostart は 20 秒後から）まで待ってから起動する
+    nav2_nodes = [
+        TimerAction(
+            period=40.0,
+            actions=[IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(os.path.join(
+                    get_package_share_directory('ai_car_web'), 'launch', 'nav2.launch.py')),
+            )],
+            condition=IfCondition(PythonExpression(
+                ["'", use_slam, "'.lower() == 'true' and '", use_nav2, "'.lower() == 'true'"])),
+        ),
+    ] if nav2_available else []
+
     return LaunchDescription([
         DeclareLaunchArgument('params_file', default_value=default_params,
                               description='ダッシュボードのパラメータファイル'),
@@ -139,6 +159,8 @@ def generate_launch_description():
                               description='自律走行ノード（LiDAR 反応型）を起動する'),
         DeclareLaunchArgument('use_slam', default_value='true',
                               description='slam_toolbox で地図と自己位置を出す（slam.launch.py）'),
+        DeclareLaunchArgument('use_nav2', default_value='true',
+                              description='Nav2 で地図の行き先へ行く（nav2.launch.py。use_slam:=true のときだけ）'),
         Node(
             package='ai_car_web',
             executable='dashboard_node',
@@ -243,4 +265,5 @@ def generate_launch_description():
         *camera_nodes,
         *lidar_nodes,
         *slam_nodes,
+        *nav2_nodes,
     ])
