@@ -8,7 +8,7 @@
 ## システム構成
 - 実行環境: Raspberry Pi 5
 - ROS: ROS2 Jazzy（ros-base）
-- ナビゲーション: Nav2（未導入）
+- ナビゲーション: Nav2（ros-jazzy-navigation2 1.3.13、Level 2。slam_toolbox の地図と自己位置で行き先へ）
 - センサー: LiDAR（RPLIDAR A1M8）、カメラ（Camera Module 3 Wide、IMX708）、IMU（BNO055）、落下防止センサー（VL53L1X ×2、前後）、エンコーダー（520 モーター ×4）
 - 駆動: Adafruit DC & Stepper Motor HAT（M1〜M4、メカナム 4 輪）
 - 外の機械: Jetson Orin Nano Super（スタックちゃんの会話・状態）、パソコン（WSL・RTX 4080 SUPER、使えるときだけ聞き取り・会話・声）、M5 スタックちゃん（CoreS3）
@@ -27,6 +27,7 @@
   - Publish: `/cmd_vel_manual`（geometry_msgs/Twist、手動指令。`/cmd_vel` は `drive_mode_node` が発行）、`/drive_mode_request`、`~/status`
   - `drive_mode_node`（運転モード管理）: `/cmd_vel_manual`（Web + ゲームパッド）と `/cmd_vel_auto`（自律走行）のどちらか一方だけを `/cmd_vel` に中継する。モードは manual / auto / stop（起動時 manual）。状態は `/drive_mode`（JSON, transient local, 5Hz）、切替要求は `/drive_mode_request`（JSON `{mode: manual|auto|stop|toggle, source}`）。安全機構: 自動へ入る条件（`/obstacle_status` が新鮮で stop / unknown でない・ゲームパッド接続中・スティック中立・`/cmd_vel_auto` 生存）を満たさないと拒否（`last_reject` に理由）、自動指令が `auto_timeout` 0.5 秒途絶／ゲームパッド切断／障害物判定途絶で STOP、自動中に手動指令を検出すると手動へ復帰（`manual_override`）、モード遷移時はゼロ速度を publish、最終段で LiDAR の 360° を使い、動く向き（前後左右・ななめ）の車体の端から 0.25 m（`move_stop_gap`）以内に物があればその向きの動きを、その向きに回ると車体の箱に点が入る（1° ずつ回して `turn_center_m` のまわりに確かめる、回れる角度が 5° `turn_stop_deg` より小さい）ならその向きの回転だけを 0 にする。ななめの向きが止まっても、前後・横の片方が空いていればその分だけ動く。手動は 0.7 m（`move_slow_gap`）以内で半分の速さ。LiDAR データなし（unknown）・判定の途絶中は前後左右の動きを 0 にする（`obstacle_guard`、手動・ゲームパッド・声・自動のどれも。止めた理由は `/drive_mode` の `guard`）。すき間は `perception_node` が車体の箱 `body_box_m`（LiDAR の中心から 後ろ 0.176・前 0.090・右 0.135・左 0.190 m。左は LiDAR の左 17 cm の箱まで）を 5° ごとの向きへ動かして求め、`/obstacle_status` の `move` に出す。launch 引数 `use_drive_mode`
   - `autonomy_node`（Level 1 自律走行・LiDAR 反応型）: `/scan` を前 / 左 / 右 / 後セクターに分けて最短距離を求め、前進（0.15 m/s）→ 0.8 m 以内で減速（0.08 m/s、空いている側へ緩く曲がる）→ 0.35 m 以内で空いている側へその場旋回（0.6 rad/s、前方 0.9 m 以上空くまで）→ 前進を繰り返す。前後左右とも 0.25 m 以内なら後退。前の落下防止センサーが段差なら、`/odom` で 0.10 m 下がり、空いている側へ 120° 回って走行を続ける（前後とも段差なら止まる）。LiDAR が 1 秒以上途絶えると停止。`/cmd_vel_auto` に 10Hz で常時 publish（AUTO 以外はゼロ速度で待機）、状態は `/autonomy_status`（JSON: behavior / sectors / cmd）。地図・自己位置は使わない。launch 引数 `use_autonomy`
+  - Level 2 自律走行（Nav2）: `nav2.launch.py`（`use_nav2` 既定 true、SLAM が active になる 40 秒後に起動）で `controller_server`（Regulated Pure Pursuit、0.15 m/s・旋回 0.6 rad/s）・`planner_server`（NavFn）・`behavior_server`（回る・下がる・待つ）・`bt_navigator` を `lifecycle_manager_navigation` が active にする。地図と自己位置は slam_toolbox。ダッシュボードの「地図と自己位置（SLAM）」で地図をクリックすると、`POST /api/nav` → `/nav_goal` → `autonomy_node` が `compute_path_to_pose` で道を考え、緑の線で出す（車は動かない）。「ここへ行く」で運転モードを自動にし、`navigate_to_pose` で向かう。Nav2 の速度は `/cmd_vel_nav` に出し、`autonomy_node` が AUTO のあいだだけ `/cmd_vel_auto` へ中継するので、`drive_mode_node` の 360° の見張り・段差の止めはそのまま効く。段差から離れる動きは行き先より先。着いた・行けない・やめたら止まって待ち、AUTO を抜ける（手動・停止）か 5 秒たっても自動に入らないと行き先をやめる
   - 運転モード UI: 手動操作カード上部にモードバッジ（手動 / 自動 / 停止）と 3 ボタン（`POST /api/drive_mode`）、拒否理由表示。自律走行カードに行動・各方向距離・自動指令・`/cmd_vel` 出力を表示
   - Subscribe: `/scan`、`/imu/data`、`/odom`、`/camera/image_raw/compressed`
   - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate` / `axis_map_config` / `axis_map_sign`（BNO055 の軸の割り当て。基板は x 後ろ・y 右なので `0x24` / `0x06` で x・y を反転して imu_link にそろえる）・`operation_mode`（既定 `0x07` AMG。3 つのセンサーの生の値を読み、向きは imu_node がジャイロ＋加速度の Mahony フィルターで計算する（`filter_gain`、yaw は起動時からの相対）。磁気は `/imu/mag`（sensor_msgs/MagneticField）に出し、ダッシュボードの IMU のカードに x / y / z・強さ・向きを出す。`0x08` IMU は磁気が止まる。車の上は磁気の乱れが大きく NDOF では補正が進まない）。補正が 3 になったら補正値を `calibration_file`（`~/.ros/bno055_calibration.json`）に保存し、次につないだとき書きもどす
@@ -71,10 +72,10 @@
   - Motor HAT 接続図カード（同じく「配線詳細」に表示）: `ai_car_web/motor_hat.py` が `config/motor_hat.yaml` の割り付け（`channel` / `wheel` / `reversed` / `colors` / `note`）に端子ごとの固定情報（PCA9685 の PWM / IN1 / IN2 チャンネル、TB6612 ブリッジ）を重ねて `GET /api/motor_hat` で返す。割り付け: M1=前左（front_left）/ M2=前右（front_right）/ M3=後左（rear_left）/ M4=後右（rear_right）。右側 2 輪は左右対称取り付けのため `reversed: true`（モーター制御ノードで符号反転する前提）。画面は上面図の SVG（前方が上、中央に HAT の端子台 M1 M2 | +− | M3 M4、四隅に車輪、端子→車輪の配線を +/− の配線色で描画、電源端子→12V 系統）と一覧表（端子 / 車輪 / 回転 / 配線色 / PCA9685 ch / ブリッジ / 備考）。端子・車輪の重複や未割り付けは警告表示。各モーターの `encoder`（`a_pin` / `b_pin` / `colors`）と `hat.encoder`（`vcc_pin` / `gnd_pins`）で 520 モーターエンコーダーの Pi 直結ピンを定義し、BCM 番号へ解決・非 GPIO ピン・I2C/ID ピン・ピン重複・VCC が 3V3 以外を警告。接続図は車輪ごとに「M1 前左」＋ 6 本の線（名称・配線色・接続先）を列挙し、一覧表は 1 線 1 行（モーター / 線番号 / ピン名称 / 配線色 / 接続先 / 回転・ドライバ・備考）。パラメータ `motor_hat_config`（空なら share 内の `motor_hat.yaml`）
 
 ## 現在作業中
-- なし（2026/10/17 で機能の開発はひと区切り。のこりは下の「次回作業」の床での確かめ）
+- なし（2026/10/17 に Level 2 の Nav2 を入れた。のこりは下の「次回作業」の床での確かめ）
 
 ## 未実装機能
-- Level 2 自律走行（Nav2 による地図ベースのナビゲーション）。現在は Level 1（LiDAR 反応型）のみ
+- なし（Level 2 の Nav2 は入れた。床ではまだ走らせていない）
 
 ## 既知の問題
 - Pi には rviz2 が未インストール（ros-base のみ）。RViz2 は開発PC側での表示を想定
@@ -141,7 +142,7 @@
 - 実機で自動モードの走行挙動（旋回方向・速度・距離しきい値）を確認し `autonomy_node` のパラメータを調整する
 - 前後の VL53L1X で、段差の前で止まるかを床で確かめる（台の端に向けて「出力」15 % でゆっくり）
 - `/odom` の横移動を床で合わせる
-- 保存した地図で「今どこにいるか」を出し、行き先まで行く（Nav2、Level 2）
+- Nav2 の行き先へ床で走らせる（出力 15 %。部屋 1 周の地図のあと、地図をクリック →「ここへ行く」。着いたら止まるか、360° の見張り・段差の止めが効くか）
 
 ## 変更ファイル
 - 下は 2026/09 の最初の作業の記録（液晶・TM1637 は今は使っていない）。そのあとの変更は CHANGELOG.md と各 PR を見る

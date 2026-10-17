@@ -616,7 +616,7 @@
       <tr><td class="k">/cmd_vel 出力</td><td class="v" id="au_out">-</td></tr>
       <tr><td class="k">自動への切替</td><td class="v" id="au_ok">-</td></tr>
     </table>
-    <div class="note" id="au_note">Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。</div>
+    <div class="note" id="au_note">行き先がないときは Level 1: LiDAR 反応型（前進 → 接近で減速 → 停止距離内なら空いている側へ旋回）。地図・自己位置は使わない。SLAM の地図で行き先を決めると Level 2（Nav2）で向かう。</div>
   </div>
 
   <div class="card wide">

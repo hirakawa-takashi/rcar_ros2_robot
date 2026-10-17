@@ -59,9 +59,9 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 
 `dashboard_node`
 
-- Publish: `/cmd_vel_manual` (`geometry_msgs/Twist`、Web・ゲームパッド・スタックちゃんの手動指令。`/cmd_vel` にするのは `drive_mode_node` だけ)、`/drive_output` (`std_msgs/Float32`、「出力」0.1〜1.0)、`/drive_mode_request`、`~/status` (`std_msgs/String`)
+- Publish: `/cmd_vel_manual` (`geometry_msgs/Twist`、Web・ゲームパッド・スタックちゃんの手動指令。`/cmd_vel` にするのは `drive_mode_node` だけ)、`/drive_output` (`std_msgs/Float32`、「出力」0.1〜1.0)、`/drive_mode_request`、`/nav_goal`（地図の行き先）、`~/status` (`std_msgs/String`)
 - Subscribe: `/scan`、`/imu/data`、`/imu/mag`、`/odom`、`/map`、`/pose`、`/system_status`、`/camera/image_raw/compressed`、`/obstacle_status`、`/cliff_status`、`/drive_mode`、`/autonomy_status`、`/motor_status`、`/joy_cmd`
-- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`GET /api/program?file=…`（プログラム一覧のファイルの中身）、`GET /api/dev_diary`、`POST /api/cmd_vel`、`POST /api/stop`、`POST /api/drive_output`、`POST /api/drive_mode`、`POST /api/slam/save`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws` など（全部はプロジェクト説明の「Web API」タブ）
+- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`GET /api/program?file=…`（プログラム一覧のファイルの中身）、`GET /api/dev_diary`、`POST /api/cmd_vel`、`POST /api/stop`、`POST /api/drive_output`、`POST /api/drive_mode`、`POST /api/slam/save`、`POST /api/nav`（地図の行き先 plan / go / cancel）、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws` など（全部はプロジェクト説明の「Web API」タブ）
 - パラメータ: `src/ai_car_web/config/dashboard.yaml`
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。
@@ -82,7 +82,8 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 | `cliff_node` | 前後の VL53L1X（0x30 / 0x31）→ `/cliff_status`（20 Hz） |
 | `imu_node` | BNO055（0x29）→ `/imu/data`（20 Hz）・`/imu/mag` |
 | `perception_node` | `/scan` → `/obstacle_status`。カメラ画像で 1 眼の奥行きの AI（SC-Depth v3・Hailo-8、表示だけ） |
-| `autonomy_node` | Level 1 自律走行（LiDAR の反応で前進・旋回）→ `/cmd_vel_auto` |
+| `autonomy_node` | Level 1 自律走行（LiDAR の反応で前進・旋回）と Level 2（`/nav_goal` の行き先へ Nav2 で向かい、`/cmd_vel_nav` を中継）→ `/cmd_vel_auto` |
+| Nav2（`nav2.launch.py`） | `controller_server`（Regulated Pure Pursuit）・`planner_server`（NavFn）・`behavior_server`・`bt_navigator`。slam_toolbox の `/map` と map → odom の TF を使い、速度は `/cmd_vel_nav`。`use_nav2`（既定 true、`use_slam:=true` のとき 40 秒後に起動） |
 | `joy_teleop_node` | Logitech F710 → `/joy_cmd` |
 | `lidar_watchdog_node` | `/scan` が止まったら rplidar を起動し直し、だめなら USB の電気を入れ直す |
 | `system_monitor_node` | 下を参照 |
@@ -265,6 +266,8 @@ sudo apt install -y ros-jazzy-robot-state-publisher ros-jazzy-joint-state-publis
 # SLAM（地図と自己位置、use_slam:=true）を使うとき
 # 地図の保存はダッシュボードが /map から .pgm / .yaml を書く（nav2_map_server は手で map_saver_cli を使うとき）
 sudo apt install -y ros-jazzy-slam-toolbox ros-jazzy-nav2-map-server
+# Nav2（地図の行き先へ行く Level 2、use_nav2:=true）を使うとき
+sudo apt install -y ros-jazzy-navigation2
 sudo apt install -y python3-psutil
 pip3 install fastapi uvicorn
 # WebSocket 配信（未導入なら /api/status の 250ms ポーリングへ自動フォールバック）。
