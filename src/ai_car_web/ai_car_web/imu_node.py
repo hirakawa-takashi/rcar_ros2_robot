@@ -84,6 +84,7 @@ class ImuNode(Node):
                         if mag_topic and self.operation_mode != IMU_MODE else None)
         self._q = None
         self._q_time = None
+        self._yaw_aligned = False
         self._gyro_bias = [0.0, 0.0, 0.0]
         self._fd = None
         self._next_retry = 0.0
@@ -318,6 +319,7 @@ class ImuNode(Node):
             raise
         self._calibration = None
         self._q = None
+        self._yaw_aligned = False
         self._connection_warned = False
         self.get_logger().info(
             f'BNO055 接続: /dev/i2c-{self.i2c_bus}, 0x{self.i2c_address:02x}')
@@ -419,6 +421,11 @@ class ImuNode(Node):
             gy += self.filter_gain * (az * vx - ax * vz)
             gz += self.filter_gain * (ax * vy - ay * vx)
         mn = math.sqrt(sum(v * v for v in mag)) if mag else 0.0
+        if mn > 1e-3 and not self._yaw_aligned:
+            # 起動の yaw は 0 なので、Mahony だけだと磁北へ寄るのに約 2 分かかる。最初の 1 回は磁気の向きに合わせる
+            self._q = self._align_yaw_to_mag(self._q, mag)
+            self._yaw_aligned = True
+            w, x, y, z = self._q
         if mn > 1e-3:
             # Mahony: 磁気の水平の向きで yaw を直す（yaw 0 = 磁北）
             mx, my, mz = (v / mn for v in mag)
@@ -440,6 +447,26 @@ class ImuNode(Node):
         n = math.sqrt(w * w + x * x + y * y + z * z)
         self._q = [w / n, x / n, y / n, z / n]
         return list(self._q)
+
+    @staticmethod
+    def _align_yaw_to_mag(q: list, mag: list) -> list:
+        """q の roll / pitch はそのままで、yaw を磁気の水平の向き（yaw 0 = 磁北）にした q を返す。"""
+        w, x, y, z = q
+        roll = math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+        pitch = math.asin(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
+        mx, my, mz = mag
+        cr, sr = math.cos(roll), math.sin(roll)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        hx = mx * cp + my * sr * sp + mz * cr * sp
+        hy = my * cr - mz * sr
+        yaw = math.atan2(-hy, hx)
+        cr, sr = math.cos(roll / 2), math.sin(roll / 2)
+        cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
+        cy, sy = math.cos(yaw / 2), math.sin(yaw / 2)
+        return [cr * cp * cy + sr * sp * sy,
+                sr * cp * cy - cr * sp * sy,
+                cr * sp * cy + sr * cp * sy,
+                cr * cp * sy - sr * sp * cy]
 
     def _publish_imu(self, msg: Imu, acc: list, gyr: list, quat_wxyz: list):
         msg.header.frame_id = self.frame_id
