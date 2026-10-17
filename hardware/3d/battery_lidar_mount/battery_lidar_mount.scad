@@ -972,6 +972,7 @@ else if (part == "cam_mount") translate([0, 0, -scam_mnt_y0]) rotate([90, 0, 0])
 else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]) bumper();
 else if (part == "cover") translate([0, cov_oy0 + cov_oy1, cov_oz]) rotate([180, 0, 0]) cover();
 else if (part == "cover_asm") cover();
+else if (part == "none") {}   // ほかの .scad から include して部品どうしの重なりを調べるとき
 else if (part == "sw_holder") translate([0, 0, -(sw_x0 - sw_clr - sw_wall)]) rotate([0, -90, 0]) sw_holder();
 else {
     plate();
