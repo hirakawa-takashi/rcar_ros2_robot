@@ -262,7 +262,7 @@ class PerceptionNode(Node):
         self.declare_parameter('mono_depth_rate', 10.0)
         self.declare_parameter('mono_depth_image_topic', '/stereo/depth/compressed')
         self.declare_parameter('mono_depth_guard', False)
-        self.declare_parameter('mono_camera_height_m', 0.112)
+        self.declare_parameter('mono_camera_height_m', 0.100)
         self.declare_parameter('mono_camera_pitch_deg', 0.0)
         self.declare_parameter('mono_auto_pitch', False)
         self.declare_parameter('mono_pitch_bias_deg', 0.0)

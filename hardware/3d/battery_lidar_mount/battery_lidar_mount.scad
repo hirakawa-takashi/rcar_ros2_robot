@@ -273,14 +273,18 @@ scam_nut_af = 4.4;                          // M2 ナット（二面幅 4 mm、�
 scam_nut_d = 2.5;                           // くぼみの深さ（柱の前の面から）
 
 wcam_cx = lidar_cx;                         // レンズを LiDAR の回転中心の真ん前にそろえる
-wcam_lens_zc = scam_lens_zc;                // レンズの中心の高さ（前の 2 眼カメラと同じ）
-wcam_z0 = wcam_lens_zc - wcam_lens_z;       // 基板の下の端
-wcam_z1 = wcam_z0 + wcam_board[1];          // 基板の上の端（FPC の端子の側）
+wcam_fpc_down = true;                       // 実物は FPC の端子を下にして付けている（板の穴は端子が上の向きで開けたまま）
+wcam_hole_z0 = scam_lens_zc - wcam_lens_z;  // 板の穴の基準（端子が上の向きの基板の下の端。前の 2 眼カメラのレンズの高さから）
+wcam_edge_z = wcam_fpc_down ? wcam_hole_z0 + wcam_hole_z[0] + wcam_hole_z[1] : wcam_hole_z0;  // 基板の端子と反対の端
+wcam_lens_zc = wcam_edge_z + (wcam_fpc_down ? -1 : 1) * wcam_lens_z;  // レンズの中心の高さ
+wcam_z0 = wcam_fpc_down ? wcam_edge_z - wcam_board[1] : wcam_edge_z;  // 基板の下の端
+wcam_z1 = wcam_z0 + wcam_board[1];          // 基板の上の端
+wcam_conn_z = wcam_fpc_down ? wcam_z0 : wcam_z1 - wcam_conn[2];  // 裏の端子の下の端
 wcam_back_y = scam_mnt_y0 + scam_mnt_t + wcam_so;
 wcam_front = wcam_back_y + wcam_board[2];
 wcam_tip_y = wcam_front + wcam_lens_l;
 wcam_pupil_y = wcam_tip_y - 1;              // 画角の線の出どころ（仮: レンズの先から 1 mm 奥）
-wcam_holes = [for (x = [wcam_cx - wcam_hole_dx / 2, wcam_cx + wcam_hole_dx / 2], z = wcam_hole_z) [x, wcam_z0 + z]];
+wcam_holes = [for (x = [wcam_cx - wcam_hole_dx / 2, wcam_cx + wcam_hole_dx / 2], z = wcam_hole_z) [x, wcam_hole_z0 + z]];
 wcam_plate_top = scam_z1 - 3;               // 板の真ん中の上の端（FPC はこの上を後ろへ越える）
 // カバーの窓の、Y の位置での半分の幅・高さ（画角 + wcam_win_deg の線から wcam_win_clr 外）
 function wcam_win(y) = let(d = y - wcam_pupil_y, r = wcam_lens_d / 2 + wcam_win_clr)
@@ -472,7 +476,7 @@ module wcam_back_relief(zoff) {
 // カメラの板（組み立ての座標）。板は耳を M3 × 8 mm で 2 本
 module wcam_mount() {
     y1 = scam_mnt_y0 + scam_mnt_t;
-    zb = wcam_z0 - 2;
+    zb = wcam_hole_z0 - 2;
     difference() {
         union() {
             translate([scam_mnt_x[0], scam_mnt_y0, zb]) cube([scam_mnt_x[1] - scam_mnt_x[0], scam_mnt_t, wcam_plate_top - zb]);
@@ -622,7 +626,7 @@ module wcam_ghost() {
     color("dimgray") translate([wcam_cx - wcam_lens_box / 2, wcam_front, wcam_lens_zc - wcam_lens_box / 2]) cube([wcam_lens_box, wcam_lens_box_l, wcam_lens_box]);
     color("black") translate([wcam_cx, wcam_front + wcam_lens_box_l - 0.01, wcam_lens_zc]) rotate([-90, 0, 0])
         cylinder(d1 = 8.5, d2 = wcam_lens_d, h = wcam_lens_l - wcam_lens_box_l);
-    color("silver") translate([wcam_cx - wcam_conn[0] / 2, wcam_back_y - wcam_conn[1], wcam_z1 - wcam_conn[2]]) cube(wcam_conn);
+    color("silver") translate([wcam_cx - wcam_conn[0] / 2, wcam_back_y - wcam_conn[1], wcam_conn_z]) cube(wcam_conn);
 }
 
 module drok_ghost() {
@@ -745,7 +749,7 @@ cov_hook_root = 28;       // フックの付け根の高さ（ここから下が
 cov_hook_lip = 2;         // 天板の裏にかかる深さ
 // 天板の上面に載せる受け（[左, 右]）。フックの両隣と中央
 cov_stop_y = [[42, 66, 100, 158, 182], [60, 84, 100, 158, 182]];
-cov_cam_cut = [20, wcam_lens_zc, 3];  // 前の壁のカメラの下の切り欠き: レンズの中心から左右の幅、上の端の高さ（レンズの中心）、角の丸み
+cov_cam_cut = [20, 40.4, 3];         // 前の壁のカメラの切り欠き: レンズの中心から左右の幅、上の端の高さ（画角の上の線より上）、角の丸み
 cov_rear_cut = [66, 90, 21, 3];       // 後ろの壁の下の切り欠き: X0, X1, 上の端の高さ, 角の丸み
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
 cov_vent = [9, 79, 28, 72];          // Pi の上の六角の通気口の範囲
