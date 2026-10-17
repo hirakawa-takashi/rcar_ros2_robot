@@ -152,8 +152,9 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 
 `cliff_node` は前後バンパーの Dovhmoh VL53L1X（真下から進行方向へ 45° 前傾）で床までの距離を測り、
 段差の判定を `/cliff_status`（`std_msgs/String`、JSON、20 Hz）へ publish する。
-測った距離が `cliff_distance_m`（既定 0.15 m。平らな床は約 0.095 m）を超えるか、床が見えない状態が
-`confirm_count` 回続くと段差とする。`drive_mode_node` は前が段差なら前進、後ろが段差なら後退を止め、
+測った距離を前後それぞれの平らな床の距離（`front_floor_distance_m` 0.088 m・`rear_floor_distance_m` 0.085 m）とくらべ、
+床を 0 cm とした高さ `height_cm = (床の距離 - 測った距離) × cos 45° × 100` に直す。床より `cliff_height_cm`（既定 2.0 cm）以上低いか、
+床が見えない状態が `confirm_count` 回続くと段差とする。ダッシュボードの落下防止センサーのカードは、この高さを cm で出す。`drive_mode_node` は前が段差なら前進、後ろが段差なら後退を止め、
 自動運転は停止モードにする。
 
 前後とも配線済み（`cliff_node.wired: true`・`front_wired: true`・`rear_wired: true`）。`wired: false` の間は I2C / GPIO に触らず

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """落下防止センサー（VL53L1X ×2、前後バンパー）を読み、段差の有無を publish するノード。
 
-センサーは真下から進行方向へ 45° 傾けて床を測る。床までの距離が
-cliff_distance_m を超えた（または床が見えない）状態が confirm_count 回続くと
+センサーは真下から進行方向へ tilt_deg（45°）傾けて床を測る。測った距離を
+センサーごとの平らな床の距離（{front,rear}_floor_distance_m）とくらべて、床を 0 cm と
+した高さ height_cm = (床の距離 - 測った距離) × cos(tilt) に直す。床より
+cliff_height_cm 以上低い（または床が見えない）状態が confirm_count 回続くと
 「段差」と判定し、/cliff_status（std_msgs/String の JSON）で配信する。
 
 VL53L1X の初期アドレス 0x29 は BNO055 と同じなので、XSHUT を GPIO で
@@ -14,6 +16,7 @@ wired: false の間は I2C / GPIO に触らず、「未配線」の状態だけ�
 
 import fcntl
 import json
+import math
 import os
 import struct
 import time
@@ -196,8 +199,10 @@ class CliffNode(Node):
         self.declare_parameter('publish_rate', 20.0)
         self.declare_parameter('timing_budget_ms', 33)
         self.declare_parameter('intermeasurement_ms', 40)
-        self.declare_parameter('floor_distance_m', 0.095)
-        self.declare_parameter('cliff_distance_m', 0.15)
+        self.declare_parameter('tilt_deg', 45.0)
+        self.declare_parameter('front_floor_distance_m', 0.088)
+        self.declare_parameter('rear_floor_distance_m', 0.085)
+        self.declare_parameter('cliff_height_cm', 2.0)
         self.declare_parameter('invalid_is_cliff', True)
         self.declare_parameter('confirm_count', 2)
         self.declare_parameter('stale_timeout', 0.5)
@@ -213,8 +218,11 @@ class CliffNode(Node):
         budget = int(self.get_parameter('timing_budget_ms').value)
         self.timing_budget = budget if budget in TIMING_BUDGET_SHORT else 33
         self.intermeasurement = int(self.get_parameter('intermeasurement_ms').value)
-        self.floor_distance = float(self.get_parameter('floor_distance_m').value)
-        self.cliff_distance = float(self.get_parameter('cliff_distance_m').value)
+        self.tilt_deg = float(self.get_parameter('tilt_deg').value)
+        self.cos_tilt = math.cos(math.radians(self.tilt_deg))
+        self.floor_distance = {
+            s: float(self.get_parameter(f'{s}_floor_distance_m').value) for s in SENSORS}
+        self.cliff_height_cm = float(self.get_parameter('cliff_height_cm').value)
         self.invalid_is_cliff = bool(self.get_parameter('invalid_is_cliff').value)
         self.confirm_count = max(1, int(self.get_parameter('confirm_count').value))
         self.stale_timeout = float(self.get_parameter('stale_timeout').value)
@@ -236,7 +244,7 @@ class CliffNode(Node):
 
     @staticmethod
     def _empty_state():
-        return {'distance_m': None, 'valid': False, 'level': 'unknown',
+        return {'distance_m': None, 'height_cm': None, 'valid': False, 'level': 'unknown',
                 'over_count': 0, 'stamp': 0.0}
 
     # --- 接続 ---
@@ -328,10 +336,12 @@ class CliffNode(Node):
     # --- 判定 ---
     def _update(self, side: str, valid: bool, distance: float):
         st = self._state[side]
-        over = (distance > self.cliff_distance) if valid else self.invalid_is_cliff
+        height_cm = (self.floor_distance[side] - distance) * self.cos_tilt * 100.0
+        over = (height_cm <= -self.cliff_height_cm) if valid else self.invalid_is_cliff
         st['over_count'] = st['over_count'] + 1 if over else 0
         st['valid'] = valid
         st['distance_m'] = round(distance, 3) if valid else None
+        st['height_cm'] = round(height_cm, 1) if valid else None
         st['level'] = 'cliff' if st['over_count'] >= self.confirm_count else 'floor'
         st['stamp'] = time.monotonic()
 
@@ -359,6 +369,8 @@ class CliffNode(Node):
                 'xshut_gpio': self.xshut[side],
                 'level': level,
                 'distance_m': st['distance_m'] if level in ('floor', 'cliff') else None,
+                'height_cm': st['height_cm'] if level in ('floor', 'cliff') else None,
+                'floor_distance_m': self.floor_distance[side],
                 'valid': st['valid'] if level in ('floor', 'cliff') else False,
             }
         cliff = [s for s in SENSORS if sensors[s]['level'] == 'cliff']
@@ -382,8 +394,8 @@ class CliffNode(Node):
             'reason': reason,
             'block_forward': sensors['front']['level'] == 'cliff',
             'block_backward': sensors['rear']['level'] == 'cliff',
-            'floor_distance_m': self.floor_distance,
-            'cliff_distance_m': self.cliff_distance,
+            'tilt_deg': self.tilt_deg,
+            'cliff_height_cm': self.cliff_height_cm,
             'sensors': sensors,
         }
 

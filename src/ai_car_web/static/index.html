@@ -563,9 +563,9 @@
       <h2>落下防止センサー (/cliff_status) <span class="badge" id="c_link">-</span></h2>
       <table>
         <tr><td class="k">状態</td><td class="v" id="c_level">-</td></tr>
-        <tr><td class="k">前 [m]</td><td class="v" id="c_front">-</td></tr>
-        <tr><td class="k">後 [m]</td><td class="v" id="c_rear">-</td></tr>
-        <tr><td class="k">しきい値 [m]</td><td class="v" id="c_th">-</td></tr>
+        <tr><td class="k">前 [cm]</td><td class="v" id="c_front">-</td></tr>
+        <tr><td class="k">後 [cm]</td><td class="v" id="c_rear">-</td></tr>
+        <tr><td class="k">しきい値 [cm]</td><td class="v" id="c_th">-</td></tr>
       </table>
     </div>
   </div>
@@ -1875,13 +1875,14 @@ function renderCliff(c) {
     const s = alive && c.sensors ? c.sensors[side] : null;
     const cell = document.getElementById(side === 'front' ? 'c_front' : 'c_rear');
     const [scls, stext] = s ? (CLIFF_BADGE[s.level] || ['', s.level]) : ['', ''];
-    cell.innerHTML = s && s.distance_m != null
-      ? `${fmt(s.distance_m, 3)} <span class="badge ${scls}">${esc(stext)}</span>`
+    cell.innerHTML = s && s.height_cm != null
+      ? `${fmt(s.height_cm, 1)} <span class="badge ${scls}">${esc(stext)}</span>`
       : (s && s.level !== 'unwired' ? `- <span class="badge ${scls}">${esc(stext)}</span>` : '-');
-    cell.title = s ? `${s.address}（XSHUT GPIO${s.xshut_gpio}）` : '';
+    cell.title = s ? `${s.address}（XSHUT GPIO${s.xshut_gpio}）` +
+      (s.distance_m != null ? ` 測った距離 ${fmt(s.distance_m, 3)} m（床 ${fmt(s.floor_distance_m, 3)} m）` : '') : '';
   }
-  document.getElementById('c_th').textContent = alive
-    ? `${fmt(c.cliff_distance_m, 2)}（床 ${fmt(c.floor_distance_m, 3)}）` : '-';
+  document.getElementById('c_th').textContent = alive && c.cliff_height_cm != null
+    ? `${fmt(-c.cliff_height_cm, 1)} 以下で段差（床 0.0）` : '-';
 }
 
 function renderJoy(j) {

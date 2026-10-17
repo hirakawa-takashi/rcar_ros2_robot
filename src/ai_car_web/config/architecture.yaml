@@ -514,15 +514,17 @@ nodes:
   - id: cliff_node
     label: cliff_node
     file: ai_car_web/cliff_node.py
-    role: 前後バンパーの VL53L1X ×2（I2C 0x30 / 0x31、XSHUT で起動時にアドレス変更）で 45° 前方の床までの距離を測り、段差（床の途切れ）を /cliff_status に 20 Hz で publish。front_wired / rear_wired で配線したほうだけを使う（未配線の側は level unwired）。使う側の XSHUT はノードが動くあいだ握ったままにし、つなぎ直しのときも L にもどす（離すと 0x29 で起きて BNO055 とぶつかる）。wired false の間は I2C / GPIO に触らず「未配線」だけを配信
+    role: 前後バンパーの VL53L1X ×2（I2C 0x30 / 0x31、XSHUT で起動時にアドレス変更）で 45° 前方の床までの距離を測り、床を 0 cm とした高さに直して、2 cm 以上低い所（段差・床の途切れ）を /cliff_status に 20 Hz で publish。front_wired / rear_wired で配線したほうだけを使う（未配線の側は level unwired）。使う側の XSHUT はノードが動くあいだ握ったままにし、つなぎ直しのときも L にもどす（離すと 0x29 で起きて BNO055 とぶつかる）。wired false の間は I2C / GPIO に触らず「未配線」だけを配信
     publishes: [/cliff_status]
     subscribes: []
     params:
       - {name: wired, ref: cliff_node.wired, unit: '', desc: 配線済みなら true（false の間はセンサーを読まない）}
       - {name: front_wired, ref: cliff_node.front_wired, unit: '', desc: 前のセンサー（0x30・XSHUT GPIO17）を使う}
       - {name: rear_wired, ref: cliff_node.rear_wired, unit: '', desc: 後ろのセンサー（0x31・XSHUT GPIO27）を使う}
-      - {name: cliff_distance_m, ref: cliff_node.cliff_distance_m, unit: m, desc: 測った距離がこれを超えたら段差}
-      - {name: floor_distance_m, ref: cliff_node.floor_distance_m, unit: m, desc: 平らな床までの距離の目安（表示用）}
+      - {name: cliff_height_cm, ref: cliff_node.cliff_height_cm, unit: cm, desc: 床（0 cm）よりこれ以上低ければ段差}
+      - {name: front_floor_distance_m, ref: cliff_node.front_floor_distance_m, unit: m, desc: 前の平らな床までの距離（高さ 0 cm の基準）}
+      - {name: rear_floor_distance_m, ref: cliff_node.rear_floor_distance_m, unit: m, desc: 後の平らな床までの距離（高さ 0 cm の基準）}
+      - {name: tilt_deg, ref: cliff_node.tilt_deg, unit: °, desc: 真下から進行方向へのかたむき（高さ = 距離の差 × cos）}
       - {name: confirm_count, ref: cliff_node.confirm_count, unit: 回, desc: 連続で超えたら段差と確定}
       - {name: invalid_is_cliff, ref: cliff_node.invalid_is_cliff, unit: '', desc: 床が見えない（測定無効）も段差とみなす}
       - {name: timing_budget_ms, ref: cliff_node.timing_budget_ms, unit: ms, desc: 1 回の測定時間（短距離モード）}
@@ -553,7 +555,7 @@ topics:
   - {name: /camera/image_raw/compressed, type: sensor_msgs/CompressedImage, desc: カメラ JPEG（Camera Module 3 Wide、30 Hz）}
   - {name: /imu/data, type: sensor_msgs/Imu, desc: 姿勢・角速度・加速度（20 Hz）}
   - {name: /imu/mag, type: sensor_msgs/MagneticField, desc: 磁気（T、20 Hz、AMG / NDOF のときだけ）}
-  - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の距離・前進 / 後退の停止（20 Hz）}
+  - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の床からの高さ height_cm（床 0 cm）と距離・前進 / 後退の停止（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
   - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 1 眼の奥行きの AI の低い物（通り道の中のいちばん近い物の距離・左右・高さ・方位、処理時間）。perception_node が出して自分で低い障害物の判定に使う（名前は前の 2 眼カメラのときのまま）}
