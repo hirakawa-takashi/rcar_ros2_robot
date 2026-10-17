@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Docs
+- 落下防止センサー（VL53L1X）を前後とも正規の位置に固定したので、床の上の距離を前 0.086〜0.090 m・後ろ 0.084〜0.085 m に書き直した（HARDWARE_BOM・PROJECT_STATUS）
 - 機能の開発がひと区切りしたので、README・PROJECT_STATUS・HARDWARE_BOM・プロジェクト説明（`architecture.yaml`）・`gpio_pins.yaml`・`jetson/owl_detector/README.md` を今の main と実機に合わせた: 前後の VL53L1X は配線済み（「未配線」を消した）、YOLOv8m は `hef_path` を空にして止めていて AI HAT+ は SC-Depth v3 に使う、カメラは Camera Module 3 Wide、ゲームパッドは F710、Motor HAT とエンコーダーの配線は実配線（「暫定値」を消した、1 回転 1,408 カウント）、電源は PD 12V → DROK → USB-A の 1 本と Motor HAT の 12V、USB スイッチ 2 個・Jetson・スタックちゃん・パソコンを BOM に足した。README にノードの表・Jetson のサービスの表、`/drive_output`・`/motor_status` を足し、`use_seg_display` の既定（false）・`dashboard_node` の出す先（`/cmd_vel_manual`）・プロジェクト説明のタブ数（9）を直した。`architecture.yaml` の「LiDAR の横オフセットを直す」（URDF の `laser_y` 0.008 で直っている）を消し、`cliff_node` の `front_wired` / `rear_wired` を設定の表に足した。PROJECT_STATUS に 2026/10/17 の確かめ（VL53L1X・IMU・後ろ右のエンコーダー・ラズパイ / Jetson の記録）を足した
 
 ### Added
