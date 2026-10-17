@@ -325,7 +325,7 @@ perception_node:
     mono_depth_rate: 15.0
     # まずは表示だけ（減速・停止には使わない）
     mono_depth_guard: false
-    mono_camera_height_m: 0.112
+    mono_camera_height_m: 0.100
     mono_camera_pitch_deg: 0.0
     # 車が傾いても距離がずれないよう、カメラの下向きの角度を毎回出す。LiDAR が当たった物
     # （0.3〜2 m）と床のさかい目の行を、カメラの高さと LiDAR の距離から出る行とくらべる。
