@@ -37,6 +37,8 @@ dashboard_node:
     params_config: ""
     # 開発日記（/api/dev_diary）で読む git リポジトリ。空ならインストール先を含むリポジトリ（ワークスペース）
     repo_dir: ""
+    # 開発日記の DB（SQLite）。1 件ずつためて、新しい版が入ったら増えた分だけ足す。消しても次に開いたとき作り直す
+    diary_db: "~/.ros/ai_car_dev_diary.sqlite"
     # ゲームパッドの正規化指令（joy_teleop_node）。この秒数以上途絶えると未接続表示
     joy_cmd_topic: "/joy_cmd"
     joy_timeout: 1.0

@@ -42,7 +42,7 @@ except ImportError:
     SlamReset = None
 
 from ai_car_web.architecture import load_architecture, read_program
-from ai_car_web.dev_diary import find_repo, load_dev_diary
+from ai_car_web.dev_diary import find_repo, query_dev_diary, sync_dev_diary
 from ai_car_web.version import load_version
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
@@ -314,6 +314,7 @@ class DashboardNode(Node):
         self.declare_parameter('architecture_config', '')
         self.declare_parameter('params_config', '')
         self.declare_parameter('repo_dir', '')
+        self.declare_parameter('diary_db', '~/.ros/ai_car_dev_diary.sqlite')
         # ゲームパッド（joy_teleop_node）からの正規化指令。空で無効
         self.declare_parameter('joy_cmd_topic', '/joy_cmd')
         self.declare_parameter('joy_timeout', 1.0)
@@ -364,6 +365,9 @@ class DashboardNode(Node):
             get_package_share_directory('ai_car_web'), 'config', 'dashboard.yaml')
         self.repo_dir = find_repo(self.get_parameter('repo_dir').value
                                   or get_package_share_directory('ai_car_web'))
+        self.diary_db = self.get_parameter('diary_db').value
+        if self.repo_dir:
+            threading.Thread(target=self._sync_diary, daemon=True).start()
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
@@ -1168,6 +1172,13 @@ class DashboardNode(Node):
         self.get_logger().info('ダッシュボードからラズパイの更新を始めました')
         return {'ok': True}
 
+    def _sync_diary(self):
+        try:
+            added = sync_dev_diary(self.repo_dir, self.diary_db)
+            self.get_logger().info(f'開発日記の DB を更新しました（{added} 件追加）')
+        except Exception as e:  # noqa: BLE001  起動を止めない
+            self.get_logger().warning(f'開発日記の DB を更新できません: {e}')
+
     def _reboot_pi_later(self, cmd):
         """10 秒待ち（そのあいだも Jetson の再起動・電源を切る頼みを受け付ける）、頼みが残っていれば伝え終わるまで待ってから cmd を実行する。"""
         time.sleep(PI_REBOOT_DELAY)
@@ -1396,8 +1407,9 @@ def create_app(node: DashboardNode) -> FastAPI:
         return data
 
     @app.get('/api/dev_diary')
-    def dev_diary():
-        return load_dev_diary(node.repo_dir)
+    def dev_diary(days: int = 7, before: str = '', tag: str = ''):
+        return query_dev_diary(node.repo_dir, node.diary_db, days=min(max(days, 1), 365),
+                               before=before, tag=tag)
 
     @app.post('/api/cmd_vel', dependencies=[Depends(require_token)])
     def cmd_vel(req: CmdVelRequest):
