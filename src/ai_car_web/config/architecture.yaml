@@ -413,7 +413,7 @@ nodes:
     file: ai_car_web/encoder_odom_node.py
     role: 4 輪のエンコーダー（A/B 相、ピンは motor_hat.yaml）を別プロセスで 4 逓倍に数え、メカナムの順運動学で /odom と odom → base_footprint の TF を 20 Hz で出す
     publishes: [/odom, /tf]
-    subscribes: []
+    subscribes: [/imu/data]
     params:
       - {name: counts_per_rev, ref: encoder_odom_node.counts_per_rev, unit: カウント, desc: 車輪 1 回転のカウント（床の 1.8 m で合わせた値、11 パルス × 4 × 32 相当）}
       - {name: wheel_radius, ref: encoder_odom_node.wheel_radius, unit: m, desc: 車輪の半径}
@@ -714,7 +714,7 @@ programs:
   - {place: ラズパイ, name: joy_teleop_node, file: src/ai_car_web/ai_car_web/joy_teleop_node.py, role: F710 ゲームパッドで手動操作}
   - {place: ラズパイ, name: drive_mode_node, file: src/ai_car_web/ai_car_web/drive_mode_node.py, role: 手動・自動・停止の切り替えと /cmd_vel の選択}
   - {place: ラズパイ, name: motor_driver_node, file: src/ai_car_web/ai_car_web/motor_driver_node.py, role: /cmd_vel → Motor HAT（メカナム逆運動学）}
-  - {place: ラズパイ, name: encoder_odom_node, file: src/ai_car_web/ai_car_web/encoder_odom_node.py, role: 4 輪のエンコーダー → /odom と TF}
+  - {place: ラズパイ, name: encoder_odom_node, file: src/ai_car_web/ai_car_web/encoder_odom_node.py, role: 4 輪のエンコーダー（距離）と IMU（回った向き）→ /odom と TF}
   - {place: ラズパイ, name: autonomy_node, file: src/ai_car_web/ai_car_web/autonomy_node.py, role: 自律走行（Level 1 は LiDAR で減速・停止・旋回、Level 2 は Nav2 の行き先へ）}
   - {place: ラズパイ, name: perception_node, file: src/ai_car_web/ai_car_web/perception_node.py, role: LiDAR と AI HAT+ の YOLO で障害物を判定}
   - {place: ラズパイ, name: mono_depth, file: src/ai_car_web/ai_car_web/mono_depth.py, role: 1 眼の奥行きの AI（SC-Depth v3）で低い物（表示だけ）}
