@@ -247,8 +247,8 @@ cliff_node:
     intermeasurement_ms: 40
     # 高さ [cm] = (平らな床の距離 - 測った距離) × cos(tilt_deg) × 100。平らな床が 0.0 cm、低いほどマイナス
     tilt_deg: 45.0               # 真下から進行方向へのかたむき
-    front_floor_distance_m: 0.088  # 前の平らな床までの距離（2026/10/17、正規の位置に固定して実測 0.086〜0.090）
-    rear_floor_distance_m: 0.085   # 後の平らな床までの距離（同 0.084〜0.085）
+    front_floor_distance_m: 0.087  # 前の平らな床までの距離（2026/10/17、付け直したあと 20 秒の実測 0.082〜0.091・中央 0.087）
+    rear_floor_distance_m: 0.082   # 後の平らな床までの距離（同 0.077〜0.087・中央 0.082）
     cliff_height_cm: 2.0         # 床よりこれ以上低ければ段差（-2.0 cm 以下）
     invalid_is_cliff: true   # 床が見えない（測定無効）も段差とみなす
     confirm_count: 2         # 連続でこの回数超えたら段差
