@@ -1,0 +1,14 @@
+[Unit]
+Description=Face recognition for the family (YuNet + SFace, Jetson CPU)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=jetson
+EnvironmentFile=/etc/jetson-status.env
+ExecStart=/usr/bin/python3 -u /home/jetson/face_id/face_id.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

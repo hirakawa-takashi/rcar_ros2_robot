@@ -66,6 +66,7 @@ system:
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
         - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 1 秒ごとに AI-CAR へ送る（jetson-status.service）
         - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
+        - 家族の顔を見分ける（jetson-face.service、YuNet + SFace・CPU、登録の画面は 8090 番）。今は AI-CAR のカメラで試す。スタックちゃんのカメラから受け取るのは予定
     - id: stackchan
       label: M5 スタックちゃん
       sub: M5Stack CoreS3 / 純正ファームウェア 1.5.1（行き先を Jetson に）
@@ -742,6 +743,8 @@ programs:
   - {place: Jetson, name: jetson-upgrade.sh, file: jetson/status_reporter/jetson-upgrade.sh, role: 「Jetson を更新」ボタンの更新}
   - {place: Jetson, name: oled_panel, file: jetson/oled_panel/oled_panel.py, role: ケースの OLED に CPU・温度・IP}
   - {place: Jetson, name: owl_detector, file: jetson/owl_detector/owl_detector.py, role: NanoOWL で物を探す（今は止めている）}
+  - {place: Jetson, name: face_id, file: jetson/face_id/face_id.py, role: 家族の顔を見分ける（YuNet + SFace、登録の画面）}
+  - {place: Jetson, name: 顔の登録の画面, file: jetson/face_id/face_id.html, role: face_id の登録・確認の画面}
   - {place: Jetson, name: jetson_health.sh, file: jetson/health_log/jetson_health.sh, role: 1 分ごとの様子の記録}
   - {place: Jetson, name: power_saving, file: jetson/power_saving/install.sh, role: Wi-Fi の省電力を切る}
   - {place: パソコン, name: pc_status, file: jetson/stackchan_bridge/pc/pc_status.py, role: 温度・負荷率・メモリを AI-CAR へ送る}
