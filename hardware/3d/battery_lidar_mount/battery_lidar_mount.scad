@@ -189,13 +189,12 @@ pi_stack_h = 45;          // Pi 5 + AI HAT+ + Motor HAT の 3 段（実測。台
 pi_pts = [for (dx = [0, pi_hole_dx], dy = [0, pi_hole_dy])
           [pi_cx - pi_board[0] / 2 + pi_hole_off + dx, pi_cy - pi_hole_dy / 2 + dy]];
 
-// ---- IMU（GY-BNO055）: ふたの上、LiDAR のヘッドの下（右寄り）----
-imu_board = [12, 20];     // 台の座標で長辺を Y、ピンヘッダーは +X 側の長辺
-imu_c = [65, 122.3];      // ふたの上、LiDAR のヘッドの下の後ろ寄り（後ろの柱 2 本の間）。前の壁の外側が Y 130.2
-imu_rot = -90;            // 台を Z まわりに回す角度。-90 で長辺が左右、ピンヘッダーの開いた側が後ろ（Pi 側）
-imu_lift = 25;            // 基板の下の空き。ピンヘッダーは下向きで、ジャンパー線のコネクターを下に収める
+// ---- IMU（GY-BNO055）: USB スイッチの受けの上（右うしろ）。LiDAR のモーターの磁気から離す ----
+// 前はふたの上・LiDAR のヘッドの約 10 mm 下で、LiDAR が回ると磁気が ±25 µT ゆれた。ここはヘッドの中心から約 13 cm
+imu_board = [12, 20];     // 長辺を Y（前後）、ピンヘッダーは -X 側（Pi 側）の長辺
+imu_c = [143, 40];        // 基板の中心（受けの上の棚の Y 14〜66 の真ん中寄り）
+imu_z = 70;               // 基板の下面（受けの上の棚 52.7 mm の上。ピンとジャンパーの差しこみ 14 mm の下に 3 mm、つめの上とカバーの裏 80 mm の間に 5 mm）
 imu_wall = 1.6;
-imu_ledge = 1;            // 基板の縁を下から受ける幅（ピンヘッダーのない 3 辺）
 imu_hdr = 2.56;           // 基板の下のピンヘッダーの列（+X 側の長辺に沿って全長）の幅。台はこの分を受けずに外へ出す
 imu_lip = 3;              // 閉じた長辺（台の座標で -X、組み立てでは前）の壁から内側へ出して、基板の縁を上から押さえる出っ張りの幅
 imu_lip_t = 3;            // 出っ張りの厚さ
@@ -434,7 +433,6 @@ module lid() {
             }
             scam_lid_posts();
             translate([scam_tie[0], scam_tie[1], lid_t - 0.01]) tie_mount();
-            imu_holder(lid_t);
             // LiDAR のハーネスと USB ケーブルの固定（ふたの後ろ端）
             translate([rear_tie[0], rear_tie[1], lid_t - 0.01]) rotate([0, 0, 90]) tie_mount();
         }
@@ -523,21 +521,27 @@ module pi_base() {
     }
 }
 
-// z0: 台を載せる面の高さ（部品の座標）
-module imu_holder(z0) {
+// USB スイッチの受けの上に立てる IMU の台（受けといっしょに印刷）。基板はピンを下にして -X 側（ピンヘッダーの側）から横に差しこみ、
+// +X 側の縁をつめの下に入れる。ピンヘッダーとジャンパー線の差しこみは -X 側へ開けた溝に下がる
+module imu_mast() {
     ix = imu_board[0] + 0.6;
     iy = imu_board[1] + 0.6;
-    ox = ix + 2 * imu_wall;
-    oy = iy + 2 * imu_wall;
-    h = imu_lift + 1.6 + 0.3 + 1.2;
-    // ピンヘッダーのある +X 側は壁なしで開け、ピンヘッダーの列の幅だけ台を短くして基板をはみ出させ、ジャンパー線を差したまま上から入れて縁の受けに載せる
-    translate([imu_c[0], imu_c[1], z0 - 0.01]) rotate([0, 0, imu_rot]) difference() {
-        translate([-ox / 2, -oy / 2, 0]) cube([ox / 2 + imu_board[0] / 2 - imu_hdr, oy, h]);
-        translate([-ix / 2, -iy / 2, imu_lift]) cube([ix + 5, iy, h]);
-        translate([-ix / 2 + imu_ledge, -iy / 2 + imu_ledge, 0.01]) cube([ix + 5, iy - 2 * imu_ledge, h + 1]);
+    x0 = sw_x0 - sw_clr - sw_wall;            // 受けの背中の外側（印刷のベッドの面）
+    x1 = imu_c[0] + ix / 2 + imu_wall;
+    y0 = imu_c[1] - iy / 2 - imu_wall;
+    y1 = imu_c[1] + iy / 2 + imu_wall;
+    bx0 = imu_c[0] - ix / 2;
+    hx = imu_c[0] - imu_board[0] / 2 + imu_hdr + 0.6;   // ピンヘッダーの逃げの右端
+    wt = imu_z + 1.6 + 0.3;
+    difference() {
+        union() {
+            translate([x0, y0, sw_top - 0.01]) cube([x1 - x0, y1 - y0, imu_z - sw_top + 0.01]);
+            translate([bx0, y0, imu_z - 0.01]) cube([x1 - bx0, y1 - y0, wt - imu_z + 0.01]);
+            translate([x1 - imu_wall - imu_lip, y0, wt - 0.01]) cube([imu_wall + imu_lip, y1 - y0, imu_lip_t]);
+        }
+        translate([bx0 - 1, imu_c[1] - iy / 2, imu_z]) cube([ix + 1, iy, wt - imu_z]);
+        translate([x0 - 1, imu_c[1] - iy / 2, sw_top - 0.1]) cube([hx - x0 + 1, iy, imu_z - sw_top + 0.2]);
     }
-    // 奥の長辺の出っ張り: 基板は +X 側から斜めに差し込み、-X 側の縁をこの下に入れてから段に載せる
-    translate([imu_c[0], imu_c[1], z0]) rotate([0, 0, imu_rot]) translate([-ox / 2, -oy / 2, imu_lift + 1.6 + 0.3]) cube([imu_wall + imu_lip, oy, imu_lip_t]);
 }
 
 function tof_c() = [plate_w / 2, plate_l + tof_dy];
@@ -610,9 +614,9 @@ module pi_ghost() {
 
 module sensor_ghost() {
     z = box_h + lid_t;
-    translate([imu_c[0], imu_c[1], z]) rotate([0, 0, imu_rot]) {
-        color("purple") translate([-imu_board[0] / 2, -imu_board[1] / 2, imu_lift]) cube([imu_board[0], imu_board[1], 1.6]);
-        color("black") translate([imu_board[0] / 2 - imu_hdr, -imu_board[1] / 2, imu_lift - 14]) cube([imu_hdr, imu_board[1], 14]);
+    translate([imu_c[0] - imu_board[0] / 2, imu_c[1] - imu_board[1] / 2, imu_z]) {
+        color("purple") cube([imu_board[0], imu_board[1], 1.6]);
+        color("black") translate([0, 0, -14]) cube([imu_hdr, imu_board[1], 14]);
     }
 }
 
@@ -724,9 +728,9 @@ module cable_ghost() {
     // IMU / 前後の VL53L1X → GPIO ヘッダー（前端）
     hy = pi_cy + pi_board[1] / 2 - 3.5;
     ht = pi_z + pi_stack_h + 4;
-    // IMU: ピンヘッダー（下向き）→ 台の後ろの開いた側 → ふたの後ろ端から Pi の前の GPIO へ
-    color("purple") path([[imu_c[0], imu_c[1] - imu_board[0] / 2 + 1.3, lt + imu_lift - 14], [imu_c[0], box_y0 + 3, lt + 4],
-                          [imu_c[0] - 4, box_y0 - 4, ht + 2],
+    // IMU: ピンヘッダー（下向き）→ 台の -X 側の溝 → Pi の上を前へ → Pi の前の GPIO へ
+    color("purple") path([[imu_c[0] - imu_board[0] / 2 + 1.3, imu_c[1], imu_z - 14], [sw_x0 - 6, imu_c[1], sw_top + 2],
+                          [pi_cx + pi_board[0] / 2, hy - 6, ht + 2],
                           [pi_cx + 20, hy + 2, ht], [pi_cx - 34, hy + 2, ht]], 2.5);
     color("yellow") {
         path([[plate_w / 2, plate_l + tof_dy - 20, flange_t + 12], [13, plate_l + 4, flange_t + 6], [13, 168, flange_t + 5],
@@ -950,6 +954,7 @@ module sw_holder() {
             translate([0, 0, sw_floor[1] - sw_cb[1]]) cylinder(d = sw_cb[0], h = sw_cb[1] + 1);
         }
     }
+    imu_mast();
 }
 
 module sw_ghost() {
@@ -1001,7 +1006,8 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x - end_fill, in_y, in_z]
      pi_stack_top_z = pi_z + pi_stack_h,
      pi_stack_front_y = pi_cy + pi_board[1] / 2,
      lidar_head_rear_y = lidar_cy - 35, box_flange_rear_y = flange_y0,
-     imu_board_z = box_h + lid_t + imu_lift, imu_holder_top_z = box_h + lid_t + imu_lift + 1.6 + 0.3 + imu_lip_t,
+     imu_board_z = imu_z, imu_holder_top_z = imu_z + 1.6 + 0.3 + imu_lip_t, imu_pins_bottom_z = imu_z - 14, sw_top_z = sw_top,
+     imu_to_lidar_core_mm = norm([imu_c[0] - lidar_cx, imu_c[1] - lidar_cy, imu_z - (box_h + lid_t + lidar_tower_h)]),
      lidar_core_bottom_z = box_h + lid_t + lidar_tower_h - lidar_core_below,
      tof_front = tof_c(), tof_rear = [plate_w - tof_c()[0], plate_l - tof_c()[1]],
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
