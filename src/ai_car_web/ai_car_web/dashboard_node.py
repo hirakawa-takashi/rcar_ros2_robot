@@ -35,6 +35,11 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import CompressedImage, Imu, LaserScan, MagneticField
 from std_msgs.msg import Float32, String
 
+try:
+    from slam_toolbox.srv import Reset as SlamReset
+except ImportError:
+    SlamReset = None
+
 from ai_car_web.architecture import load_architecture, read_program
 from ai_car_web.dev_diary import find_repo, load_dev_diary
 from ai_car_web.gpio_pinout import build_pinout
@@ -321,6 +326,8 @@ class DashboardNode(Node):
         # SLAM（slam_toolbox）の地図と自己位置。空で無効
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('slam_pose_topic', '/pose')
+        # 地図クリアで呼ぶ slam_toolbox のサービス。空で無効
+        self.declare_parameter('slam_reset_service', '/slam_toolbox/reset')
         # スタックちゃんのカードに出す会話の様子（Jetson の stackchan_bridge）。空なら Jetson が送ってくる IP アドレスの 8003
         self.declare_parameter('stackchan_bridge_url', '')
         # 1 眼の奥行きの AI の距離（perception_node が出す）。空で無効
@@ -423,6 +430,9 @@ class DashboardNode(Node):
         if slam_pose_topic:
             self.create_subscription(
                 PoseWithCovarianceStamped, slam_pose_topic, self._slam_pose_cb, 10)
+        slam_reset_service = self.get_parameter('slam_reset_service').value
+        self.slam_reset_client = (self.create_client(SlamReset, slam_reset_service)
+                                  if slam_reset_service and SlamReset is not None else None)
         self.map_save_dir = self.get_parameter('map_save_dir').value or os.path.join(
             os.path.expanduser('~'), 'maps')
         depth_topic = self.get_parameter('stereo_depth_topic').value
@@ -467,6 +477,7 @@ class DashboardNode(Node):
         self._jetson_poweroff_at = None
         self._jetson_upgrade_at = None
         self._map = None
+        self._map_rev = 0
         self._map_png = None
         self._map_grid = None
         self._map_stamp = 0.0
@@ -565,9 +576,9 @@ class DashboardNode(Node):
             info.origin.orientation.x, info.origin.orientation.y,
             info.origin.orientation.z, info.origin.orientation.w)
         with self._lock:
-            rev = (self._map or {}).get('rev', 0) + 1
+            self._map_rev += 1
             self._map = {
-                'rev': rev,
+                'rev': self._map_rev,
                 'width': info.width,
                 'height': info.height,
                 'resolution': round(info.resolution, 4),
@@ -636,6 +647,35 @@ class DashboardNode(Node):
         with self._lock:
             self._map_saved = saved
         return saved
+
+    def clear_map(self):
+        """slam_toolbox の地図を消して、今いる所から作り直す（行き先もやめる）。"""
+        if self.slam_reset_client is None:
+            return {'ok': False, 'reason': '地図クリアが無効です（slam_toolbox なし）'}
+        if not self.slam_reset_client.service_is_ready():
+            return {'ok': False, 'reason': 'slam_toolbox が応答しません（use_slam:=true）'}
+        if self.nav_goal_pub is not None:
+            msg = String()
+            msg.data = json.dumps({'action': 'cancel', 'x': 0.0, 'y': 0.0, 'yaw_deg': 0.0})
+            self.nav_goal_pub.publish(msg)
+        done = threading.Event()
+        future = self.slam_reset_client.call_async(SlamReset.Request())
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(5.0):
+            return {'ok': False, 'reason': 'slam_toolbox から返事がない'}
+        res = future.result()
+        if res is None or res.result != SlamReset.Response.RESULT_SUCCESS:
+            return {'ok': False, 'reason': 'slam_toolbox が地図を消せなかった'}
+        with self._lock:
+            self._map = None
+            self._map_png = None
+            self._map_grid = None
+            self._map_stamp = 0.0
+            self._slam_pose = None
+            self._slam_pose_stamp = 0.0
+            self._map_saved = None
+        self.get_logger().info('SLAM の地図をクリア')
+        return {'ok': True}
 
     def _obstacle_cb(self, msg: String):
         try:
@@ -1383,6 +1423,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/slam/save', dependencies=[Depends(require_token)])
     def slam_save():
         return node.save_map()
+
+    @app.post('/api/slam/clear', dependencies=[Depends(require_token)])
+    def slam_clear():
+        return node.clear_map()
 
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():

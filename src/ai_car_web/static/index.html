@@ -665,12 +665,12 @@
       <tr><td class="k">地図 [セル / m]</td><td class="v" id="sl_size">-</td></tr>
       <tr><td class="k">自己位置 x / y [m] / 向き [°]</td><td class="v" id="sl_pose">-</td></tr>
       <tr><td class="k">地図の更新</td><td class="v" id="sl_age">-</td></tr>
-      <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <span id="sl_saved"></span></td></tr>
+      <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <button id="sl_clear" disabled>地図をクリア</button> <span id="sl_saved"></span></td></tr>
       <tr><td class="k">行き先 x / y [m]</td><td class="v" id="nv_goal">-</td></tr>
       <tr><td class="k">道 / 残り [m]</td><td class="v" id="nv_state">-</td></tr>
       <tr><td class="k">行き先へ</td><td class="v"><button id="nv_go" disabled>ここへ行く</button> <button id="nv_cancel" disabled>やめる</button> <span id="nv_msg"></span></td></tr>
     </table>
-    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。</div>
+    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。「地図をクリア」で地図を消して、今いる所から作り直す（保存した地図は消えない）。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。</div>
   </div>
 
 
@@ -1824,6 +1824,7 @@ function renderSlam(sl) {
     ? `${fmt(p.x)} / ${fmt(p.y)} / ${fmt(p.yaw_deg, 1)}` : '-';
   document.getElementById('sl_age').textContent = m && sl.map_age != null ? `${fmt(sl.map_age, 1)} s 前` : '-';
   document.getElementById('sl_save').disabled = !(sl && sl.alive && sl.can_save);
+  document.getElementById('sl_clear').disabled = !(sl && (sl.alive || sl.map));
   const sv = sl && sl.saved;
   document.getElementById('sl_saved').textContent = sv ? (sv.ok ? `保存: ${sv.name}` : sv.reason) : '';
   const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.alive ? latestTelemetry.autonomy.nav : null;
@@ -1836,6 +1837,7 @@ function renderSlam(sl) {
   document.getElementById('nv_go').disabled = !(nav && nav.available && navPick && !moving);
   document.getElementById('nv_cancel').disabled = !(nav && (moving || ['planned', 'planning'].includes(nav.state)
     || (latestTelemetry.autonomy.behavior || '').startsWith('nav_')));
+  if (!m) slamRev = null;
   if (m && m.rev !== slamRev) {
     slamRev = m.rev;
     slamImg.src = `/api/slam/map.png?rev=${m.rev}`;
@@ -1923,6 +1925,13 @@ document.getElementById('nv_cancel').addEventListener('click', () => {
 document.getElementById('sl_save').addEventListener('click', () => {
   apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = j.ok ? `保存: ${j.name}` : j.reason;
+  }).catch(() => {});
+});
+document.getElementById('sl_clear').addEventListener('click', () => {
+  if (!confirm('SLAM の地図を消して、今いる所から作り直します。行き先もやめます。よいですか？（保存した地図は消えません）')) return;
+  navPick = null;
+  apiPost('/api/slam/clear').then(r => r && r.json()).then(j => {
+    if (j) document.getElementById('sl_saved').textContent = j.ok ? 'クリアしました' : j.reason;
   }).catch(() => {});
 });
 
