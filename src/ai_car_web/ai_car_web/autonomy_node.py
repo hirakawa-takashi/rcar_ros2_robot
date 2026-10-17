@@ -14,6 +14,9 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
   slow      減速前進
   turn      その場旋回で空いている方向を探す
   backoff   前後左右とも近いときに少し後退
+  cliff_back  前の落下防止センサーが段差 → /odom で cliff_backoff_m 下がる
+  cliff_turn  段差から下がったあと、空いている側へ cliff_turn_deg 回って走行を続ける
+  cliff_stuck 前後とも段差・/odom なしなどで動けない（ゼロ速度）
   blocked   LiDAR 未受信などで停止
 """
 
@@ -24,6 +27,7 @@ import time
 
 import rclpy
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -33,7 +37,13 @@ from std_msgs.msg import String
 LABELS = {
     'standby': '待機', 'forward': '前進', 'slow': '減速', 'turn': '旋回',
     'backoff': '後退', 'blocked': '停止（センサー待ち）',
+    'cliff_back': '段差から後退', 'cliff_turn': '段差から旋回',
+    'cliff_stuck': '停止（段差で動けない）',
 }
+
+
+def _wrap(a: float) -> float:
+    return math.atan2(math.sin(a), math.cos(a))
 
 
 class AutonomyNode(Node):
@@ -64,6 +74,14 @@ class AutonomyNode(Node):
         self.declare_parameter('backoff_distance', 0.25)
         # 旋回の最短継続時間（振動防止）
         self.declare_parameter('min_turn_sec', 0.6)
+        # 段差（/cliff_status）を見たら、/odom で下がって回り、走行を続ける
+        self.declare_parameter('cliff_topic', '/cliff_status')
+        self.declare_parameter('odom_topic', '/odom')
+        self.declare_parameter('cliff_timeout', 1.0)
+        self.declare_parameter('odom_timeout', 0.5)
+        self.declare_parameter('cliff_backoff_m', 0.10)
+        self.declare_parameter('cliff_turn_deg', 120.0)
+        self.declare_parameter('cliff_escape_timeout', 20.0)
 
         g = self.get_parameter
         self.offset = math.radians(float(g('scan_angle_offset_deg').value))
@@ -78,6 +96,11 @@ class AutonomyNode(Node):
         self.clear_d = float(g('clear_distance').value)
         self.backoff_d = float(g('backoff_distance').value)
         self.min_turn = float(g('min_turn_sec').value)
+        self.cliff_timeout = float(g('cliff_timeout').value)
+        self.odom_timeout = float(g('odom_timeout').value)
+        self.cliff_backoff_m = float(g('cliff_backoff_m').value)
+        self.cliff_turn = math.radians(float(g('cliff_turn_deg').value))
+        self.cliff_escape_timeout = float(g('cliff_escape_timeout').value)
 
         self._lock = threading.Lock()
         self._mode = None
@@ -89,6 +112,11 @@ class AutonomyNode(Node):
         self._behavior_since = time.monotonic()
         self._turn_dir = 1.0
         self._last_cmd = Twist()
+        self._cliff = None
+        self._cliff_stamp = 0.0
+        self._pose = None      # (x, y, yaw)
+        self._pose_stamp = 0.0
+        self._escape = None    # 段差から離れる途中の状態
 
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -97,6 +125,10 @@ class AutonomyNode(Node):
         self.status_pub = self.create_publisher(String, g('status_topic').value, 10)
         self.create_subscription(LaserScan, g('scan_topic').value, self._scan_cb, sensor_qos)
         self.create_subscription(String, g('obstacle_topic').value, self._obstacle_cb, 10)
+        if g('cliff_topic').value:
+            self.create_subscription(String, g('cliff_topic').value, self._cliff_cb, 10)
+        if g('odom_topic').value:
+            self.create_subscription(Odometry, g('odom_topic').value, self._odom_cb, 10)
         self.create_subscription(
             String, g('drive_mode_topic').value, self._mode_cb,
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -142,6 +174,23 @@ class AutonomyNode(Node):
                 self._obstacle = payload
                 self._obstacle_stamp = time.monotonic()
 
+    def _cliff_cb(self, msg: String):
+        try:
+            payload = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if isinstance(payload, dict):
+            with self._lock:
+                self._cliff = payload
+                self._cliff_stamp = time.monotonic()
+
+    def _odom_cb(self, msg: Odometry):
+        p = msg.pose.pose
+        yaw = 2.0 * math.atan2(p.orientation.z, p.orientation.w)
+        with self._lock:
+            self._pose = (p.position.x, p.position.y, yaw)
+            self._pose_stamp = time.monotonic()
+
     def _mode_cb(self, msg: String):
         try:
             payload = json.loads(msg.data)
@@ -164,13 +213,26 @@ class AutonomyNode(Node):
             mode = self._mode
             s = self._sectors
             scan_age = now - self._scan_stamp if self._scan_stamp else None
+            cliff = self._cliff if now - self._cliff_stamp <= self.cliff_timeout else None
+            pose = self._pose if now - self._pose_stamp <= self.odom_timeout else None
         cmd = Twist()
         if mode != 'auto':
+            self._escape = None
             self._set_behavior('standby')
             return cmd
         if s is None or scan_age is None or scan_age > self.scan_max_age:
             self._set_behavior('blocked')
             return cmd
+
+        cliff_front = bool(cliff and cliff.get('block_forward'))
+        cliff_back = bool(cliff and cliff.get('block_backward'))
+        if cliff_front and (self._escape is None or self._escape['phase'] == 'turn'):
+            self._escape = {'phase': 'back', 'since': now, 'start': pose}
+            self.get_logger().info('前に段差: 下がって回る')
+        if self._escape is not None:
+            esc_cmd = self._escape_step(now, s, pose, cliff_front, cliff_back)
+            if esc_cmd is not None:
+                return esc_cmd
 
         front = s.get('front')
         left = s.get('left')
@@ -221,6 +283,45 @@ class AutonomyNode(Node):
         cmd.linear.x = self.cruise
         return cmd
 
+    def _escape_step(self, now, s, pose, cliff_front, cliff_back):
+        """段差から下がって回る。終わったら None（ふつうの走行にもどる）。"""
+        esc = self._escape
+        cmd = Twist()
+        if now - esc['since'] > self.cliff_escape_timeout:
+            if cliff_front:
+                self._set_behavior('cliff_stuck')
+                return cmd
+            self._escape = None
+            return None
+        if pose is None:
+            self._set_behavior('cliff_stuck')
+            return cmd
+        if esc['start'] is None:
+            esc['start'] = pose
+        if esc['phase'] == 'back':
+            moved = math.hypot(pose[0] - esc['start'][0], pose[1] - esc['start'][1])
+            if cliff_back or (moved >= self.cliff_backoff_m and not cliff_front):
+                if cliff_front:
+                    self._set_behavior('cliff_stuck')
+                    return cmd
+                big = float('inf')
+                left = min(v for v in (s.get('left'), s.get('front_left'), big) if v is not None)
+                right = min(v for v in (s.get('right'), s.get('front_right'), big) if v is not None)
+                self._turn_dir = 1.0 if left >= right else -1.0
+                esc.update(phase='turn', since=now, last_yaw=pose[2], turned=0.0)
+            else:
+                self._set_behavior('cliff_back')
+                cmd.linear.x = -self.backoff_speed
+                return cmd
+        esc['turned'] += abs(_wrap(pose[2] - esc['last_yaw']))
+        esc['last_yaw'] = pose[2]
+        if esc['turned'] >= self.cliff_turn:
+            self._escape = None
+            return None
+        self._set_behavior('cliff_turn')
+        cmd.angular.z = self._turn_dir * self.turn
+        return cmd
+
     def _timer_cb(self):
         cmd = self._decide()
         with self._lock:
@@ -239,6 +340,8 @@ class AutonomyNode(Node):
                 'behavior_label': LABELS.get(self._behavior, self._behavior),
                 'behavior_s': round(now - self._behavior_since, 1),
                 'turn_dir': 'left' if self._turn_dir > 0 else 'right',
+                'cliff_turned_deg': (round(math.degrees(self._escape.get('turned', 0.0)), 1)
+                                     if self._escape else None),
                 'sectors': {k: (round(v, 3) if v is not None else None)
                             for k, v in (self._sectors or {}).items()},
                 'scan_age_s': (round(now - self._scan_stamp, 2)
@@ -252,6 +355,8 @@ class AutonomyNode(Node):
                     'cruise_speed': self.cruise, 'slow_speed': self.slow,
                     'turn_speed': self.turn, 'stop_distance': self.stop_d,
                     'slow_distance': self.slow_d, 'clear_distance': self.clear_d,
+                    'cliff_backoff_m': self.cliff_backoff_m,
+                    'cliff_turn_deg': round(math.degrees(self.cliff_turn), 1),
                 },
             }
         msg = String()

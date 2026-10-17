@@ -139,6 +139,14 @@ autonomy_node:
     clear_distance: 0.9
     backoff_distance: 0.25
     min_turn_sec: 0.6
+    # 前の落下防止センサーが段差 → /odom で 0.10 m 下がり、空いている側へ 120° 回って走行を続ける
+    cliff_topic: "/cliff_status"
+    odom_topic: "/odom"
+    cliff_timeout: 1.0
+    odom_timeout: 0.5
+    cliff_backoff_m: 0.10
+    cliff_turn_deg: 120.0
+    cliff_escape_timeout: 20.0   # 下がる・回るのそれぞれ。こえたら（前がまだ段差なら止まったまま）ふつうの走行へ
 
 joy_teleop_node:
   ros__parameters:

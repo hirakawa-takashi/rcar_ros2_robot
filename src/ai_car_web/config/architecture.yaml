@@ -389,7 +389,7 @@ nodes:
       - {name: manual_override, ref: drive_mode_node.manual_override, unit: '', desc: AUTO 中の手動指令で MANUAL へ復帰}
       - {name: default_output, ref: drive_mode_node.default_output, unit: '', desc: ダッシュボードの「出力」（/drive_output）が届くまでの上限の割合}
       - {name: obstacle_guard, ref: drive_mode_node.obstacle_guard, unit: '', desc: LiDAR 360°（perception_node の move）で、動く向きの車体の端から物まで move_stop_gap 以下ならその向きの動き、その向きに回ると箱に点が入る（turn_stop_deg 未満）ならその向きの回転を 0 にする。ななめが止まっても前後・横の空いている分は動く。手動は move_slow_gap 以下で半分の速さ。LiDAR データなし（unknown）・判定の途絶中は前後左右の動きを 0。止めた理由は /drive_mode の guard}
-      - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にし、AUTO は STOP}
+      - {name: cliff_guard, ref: drive_mode_node.cliff_guard, unit: '', desc: 段差を検出した向き（前 / 後）への移動を 0 にする（AUTO はそのまま。下がって回るのは autonomy_node）}
       - {name: cliff_timeout, ref: drive_mode_node.cliff_timeout, unit: s, desc: 段差判定が古ければ使わない（配線済みなら AUTO を拒否 / STOP）}
     layer: control
   - id: motor_driver_node
@@ -425,10 +425,13 @@ nodes:
   - id: autonomy_node
     label: autonomy_node
     file: ai_car_web/autonomy_node.py
-    role: Level 1 自律走行。/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退を決定して /cmd_vel_auto に 10 Hz で常時 publish（AUTO 以外はゼロ）
+    role: Level 1 自律走行。/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退を決定して /cmd_vel_auto に 10 Hz で常時 publish（AUTO 以外はゼロ）。前が段差なら /odom で cliff_backoff_m 下がって cliff_turn_deg 回り、走行を続ける
     publishes: [/cmd_vel_auto, /autonomy_status]
-    subscribes: [/scan, /obstacle_status, /drive_mode]
+    subscribes: [/scan, /obstacle_status, /drive_mode, /cliff_status, /odom]
     params:
+      - {name: cliff_backoff_m, ref: autonomy_node.cliff_backoff_m, unit: m, desc: 前が段差のとき /odom でこれだけ下がる}
+      - {name: cliff_turn_deg, ref: autonomy_node.cliff_turn_deg, unit: °, desc: 下がったあと、空いている側へこれだけ回ってから走行を続ける}
+      - {name: cliff_escape_timeout, ref: autonomy_node.cliff_escape_timeout, unit: s, desc: 下がる・回るのそれぞれの上限（前がまだ段差なら止まったまま）}
       - {name: cruise_speed, ref: autonomy_node.cruise_speed, unit: m/s, desc: 前進速度}
       - {name: slow_speed, ref: autonomy_node.slow_speed, unit: m/s, desc: 減速時の速度}
       - {name: turn_speed, ref: autonomy_node.turn_speed, unit: rad/s, desc: その場旋回の角速度}
@@ -584,7 +587,7 @@ drive_modes:
     - {from: auto, to: manual, trigger: 手動指令（スティック / Web）を検出, condition: manual_override}
     - {from: auto, to: stop, trigger: 自動指令が auto_timeout 途絶 / ゲームパッド切断 / LiDAR 判定途絶, condition: watchdog / guard}
     - {from: manual, to: stop, trigger: 手動指令が manual_timeout 途絶（移動中）, condition: watchdog}
-    - {from: auto, to: stop, trigger: 落下防止センサーが段差を検出 / 配線済みのセンサーの判定が途絶, condition: cliff_guard}
+    - {from: auto, to: stop, trigger: 配線済みの落下防止センサーの判定が途絶・不明（段差を見ただけでは止めず、下がって回る）, condition: cliff_guard}
     - {from: any, to: stop, trigger: Web「停止」・赤い停止ボタン（/api/stop）/ BACK / 自動中の B, condition: 常に}
     - {from: stop, to: manual, trigger: Web「手動」/ START 長押し, condition: 常に}
     - {from: stop, to: auto, trigger: Web「自動」/ START 長押し, condition: 進入条件をすべて満たす}
@@ -601,7 +604,7 @@ drive_modes:
     - {name: LiDAR 途絶, where: drive_mode_node, ref: drive_mode_node.obstacle_timeout, unit: s, desc: 障害物判定が古ければ AUTO を拒否 / STOP}
     - {name: ゲームパッド切断, where: drive_mode_node, ref: drive_mode_node.joy_timeout, unit: s, desc: AUTO 中の切断で STOP}
     - {name: 障害物最終ガード, where: drive_mode_node / dashboard_node, ref: '', unit: '', desc: どのモードでも、LiDAR 360° で動く向き（前後左右・ななめ）の車体の端から 0.25 m 以内に物があればその向きの動きを、その向きに回ると当たるならその向きの回転を 0 にする。手動は 0.7 m 以内で半分の速さ（前進は 1 眼の低い物などの speed_scale も使う）}
-    - {name: 段差ガード, where: drive_mode_node, ref: drive_mode_node.cliff_guard, unit: '', desc: 前のセンサーが段差なら前進、後ろなら後退を 0 にする。AUTO は STOP。未配線・判定が古いときは止めない}
+    - {name: 段差ガード, where: drive_mode_node, ref: drive_mode_node.cliff_guard, unit: '', desc: 前のセンサーが段差なら前進、後ろなら後退を 0 にする。AUTO は止めず、autonomy_node が下がって回って走行を続ける。未配線・判定が古いときは止めない}
     - {name: モード遷移時のゼロ速度, where: drive_mode_node, ref: '', unit: '', desc: 遷移時と起動時に必ず一度ゼロ速度を publish}
     - {name: サーマル制御, where: perception_node, ref: '', unit: '', desc: CPU 70℃ / Hailo 75℃ で推論 40%、78℃ / 85℃ で推論停止（LiDAR 判定は継続）}
     - {name: API トークン認証, where: dashboard_node, ref: '', unit: '', desc: api_token 設定時は POST API に X-API-Token / Bearer が必須}
@@ -619,6 +622,9 @@ autonomy:
     - {id: slow, label: 減速, condition: stop_distance < 前方 ≤ slow_distance, output: linear.x = slow_speed、近い側から離れる方向へ緩く旋回}
     - {id: turn, label: 旋回, condition: 前方 ≤ stop_distance, output: 空いている側へ angular.z = ±turn_speed。前方が clear_distance 以上空くまで（最短 min_turn_sec）}
     - {id: backoff, label: 後退, condition: 前・左・右 ≤ backoff_distance かつ 後方に測距があり > stop_distance, output: linear.x = −backoff_speed}
+    - {id: cliff_back, label: 段差から後退, condition: 前の落下防止センサーが段差（block_forward）, output: /odom で cliff_backoff_m 下がるまで linear.x = −backoff_speed（後ろも段差なら次へ）}
+    - {id: cliff_turn, label: 段差から旋回, condition: cliff_back のあと前が床, output: 空いている側へ angular.z = ±turn_speed を /odom で cliff_turn_deg 回るまで → ふつうの走行へ}
+    - {id: cliff_stuck, label: 停止（段差で動けない）, condition: 前後とも段差 / /odom なし / 下がっても前が段差のまま, output: ゼロ速度（前が床にもどれば続ける）}
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown

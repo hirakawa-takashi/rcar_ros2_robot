@@ -276,8 +276,8 @@ class DriveModeNode(Node):
     def _auto_block_reasons(self, entering: bool = False, continuing: bool = False):
         """AUTO を許可できない理由の一覧を返す（空なら許可）。
 
-        continuing=True は AUTO 継続判定で、障害物 "stop" は理由に含めない
-        （最終段ガードで前進だけ止め、回避行動は autonomy_node に任せる）。
+        continuing=True は AUTO 継続判定で、障害物 "stop" と段差は理由に含めない
+        （最終段ガードでその向きの動きだけ止め、回避行動は autonomy_node に任せる）。
         """
         now = time.monotonic()
         reasons = []
@@ -295,7 +295,7 @@ class DriveModeNode(Node):
                 reasons.append('落下防止センサーの判定が受信できていません')
             elif cliff.get('level') == 'unknown':
                 reasons.append(f"落下防止センサーが使えません（{cliff.get('reason') or '不明'}）")
-            elif cliff.get('level') == 'cliff':
+            elif cliff.get('level') == 'cliff' and not continuing:
                 reasons.append(f"段差を検出（{cliff.get('reason') or 'cliff'}）")
         if obstacle is None or obs_age is None or obs_age > self.obstacle_timeout:
             reasons.append('障害物判定（LiDAR）が受信できていません')
