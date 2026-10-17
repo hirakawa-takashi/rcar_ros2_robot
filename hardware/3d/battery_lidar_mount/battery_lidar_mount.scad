@@ -866,10 +866,6 @@ module cover() {
         hull() for (d = [[cov_ox1 - cov_edge - (plate_w - 1), 0], [cov_ox1 - (plate_w - 1) + 0.01, cov_edge + 0.01]])
             cover_chg_profile() translate([0, 0, d[0]]) linear_extrude(0.01)
                 offset(delta = d[1]) offset(r = 4) offset(delta = -4) square([cov_chg[3] - cov_chg[2], cov_chg[1] - cov_chg[0]]);
-        // Camera Module 3 Wide の窓（前の壁。外へ広がる四角。レンズの先は壁の内側より後ろなので、カバーはそのまま真上へ抜ける）
-        hull() for (y = [cov_y1 - 1, cov_oy1 + 1]) let (w = wcam_win(y))
-            translate([0, y, 0]) rotate([90, 0, 0]) linear_extrude(0.01)
-                translate([wcam_cx, wcam_lens_zc]) offset(r = 2) square([2 * w[0] - 4, 2 * w[1] - 4], center = true);
         // バッテリーの残量表示の窓（上面。縁は面取り）
         let (d = disp_rect(), m = disp_cov_m) {
             translate([d[0] - m, d[1] - m, cov_top - 1]) cube([d[2] - d[0] + 2 * m, d[3] - d[1] + 2 * m, cov_t + 2]);
