@@ -126,6 +126,7 @@ encoder_odom_node:
     imu_topic: "/imu/data"
     imu_timeout: 0.5
     imu_max_rate: 4.0
+    imu_still_gate: true     # 車輪が止まっているあいだは回っていないとみる（起動のあと IMU が磁気の向きへ寄る約 10° を入れない）
 
 autonomy_node:
   ros__parameters:

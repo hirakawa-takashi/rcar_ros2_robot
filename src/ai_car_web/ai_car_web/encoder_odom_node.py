@@ -154,6 +154,8 @@ class EncoderOdomNode(Node):
         self.declare_parameter('imu_timeout', 0.5)
         # 1 回の変わった分がこの速さ（rad/s）を超えたら、IMU の向きがとんだ（起動・磁気で合わせた）とみて車輪を使う
         self.declare_parameter('imu_max_rate', 4.0)
+        # 車輪が 1 カウントも動いていないあいだは回っていないとみる（起動のあと IMU の yaw が磁気の向きへ寄っていく分を入れない）
+        self.declare_parameter('imu_still_gate', True)
 
         path = self.get_parameter('motor_hat_config').value or os.path.join(
             get_package_share_directory('ai_car_web'), 'config', 'motor_hat.yaml')
@@ -198,6 +200,7 @@ class EncoderOdomNode(Node):
         self.use_imu = str(self.get_parameter('yaw_source').value) == 'imu'
         self.imu_timeout = float(self.get_parameter('imu_timeout').value)
         self.imu_max_rate = float(self.get_parameter('imu_max_rate').value)
+        self.imu_still_gate = bool(self.get_parameter('imu_still_gate').value)
         self._imu_yaw = None
         self._imu_time = None
         self._imu_last_yaw = None
@@ -232,8 +235,8 @@ class EncoderOdomNode(Node):
                                    1.0 - 2.0 * (q.y * q.y + q.z * q.z))
         self._imu_time = time.monotonic()
 
-    def _choose_dyaw(self, t: float, dt: float, wheel_dyaw: float) -> float:
-        """IMU の yaw が使えればその変わった分、使えなければ車輪の分を返す。"""
+    def _choose_dyaw(self, t: float, dt: float, wheel_dyaw: float, still: bool = False) -> float:
+        """IMU の yaw が使えればその変わった分、使えなければ車輪の分を返す。still なら 0。"""
         dyaw, from_imu = wheel_dyaw, False
         if self.use_imu:
             yaw = self._imu_yaw
@@ -242,7 +245,7 @@ class EncoderOdomNode(Node):
             if fresh and last is not None:
                 d = math.atan2(math.sin(yaw - last), math.cos(yaw - last))
                 if abs(d) <= self.imu_max_rate * dt:
-                    dyaw, from_imu = d, True
+                    dyaw, from_imu = (0.0 if still and self.imu_still_gate else d), True
         if self.use_imu and from_imu != self._yaw_from_imu:
             self.get_logger().info('回った向き: ' + ('IMU' if from_imu else '車輪（IMU が使えない）'))
         self._yaw_from_imu = from_imu
@@ -261,7 +264,8 @@ class EncoderOdomNode(Node):
         rl, rr = d['rear_left'], d['rear_right']
         dx = (fl + fr + rl + rr) / 4.0
         dy = (-fl + fr + rl - rr) / 4.0
-        dyaw = self._choose_dyaw(t, dt, (-fl + fr - rl + rr) / (4.0 * self.k))
+        dyaw = self._choose_dyaw(t, dt, (-fl + fr - rl + rr) / (4.0 * self.k),
+                                 still=not any(d.values()))
         mid = self.yaw + dyaw / 2.0
         self.x += dx * math.cos(mid) - dy * math.sin(mid)
         self.y += dx * math.sin(mid) + dy * math.cos(mid)
