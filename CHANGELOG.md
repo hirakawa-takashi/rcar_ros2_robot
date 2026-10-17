@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-18
+
+### Fixed
+- IMU を USB スイッチの受けの上の台へ移したので、軸の設定を `axis_map_config: 0x21`・`axis_map_sign: 0x04` にした（基板の x が左・y が後ろ）。LiDAR が回っていても磁気のゆれは ±25 µT → 0.7 µT
+- スタックちゃんのファーム（`stackchan-no-shutdown-on-usb.patch`）: 電池の表示を読む `GetBatteryLevel()` も、USB がささっているときは省電力タイマーを入れないようにした（ここだけ `power_save_timer_->SetEnabled(discharging)` を直接呼んでいた）
+
 ## [1.3.0] - 2026-10-18
 
 ### Changed
