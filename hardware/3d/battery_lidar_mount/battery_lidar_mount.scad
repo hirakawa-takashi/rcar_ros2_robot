@@ -745,7 +745,8 @@ cov_hook_root = 28;       // フックの付け根の高さ（ここから下が
 cov_hook_lip = 2;         // 天板の裏にかかる深さ
 // 天板の上面に載せる受け（[左, 右]）。フックの両隣と中央
 cov_stop_y = [[42, 66, 100, 158, 182], [60, 84, 100, 158, 182]];
-cov_rib_x = [[21, 25], [129, 133]];  // ふたの前後の縁をはさんで前後の位置を決めるリブ
+cov_cam_cut = [20, wcam_lens_zc, 3];  // 前の壁のカメラの下の切り欠き: レンズの中心から左右の幅、上の端の高さ（レンズの中心）、角の丸み
+cov_rear_cut = [66, 90, 21, 3];       // 後ろの壁の下の切り欠き: X0, X1, 上の端の高さ, 角の丸み
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
 cov_vent = [9, 79, 28, 72];          // Pi の上の六角の通気口の範囲
 
@@ -852,9 +853,6 @@ module cover() {
                 translate([x ? plate_w : 0, y, 0]) mirror([x, 0, 0])
                     rotate([90, 0, 0]) linear_extrude(8, center = true)
                         polygon([[-cov_clr - 0.01, 0], [2.5, 0], [2.5, 0.8], [-cov_clr - 0.01, 3.6]]);
-            // ふたの前後の縁をはさむリブ
-            for (r = cov_rib_x, y = [[box_y0 - 5.3, box_y0 - 2.3], [box_y0 + box_y + 2.3, box_y0 + box_y + 5.3]])
-                translate([r[0], y[0], box_h + 1]) cube([r[1] - r[0], y[1] - y[0], cov_top - box_h - 0.99]);
         }
         // フックのまわりの切れ目（1 mm）
         for (x = [0, 1], y = cov_hook_y[x]) if (!cov_hook_fixed(x, y))
@@ -880,8 +878,10 @@ module cover() {
                 translate([d[0] - m - cov_edge, d[1] - m - cov_edge, cov_oz]) cube([d[2] - d[0] + 2 * (m + cov_edge), d[3] - d[1] + 2 * (m + cov_edge), 1]);
             }
         }
-        // 前面のスリット（飾り。カメラの窓の下）
-        for (i = [0 : 1]) translate([scam_cx - 14, cov_y1 - 1, 16 + i * 7]) cube([28, cov_t + 2, 3]);
+        // 前の壁のカメラの下の切り欠き（下の端からレンズの中心の高さまで）
+        cover_wall_cut(cov_y1, cov_oy1, wcam_cx - cov_cam_cut[0], wcam_cx + cov_cam_cut[0], cov_cam_cut[1], cov_cam_cut[2]);
+        // 後ろの壁の下の切り欠き（線の出口）
+        cover_wall_cut(cov_oy0, cov_y0, cov_rear_cut[0], cov_rear_cut[1], cov_rear_cut[2], cov_rear_cut[3]);
         // 六角の通気口
         for (i = [0 : 12], j = [0 : 8]) {
             x = cov_vent[0] + i * 6 + (j % 2) * 3;
@@ -902,6 +902,14 @@ module cover() {
         // 文字
         translate([140, 150, cov_oz - 0.8]) rotate([0, 0, 90]) linear_extrude(1)
             text("AI-CAR", size = 9, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+    }
+}
+
+// 前後の壁の下の端から上へ切り欠く（Y0〜Y1 の壁、X0〜X1、上の端の高さ z1、上の角の丸み r）
+module cover_wall_cut(y0, y1, x0, x1, z1, r) {
+    translate([0, y1 + 2, 0]) rotate([90, 0, 0]) linear_extrude(y1 - y0 + 4) hull() {
+        translate([x0, -1]) square([x1 - x0, 1]);
+        for (x = [x0 + r, x1 - r]) translate([x, z1 - r]) circle(r = r);
     }
 }
 
