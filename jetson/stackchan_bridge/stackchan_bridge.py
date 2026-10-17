@@ -283,6 +283,9 @@ PRIMARY_HANDBACK_CHECKS = 3
 STANDBY_ONLY = 'ミニコンが止まっているあいだは、パソコンで話します。'
 FACE_TOOL = 'self.robot.set_face_color'
 FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00}
+# 自動運転の実況: ダッシュボードを CAR_TALK_POLL 秒ごとに見て、動きが変わったら話す。同じ動きが続くと CAR_TALK_EVERY 秒ごとに様子を話す
+CAR_TALK_POLL = 1.0
+CAR_TALK_EVERY = 6.0
 SEARCH_TOOL = 'self.web.search'
 SEARCH_DESC = ('Search the internet for up-to-date information: news, weather, prices, who currently holds a '
                'position, and anything that may have changed after your training. Always use it for questions '
@@ -652,6 +655,57 @@ def car_status(url):
     else:
         lines.append('Jetson: 未接続')
     return '\n'.join(lines)
+
+
+def car_talk_on():
+    """ミニコン・ローカルのときだけ実況する（パソコンの控えのときはしない）。"""
+    return STATUS['mode'] == 'local' and PC['want'] == 'jetson' and not PRIMARY['url']
+
+
+def _meter(v):
+    return f'{v:.1f} メートル'
+
+
+def car_talk_event(a):
+    """autonomy_node の動きが変わったときの一言。"""
+    side = '左' if a.get('turn_dir') == 'left' else '右'
+    front = (a.get('sectors') or {}).get('front')
+    return {
+        'forward': '前に進みます。' + (f'障害物なし。前は {_meter(front)} 空いています。' if front else '障害物なし。'),
+        'slow': '前方に障害物あり。' + (f'{_meter(front)} 先です。' if front else '') + 'ゆっくり進みます。',
+        'turn': f'前方障害物あり。{side}に回ります。',
+        'backoff': 'まわりがせまいです。少し下がります。',
+        'cliff_back': '段差発見！下がります。',
+        'cliff_turn': f'段差からはなれます。{side}に回ります。',
+        'cliff_stuck': '前も後ろも段差です。止まります。',
+        'blocked': 'ライダーのデータが来ません。止まります。',
+    }.get(a.get('behavior'))
+
+
+def car_talk_chatter(a):
+    """同じ動きが続いているときの様子。"""
+    s = a.get('sectors') or {}
+    front, left, right = s.get('front'), s.get('left'), s.get('right')
+    vx = abs((a.get('cmd') or {}).get('linear_x') or 0.0)
+    b = a.get('behavior')
+    if b == 'forward':
+        words = ['順調に走っています。', '障害物なし。']
+        if front:
+            words.append(f'障害物なし。前は {_meter(front)} 空いています。')
+        if left and right:
+            words.append(f'左まで {_meter(left)}、右まで {_meter(right)} です。')
+        if vx:
+            words.append(f'秒速 {vx * 100:.0f} センチで進んでいます。')
+        return random.choice(words)
+    if b == 'slow':
+        return f'前の障害物まで {_meter(front)}。気をつけて進みます。' if front else '気をつけて進みます。'
+    if b == 'turn':
+        return random.choice(['空いている所をさがしています。', 'まだ回っています。'])
+    if b == 'cliff_stuck':
+        return '段差で動けません。'
+    if b == 'blocked':
+        return 'ライダーを待っています。'
+    return None
 
 
 def _ja_num(t):
@@ -1681,6 +1735,41 @@ class Session:
         set_status(greet={'at': time.time(), 'names': names})
         await self.say(words)
 
+    async def car_talk(self):
+        """自動運転＆ミニコン＆ローカルのあいだ、AI-CAR の動きをしゃべる（会話のじゃまはしない）。"""
+        url = self.args.car_url
+        prev_mode = prev_b = None
+        said = 0.0
+        while True:
+            await asyncio.sleep(CAR_TALK_POLL)
+            if not self.args.car_talk or not car_talk_on():
+                prev_mode = prev_b = None
+                continue
+            try:
+                d = json.loads(await asyncio.to_thread(_get, f'{url}/api/status', 2))
+            except Exception:  # noqa: BLE001 - ラズパイが止まっていても会話は続ける
+                continue
+            mode = (d.get('drive_mode') or {}).get('mode')
+            a = d.get('autonomy') or {}
+            b = a.get('behavior') if mode == 'auto' else None
+            words = []
+            if prev_mode is not None and mode != prev_mode:
+                if mode == 'auto':
+                    words.append('自動運転を始めます。')
+                elif prev_mode == 'auto':
+                    words.append('自動運転を終わります。')
+            if b and b != prev_b:
+                words.append(car_talk_event(a) or '')
+            elif b and time.monotonic() - said >= CAR_TALK_EVERY:
+                words.append(car_talk_chatter(a) or '')
+            prev_mode, prev_b = mode, b
+            text = ''.join(words)
+            if not text or self.busy():
+                continue
+            log(f'実況: {text}')
+            await self.say(text, wake=False)
+            said = time.monotonic()
+
     async def to_net(self, announce=True):
         """ネットの XiaoZhi につなぎ、このセッションの声と文字を中継する。だめならローカルのまま。"""
         if PC['want'] == 'pc' and PC['up']:
@@ -2222,6 +2311,7 @@ async def handler(ws, args):
     set_status(dozing=False)
     s = Session(ws, args)
     SESSIONS.append(s)
+    talk = asyncio.create_task(s.car_talk())
     try:
         async for msg in ws:
             if isinstance(msg, bytes):
@@ -2238,6 +2328,7 @@ async def handler(ws, args):
         pass
     finally:
         s.cancel.set()
+        talk.cancel()
         if s.drive_stop:
             s.drive_stop.set()
         if s.keep_task:
@@ -2277,6 +2368,8 @@ async def main():
     p.add_argument('--max-seconds', type=float, default=15.0)
     p.add_argument('--car-url', default=os.environ.get('AI_CAR_URL', 'http://100.70.35.31:8080'),
                    help='AI-CAR のダッシュボード（ラズパイ）。ここの /api/status の値を答えに使う')
+    p.add_argument('--no-car-talk', dest='car_talk', action='store_false',
+                   help='自動運転＆ミニコン＆ローカルのとき、AI-CAR の動きをしゃべる実況をしない')
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')
     p.add_argument('--wake-words', default=WAKE_WORDS,
                    help='呼びかけ待ちのとき、これ（正規表現）が聞き取りに入っているときだけ返事をする。空で呼びかけ待ちにしない')
