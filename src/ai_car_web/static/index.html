@@ -3504,6 +3504,7 @@ document.getElementById('program').addEventListener('click', ev => { if (ev.targ
 const DIARY_TAGS = ['すべて', '3D プリント', '配線', 'ダッシュボード', 'ソフト', 'ドキュメント'];
 let diaryData = null;
 let diaryTag = 'すべて';
+const DIARY_DAYS = 7;
 
 function diaryText(s) { return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>'); }
 function diaryEntryHtml(e) {
@@ -3526,22 +3527,40 @@ function renderDiary() {
   }
   const days = diaryData.days.map(d => ({date: d.date,
     entries: d.entries.filter(e => diaryTag === 'すべて' || e.tags.includes(diaryTag))})).filter(d => d.entries.length);
-  body.innerHTML = '<p>main に入った変更（PR のマージ）と CHANGELOG に追加した行から、自動で作っています。</p>' +
+  const shown = days.reduce((n, d) => n + d.entries.length, 0);
+  const total = diaryData.total_entries != null ? diaryData.total_entries : shown;
+  body.innerHTML = '<p>main に入った変更（PR のマージ）と CHANGELOG に追加した行から、自動で作っています。' +
+    `全 ${total} 件のうち、新しい ${shown} 件を表示しています。</p>` +
     (days.length ? days.map(d => `<div class="diaryday"><h3>${esc(d.date)}（${d.entries.length} 件）</h3>` +
-      d.entries.map(diaryEntryHtml).join('') + '</div>').join('') : '<p>該当する変更はありません。</p>');
+      d.entries.map(diaryEntryHtml).join('') + '</div>').join('') : '<p>該当する変更はありません。</p>') +
+    (diaryData.more ? `<p><button id="diary_more" class="aboutbtn">もっと見る（前の ${DIARY_DAYS} 日）</button></p>` : '');
+}
+function loadDiary(reset) {
+  const body = document.getElementById('diary_body');
+  const q = new URLSearchParams({days: DIARY_DAYS, tag: diaryTag === 'すべて' ? '' : diaryTag,
+                                 before: reset || !diaryData ? '' : (diaryData.next_before || '')});
+  if (reset) body.innerHTML = '<span class="badge">読み込み中...</span>';
+  else document.getElementById('diary_more').disabled = true;
+  const tag = diaryTag;
+  fetch('/api/dev_diary?' + q).then(r => r.json()).then(d => {
+    if (tag !== diaryTag) return;
+    if (!reset && diaryData && d.available) d.days = diaryData.days.concat(d.days);
+    diaryData = d;
+    renderDiary();
+  }).catch(() => { body.innerHTML = '<span class="badge crit">/api/dev_diary の取得に失敗しました</span>'; });
 }
 function closeDiary() { document.getElementById('diary').classList.add('hidden'); }
 function openDiary() {
   document.getElementById('diary').classList.remove('hidden');
-  document.getElementById('diary_body').innerHTML = '<span class="badge">読み込み中...</span>';
-  fetch('/api/dev_diary').then(r => r.json()).then(d => { diaryData = d; renderDiary(); })
-    .catch(() => { document.getElementById('diary_body').innerHTML = '<span class="badge crit">/api/dev_diary の取得に失敗しました</span>'; });
+  loadDiary(true);
 }
 document.getElementById('diary_tabs').innerHTML = DIARY_TAGS.map(t => `<button data-tag="${t}">${t}</button>`).join('');
 document.querySelectorAll('#diary_tabs button').forEach(b => b.addEventListener('click', () => {
   diaryTag = b.dataset.tag;
-  if (diaryData) renderDiary();
+  document.querySelectorAll('#diary_tabs button').forEach(x => x.classList.toggle('active', x.dataset.tag === diaryTag));
+  loadDiary(true);
 }));
+document.getElementById('diary_body').addEventListener('click', ev => { if (ev.target.id === 'diary_more') loadDiary(false); });
 document.getElementById('diary_btn').addEventListener('click', openDiary);
 document.getElementById('diary_close').addEventListener('click', closeDiary);
 document.getElementById('diary').addEventListener('click', ev => { if (ev.target.id === 'diary') closeDiary(); });

@@ -648,7 +648,7 @@ api:
     - {method: GET, path: /api/version, desc: バージョン（package.xml）・公開日（CHANGELOG）・いまの git の版, auth: false}
     - {method: GET, path: /api/architecture, desc: この説明画面の構成定義（実機の生存トピック付き）, auth: false}
     - {method: GET, path: '/api/program?file=…', desc: プログラム一覧に登録したファイルの中身（一覧にないファイルは 404）, auth: false}
-    - {method: GET, path: /api/dev_diary, desc: 開発日記（main の PR マージ・コミットと CHANGELOG の追加行を日付ごとにまとめたもの）, auth: false}
+    - {method: GET, path: /api/dev_diary, desc: "開発日記（main の PR マージ・コミットと CHANGELOG の追加行を日付ごとにまとめたもの）。DB（~/.ros/ai_car_dev_diary.sqlite）から ?days=7&before=日付&tag=分類 で 7 日ずつ返す", auth: false}
     - {method: GET, path: /api/drive_mode, desc: 現在の運転モード, auth: false}
     - {method: GET, path: '/print3d/{file}', desc: 3D プリント部品の STL・図・OpenSCAD ソース（hardware/3d/battery_lidar_mount）, auth: false}
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
@@ -724,7 +724,7 @@ programs:
   - {place: ラズパイ, name: cliff_node, file: src/ai_car_web/ai_car_web/cliff_node.py, role: VL53L1X で段差（落下）を見張る}
   - {place: ラズパイ, name: system_monitor_node, file: src/ai_car_web/ai_car_web/system_monitor_node.py, role: CPU・温度・電圧・AI HAT+ の状態}
   - {place: ラズパイ, name: architecture, file: src/ai_car_web/ai_car_web/architecture.py, role: プロジェクト説明の構成の読み込み}
-  - {place: ラズパイ, name: dev_diary, file: src/ai_car_web/ai_car_web/dev_diary.py, role: git の記録から開発日記を作る}
+  - {place: ラズパイ, name: dev_diary, file: src/ai_car_web/ai_car_web/dev_diary.py, role: git の記録から開発日記を作り、SQLite の DB にためて 7 日ずつ返す}
   - {place: ラズパイ, name: gpio_pinout, file: src/ai_car_web/ai_car_web/gpio_pinout.py, role: GPIO の配線表}
   - {place: ラズパイ, name: motor_hat, file: src/ai_car_web/ai_car_web/motor_hat.py, role: Motor HAT の配線図}
   - {place: ラズパイ, name: dashboard.launch.py, file: src/ai_car_web/launch/dashboard.launch.py, role: 全部のノードを起動}
