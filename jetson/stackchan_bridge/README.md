@@ -83,7 +83,7 @@ WSL は PowerShell の画面を閉じるとしばらくして止まるので、`
 
 ## スタックちゃんのファームウェア
 
-公式 https://github.com/m5stack/StackChan の `firmware`（ESP-IDF v5.5.4）に、ここの 4 つを足してビルドします。
+公式 https://github.com/m5stack/StackChan の `firmware`（ESP-IDF v5.5.4）に、ここのファイルを足してビルドします。
 
 | ファイル | 置く所 | 中身 |
 | --- | --- | --- |
@@ -96,6 +96,7 @@ WSL は PowerShell の画面を閉じるとしばらくして止まるので、`
 | `firmware/xiaozhi-channel-watchdog.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（fallback-pc のあと） | 会話の線が「閉じた」と知らせずに死んだとき（相手から 120 秒何も来ない）も、5 秒で閉じてつなぎ直す。つなぎ直しの時に「ひま」でなくても、1 秒ごとに待ってやり直す。線が 1 分つながらなければ（画面をさわって止めたときも）つなぎ直し、3 分つながらなければ自分で起動し直す。送りが固まって中の動きが 90 秒止まったときも起動し直す（AI Agent で起きる） |
 | `firmware/stackchan-camera-follow-server.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | カメラの映像・撮影の写真を、今つないでいる受け口（ミニコンかパソコン）へ送る |
 | `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
+| `firmware/stackchan-no-shutdown-on-usb.patch` | `StackChan/firmware/` で `git apply` | USB がささっているときは、何もしなくても自分で電源を切らない。純正は「電池を使っている」と 600 秒で切る。Jetson の USB だと電気が足りず電池も少し使うので、つないだままでも切れていた（電池が空になると切れるのは同じ） |
 
 ```bash
 cd StackChan/firmware
@@ -108,7 +109,8 @@ git apply <このフォルダ>/firmware/stackchan-face-color.patch
 git apply <このフォルダ>/firmware/stackchan-countdown-shot.patch
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-fallback-pc.patch
 git -C xiaozhi-esp32 apply <このフォルダ>/firmware/xiaozhi-channel-watchdog.patch
-git apply <このフォルダ>/firmware/stackchan-camera-follow-server.patch
+git apply <このフォルダ>/firmware/stackchan-camera-follow-server.patch   # 通らないときは patch -p1 < …
+git apply <このフォルダ>/firmware/stackchan-no-shutdown-on-usb.patch
 . ~/esp/esp-idf-v5.5.4/export.sh
 idf.py build
 # Jetson の USB-A につなぐと /dev/ttyACM0。Wi-Fi の設定（NVS）は消えない
