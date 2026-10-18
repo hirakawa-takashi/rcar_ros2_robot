@@ -30,6 +30,8 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
   cliff_stuck 前後とも段差・/odom なしなどで動けない（ゼロ速度）
   stuck_back / stuck_side / stuck_turn  動けないので、下がる / 横にずれる / 反対へ回る
   stuck     抜け出しを unstick_max 回しても動けない（ゼロ速度。AUTO に入り直すまで）
+  （段差の所は /odom と SLAM の地図の上で覚え、その所は前の障害物と同じにみる。曲がる先・横へずれる向きにも選ばない）
+  tilted    車が AUTO に入ったときより tilt_stop_deg 以上かたむいた（落ちた・乗り上げた。ゼロ速度。AUTO に入り直すまで）
   blocked   LiDAR 未受信などで停止
   nav       Nav2 で地図の行き先へ向かう（/cmd_vel_nav を中継）
   nav_done  行き先に着いた（ゼロ速度。AUTO を抜けるか次の行き先まで）
@@ -39,6 +41,7 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
 
 import json
 import math
+import os
 import random
 import threading
 import time
@@ -46,14 +49,14 @@ import time
 import numpy as np
 import rclpy
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav2_msgs.action import ComputePathToPose, NavigateToPose
 from nav_msgs.msg import Odometry, Path
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import Imu, LaserScan
 from std_msgs.msg import String
 
 LABELS = {
@@ -63,6 +66,7 @@ LABELS = {
     'cliff_stuck': '停止（段差で動けない）',
     'stuck_back': '抜け出し（後退）', 'stuck_side': '抜け出し（横）', 'stuck_turn': '抜け出し（旋回）',
     'stuck': '停止（動けない）',
+    'tilted': '停止（かたむいた）',
     'nav': '行き先へ', 'nav_done': '行き先に着いた', 'nav_failed': '停止（行き先へ行けない）',
     'nav_stop': '停止（行き先をやめた）',
 }
@@ -88,6 +92,28 @@ def _path_points(path: Path):
     if pts and keep[-1] != pts[-1]:
         keep.append(pts[-1])
     return [[round(x, 2), round(y, 2)] for x, y in keep], length
+
+
+def _slam_started():
+    """slam_toolbox のプロセスが動きはじめた時刻（time.time()）。なければ None。"""
+    try:
+        with open('/proc/uptime') as f:
+            boot = time.time() - float(f.read().split()[0])
+        tick = os.sysconf('SC_CLK_TCK')
+        for pid in os.listdir('/proc'):
+            if not pid.isdigit():
+                continue
+            try:
+                with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                    if b'slam_toolbox' not in f.read().split(b'\0')[0]:
+                        continue
+                with open(f'/proc/{pid}/stat') as f:
+                    return boot + int(f.read().rsplit(')', 1)[1].split()[19]) / tick
+            except (OSError, ValueError, IndexError):
+                continue
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 class AutonomyNode(Node):
@@ -149,6 +175,16 @@ class AutonomyNode(Node):
         # この回数抜け出しても（unstick_window 秒のうちに）また動けなければ止まる
         self.declare_parameter('unstick_max', 3)
         self.declare_parameter('unstick_window', 30.0)
+        # AUTO に入ったときより roll / pitch が tilt_stop_deg 以上、tilt_hold_sec つづけてかたむいたら止まる（落ちた・乗り上げた）
+        self.declare_parameter('imu_topic', '/imu/data')
+        self.declare_parameter('tilt_stop_deg', 15.0)
+        self.declare_parameter('tilt_hold_sec', 0.5)
+        # 前の段差センサーが反応した所を覚えて、そちらへ向かう向きは曲がる先に選ばない（この幅 m の帯に入る向き）
+        self.declare_parameter('cliff_avoid_m', 0.4)
+        # 段差の所は SLAM の地図（map）の上でも覚え、cliff_file に保存する（同じ起動のあいだ = 同じ地図のあいだ使う）
+        self.declare_parameter('slam_pose_topic', '/pose')
+        self.declare_parameter('cliff_file', '')
+        self.declare_parameter('cliff_clear_topic', '/cliff_marks_clear')
         # 段差（/cliff_status）を見たら、/odom で下がって回り、走行を続ける
         self.declare_parameter('cliff_topic', '/cliff_status')
         self.declare_parameter('odom_topic', '/odom')
@@ -205,6 +241,18 @@ class AutonomyNode(Node):
         self.unstick_turn_sec = float(g('unstick_turn_sec').value)
         self.unstick_max = int(g('unstick_max').value)
         self.unstick_window = float(g('unstick_window').value)
+        self.tilt_stop = math.radians(float(g('tilt_stop_deg').value))
+        self.tilt_hold = float(g('tilt_hold_sec').value)
+        self.cliff_avoid = float(g('cliff_avoid_m').value)
+        self._tilt = None        # (roll, pitch) rad
+        self._tilt_stamp = 0.0
+        self._tilt_base = None   # AUTO に入ったときの (roll, pitch)
+        self._tilt_since = None
+        self._cliff_pts = []     # 段差があった所（/odom。地図の位置がまだ分からないとき）
+        self._cliff_marks = []   # 段差があった所（map）
+        self._map_odom = None    # map から見た odom (x, y, yaw)
+        self.cliff_file = g('cliff_file').value
+        self._load_marks()
         self.cliff_timeout = float(g('cliff_timeout').value)
         self.odom_timeout = float(g('odom_timeout').value)
         self.cliff_backoff_m = float(g('cliff_backoff_m').value)
@@ -252,6 +300,13 @@ class AutonomyNode(Node):
             self.create_subscription(String, g('cliff_topic').value, self._cliff_cb, 10)
         if g('odom_topic').value:
             self.create_subscription(Odometry, g('odom_topic').value, self._odom_cb, 10)
+        if g('imu_topic').value:
+            self.create_subscription(Imu, g('imu_topic').value, self._imu_cb, sensor_qos)
+        if g('slam_pose_topic').value:
+            self.create_subscription(PoseWithCovarianceStamped, g('slam_pose_topic').value,
+                                     self._slam_pose_cb, 10)
+        if g('cliff_clear_topic').value:
+            self.create_subscription(String, g('cliff_clear_topic').value, self._cliff_clear_cb, 10)
         self.create_subscription(
             String, g('drive_mode_topic').value, self._mode_cb,
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -344,6 +399,107 @@ class AutonomyNode(Node):
         with self._lock:
             self._pose = (p.position.x, p.position.y, yaw)
             self._pose_stamp = time.monotonic()
+
+    def _imu_cb(self, msg: Imu):
+        q = msg.orientation
+        roll = math.atan2(2.0 * (q.w * q.x + q.y * q.z), 1.0 - 2.0 * (q.x * q.x + q.y * q.y))
+        pitch = math.asin(max(-1.0, min(1.0, 2.0 * (q.w * q.y - q.z * q.x))))
+        with self._lock:
+            self._tilt = (roll, pitch)
+            self._tilt_stamp = time.monotonic()
+
+    def _slam_pose_cb(self, msg: PoseWithCovarianceStamped):
+        p = msg.pose.pose
+        ys = 2.0 * math.atan2(p.orientation.z, p.orientation.w)
+        with self._lock:
+            odom = self._pose
+            if odom is None or time.monotonic() - self._pose_stamp > 0.5:
+                return
+            yaw = _wrap(ys - odom[2])
+            c, s = math.cos(yaw), math.sin(yaw)
+            self._map_odom = (p.position.x - (c * odom[0] - s * odom[1]),
+                              p.position.y - (s * odom[0] + c * odom[1]), yaw)
+
+    def _cliff_clear_cb(self, _msg: String):
+        self._cliff_pts = []
+        self._cliff_marks = []
+        self._save_marks()
+        self.get_logger().info('地図を消したので、段差の印も消した')
+
+    def _load_marks(self):
+        """今の slam_toolbox が動きはじめてから保存した段差の印だけ読む（地図は slam_toolbox の起動ごとに作り直すため）。"""
+        if not self.cliff_file:
+            return
+        try:
+            started = _slam_started()
+            if started is None or os.path.getmtime(self.cliff_file) < started:
+                return
+            with open(self.cliff_file) as f:
+                self._cliff_marks = [tuple(m[:2]) for m in json.load(f).get('marks', [])][-50:]
+        except (OSError, ValueError, TypeError, AttributeError):
+            self._cliff_marks = []
+
+    def _save_marks(self):
+        if not self.cliff_file:
+            return
+        try:
+            os.makedirs(os.path.dirname(self.cliff_file) or '.', exist_ok=True)
+            with open(self.cliff_file, 'w') as f:
+                json.dump({'frame': 'map', 'marks': [[round(x, 3), round(y, 3)] for x, y in self._cliff_marks]}, f)
+        except OSError as exc:
+            self.get_logger().warn(f'段差の印を保存できない: {exc}')
+
+    def _add_cliff(self, pose):
+        """前の段差センサーが反応した所（車の 0.2 m 前）を覚える。地図の位置が分かれば map で。"""
+        ox, oy = pose[0] + 0.2 * math.cos(pose[2]), pose[1] + 0.2 * math.sin(pose[2])
+        mo = self._map_odom
+        if mo is None:
+            self._cliff_pts = (self._cliff_pts + [(ox, oy)])[-50:]
+            return
+        c, s = math.cos(mo[2]), math.sin(mo[2])
+        mx, my = mo[0] + c * ox - s * oy, mo[1] + s * ox + c * oy
+        if any(math.hypot(mx - x, my - y) < 0.15 for x, y in self._cliff_marks):
+            return
+        self._cliff_marks = (self._cliff_marks + [(mx, my)])[-50:]
+        self._save_marks()
+
+    def _known_cliffs(self):
+        """覚えている段差の所（/odom）。"""
+        pts = list(self._cliff_pts)
+        mo = self._map_odom
+        if mo is not None and self._cliff_marks:
+            c, s = math.cos(mo[2]), math.sin(mo[2])
+            for mx, my in self._cliff_marks:
+                dx, dy = mx - mo[0], my - mo[1]
+                pts.append((c * dx + s * dy, -s * dx + c * dy))
+        return pts
+
+    def _cliff_ahead(self, pose):
+        """まっすぐ前の車の幅の帯にある、覚えている段差までの距離（なければ inf）。"""
+        if pose is None:
+            return float('inf')
+        c, sn = math.cos(pose[2]), math.sin(pose[2])
+        best = float('inf')
+        for cx, cy in self._known_cliffs():
+            dx, dy = cx - pose[0], cy - pose[1]
+            along = dx * c + dy * sn
+            if along > 0.0 and abs(dy * c - dx * sn) <= self.path_half + 0.1:
+                best = min(best, along)
+        return best
+
+    def _tilted(self, now, tilt) -> bool:
+        """AUTO に入ったときより tilt_stop 以上のかたむきが tilt_hold 秒つづいたら True。"""
+        if tilt is None:
+            return False
+        if self._tilt_base is None:
+            self._tilt_base = tilt
+        d = max(abs(_wrap(tilt[0] - self._tilt_base[0])), abs(tilt[1] - self._tilt_base[1]))
+        if d < self.tilt_stop:
+            self._tilt_since = None
+            return False
+        if self._tilt_since is None:
+            self._tilt_since = now
+        return now - self._tilt_since >= self.tilt_hold
 
     def _mode_cb(self, msg: String):
         try:
@@ -530,12 +686,15 @@ class AutonomyNode(Node):
             scan_age = now - self._scan_stamp if self._scan_stamp else None
             cliff = self._cliff if now - self._cliff_stamp <= self.cliff_timeout else None
             pose = self._pose if now - self._pose_stamp <= self.odom_timeout else None
+            tilt = self._tilt if now - self._tilt_stamp <= 1.0 else None
         cmd = Twist()
         nav_cmd = self._nav_step(now, mode)
         if mode != 'auto':
             self._escape = None
             self._unstick = None
             self._unstick_times = []
+            self._tilt_base = None
+            self._tilt_since = None
             self._set_behavior('standby')
             return cmd
         if s is None or scan_age is None or scan_age > self.scan_max_age:
@@ -544,7 +703,13 @@ class AutonomyNode(Node):
 
         cliff_front = bool(cliff and cliff.get('block_forward'))
         cliff_back = bool(cliff and cliff.get('block_backward'))
-        if self._behavior == 'stuck':
+        if self._behavior in ('stuck', 'tilted'):
+            return cmd
+        if self._tilted(now, tilt):
+            self._escape = None
+            self._unstick = None
+            self._set_behavior('tilted')
+            self.get_logger().warn('かたむいた（落ちた・乗り上げた）ので止まる')
             return cmd
         if self._unstick is not None:
             un_cmd = self._unstick_step(now, s, pose, cliff_back)
@@ -552,6 +717,8 @@ class AutonomyNode(Node):
                 return un_cmd
         if cliff_front and (self._escape is None or self._escape['phase'] == 'turn'):
             self._escape = {'phase': 'back', 'since': now, 'start': pose}
+            if pose is not None:
+                self._add_cliff(pose)
             self.get_logger().info('前に段差: 下がって回る')
         if self._escape is not None:
             esc_cmd = self._escape_step(now, s, pose, cliff_front, cliff_back)
@@ -562,6 +729,8 @@ class AutonomyNode(Node):
 
         front = s.get('front')
         path_v = s.get('path') if s.get('path') is not None else float('inf')
+        # 覚えている段差は、前の障害物と同じにみる（その手前で曲がる）
+        path_v = min(path_v, self._cliff_ahead(pose))
         left = s.get('left')
         right = s.get('right')
         back = s.get('back')
@@ -621,7 +790,11 @@ class AutonomyNode(Node):
             self._set_behavior('forward')
             cmd.linear.x = self.cruise
         if cmd.angular.z == 0.0:
-            cmd.linear.y = self._center_vy(s)
+            vy = self._center_vy(s)
+            # 横には段差センサーがないので、覚えている段差のほうへは横にずれない
+            if vy != 0.0 and pose is not None and self._toward_cliff(pose, math.copysign(math.pi / 2, vy), 0.2):
+                vy = 0.0
+            cmd.linear.y = vy
         return cmd
 
     def _open_side(self, s) -> float:
@@ -643,6 +816,8 @@ class AutonomyNode(Node):
                 continue
             reach = min(d, 3.0)
             novelty = 1.0
+            if pose is not None and self._toward_cliff(pose, th, reach):
+                continue
             if pose is not None:
                 # その向きの 0.5 m 〜 reach 先のマスが、どれだけ「まだ行っていない」か（0〜1）
                 yaw = pose[2] + th
@@ -659,6 +834,17 @@ class AutonomyNode(Node):
         if not cands:
             return None
         return random.choices(cands, weights=weights)[0]
+
+    def _toward_cliff(self, pose, th, reach) -> bool:
+        """その向きに reach 進むあいだに、覚えている段差の cliff_avoid 以内を通るか。"""
+        yaw = pose[2] + th
+        c, sn = math.cos(yaw), math.sin(yaw)
+        for cx, cy in self._known_cliffs():
+            dx, dy = cx - pose[0], cy - pose[1]
+            along = dx * c + dy * sn
+            if -0.2 < along < reach + 0.3 and abs(dy * c - dx * sn) < self.cliff_avoid:
+                return True
+        return False
 
     def _pick_turn(self, s, pose) -> float:
         """曲がる向きを決める（左 +1 / 右 -1）。/odom があれば曲がる先の向き _target_yaw も決める。"""
@@ -708,7 +894,9 @@ class AutonomyNode(Node):
         self._progress = {'since': now, 'snap': snap, 'yaw': yaw}
         if moved >= self.stuck_move or turned >= self.stuck_turn:
             return
-        self._unstick_times = [t for t in self._unstick_times if now - t <= self.unstick_window]
+        # 抜け出しのあと unstick_window 秒、動けないことがなければ数えなおす（10 秒おきに動けないときも数がたまるように）
+        if self._unstick_times and now - self._unstick_times[-1] > self.unstick_window:
+            self._unstick_times = []
         if len(self._unstick_times) >= self.unstick_max:
             self._escape = None
             self._set_behavior('stuck')
@@ -741,6 +929,11 @@ class AutonomyNode(Node):
         if un['phase'] == 'side':
             left = s.get('side_left') if s.get('side_left') is not None else big
             right = s.get('side_right') if s.get('side_right') is not None else big
+            if pose is not None:
+                if self._toward_cliff(pose, math.pi / 2, 0.2):
+                    left = 0.0
+                if self._toward_cliff(pose, -math.pi / 2, 0.2):
+                    right = 0.0
             side = 1.0 if left >= right else -1.0
             if max(left, right) > 0.25 and now - un['since'] < self.unstick_side_sec:
                 self._set_behavior('stuck_side')
@@ -832,6 +1025,11 @@ class AutonomyNode(Node):
                 'explore_target_deg': (round(math.degrees(self._target_yaw), 1)
                                        if self._target_yaw is not None else None),
                 'visited_cells': len(self._visits),
+                'cliff_points': len(self._cliff_pts) + len(self._cliff_marks),
+                'cliff_marks': [[round(x, 2), round(y, 2)] for x, y in self._cliff_marks],
+                'tilt_deg': (round(math.degrees(max(abs(_wrap(self._tilt[0] - self._tilt_base[0])),
+                                                    abs(self._tilt[1] - self._tilt_base[1]))), 1)
+                             if self._tilt is not None and self._tilt_base is not None else None),
                 'unstick': ({'phase': self._unstick['phase'], 'count': len(self._unstick_times)}
                             if self._unstick else None),
                 'cliff_turned_deg': (round(math.degrees(self._escape.get('turned', 0.0)), 1)

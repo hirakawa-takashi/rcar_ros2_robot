@@ -453,7 +453,11 @@ nodes:
       - {name: center_speed, ref: autonomy_node.center_speed, unit: m/s, desc: まん中へ寄る横の速さの上限}
       - {name: pre_turn_gain, ref: autonomy_node.pre_turn_gain, unit: '', desc: 減速の帯で、近づくほど空いている側へ曲がる強さ（止まる直前で turn_speed のこの倍）。止まってから回る前に向きを変えはじめる}
       - {name: stuck_sec, ref: autonomy_node.stuck_sec, unit: s, desc: 動く指令なのにこの秒数、LiDAR の距離も向きも変わらなければ「動けない」とみて、下がる → 横にずれる → 反対へ回る}
-      - {name: unstick_max, ref: autonomy_node.unstick_max, unit: 回, desc: unstick_window 秒のうちにこの回数抜け出してもまた動けなければ止まる（AUTO に入り直すまで）}
+      - {name: unstick_max, ref: autonomy_node.unstick_max, unit: 回, desc: 抜け出しのあと unstick_window 秒のうちにまた動けないことが続き、この回数抜け出してもまた動けなければ止まる（AUTO に入り直すまで）}
+      - {name: tilt_stop_deg, ref: autonomy_node.tilt_stop_deg, unit: °, desc: AUTO に入ったときより roll / pitch がこの角度以上かたむいたら止まる（落ちた・乗り上げた。AUTO に入り直すまで）}
+      - {name: tilt_hold_sec, ref: autonomy_node.tilt_hold_sec, unit: s, desc: かたむきがこの秒数つづいたら止まる（段差を越えるときの一瞬のゆれでは止まらない）}
+      - {name: cliff_avoid_m, ref: autonomy_node.cliff_avoid_m, unit: m, desc: 前の段差センサーが反応した所（車の 0.2 m 前）を SLAM の地図の上で覚え（地図の位置が分からなければ /odom）、その所のこの幅 m 以内を通る向きは曲がる先・横へずれる向きに選ばない。まっすぐ前の車の幅の帯にあれば前の障害物と同じにみる}
+      - {name: cliff_file, ref: autonomy_node.cliff_file, desc: 段差の印（map の x, y）の保存先。今の slam_toolbox が動きはじめてから保存したものだけ読む（地図は slam_toolbox の起動ごとに作り直すため）。ダッシュボードの地図クリアで消える（cliff_clear_topic）。ダッシュボードの地図に赤い点で出る}
       - {name: scan_max_age, ref: autonomy_node.scan_max_age, unit: s, desc: LiDAR がこれより古いと停止}
       - {name: nav_cmd_timeout, ref: autonomy_node.nav_cmd_timeout, unit: s, desc: Nav2 の速度（/cmd_vel_nav）がこれより古ければゼロ}
       - {name: nav_auto_wait, ref: autonomy_node.nav_auto_wait, unit: s, desc: 「ここへ行く」から自動に入らないままこの秒数で行き先をやめる}
@@ -644,6 +648,7 @@ autonomy:
     - {id: cliff_back, label: 段差から後退, condition: 前の落下防止センサーが段差（block_forward）, output: /odom で cliff_backoff_m 下がるまで linear.x = −backoff_speed（後ろも段差なら次へ）}
     - {id: cliff_turn, label: 段差から旋回, condition: cliff_back のあと前が床, output: 空いている側へ angular.z = ±turn_speed を /odom で cliff_turn_deg 回るまで → ふつうの走行へ}
     - {id: cliff_stuck, label: 停止（段差で動けない）, condition: 前後とも段差 / /odom なし / 下がっても前が段差のまま, output: ゼロ速度（前が床にもどれば続ける）}
+    - {id: tilted, label: 停止（かたむいた）, condition: /imu/data の roll / pitch が AUTO に入ったときより tilt_stop_deg 以上を tilt_hold_sec つづけた（落ちた・乗り上げた）, output: ゼロ速度（AUTO に入り直すまで）}
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
