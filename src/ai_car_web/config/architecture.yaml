@@ -441,6 +441,8 @@ nodes:
       - {name: clear_distance, ref: autonomy_node.clear_distance, unit: m, desc: 前方がこの距離以上空くまで旋回を続ける}
       - {name: backoff_distance, ref: autonomy_node.backoff_distance, unit: m, desc: 前後左右すべてこの距離以内なら後退}
       - {name: min_turn_sec, ref: autonomy_node.min_turn_sec, unit: s, desc: 旋回の最短継続時間}
+      - {name: random_side_distance, ref: autonomy_node.random_side_distance, unit: m, desc: 左右の両方がこれより空いていれば、曲がる向きをランダムに選ぶ（同じ所をくるくる回らないため）}
+      - {name: turn_random_sec, ref: autonomy_node.turn_random_sec, unit: s, desc: 旋回を 0〜この秒数だけランダムに長くして、向きを毎回少し変える}
       - {name: path_half_width, ref: autonomy_node.path_half_width, unit: m, desc: 前の近さ（減速・旋回）を見る帯の半分の幅。帯の外の物（ドアの柱など）では減速・旋回しない}
       - {name: center_range, ref: autonomy_node.center_range, unit: m, desc: 左右の両方にこれより近い物があると、横へずれてまん中を通る}
       - {name: center_speed, ref: autonomy_node.center_speed, unit: m/s, desc: まん中へ寄る横の速さの上限}
@@ -632,7 +634,7 @@ autonomy:
   behaviors:
     - {id: forward, label: 前進, condition: 前方 > slow_distance, output: linear.x = cruise_speed}
     - {id: slow, label: 減速, condition: stop_distance < 前方 ≤ slow_distance, output: linear.x = slow_speed、近い側から離れる方向へ緩く旋回}
-    - {id: turn, label: 旋回, condition: 前方 ≤ stop_distance, output: 空いている側へ angular.z = ±turn_speed。前方が clear_distance 以上空くまで（最短 min_turn_sec）}
+    - {id: turn, label: 旋回, condition: 前方 ≤ stop_distance, output: 空いている側（両方空いていればランダム）へ angular.z = ±turn_speed。前方が clear_distance 以上空くまで（最短 min_turn_sec ＋ 0〜turn_random_sec）}
     - {id: backoff, label: 後退, condition: 前・左・右 ≤ backoff_distance かつ 後方に測距があり > stop_distance, output: linear.x = −backoff_speed}
     - {id: cliff_back, label: 段差から後退, condition: 前の落下防止センサーが段差（block_forward）, output: /odom で cliff_backoff_m 下がるまで linear.x = −backoff_speed（後ろも段差なら次へ）}
     - {id: cliff_turn, label: 段差から旋回, condition: cliff_back のあと前が床, output: 空いている側へ angular.z = ±turn_speed を /odom で cliff_turn_deg 回るまで → ふつうの走行へ}
