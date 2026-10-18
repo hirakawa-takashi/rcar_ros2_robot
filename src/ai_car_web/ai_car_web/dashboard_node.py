@@ -428,6 +428,10 @@ class DashboardNode(Node):
         nav_goal_topic = self.get_parameter('nav_goal_topic').value
         self.nav_goal_pub = (self.create_publisher(String, nav_goal_topic, 10)
                              if nav_goal_topic else None)
+        self.declare_parameter('cliff_clear_topic', '/cliff_marks_clear')
+        cliff_clear_topic = self.get_parameter('cliff_clear_topic').value
+        self.cliff_clear_pub = (self.create_publisher(String, cliff_clear_topic, 10)
+                                if cliff_clear_topic else None)
         autonomy_topic = self.get_parameter('autonomy_status_topic').value
         if autonomy_topic:
             self.create_subscription(String, autonomy_topic, self._autonomy_cb, 10)
@@ -682,6 +686,8 @@ class DashboardNode(Node):
         res = future.result()
         if res is None or res.result != SlamReset.Response.RESULT_SUCCESS:
             return {'ok': False, 'reason': 'slam_toolbox が地図を消せなかった'}
+        if self.cliff_clear_pub is not None:
+            self.cliff_clear_pub.publish(String(data='clear'))
         with self._lock:
             self._map = None
             self._map_png = None

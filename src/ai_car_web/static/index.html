@@ -1873,6 +1873,16 @@ function drawSlam() {
     nav.path.forEach(([x, y], i) => { const [u, v] = toPx(x, y); if (i) ctx.lineTo(u, v); else ctx.moveTo(u, v); });
     ctx.stroke();
   }
+  const marks = latestTelemetry.autonomy && latestTelemetry.autonomy.cliff_marks;
+  if (marks && marks.length) {
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.85)';
+    marks.forEach(([x, y]) => {
+      const [u, v] = toPx(x, y);
+      ctx.beginPath();
+      ctx.arc(u, v, Math.max(4, 0.08 / m.resolution * s), 0, 2 * Math.PI);
+      ctx.fill();
+    });
+  }
   const g = (nav && nav.goal) || navPick;
   if (g) {
     const [gx, gy] = toPx(g.x, g.y);
