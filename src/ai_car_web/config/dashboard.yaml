@@ -152,6 +152,11 @@ autonomy_node:
     # 左右とも 0.4 m より空いていれば、曲がる向きはランダム。旋回は 0〜0.8 秒ランダムに長くする（同じ所をくるくる回らない）
     random_side_distance: 0.4
     turn_random_sec: 0.8
+    explore_step_deg: 15.0
+    explore_min_free: 1.0
+    explore_cell: 0.5
+    explore_reach_deg: 10.0
+    explore_turn_timeout: 8.0
     # 前の近さは車の幅の帯（半分 0.20 m = 車 0.14 + 6 cm）の中だけで見る（ドアの柱では減速・旋回しない）
     path_half_width: 0.20
     # 左右の両方が 0.5 m より近い（ドア・廊下）ときは、向きを変えずに横へずれてまん中を通る

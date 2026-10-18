@@ -443,6 +443,11 @@ nodes:
       - {name: min_turn_sec, ref: autonomy_node.min_turn_sec, unit: s, desc: 旋回の最短継続時間}
       - {name: random_side_distance, ref: autonomy_node.random_side_distance, unit: m, desc: 左右の両方がこれより空いていれば、曲がる向きをランダムに選ぶ（同じ所をくるくる回らないため）}
       - {name: turn_random_sec, ref: autonomy_node.turn_random_sec, unit: s, desc: 旋回を 0〜この秒数だけランダムに長くして、向きを毎回少し変える}
+      - {name: explore_step_deg, ref: autonomy_node.explore_step_deg, unit: deg, desc: 曲がる先の候補の向き。まわり 360° をこの角度ごとに調べる}
+      - {name: explore_min_free, ref: autonomy_node.explore_min_free, unit: m, desc: 車の幅でこれ以上まっすぐ進める向きだけを曲がる先の候補にする}
+      - {name: explore_cell, ref: autonomy_node.explore_cell, unit: m, desc: 行った所を覚えるマスの大きさ（/odom）。入った回数が少ないマスへ向かう向きほど選ばれやすい}
+      - {name: explore_reach_deg, ref: autonomy_node.explore_reach_deg, unit: deg, desc: 曲がる先の向きまでこれより近くなったら回るのをやめる}
+      - {name: explore_turn_timeout, ref: autonomy_node.explore_turn_timeout, unit: s, desc: 曲がる先の向きまで回るのは最大この秒数（すべったときなど）}
       - {name: path_half_width, ref: autonomy_node.path_half_width, unit: m, desc: 前の近さ（減速・旋回）を見る帯の半分の幅。帯の外の物（ドアの柱など）では減速・旋回しない}
       - {name: center_range, ref: autonomy_node.center_range, unit: m, desc: 左右の両方にこれより近い物があると、横へずれてまん中を通る}
       - {name: center_speed, ref: autonomy_node.center_speed, unit: m/s, desc: まん中へ寄る横の速さの上限}
@@ -634,7 +639,7 @@ autonomy:
   behaviors:
     - {id: forward, label: 前進, condition: 前方 > slow_distance, output: linear.x = cruise_speed}
     - {id: slow, label: 減速, condition: stop_distance < 前方 ≤ slow_distance, output: linear.x = slow_speed、近い側から離れる方向へ緩く旋回}
-    - {id: turn, label: 旋回, condition: 前方 ≤ stop_distance, output: 空いている側（両方空いていればランダム）へ angular.z = ±turn_speed。前方が clear_distance 以上空くまで（最短 min_turn_sec ＋ 0〜turn_random_sec）}
+    - {id: turn, label: 旋回, condition: 前方 ≤ stop_distance, output: 曲がる先の向き（360° のうち車の幅で explore_min_free 以上進める向きから、遠く・まだ行っていない所ほど選ばれやすいランダム）へ angular.z = ±turn_speed。その向きまで回る（最大 explore_turn_timeout）。/odom・候補がなければ空いている側（両方空いていればランダム）へ、前方が clear_distance 以上空くまで（最短 min_turn_sec ＋ 0〜turn_random_sec）}
     - {id: backoff, label: 後退, condition: 前・左・右 ≤ backoff_distance かつ 後方に測距があり > stop_distance, output: linear.x = −backoff_speed}
     - {id: cliff_back, label: 段差から後退, condition: 前の落下防止センサーが段差（block_forward）, output: /odom で cliff_backoff_m 下がるまで linear.x = −backoff_speed（後ろも段差なら次へ）}
     - {id: cliff_turn, label: 段差から旋回, condition: cliff_back のあと前が床, output: 空いている側へ angular.z = ±turn_speed を /odom で cliff_turn_deg 回るまで → ふつうの走行へ}
