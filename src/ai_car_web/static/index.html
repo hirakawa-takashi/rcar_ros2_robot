@@ -670,6 +670,7 @@
       <tr><td class="k">自己位置 x / y [m] / 向き [°]</td><td class="v" id="sl_pose">-</td></tr>
       <tr><td class="k">地図の更新</td><td class="v" id="sl_age">-</td></tr>
       <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <button id="sl_clear" disabled>地図をクリア</button> <span id="sl_saved"></span></td></tr>
+      <tr><td class="k">段差の印</td><td class="v"><label><input type="checkbox" id="cm_edit"> 地図のクリックで置く（赤い点をクリックで消す）</label> <span id="cm_msg"></span></td></tr>
       <tr><td class="k">行き先 x / y [m]</td><td class="v" id="nv_goal">-</td></tr>
       <tr><td class="k">道 / 残り [m]</td><td class="v" id="nv_state">-</td></tr>
       <tr><td class="k">行き先へ</td><td class="v"><button id="nv_go" disabled>ここへ行く</button> <button id="nv_cancel" disabled>やめる</button> <span id="nv_msg"></span></td></tr>
@@ -1926,6 +1927,14 @@ document.getElementById('slam_map').addEventListener('click', (ev) => {
   const {m, s, ox, oy} = slamView;
   const x = m.origin_x + (u - ox) / s * m.resolution;
   const y = m.origin_y + (m.height - (v - oy) / s) * m.resolution;
+  if (document.getElementById('cm_edit').checked) {
+    const marks = (latestTelemetry.autonomy && latestTelemetry.autonomy.cliff_marks) || [];
+    const near = marks.some(([mx, my]) => Math.hypot(mx - x, my - y) < 0.3);
+    apiPost('/api/cliff_marks', {action: near ? 'remove' : 'add', x, y}).then(r => r && r.json()).then(j => {
+      document.getElementById('cm_msg').textContent = j && j.ok === false ? (j.error || '') : (near ? '消しました' : '置きました');
+    }).catch(() => {});
+    return;
+  }
   navPick = {x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100};
   navPost({action: 'plan', ...navPick, yaw_deg: navYaw(navPick)});
   drawSlam();

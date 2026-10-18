@@ -185,6 +185,8 @@ class AutonomyNode(Node):
         self.declare_parameter('slam_pose_topic', '/pose')
         self.declare_parameter('cliff_file', '')
         self.declare_parameter('cliff_clear_topic', '/cliff_marks_clear')
+        # ダッシュボードの地図で手で置く・消す段差の印（JSON {action: add / remove, x, y}、map）
+        self.declare_parameter('cliff_edit_topic', '/cliff_marks_edit')
         # 段差（/cliff_status）を見たら、/odom で下がって回り、走行を続ける
         self.declare_parameter('cliff_topic', '/cliff_status')
         self.declare_parameter('odom_topic', '/odom')
@@ -307,6 +309,8 @@ class AutonomyNode(Node):
                                      self._slam_pose_cb, 10)
         if g('cliff_clear_topic').value:
             self.create_subscription(String, g('cliff_clear_topic').value, self._cliff_clear_cb, 10)
+        if g('cliff_edit_topic').value:
+            self.create_subscription(String, g('cliff_edit_topic').value, self._cliff_edit_cb, 10)
         self.create_subscription(
             String, g('drive_mode_topic').value, self._mode_cb,
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -425,6 +429,23 @@ class AutonomyNode(Node):
         self._cliff_marks = []
         self._save_marks()
         self.get_logger().info('地図を消したので、段差の印も消した')
+
+    def _cliff_edit_cb(self, msg: String):
+        try:
+            req = json.loads(msg.data)
+            action, x, y = req['action'], float(req['x']), float(req['y'])
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            return
+        if action == 'add':
+            if any(math.hypot(x - mx, y - my) < 0.15 for mx, my in self._cliff_marks):
+                return
+            self._cliff_marks = (self._cliff_marks + [(x, y)])[-50:]
+        elif action == 'remove':
+            self._cliff_marks = [(mx, my) for mx, my in self._cliff_marks if math.hypot(x - mx, y - my) >= 0.3]
+        else:
+            return
+        self._save_marks()
+        self.get_logger().info(f'段差の印を手で{"置いた" if action == "add" else "消した"}（地図 {x:.2f}, {y:.2f}）')
 
     def _load_marks(self):
         """今の slam_toolbox が動きはじめてから保存した段差の印だけ読む（地図は slam_toolbox の起動ごとに作り直すため）。"""

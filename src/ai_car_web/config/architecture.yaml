@@ -458,6 +458,7 @@ nodes:
       - {name: tilt_hold_sec, ref: autonomy_node.tilt_hold_sec, unit: s, desc: かたむきがこの秒数つづいたら止まる（段差を越えるときの一瞬のゆれでは止まらない）}
       - {name: cliff_avoid_m, ref: autonomy_node.cliff_avoid_m, unit: m, desc: 前の段差センサーが反応した所（車の 0.2 m 前）を SLAM の地図の上で覚え（地図の位置が分からなければ /odom）、その所のこの幅 m 以内を通る向きは曲がる先・横へずれる向きに選ばない。まっすぐ前の車の幅の帯にあれば前の障害物と同じにみる}
       - {name: cliff_file, ref: autonomy_node.cliff_file, desc: 段差の印（map の x, y）の保存先。今の slam_toolbox が動きはじめてから保存したものだけ読む（地図は slam_toolbox の起動ごとに作り直すため）。ダッシュボードの地図クリアで消える（cliff_clear_topic）。ダッシュボードの地図に赤い点で出る}
+      - {name: cliff_edit_topic, ref: autonomy_node.cliff_edit_topic, desc: ダッシュボードの地図で「段差の印」にチェックを入れてクリックすると、そこに印を置く（赤い点をクリックで消す）。POST /api/cliff_marks → この topic}
       - {name: scan_max_age, ref: autonomy_node.scan_max_age, unit: s, desc: LiDAR がこれより古いと停止}
       - {name: nav_cmd_timeout, ref: autonomy_node.nav_cmd_timeout, unit: s, desc: Nav2 の速度（/cmd_vel_nav）がこれより古ければゼロ}
       - {name: nav_auto_wait, ref: autonomy_node.nav_auto_wait, unit: s, desc: 「ここへ行く」から自動に入らないままこの秒数で行き先をやめる}
