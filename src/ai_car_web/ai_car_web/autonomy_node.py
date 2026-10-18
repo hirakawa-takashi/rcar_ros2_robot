@@ -39,6 +39,7 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
 
 import json
 import math
+import random
 import threading
 import time
 
@@ -116,6 +117,10 @@ class AutonomyNode(Node):
         self.declare_parameter('backoff_distance', 0.25)
         # 旋回の最短継続時間（振動防止）
         self.declare_parameter('min_turn_sec', 0.6)
+        # 左右の両方がこれより空いていれば、曲がる向きをランダムに選ぶ [m]（同じ所をくるくる回らないため）
+        self.declare_parameter('random_side_distance', 0.4)
+        # 旋回を 0〜この秒数だけランダムに長くする（向きを毎回少し変える）
+        self.declare_parameter('turn_random_sec', 0.8)
         # 前の近さを見る帯の半分の幅 [m]（車の幅 0.28 m の半分 + 6 cm）
         self.declare_parameter('path_half_width', 0.20)
         # 左右の両方にこれより近い物があれば、まん中へ横にずれる [m]
@@ -165,6 +170,9 @@ class AutonomyNode(Node):
         self.clear_d = float(g('clear_distance').value)
         self.backoff_d = float(g('backoff_distance').value)
         self.min_turn = float(g('min_turn_sec').value)
+        self.random_side = float(g('random_side_distance').value)
+        self.turn_random = float(g('turn_random_sec').value)
+        self._turn_extra = 0.0
         self.path_half = float(g('path_half_width').value)
         self.center_range = float(g('center_range').value)
         self.center_gain = float(g('center_gain').value)
@@ -534,7 +542,7 @@ class AutonomyNode(Node):
         back_v = back if back is not None else big
 
         in_turn = self._behavior == 'turn'
-        turning_long_enough = now - self._behavior_since >= self.min_turn
+        turning_long_enough = now - self._behavior_since >= self.min_turn + self._turn_extra
 
         if (front_v <= self.backoff_d and left_v <= self.backoff_d
                 and right_v <= self.backoff_d and back is not None
@@ -549,13 +557,9 @@ class AutonomyNode(Node):
 
         if path_v <= self.stop_d:
             # 空いている側へ旋回（左が広ければ左旋回 = +z）。減速中に曲がりはじめた向きがあればそのまま
-            fl = s.get('front_left')
-            fr = s.get('front_right')
-            left_score = min(left_v, fl if fl is not None else big)
-            right_score = min(right_v, fr if fr is not None else big)
-            self._turn_dir = (self._pre_dir if self._pre_dir is not None
-                              else 1.0 if left_score >= right_score else -1.0)
+            self._turn_dir = self._pre_dir if self._pre_dir is not None else self._open_side(s)
             self._pre_dir = None
+            self._turn_extra = random.uniform(0.0, self.turn_random)
             self._set_behavior('turn')
             cmd.angular.z = self._turn_dir * self.turn
             return cmd
@@ -576,12 +580,13 @@ class AutonomyNode(Node):
             cmd.linear.y = self._center_vy(s)
         return cmd
 
-    @staticmethod
-    def _open_side(s) -> float:
-        """左右の空いているほう（左 +1 / 右 -1）。"""
+    def _open_side(self, s) -> float:
+        """曲がる向き（左 +1 / 右 -1）。両方とも random_side_distance より空いている・左右の差が 0.1 m 未満ならランダム、ちがえば空いているほう。"""
         big = float('inf')
         left = min(v for v in (s.get('left'), s.get('front_left'), big) if v is not None)
         right = min(v for v in (s.get('right'), s.get('front_right'), big) if v is not None)
+        if (left >= self.random_side and right >= self.random_side) or abs(left - right) < 0.1:
+            return random.choice((1.0, -1.0))
         return 1.0 if left >= right else -1.0
 
     def _watch_progress(self, now, cmd: Twist):
