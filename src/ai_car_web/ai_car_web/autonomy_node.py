@@ -5,7 +5,10 @@
   前進 → 接近したら減速 → 停止距離内なら空いている側へ旋回 → 前進
 を繰り返す（Level 1）。前の近さは、車の幅（path_half_width）の帯の中の点だけで決める
 （ドアの柱のように帯の外の物では減速・旋回しない）。左右の両方に物が近いとき（ドア・廊下）は、
-向きを変えずに横へずれて（linear.y）まん中を通る。
+向きを変えずに横へずれて（linear.y）まん中を通る。減速に入ったら空いている側を 1 回だけ決め、
+近づくほど強くその側へ曲がる（止まってから回る前に、向きを変えはじめる）。
+動く指令を出しているのに stuck_sec 秒、LiDAR の距離も向き（/odom の yaw）も変わらなければ
+「動けない」とみて、下がる → 横にずれる → 反対へ回る、で抜け出す（unstick_max 回まで）。
 /nav_goal（JSON: {"action": "plan" | "go" | "cancel", "x", "y", "yaw_deg"}、map 座標）で行き先を受けると、
 plan は Nav2 の compute_path_to_pose で道だけを考え（車は動かない）、go は navigate_to_pose で行き先へ向かう（Level 2）。
 go のあいだは Nav2 の速度指令（/cmd_vel_nav）を中継し、着いたら・行けなかったら・やめたら止まって待つ。
@@ -25,6 +28,8 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
   cliff_back  前の落下防止センサーが段差 → /odom で cliff_backoff_m 下がる
   cliff_turn  段差から下がったあと、空いている側へ cliff_turn_deg 回って走行を続ける
   cliff_stuck 前後とも段差・/odom なしなどで動けない（ゼロ速度）
+  stuck_back / stuck_side / stuck_turn  動けないので、下がる / 横にずれる / 反対へ回る
+  stuck     抜け出しを unstick_max 回しても動けない（ゼロ速度。AUTO に入り直すまで）
   blocked   LiDAR 未受信などで停止
   nav       Nav2 で地図の行き先へ向かう（/cmd_vel_nav を中継）
   nav_done  行き先に着いた（ゼロ速度。AUTO を抜けるか次の行き先まで）
@@ -54,6 +59,8 @@ LABELS = {
     'backoff': '後退', 'blocked': '停止（センサー待ち）',
     'cliff_back': '段差から後退', 'cliff_turn': '段差から旋回',
     'cliff_stuck': '停止（段差で動けない）',
+    'stuck_back': '抜け出し（後退）', 'stuck_side': '抜け出し（横）', 'stuck_turn': '抜け出し（旋回）',
+    'stuck': '停止（動けない）',
     'nav': '行き先へ', 'nav_done': '行き先に着いた', 'nav_failed': '停止（行き先へ行けない）',
     'nav_stop': '停止（行き先をやめた）',
 }
@@ -116,6 +123,19 @@ class AutonomyNode(Node):
         self.declare_parameter('center_gain', 0.5)
         self.declare_parameter('center_speed', 0.04)
         self.declare_parameter('center_deadband', 0.03)
+        # 減速の帯で、近づくほど空いている側へ曲がる強さ（turn_speed に対する割合。止まる距離で最大）
+        self.declare_parameter('pre_turn_gain', 0.5)
+        # 動く指令なのに stuck_sec 秒、距離が stuck_move_m・向きが stuck_turn_deg も変わらなければ「動けない」
+        self.declare_parameter('stuck_sec', 3.0)
+        self.declare_parameter('stuck_move_m', 0.04)
+        self.declare_parameter('stuck_turn_deg', 10.0)
+        self.declare_parameter('unstick_back_sec', 1.5)
+        self.declare_parameter('unstick_side_sec', 1.5)
+        self.declare_parameter('unstick_turn_deg', 60.0)
+        self.declare_parameter('unstick_turn_sec', 4.0)
+        # この回数抜け出しても（unstick_window 秒のうちに）また動けなければ止まる
+        self.declare_parameter('unstick_max', 3)
+        self.declare_parameter('unstick_window', 30.0)
         # 段差（/cliff_status）を見たら、/odom で下がって回り、走行を続ける
         self.declare_parameter('cliff_topic', '/cliff_status')
         self.declare_parameter('odom_topic', '/odom')
@@ -150,6 +170,16 @@ class AutonomyNode(Node):
         self.center_gain = float(g('center_gain').value)
         self.center_speed = float(g('center_speed').value)
         self.center_deadband = float(g('center_deadband').value)
+        self.pre_turn_gain = float(g('pre_turn_gain').value)
+        self.stuck_sec = float(g('stuck_sec').value)
+        self.stuck_move = float(g('stuck_move_m').value)
+        self.stuck_turn = math.radians(float(g('stuck_turn_deg').value))
+        self.unstick_back_sec = float(g('unstick_back_sec').value)
+        self.unstick_side_sec = float(g('unstick_side_sec').value)
+        self.unstick_turn = math.radians(float(g('unstick_turn_deg').value))
+        self.unstick_turn_sec = float(g('unstick_turn_sec').value)
+        self.unstick_max = int(g('unstick_max').value)
+        self.unstick_window = float(g('unstick_window').value)
         self.cliff_timeout = float(g('cliff_timeout').value)
         self.odom_timeout = float(g('odom_timeout').value)
         self.cliff_backoff_m = float(g('cliff_backoff_m').value)
@@ -168,12 +198,16 @@ class AutonomyNode(Node):
         self._behavior = 'standby'
         self._behavior_since = time.monotonic()
         self._turn_dir = 1.0
+        self._pre_dir = None
         self._last_cmd = Twist()
         self._cliff = None
         self._cliff_stamp = 0.0
         self._pose = None      # (x, y, yaw)
         self._pose_stamp = 0.0
         self._escape = None    # 段差から離れる途中の状態
+        self._progress = None  # 動けているかを見るための、少し前の距離と向き
+        self._unstick = None   # 動けないときの抜け出しの途中の状態
+        self._unstick_times = []
         self._prev_mode = None
         self._nav = self._nav_state('idle')
         self._nav_seq = 0      # 古い行き先の返事を捨てるための番号
@@ -462,6 +496,8 @@ class AutonomyNode(Node):
         nav_cmd = self._nav_step(now, mode)
         if mode != 'auto':
             self._escape = None
+            self._unstick = None
+            self._unstick_times = []
             self._set_behavior('standby')
             return cmd
         if s is None or scan_age is None or scan_age > self.scan_max_age:
@@ -470,6 +506,12 @@ class AutonomyNode(Node):
 
         cliff_front = bool(cliff and cliff.get('block_forward'))
         cliff_back = bool(cliff and cliff.get('block_backward'))
+        if self._behavior == 'stuck':
+            return cmd
+        if self._unstick is not None:
+            un_cmd = self._unstick_step(now, s, pose, cliff_back)
+            if un_cmd is not None:
+                return un_cmd
         if cliff_front and (self._escape is None or self._escape['phase'] == 'turn'):
             self._escape = {'phase': 'back', 'since': now, 'start': pose}
             self.get_logger().info('前に段差: 下がって回る')
@@ -506,23 +548,116 @@ class AutonomyNode(Node):
             return cmd
 
         if path_v <= self.stop_d:
-            # 空いている側へ旋回（左が広ければ左旋回 = +z）
+            # 空いている側へ旋回（左が広ければ左旋回 = +z）。減速中に曲がりはじめた向きがあればそのまま
             fl = s.get('front_left')
             fr = s.get('front_right')
             left_score = min(left_v, fl if fl is not None else big)
             right_score = min(right_v, fr if fr is not None else big)
-            self._turn_dir = 1.0 if left_score >= right_score else -1.0
+            self._turn_dir = (self._pre_dir if self._pre_dir is not None
+                              else 1.0 if left_score >= right_score else -1.0)
+            self._pre_dir = None
             self._set_behavior('turn')
             cmd.angular.z = self._turn_dir * self.turn
             return cmd
 
         if path_v <= self.slow_d:
+            if self._behavior != 'slow' or self._pre_dir is None:
+                self._pre_dir = self._open_side(s)
             self._set_behavior('slow')
             cmd.linear.x = self.slow
+            # 止まる距離に近づくほど強く、空いている側へ曲がる（向きは減速に入ったときに 1 回だけ決める）
+            near = (self.slow_d - path_v) / max(self.slow_d - self.stop_d, 1e-3)
+            cmd.angular.z = self._pre_dir * self.pre_turn_gain * self.turn * max(0.0, min(1.0, near))
         else:
+            self._pre_dir = None
             self._set_behavior('forward')
             cmd.linear.x = self.cruise
-        cmd.linear.y = self._center_vy(s)
+        if cmd.angular.z == 0.0:
+            cmd.linear.y = self._center_vy(s)
+        return cmd
+
+    @staticmethod
+    def _open_side(s) -> float:
+        """左右の空いているほう（左 +1 / 右 -1）。"""
+        big = float('inf')
+        left = min(v for v in (s.get('left'), s.get('front_left'), big) if v is not None)
+        right = min(v for v in (s.get('right'), s.get('front_right'), big) if v is not None)
+        return 1.0 if left >= right else -1.0
+
+    def _watch_progress(self, now, cmd: Twist):
+        """動く指令なのに距離も向きも変わらないあいだが stuck_sec 秒つづいたら、抜け出しを始める。"""
+        moving = (abs(cmd.linear.x) > 0.01 or abs(cmd.linear.y) > 0.01 or abs(cmd.angular.z) > 0.05)
+        with self._lock:
+            s = self._sectors
+            pose = self._pose if now - self._pose_stamp <= self.odom_timeout else None
+        if (not moving or s is None or self._unstick is not None or self._behavior.startswith('nav')
+                or self._behavior == 'stuck'):
+            self._progress = None
+            return
+        keys = ('front', 'back', 'left', 'right', 'path')
+        snap = {k: s.get(k) for k in keys}
+        yaw = pose[2] if pose else None
+        ref = self._progress
+        if ref is None:
+            self._progress = {'since': now, 'snap': snap, 'yaw': yaw}
+            return
+        if now - ref['since'] < self.stuck_sec:
+            return
+        moved = max([abs(snap[k] - ref['snap'][k]) for k in keys
+                     if snap[k] is not None and ref['snap'][k] is not None] or [float('inf')])
+        turned = abs(_wrap(yaw - ref['yaw'])) if yaw is not None and ref['yaw'] is not None else 0.0
+        self._progress = {'since': now, 'snap': snap, 'yaw': yaw}
+        if moved >= self.stuck_move or turned >= self.stuck_turn:
+            return
+        self._unstick_times = [t for t in self._unstick_times if now - t <= self.unstick_window]
+        if len(self._unstick_times) >= self.unstick_max:
+            self._escape = None
+            self._set_behavior('stuck')
+            self.get_logger().warn(f'動けない: 抜け出しを {self.unstick_max} 回しても動けないので止まる')
+            return
+        self._unstick_times.append(now)
+        self._escape = None
+        back_dir = -1.0 if cmd.linear.x <= 0.0 and abs(cmd.linear.x) > 0.01 else 1.0
+        self._unstick = {'phase': 'back', 'since': now, 'back_dir': back_dir,
+                         'turn_dir': -self._turn_dir if abs(cmd.angular.z) > 0.05 else self._open_side(s)}
+        self.get_logger().info(
+            f'動けない（{self.stuck_sec:.0f} 秒で {moved:.2f} m・{math.degrees(turned):.0f}°）: '
+            f'抜け出し {len(self._unstick_times)} 回目')
+
+    def _unstick_step(self, now, s, pose, cliff_back):
+        """下がる → 横にずれる → 反対へ回る。終わったら None（ふつうの走行にもどる）。"""
+        un = self._unstick
+        cmd = Twist()
+        big = float('inf')
+        if un['phase'] == 'back':
+            # 前に進もうとして動けなかったら下がる。下がろうとして動けなかったら前へ
+            go = -un['back_dir']
+            room = (s.get('back') if go < 0 else s.get('path'))
+            blocked = (go < 0 and cliff_back) or (room is not None and room <= self.backoff_d)
+            if not blocked and now - un['since'] < self.unstick_back_sec:
+                self._set_behavior('stuck_back')
+                cmd.linear.x = go * self.backoff_speed
+                return cmd
+            un.update(phase='side', since=now)
+        if un['phase'] == 'side':
+            left = s.get('side_left') if s.get('side_left') is not None else big
+            right = s.get('side_right') if s.get('side_right') is not None else big
+            side = 1.0 if left >= right else -1.0
+            if max(left, right) > 0.25 and now - un['since'] < self.unstick_side_sec:
+                self._set_behavior('stuck_side')
+                cmd.linear.y = side * self.backoff_speed
+                return cmd
+            un.update(phase='turn', since=now, last_yaw=pose[2] if pose else None, turned=0.0)
+        if pose is not None and un.get('last_yaw') is not None:
+            un['turned'] += abs(_wrap(pose[2] - un['last_yaw']))
+            un['last_yaw'] = pose[2]
+        if un['turned'] >= self.unstick_turn or now - un['since'] >= self.unstick_turn_sec:
+            self._unstick = None
+            self._progress = None
+            self._turn_dir = un['turn_dir']
+            return None
+        self._set_behavior('stuck_turn')
+        cmd.angular.z = un['turn_dir'] * self.turn
         return cmd
 
     def _center_vy(self, s) -> float:
@@ -577,6 +712,7 @@ class AutonomyNode(Node):
 
     def _timer_cb(self):
         cmd = self._decide()
+        self._watch_progress(time.monotonic(), cmd)
         with self._lock:
             self._last_cmd = cmd
         self.cmd_pub.publish(cmd)
@@ -594,6 +730,8 @@ class AutonomyNode(Node):
                 'behavior_label': LABELS.get(self._behavior, self._behavior),
                 'behavior_s': round(now - self._behavior_since, 1),
                 'turn_dir': 'left' if self._turn_dir > 0 else 'right',
+                'unstick': ({'phase': self._unstick['phase'], 'count': len(self._unstick_times)}
+                            if self._unstick else None),
                 'cliff_turned_deg': (round(math.degrees(self._escape.get('turned', 0.0)), 1)
                                      if self._escape else None),
                 'sectors': {k: (round(v, 3) if v is not None else None)

@@ -156,6 +156,19 @@ autonomy_node:
     center_gain: 0.5
     center_speed: 0.04
     center_deadband: 0.03
+    # 減速の帯（0.8 m → 0.35 m）で、近づくほど空いている側へ曲がる（止まる直前で turn_speed の 0.5 倍）
+    pre_turn_gain: 0.5
+    # 動く指令なのに 3 秒、LiDAR の距離が 4 cm も・向きが 10° も変わらなければ「動けない」
+    # → 1.5 秒下がる → 1.5 秒横にずれる → 反対へ 60° 回る。30 秒に 3 回抜け出してもだめなら止まる
+    stuck_sec: 3.0
+    stuck_move_m: 0.04
+    stuck_turn_deg: 10.0
+    unstick_back_sec: 1.5
+    unstick_side_sec: 1.5
+    unstick_turn_deg: 60.0
+    unstick_turn_sec: 4.0
+    unstick_max: 3
+    unstick_window: 30.0
     # 前の落下防止センサーが段差 → /odom で 0.10 m 下がり、空いている側へ 120° 回って走行を続ける
     cliff_topic: "/cliff_status"
     odom_topic: "/odom"

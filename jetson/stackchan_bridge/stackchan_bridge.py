@@ -680,6 +680,8 @@ def car_talk_event(a):
         'cliff_back': '段差発見！下がります。',
         'cliff_turn': f'段差からはなれます。{side}に回ります。',
         'cliff_stuck': '前も後ろも段差です。止まります。',
+        'stuck_back': '動けません。抜け出します。',
+        'stuck': '抜け出せません。止まります。',
         'blocked': 'ライダーのデータが来ません。止まります。',
     }.get(a.get('behavior'))
 
