@@ -3,7 +3,9 @@
 
 行き先がないときは、地図や自己位置を使わず、/scan と /obstacle_status だけで
   前進 → 接近したら減速 → 停止距離内なら空いている側へ旋回 → 前進
-を繰り返す（Level 1）。
+を繰り返す（Level 1）。前の近さは、車の幅（path_half_width）の帯の中の点だけで決める
+（ドアの柱のように帯の外の物では減速・旋回しない）。左右の両方に物が近いとき（ドア・廊下）は、
+向きを変えずに横へずれて（linear.y）まん中を通る。
 /nav_goal（JSON: {"action": "plan" | "go" | "cancel", "x", "y", "yaw_deg"}、map 座標）で行き先を受けると、
 plan は Nav2 の compute_path_to_pose で道だけを考え（車は動かない）、go は navigate_to_pose で行き先へ向かう（Level 2）。
 go のあいだは Nav2 の速度指令（/cmd_vel_nav）を中継し、着いたら・行けなかったら・やめたら止まって待つ。
@@ -17,7 +19,7 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
 行動（/autonomy_status の behavior）:
   standby   AUTO 待機（ゼロ速度）
   forward   前進
-  slow      減速前進
+  slow      減速前進（forward / slow は、左右の両方が近ければ横にずれてまん中へ）
   turn      その場旋回で空いている方向を探す
   backoff   前後左右とも近いときに少し後退
   cliff_back  前の落下防止センサーが段差 → /odom で cliff_backoff_m 下がる
@@ -107,6 +109,13 @@ class AutonomyNode(Node):
         self.declare_parameter('backoff_distance', 0.25)
         # 旋回の最短継続時間（振動防止）
         self.declare_parameter('min_turn_sec', 0.6)
+        # 前の近さを見る帯の半分の幅 [m]（車の幅 0.28 m の半分 + 6 cm）
+        self.declare_parameter('path_half_width', 0.20)
+        # 左右の両方にこれより近い物があれば、まん中へ横にずれる [m]
+        self.declare_parameter('center_range', 0.5)
+        self.declare_parameter('center_gain', 0.5)
+        self.declare_parameter('center_speed', 0.04)
+        self.declare_parameter('center_deadband', 0.03)
         # 段差（/cliff_status）を見たら、/odom で下がって回り、走行を続ける
         self.declare_parameter('cliff_topic', '/cliff_status')
         self.declare_parameter('odom_topic', '/odom')
@@ -136,6 +145,11 @@ class AutonomyNode(Node):
         self.clear_d = float(g('clear_distance').value)
         self.backoff_d = float(g('backoff_distance').value)
         self.min_turn = float(g('min_turn_sec').value)
+        self.path_half = float(g('path_half_width').value)
+        self.center_range = float(g('center_range').value)
+        self.center_gain = float(g('center_gain').value)
+        self.center_speed = float(g('center_speed').value)
+        self.center_deadband = float(g('center_deadband').value)
         self.cliff_timeout = float(g('cliff_timeout').value)
         self.odom_timeout = float(g('odom_timeout').value)
         self.cliff_backoff_m = float(g('cliff_backoff_m').value)
@@ -196,11 +210,18 @@ class AutonomyNode(Node):
     # --- 入力 ---
     def _scan_cb(self, msg: LaserScan):
         sectors = {'front': [], 'left': [], 'right': [], 'back': []}
+        path = []
+        side_l, side_r = [], []
         for i, r in enumerate(msg.ranges):
             if not math.isfinite(r) or r <= msg.range_min or r > msg.range_max:
                 continue
             a = msg.angle_min + i * msg.angle_increment + self.offset
             a = math.atan2(math.sin(a), math.cos(a))
+            x, y = r * math.cos(a), r * math.sin(a)
+            if x > 0.0 and abs(y) <= self.path_half:
+                path.append(x)
+            elif -0.2 <= x <= 0.4 and abs(y) > 0.1:
+                (side_l if y > 0.0 else side_r).append(abs(y))
             if abs(a) <= self.front_half:
                 sectors['front'].append((a, r))
             elif abs(a) >= math.pi - self.front_half:
@@ -217,6 +238,10 @@ class AutonomyNode(Node):
         fr = [r for a, r in sectors['front'] if a <= 0]
         summary['front_left'] = min(fl) if fl else None
         summary['front_right'] = min(fr) if fr else None
+        # 車の幅の帯の中で、いちばん近い物までの前の距離と、車の横（前 0.4 m〜後 0.2 m）の物までの左右の距離
+        summary['path'] = min(path) if path else None
+        summary['side_left'] = min(side_l) if side_l else None
+        summary['side_right'] = min(side_r) if side_r else None
         with self._lock:
             self._sectors = summary
             self._scan_stamp = time.monotonic()
@@ -456,6 +481,7 @@ class AutonomyNode(Node):
             return nav_cmd
 
         front = s.get('front')
+        path_v = s.get('path') if s.get('path') is not None else float('inf')
         left = s.get('left')
         right = s.get('right')
         back = s.get('back')
@@ -475,11 +501,11 @@ class AutonomyNode(Node):
             cmd.linear.x = -self.backoff_speed
             return cmd
 
-        if in_turn and (front_v < self.clear_d or not turning_long_enough):
+        if in_turn and (path_v < self.clear_d or not turning_long_enough):
             cmd.angular.z = self._turn_dir * self.turn
             return cmd
 
-        if front_v <= self.stop_d:
+        if path_v <= self.stop_d:
             # 空いている側へ旋回（左が広ければ左旋回 = +z）
             fl = s.get('front_left')
             fr = s.get('front_right')
@@ -490,19 +516,25 @@ class AutonomyNode(Node):
             cmd.angular.z = self._turn_dir * self.turn
             return cmd
 
-        if front_v <= self.slow_d:
+        if path_v <= self.slow_d:
             self._set_behavior('slow')
             cmd.linear.x = self.slow
-            # 近い側から少し離れる方向へ緩く曲がる
-            fl = s.get('front_left')
-            fr = s.get('front_right')
-            if fl is not None and fr is not None and abs(fl - fr) > 0.1:
-                cmd.angular.z = (0.3 * self.turn) * (1.0 if fl > fr else -1.0)
-            return cmd
-
-        self._set_behavior('forward')
-        cmd.linear.x = self.cruise
+        else:
+            self._set_behavior('forward')
+            cmd.linear.x = self.cruise
+        cmd.linear.y = self._center_vy(s)
         return cmd
+
+    def _center_vy(self, s) -> float:
+        """左右の両方が近いとき、まん中へ寄る横の速さ（左 +）。向きは変えない（回るとお尻が振れるため）。"""
+        sl, sr = s.get('side_left'), s.get('side_right')
+        if sl is None or sr is None or sl > self.center_range or sr > self.center_range:
+            return 0.0
+        off = (sl - sr) / 2.0   # + なら左のほうが空いている
+        if abs(off) <= self.center_deadband:
+            return 0.0
+        vy = self.center_gain * off
+        return max(-self.center_speed, min(self.center_speed, vy))
 
     def _escape_step(self, now, s, pose, cliff_front, cliff_back):
         """段差から下がって回る。終わったら None（ふつうの走行にもどる）。"""

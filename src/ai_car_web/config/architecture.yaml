@@ -425,7 +425,7 @@ nodes:
   - id: autonomy_node
     label: autonomy_node
     file: ai_car_web/autonomy_node.py
-    role: 自律走行。行き先がないときは Level 1（/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退）。/nav_goal の plan は Nav2 の compute_path_to_pose で道だけ考え、go は navigate_to_pose で向かい、AUTO のあいだ /cmd_vel_nav を中継する（Level 2。着いた・行けない・やめたら止まって待つ。AUTO を抜けるとやめる）。/cmd_vel_auto に 10 Hz で常時 publish（AUTO 以外はゼロ）。前が段差なら /odom で cliff_backoff_m 下がって cliff_turn_deg 回る（行き先より先）
+    role: 自律走行。行き先がないときは Level 1（/scan を前 / 左 / 右 / 後セクターに分け、前進 → 減速 → 旋回 → 後退。前の近さは車の幅の帯の中だけで見て、ドア・廊下では横にずれてまん中を通る）。/nav_goal の plan は Nav2 の compute_path_to_pose で道だけ考え、go は navigate_to_pose で向かい、AUTO のあいだ /cmd_vel_nav を中継する（Level 2。着いた・行けない・やめたら止まって待つ。AUTO を抜けるとやめる）。/cmd_vel_auto に 10 Hz で常時 publish（AUTO 以外はゼロ）。前が段差なら /odom で cliff_backoff_m 下がって cliff_turn_deg 回る（行き先より先）
     publishes: [/cmd_vel_auto, /autonomy_status]
     subscribes: [/scan, /obstacle_status, /drive_mode, /cliff_status, /odom, /nav_goal, /cmd_vel_nav, /plan]
     params:
@@ -441,6 +441,9 @@ nodes:
       - {name: clear_distance, ref: autonomy_node.clear_distance, unit: m, desc: 前方がこの距離以上空くまで旋回を続ける}
       - {name: backoff_distance, ref: autonomy_node.backoff_distance, unit: m, desc: 前後左右すべてこの距離以内なら後退}
       - {name: min_turn_sec, ref: autonomy_node.min_turn_sec, unit: s, desc: 旋回の最短継続時間}
+      - {name: path_half_width, ref: autonomy_node.path_half_width, unit: m, desc: 前の近さ（減速・旋回）を見る帯の半分の幅。帯の外の物（ドアの柱など）では減速・旋回しない}
+      - {name: center_range, ref: autonomy_node.center_range, unit: m, desc: 左右の両方にこれより近い物があると、横へずれてまん中を通る}
+      - {name: center_speed, ref: autonomy_node.center_speed, unit: m/s, desc: まん中へ寄る横の速さの上限}
       - {name: scan_max_age, ref: autonomy_node.scan_max_age, unit: s, desc: LiDAR がこれより古いと停止}
       - {name: nav_cmd_timeout, ref: autonomy_node.nav_cmd_timeout, unit: s, desc: Nav2 の速度（/cmd_vel_nav）がこれより古ければゼロ}
       - {name: nav_auto_wait, ref: autonomy_node.nav_auto_wait, unit: s, desc: 「ここへ行く」から自動に入らないままこの秒数で行き先をやめる}

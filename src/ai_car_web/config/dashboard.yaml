@@ -149,6 +149,13 @@ autonomy_node:
     clear_distance: 0.9
     backoff_distance: 0.25
     min_turn_sec: 0.6
+    # 前の近さは車の幅の帯（半分 0.20 m = 車 0.14 + 6 cm）の中だけで見る（ドアの柱では減速・旋回しない）
+    path_half_width: 0.20
+    # 左右の両方が 0.5 m より近い（ドア・廊下）ときは、向きを変えずに横へずれてまん中を通る
+    center_range: 0.5
+    center_gain: 0.5
+    center_speed: 0.04
+    center_deadband: 0.03
     # 前の落下防止センサーが段差 → /odom で 0.10 m 下がり、空いている側へ 120° 回って走行を続ける
     cliff_topic: "/cliff_status"
     odom_topic: "/odom"
