@@ -43,6 +43,7 @@ import random
 import threading
 import time
 
+import numpy as np
 import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, Twist
@@ -302,17 +303,16 @@ class AutonomyNode(Node):
         summary['path'] = min(path) if path else None
         summary['side_left'] = min(side_l) if side_l else None
         summary['side_right'] = min(side_r) if side_r else None
-        free = []
         n = max(1, int(round(2 * math.pi / self.explore_step)))
-        for k in range(n):
-            th = -math.pi + k * 2 * math.pi / n
-            c, sn = math.cos(th), math.sin(th)
-            d = 4.0
-            for x, y in pts:
-                along = x * c + y * sn
-                if 0.0 < along < d and abs(y * c - x * sn) <= self.path_half:
-                    d = along
-            free.append((th, d))
+        ths = -math.pi + np.arange(n) * (2 * math.pi / n)
+        free_d = np.full(n, 4.0)
+        if pts:
+            xy = np.asarray(pts)
+            along = xy[:, :1] * np.cos(ths) + xy[:, 1:] * np.sin(ths)
+            perp = xy[:, 1:] * np.cos(ths) - xy[:, :1] * np.sin(ths)
+            hit = np.where((along > 0.0) & (np.abs(perp) <= self.path_half), along, 4.0)
+            free_d = np.minimum(hit.min(axis=0), 4.0)
+        free = list(zip(ths.tolist(), free_d.tolist()))
         with self._lock:
             self._sectors = summary
             self._free = free
@@ -641,14 +641,21 @@ class AutonomyNode(Node):
         for th, d in free:
             if d < self.explore_min_free or abs(th) < self.explore_step:
                 continue
-            visits = 0
+            reach = min(d, 3.0)
+            novelty = 1.0
             if pose is not None:
+                # その向きの 0.5 m 〜 reach 先のマスが、どれだけ「まだ行っていない」か（0〜1）
                 yaw = pose[2] + th
-                cell = (math.floor((pose[0] + math.cos(yaw)) / self.explore_cell),
-                        math.floor((pose[1] + math.sin(yaw)) / self.explore_cell))
-                visits = self._visits.get(cell, 0)
+                steps = max(1, int(reach / self.explore_cell))
+                novelty = 0.0
+                for k in range(1, steps + 1):
+                    r = k * reach / steps
+                    cell = (math.floor((pose[0] + r * math.cos(yaw)) / self.explore_cell),
+                            math.floor((pose[1] + r * math.sin(yaw)) / self.explore_cell))
+                    novelty += 1.0 / (1.0 + self._visits.get(cell, 0))
+                novelty /= steps
             cands.append(th)
-            weights.append(min(d, 3.0) / (1.0 + visits))
+            weights.append(reach * novelty * novelty)
         if not cands:
             return None
         return random.choices(cands, weights=weights)[0]
