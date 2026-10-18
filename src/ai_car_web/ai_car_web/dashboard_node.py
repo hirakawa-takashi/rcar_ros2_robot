@@ -70,6 +70,14 @@ class DriveModeRequest(BaseModel):
     mode: str
 
 
+class CliffMarkRequest(BaseModel):
+    """地図の上の段差の印（map 座標）。add は置く、remove はその 0.3 m 以内を消す。"""
+
+    action: str
+    x: float
+    y: float
+
+
 class NavRequest(BaseModel):
     """地図の行き先（map 座標）。plan は道だけ、go は自動にして向かう、cancel はやめる。"""
 
@@ -432,6 +440,10 @@ class DashboardNode(Node):
         cliff_clear_topic = self.get_parameter('cliff_clear_topic').value
         self.cliff_clear_pub = (self.create_publisher(String, cliff_clear_topic, 10)
                                 if cliff_clear_topic else None)
+        self.declare_parameter('cliff_edit_topic', '/cliff_marks_edit')
+        cliff_edit_topic = self.get_parameter('cliff_edit_topic').value
+        self.cliff_edit_pub = (self.create_publisher(String, cliff_edit_topic, 10)
+                               if cliff_edit_topic else None)
         autonomy_topic = self.get_parameter('autonomy_status_topic').value
         if autonomy_topic:
             self.create_subscription(String, autonomy_topic, self._autonomy_cb, 10)
@@ -809,6 +821,15 @@ class DashboardNode(Node):
         self._publish_mode_request(mode)
         self.get_logger().info(f'運転モード切替要求: {mode}')
         return {'ok': True, 'mode': mode}
+
+    def edit_cliff_mark(self, req: CliffMarkRequest):
+        """地図の上の段差の印を autonomy_node へ送る（置く・消す）。"""
+        if req.action not in ('add', 'remove'):
+            return {'ok': False, 'error': f'不明な指示: {req.action}'}
+        if self.cliff_edit_pub is None:
+            return {'ok': False, 'error': '段差の印の編集が無効です'}
+        self.cliff_edit_pub.publish(String(data=json.dumps({'action': req.action, 'x': req.x, 'y': req.y})))
+        return {'ok': True}
 
     def request_nav(self, req: NavRequest):
         """地図の行き先を autonomy_node へ送る。go のときは運転モードを自動にする。"""
@@ -1480,6 +1501,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/nav', dependencies=[Depends(require_token)])
     def nav(req: NavRequest):
         return node.request_nav(req)
+
+    @app.post('/api/cliff_marks', dependencies=[Depends(require_token)])
+    def cliff_marks(req: CliffMarkRequest):
+        return node.edit_cliff_mark(req)
 
     @app.get('/api/slam/map.png')
     def slam_map():

@@ -184,6 +184,7 @@ autonomy_node:
     slam_pose_topic: "/pose"
     cliff_file: "/home/super/AI-CAR_ws/maps/cliff_marks.json"
     cliff_clear_topic: "/cliff_marks_clear"
+    cliff_edit_topic: "/cliff_marks_edit"
     # 前の落下防止センサーが段差 → /odom で 0.10 m 下がり、空いている側へ 120° 回って走行を続ける
     cliff_topic: "/cliff_status"
     odom_topic: "/odom"
