@@ -648,7 +648,7 @@ autonomy:
     - {id: cliff_back, label: 段差から後退, condition: 前の落下防止センサーが段差（block_forward）, output: /odom で cliff_backoff_m 下がるまで linear.x = −backoff_speed（後ろも段差なら次へ）}
     - {id: cliff_turn, label: 段差から旋回, condition: cliff_back のあと前が床, output: 空いている側へ angular.z = ±turn_speed を /odom で cliff_turn_deg 回るまで → ふつうの走行へ}
     - {id: cliff_stuck, label: 停止（段差で動けない）, condition: 前後とも段差 / /odom なし / 下がっても前が段差のまま, output: ゼロ速度（前が床にもどれば続ける）}
-    - {id: tilted, label: 停止（かたむいた）, condition: /imu/data の roll / pitch が AUTO に入ったときより tilt_stop_deg 以上を tilt_hold_sec つづけた（落ちた・乗り上げた）, output: ゼロ速度（AUTO に入り直すまで）}
+    - {id: tilted, label: 停止（かたむいた）, condition: /imu/data の roll / pitch が AUTO に入ったときより tilt_stop_deg 以上を tilt_hold_sec つづけた（落ちた・乗り上げた）, output: ゼロ速度（AUTO に入り直すまで）。かたむいた所（車のまん中）を段差の印にする（横の段差はセンサーで見えないため）}
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown

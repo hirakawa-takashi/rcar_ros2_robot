@@ -31,7 +31,7 @@ AUTO 以外のモードでは状態を "standby" にしてゼロ速度を出し�
   stuck_back / stuck_side / stuck_turn  動けないので、下がる / 横にずれる / 反対へ回る
   stuck     抜け出しを unstick_max 回しても動けない（ゼロ速度。AUTO に入り直すまで）
   （段差の所は /odom と SLAM の地図の上で覚え、その所は前の障害物と同じにみる。曲がる先・横へずれる向きにも選ばない）
-  tilted    車が AUTO に入ったときより tilt_stop_deg 以上かたむいた（落ちた・乗り上げた。ゼロ速度。AUTO に入り直すまで）
+  tilted    車が AUTO に入ったときより tilt_stop_deg 以上かたむいた（落ちた・乗り上げた。ゼロ速度。AUTO に入り直すまで。その所を段差の印にする）
   blocked   LiDAR 未受信などで停止
   nav       Nav2 で地図の行き先へ向かう（/cmd_vel_nav を中継）
   nav_done  行き先に着いた（ゼロ速度。AUTO を抜けるか次の行き先まで）
@@ -449,9 +449,9 @@ class AutonomyNode(Node):
         except OSError as exc:
             self.get_logger().warn(f'段差の印を保存できない: {exc}')
 
-    def _add_cliff(self, pose):
-        """前の段差センサーが反応した所（車の 0.2 m 前）を覚える。地図の位置が分かれば map で。"""
-        ox, oy = pose[0] + 0.2 * math.cos(pose[2]), pose[1] + 0.2 * math.sin(pose[2])
+    def _add_cliff(self, pose, ahead=0.2):
+        """段差の所（車の ahead m 前）を覚える。地図の位置が分かれば map で。"""
+        ox, oy = pose[0] + ahead * math.cos(pose[2]), pose[1] + ahead * math.sin(pose[2])
         mo = self._map_odom
         if mo is None:
             self._cliff_pts = (self._cliff_pts + [(ox, oy)])[-50:]
@@ -709,7 +709,10 @@ class AutonomyNode(Node):
             self._escape = None
             self._unstick = None
             self._set_behavior('tilted')
-            self.get_logger().warn('かたむいた（落ちた・乗り上げた）ので止まる')
+            # 横の段差は見えないので、落ちた所（車のまん中）も段差の印にする
+            if pose is not None:
+                self._add_cliff(pose, ahead=0.0)
+            self.get_logger().warn('かたむいた（落ちた・乗り上げた）ので止まる。ここを段差の印にした')
             return cmd
         if self._unstick is not None:
             un_cmd = self._unstick_step(now, s, pose, cliff_back)
