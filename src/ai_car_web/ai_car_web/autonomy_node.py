@@ -121,6 +121,13 @@ class AutonomyNode(Node):
         self.declare_parameter('random_side_distance', 0.4)
         # 旋回を 0〜この秒数だけランダムに長くする（向きを毎回少し変える）
         self.declare_parameter('turn_random_sec', 0.8)
+        # 曲がる先の選び方: まわり 360° を explore_step_deg ごとに、車の幅で explore_min_free m 以上まっすぐ進める向きを候補にし、
+        # 「遠くまで空いている × まだ行っていない（/odom の explore_cell m マスに入った回数が少ない）」ほど選ばれやすいランダムで選ぶ
+        self.declare_parameter('explore_step_deg', 15.0)
+        self.declare_parameter('explore_min_free', 1.0)
+        self.declare_parameter('explore_cell', 0.5)
+        self.declare_parameter('explore_reach_deg', 10.0)
+        self.declare_parameter('explore_turn_timeout', 8.0)
         # 前の近さを見る帯の半分の幅 [m]（車の幅 0.28 m の半分 + 6 cm）
         self.declare_parameter('path_half_width', 0.20)
         # 左右の両方にこれより近い物があれば、まん中へ横にずれる [m]
@@ -173,6 +180,15 @@ class AutonomyNode(Node):
         self.random_side = float(g('random_side_distance').value)
         self.turn_random = float(g('turn_random_sec').value)
         self._turn_extra = 0.0
+        self.explore_step = math.radians(float(g('explore_step_deg').value))
+        self.explore_min_free = float(g('explore_min_free').value)
+        self.explore_cell = float(g('explore_cell').value)
+        self.explore_reach = math.radians(float(g('explore_reach_deg').value))
+        self.explore_turn_timeout = float(g('explore_turn_timeout').value)
+        self._free = []          # [(向き rad, 車の幅で進める距離 m)]
+        self._visits = {}        # /odom のマス → 入った回数
+        self._last_cell = None
+        self._target_yaw = None  # 曲がる先の向き（/odom の yaw）
         self.path_half = float(g('path_half_width').value)
         self.center_range = float(g('center_range').value)
         self.center_gain = float(g('center_gain').value)
@@ -254,12 +270,14 @@ class AutonomyNode(Node):
         sectors = {'front': [], 'left': [], 'right': [], 'back': []}
         path = []
         side_l, side_r = [], []
+        pts = []
         for i, r in enumerate(msg.ranges):
             if not math.isfinite(r) or r <= msg.range_min or r > msg.range_max:
                 continue
             a = msg.angle_min + i * msg.angle_increment + self.offset
             a = math.atan2(math.sin(a), math.cos(a))
             x, y = r * math.cos(a), r * math.sin(a)
+            pts.append((x, y))
             if x > 0.0 and abs(y) <= self.path_half:
                 path.append(x)
             elif -0.2 <= x <= 0.4 and abs(y) > 0.1:
@@ -284,8 +302,20 @@ class AutonomyNode(Node):
         summary['path'] = min(path) if path else None
         summary['side_left'] = min(side_l) if side_l else None
         summary['side_right'] = min(side_r) if side_r else None
+        free = []
+        n = max(1, int(round(2 * math.pi / self.explore_step)))
+        for k in range(n):
+            th = -math.pi + k * 2 * math.pi / n
+            c, sn = math.cos(th), math.sin(th)
+            d = 4.0
+            for x, y in pts:
+                along = x * c + y * sn
+                if 0.0 < along < d and abs(y * c - x * sn) <= self.path_half:
+                    d = along
+            free.append((th, d))
         with self._lock:
             self._sectors = summary
+            self._free = free
             self._scan_stamp = time.monotonic()
 
     def _obstacle_cb(self, msg: String):
@@ -551,13 +581,23 @@ class AutonomyNode(Node):
             cmd.linear.x = -self.backoff_speed
             return cmd
 
-        if in_turn and (path_v < self.clear_d or not turning_long_enough):
-            cmd.angular.z = self._turn_dir * self.turn
-            return cmd
+        self._count_visit(pose)
+        if in_turn:
+            left_rad = self._target_left(pose)
+            if left_rad is not None and now - self._behavior_since < self.explore_turn_timeout:
+                # 曲がる先の向きまで回る（そこまで回って、前がまだふさがっていれば回りつづける）
+                if left_rad > self.explore_reach or path_v <= self.stop_d:
+                    cmd.angular.z = self._turn_dir * self.turn
+                    return cmd
+                self._target_yaw = None
+            elif path_v < self.clear_d or not turning_long_enough:
+                cmd.angular.z = self._turn_dir * self.turn
+                return cmd
+            self._target_yaw = None
 
         if path_v <= self.stop_d:
             # 空いている側へ旋回（左が広ければ左旋回 = +z）。減速中に曲がりはじめた向きがあればそのまま
-            self._turn_dir = self._pre_dir if self._pre_dir is not None else self._open_side(s)
+            self._turn_dir = self._pre_dir if self._pre_dir is not None else self._pick_turn(s, pose)
             self._pre_dir = None
             self._turn_extra = random.uniform(0.0, self.turn_random)
             self._set_behavior('turn')
@@ -566,14 +606,18 @@ class AutonomyNode(Node):
 
         if path_v <= self.slow_d:
             if self._behavior != 'slow' or self._pre_dir is None:
-                self._pre_dir = self._open_side(s)
+                self._pre_dir = self._pick_turn(s, pose)
             self._set_behavior('slow')
             cmd.linear.x = self.slow
-            # 止まる距離に近づくほど強く、空いている側へ曲がる（向きは減速に入ったときに 1 回だけ決める）
-            near = (self.slow_d - path_v) / max(self.slow_d - self.stop_d, 1e-3)
-            cmd.angular.z = self._pre_dir * self.pre_turn_gain * self.turn * max(0.0, min(1.0, near))
+            # 止まる距離に近づくほど強く、曲がる先の側へ曲がる（向きは減速に入ったときに 1 回だけ決める）
+            self._turn_dir = self._pre_dir
+            left_rad = self._target_left(pose)
+            if left_rad is None or left_rad > self.explore_reach:
+                near = (self.slow_d - path_v) / max(self.slow_d - self.stop_d, 1e-3)
+                cmd.angular.z = self._pre_dir * self.pre_turn_gain * self.turn * max(0.0, min(1.0, near))
         else:
             self._pre_dir = None
+            self._target_yaw = None
             self._set_behavior('forward')
             cmd.linear.x = self.cruise
         if cmd.angular.z == 0.0:
@@ -588,6 +632,49 @@ class AutonomyNode(Node):
         if (left >= self.random_side and right >= self.random_side) or abs(left - right) < 0.1:
             return random.choice((1.0, -1.0))
         return 1.0 if left >= right else -1.0
+
+    def _choose_heading(self, pose):
+        """曲がる先の向き（今の前からの角度 rad、左 +）。候補がなければ None。"""
+        with self._lock:
+            free = list(self._free)
+        cands, weights = [], []
+        for th, d in free:
+            if d < self.explore_min_free or abs(th) < self.explore_step:
+                continue
+            visits = 0
+            if pose is not None:
+                yaw = pose[2] + th
+                cell = (math.floor((pose[0] + math.cos(yaw)) / self.explore_cell),
+                        math.floor((pose[1] + math.sin(yaw)) / self.explore_cell))
+                visits = self._visits.get(cell, 0)
+            cands.append(th)
+            weights.append(min(d, 3.0) / (1.0 + visits))
+        if not cands:
+            return None
+        return random.choices(cands, weights=weights)[0]
+
+    def _pick_turn(self, s, pose) -> float:
+        """曲がる向きを決める（左 +1 / 右 -1）。/odom があれば曲がる先の向き _target_yaw も決める。"""
+        th = self._choose_heading(pose)
+        if th is None:
+            self._target_yaw = None
+            return self._open_side(s)
+        self._target_yaw = _wrap(pose[2] + th) if pose is not None else None
+        return 1.0 if th > 0 else -1.0
+
+    def _target_left(self, pose):
+        """曲がる先まであと何 rad 回るか（_turn_dir の向きに +）。わからなければ None。"""
+        if self._target_yaw is None or pose is None:
+            return None
+        return _wrap(self._target_yaw - pose[2]) * self._turn_dir
+
+    def _count_visit(self, pose):
+        if pose is None:
+            return
+        cell = (math.floor(pose[0] / self.explore_cell), math.floor(pose[1] / self.explore_cell))
+        if cell != self._last_cell:
+            self._visits[cell] = self._visits.get(cell, 0) + 1
+            self._last_cell = cell
 
     def _watch_progress(self, now, cmd: Twist):
         """動く指令なのに距離も向きも変わらないあいだが stuck_sec 秒つづいたら、抜け出しを始める。"""
@@ -735,6 +822,9 @@ class AutonomyNode(Node):
                 'behavior_label': LABELS.get(self._behavior, self._behavior),
                 'behavior_s': round(now - self._behavior_since, 1),
                 'turn_dir': 'left' if self._turn_dir > 0 else 'right',
+                'explore_target_deg': (round(math.degrees(self._target_yaw), 1)
+                                       if self._target_yaw is not None else None),
+                'visited_cells': len(self._visits),
                 'unstick': ({'phase': self._unstick['phase'], 'count': len(self._unstick_times)}
                             if self._unstick else None),
                 'cliff_turned_deg': (round(math.degrees(self._escape.get('turned', 0.0)), 1)
