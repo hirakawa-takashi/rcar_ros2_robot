@@ -52,7 +52,7 @@ controller_server:
       max_lookahead_dist: 0.6
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 0.6
-      transform_tolerance: 0.2
+      transform_tolerance: 0.5  # 走行中はラズパイが重く map→odom が 0.2 s より遅れる（v1.11.1 で TF_ERROR 102 ×3）
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
       approach_velocity_scaling_dist: 0.4
@@ -164,7 +164,7 @@ behavior_server:
     local_frame: odom
     global_frame: map
     robot_base_frame: base_footprint
-    transform_tolerance: 0.2
+    transform_tolerance: 0.5  # 走行中はラズパイが重く map→odom が 0.2 s より遅れる（v1.11.1 で TF_ERROR 102 ×3）
     simulate_ahead_time: 2.0
     max_rotational_vel: 0.6
     min_rotational_vel: 0.3

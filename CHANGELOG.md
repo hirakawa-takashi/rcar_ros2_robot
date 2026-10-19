@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-10-19
+
+### Fixed
+- `nav2.yaml`: v1.11.1 の試走で、まだ行っていない所へ 3 回向かったが、3 回とも Nav2 が `TF_ERROR`（102）でやめた。`controller_server` が「Lookup would require extrapolation into the future」「Transform data too old when converting from map to odom」を出していた。走っているあいだはラズパイが重く、slam_toolbox の map → odom が 0.2 秒より遅れる。`transform_tolerance` を 0.2 → 0.5 秒にした（RPP の controller と、もう 1 か所）
+
 ## [1.11.1] - 2026-10-19
 
 ### Fixed
