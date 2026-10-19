@@ -1834,7 +1834,7 @@ function renderSlam(sl) {
   const sv = sl && sl.saved;
   document.getElementById('sl_saved').textContent = sv ? (sv.ok ? `保存: ${sv.name}` : sv.reason) : '';
   const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.alive ? latestTelemetry.autonomy.nav : null;
-  const g = nav && nav.goal;
+  const g = navLive(nav) && nav.goal;
   document.getElementById('nv_goal').textContent = g ? `${fmt(g.x)} / ${fmt(g.y)}` : (navPick ? `${fmt(navPick.x)} / ${fmt(navPick.y)}` : '-');
   document.getElementById('nv_state').textContent = nav
     ? `${nav.label}${nav.path_m != null ? ` / 道 ${fmt(nav.path_m, 1)}` : ''}${nav.remaining_m != null && nav.state === 'active' ? ` / 残り ${fmt(nav.remaining_m, 1)}` : ''}${nav.reason ? `（${nav.reason}）` : ''}`
@@ -1867,7 +1867,8 @@ function drawSlam() {
     oy + (m.height - (y - m.origin_y) / m.resolution) * s];
   slamView = {m, s, ox, oy};
   const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.alive ? latestTelemetry.autonomy.nav : null;
-  if (nav && nav.path && nav.path.length > 1) {
+  const live = navLive(nav);
+  if (live && nav.path && nav.path.length > 1) {
     ctx.strokeStyle = '#3ecf6a';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -1884,7 +1885,7 @@ function drawSlam() {
       ctx.fill();
     });
   }
-  const g = (nav && nav.goal) || navPick;
+  const g = (live && nav.goal) || navPick;
   if (g) {
     const [gx, gy] = toPx(g.x, g.y);
     ctx.strokeStyle = '#ff5a5a';
@@ -1909,6 +1910,10 @@ function drawSlam() {
   ctx.fill();
 }
 let navPick = null;
+// 道（緑の線）と行き先（×）は、さがしている・向かっているあいだだけ出す（着いた・やめた・行けなかったら消す）
+function navLive(nav) {
+  return !!nav && ['planning', 'planned', 'sending', 'active'].includes(nav.state);
+}
 let slamView = null;
 function navYaw(g) {
   const p = latestTelemetry.slam && latestTelemetry.slam.pose;
