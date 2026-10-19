@@ -157,6 +157,13 @@ class AutonomyNode(Node):
         self.declare_parameter('explore_cell', 0.5)
         self.declare_parameter('explore_reach_deg', 5.0)
         self.declare_parameter('explore_turn_timeout', 8.0)
+        # 細い通路の入口: まっすぐ explore_min_free 進めない向きでも、その向きで入口の手前（前の物の stop_distance 手前、
+        # explore_via_min_m 以上）まで進み、そこから ±explore_via_deg に車の幅で explore_min_free 以上進めれば候補にする。
+        # 選んだら、その向きまで回ったあと explore_via_sec 秒は向きを選びなおさずに、入口の手前までまっすぐ進む
+        self.declare_parameter('explore_via', True)
+        self.declare_parameter('explore_via_deg', 60.0)
+        self.declare_parameter('explore_via_min_m', 0.3)
+        self.declare_parameter('explore_via_sec', 10.0)
         # 減速から前進にもどるのは slow_distance + slow_hysteresis_m より空いてから。
         # slow_keep_sec 以内にまた減速したら、前と同じ向きに曲がる（向きを選びなおさない）
         self.declare_parameter('slow_hysteresis_m', 0.15)
@@ -233,6 +240,15 @@ class AutonomyNode(Node):
         self.explore_cell = float(g('explore_cell').value)
         self.explore_reach = math.radians(float(g('explore_reach_deg').value))
         self.explore_turn_timeout = float(g('explore_turn_timeout').value)
+        self.explore_via = bool(g('explore_via').value)
+        via_deg = float(g('explore_via_deg').value)
+        self._via_dth = np.radians(np.arange(-via_deg, via_deg + 1e-6, math.degrees(self.explore_step)))
+        self.explore_via_min = float(g('explore_via_min_m').value)
+        self.explore_via_sec = float(g('explore_via_sec').value)
+        self._via_pending = False
+        self._via_until = 0.0
+        self._via_pick = None
+        self._scan_xy = np.zeros((0, 2))
         self.slow_hyst = float(g('slow_hysteresis_m').value)
         self.slow_keep = float(g('slow_keep_sec').value)
         self.turn_max = math.radians(float(g('turn_max_deg').value))
@@ -390,6 +406,7 @@ class AutonomyNode(Node):
         with self._lock:
             self._sectors = summary
             self._free = free
+            self._scan_xy = np.asarray(pts) if pts else np.zeros((0, 2))
             self._scan_stamp = time.monotonic()
 
     def _obstacle_cb(self, msg: String):
@@ -813,12 +830,15 @@ class AutonomyNode(Node):
                     cmd.angular.z = self._turn_dir * self.turn
                     return cmd
                 self._target_yaw = None
+                self._start_via(now)
             elif path_v < self.clear_d or not turning_long_enough:
                 cmd.angular.z = self._turn_dir * self.turn
                 return cmd
             self._target_yaw = None
+            self._via_pending = False
 
         if path_v <= self.stop_d:
+            self._via_pending, self._via_until = False, 0.0
             # 空いている側へ旋回（左が広ければ左旋回 = +z）。減速中に曲がりはじめた向きがあればそのまま
             self._turn_dir = self._pre_dir if self._pre_dir is not None else self._pick_turn(s, pose)
             self._pre_dir = None
@@ -829,15 +849,20 @@ class AutonomyNode(Node):
             return cmd
 
         if path_v <= self.slow_d + (self.slow_hyst if self._behavior == 'slow' else 0.0):
-            if self._pre_dir is None or (self._behavior != 'slow'
-                                         and now - self._slow_left > self.slow_keep):
+            # 通路の入口へ向かっているあいだは、向きを選びなおさずに入口の手前までまっすぐ進む
+            via = now < self._via_until
+            if not via and (self._pre_dir is None or (self._behavior != 'slow'
+                                                      and now - self._slow_left > self.slow_keep)):
                 self._pre_dir = self._pick_turn(s, pose)
             self._set_behavior('slow')
             cmd.linear.x = self.slow
             # 止まる距離に近づくほど強く、曲がる先の側へ曲がる（向きは減速に入ったときに 1 回だけ決める）
-            self._turn_dir = self._pre_dir
-            left_rad = self._target_left(pose)
-            if left_rad is None or left_rad > self.explore_reach:
+            left_rad = None if via else self._target_left(pose)
+            if not via:
+                self._turn_dir = self._pre_dir
+                if left_rad is not None and left_rad <= self.explore_reach:
+                    self._start_via(now)
+            if not via and (left_rad is None or left_rad > self.explore_reach):
                 near = (self.slow_d - path_v) / max(self.slow_d - self.stop_d, 1e-3)
                 cmd.angular.z = self._pre_dir * self.pre_turn_gain * self.turn * max(0.0, min(1.0, near))
         else:
@@ -866,35 +891,85 @@ class AutonomyNode(Node):
         return 1.0 if left >= right else -1.0
 
     def _choose_heading(self, pose):
-        """曲がる先の向き（今の前からの角度 rad、左 +）。候補がなければ None。"""
+        """曲がる先の向き（今の前からの角度 rad、左 +）。候補がなければ None。
+        通路の入口を通る向きを選んだときは self._via_pick にその (s, th2, d2) を入れる（ほかは None）。"""
         with self._lock:
             free = list(self._free)
-        cands, weights = [], []
+            pts = self._scan_xy
+        cands, weights, vias = [], [], []
         for th, d in free:
-            if d < self.explore_min_free or abs(th) < self.explore_min_turn:
+            if abs(th) < self.explore_min_turn:
                 continue
-            reach = min(d, 3.0)
+            via = None
+            if d >= self.explore_min_free:
+                reach = min(d, 3.0)
+            elif self.explore_via:
+                via = self._via(pts, th, d)
+                if via is None:
+                    continue
+                reach = via[0] + min(via[2], 3.0)
+            else:
+                continue
             novelty = 1.0
-            if pose is not None and self._toward_cliff(pose, th, reach):
-                continue
             if pose is not None:
-                # その向きの、行ける所まで（前の物の stop_distance 手前まで）のマスが、どれだけ「まだ行っていない」か（0〜1）。
-                # 壁ぎわ・行き止まりのマスは車が入れないので、まだ行っていないままになる。そこは数えない
                 yaw = pose[2] + th
-                span = max(reach - self.stop_d, self.explore_cell)
-                steps = max(1, int(span / self.explore_cell))
-                novelty = 0.0
-                for k in range(1, steps + 1):
-                    r = k * span / steps
-                    cell = (math.floor((pose[0] + r * math.cos(yaw)) / self.explore_cell),
-                            math.floor((pose[1] + r * math.sin(yaw)) / self.explore_cell))
-                    novelty += 1.0 / (1.0 + self._visits.get(cell, 0))
-                novelty /= steps
+                if via is None:
+                    if self._toward_cliff(pose, th, reach):
+                        continue
+                    # 行ける所まで（前の物の stop_distance 手前まで）のマスだけ数える。壁ぎわ・行き止まりのマスは車が入れない
+                    legs = [(pose[0], pose[1], yaw, max(reach - self.stop_d, self.explore_cell))]
+                else:
+                    sv, th2, d2 = via
+                    mid = (pose[0] + sv * math.cos(yaw), pose[1] + sv * math.sin(yaw), pose[2])
+                    if self._toward_cliff(pose, th, sv) or self._toward_cliff(mid, th2, min(d2, 3.0)):
+                        continue
+                    legs = [(pose[0], pose[1], yaw, sv),
+                            (mid[0], mid[1], pose[2] + th2, max(min(d2, 3.0) - self.stop_d, self.explore_cell))]
+                novelty = self._novelty(legs)
             cands.append(th)
             weights.append(reach * novelty * novelty)
+            vias.append(via)
         if not cands:
+            self._via_pick = None
             return None
-        return random.choices(cands, weights=weights)[0]
+        k = random.choices(range(len(cands)), weights=weights)[0]
+        self._via_pick = vias[k]
+        return cands[k]
+
+    def _start_via(self, now):
+        """通路の入口を通る向きまで回り終わったら、explore_via_sec 秒は入口の手前までまっすぐ進む。"""
+        if self._via_pending:
+            self._via_until = now + self.explore_via_sec
+            self._via_pending = False
+
+    def _via(self, pts, th, d):
+        """th の向きに、通路の入口の手前（d - stop_distance）まで進んだ所から、±explore_via_deg のうち
+        車の幅でいちばん遠くまで進める向き。(進む m, その向き rad（今の前から）, 進める m) か None。"""
+        sv = d - self.stop_d
+        if sv < self.explore_via_min or len(pts) == 0:
+            return None
+        ths = th + self._via_dth
+        xy = pts - np.array([sv * math.cos(th), sv * math.sin(th)])
+        along = xy[:, :1] * np.cos(ths) + xy[:, 1:] * np.sin(ths)
+        perp = xy[:, 1:] * np.cos(ths) - xy[:, :1] * np.sin(ths)
+        hit = np.where((along > 0.0) & (np.abs(perp) <= self.path_half), along, 4.0).min(axis=0)
+        k = int(np.argmax(hit))
+        if hit[k] < self.explore_min_free:
+            return None
+        return sv, float(ths[k]), float(min(hit[k], 4.0))
+
+    def _novelty(self, legs) -> float:
+        """legs = [(x, y, yaw, 長さ m)] の線の上の explore_cell ごとのマスが、どれだけ「まだ行っていない」か（0〜1）。"""
+        total, n = 0.0, 0
+        for x, y, yaw, length in legs:
+            steps = max(1, int(length / self.explore_cell))
+            for k in range(1, steps + 1):
+                r = k * length / steps
+                cell = (math.floor((x + r * math.cos(yaw)) / self.explore_cell),
+                        math.floor((y + r * math.sin(yaw)) / self.explore_cell))
+                total += 1.0 / (1.0 + self._visits.get(cell, 0))
+                n += 1
+        return total / n if n else 1.0
 
     def _toward_cliff(self, pose, th, reach) -> bool:
         """その向きに reach 進むあいだに、覚えている段差の cliff_avoid 以内を通るか。"""
@@ -910,6 +985,8 @@ class AutonomyNode(Node):
     def _pick_turn(self, s, pose) -> float:
         """曲がる向きを決める（左 +1 / 右 -1）。/odom があれば曲がる先の向き _target_yaw も決める。"""
         th = self._choose_heading(pose)
+        self._via_pending = self._via_pick is not None
+        self._via_until = 0.0
         if th is None:
             self._target_yaw = None
             return self._open_side(s)
@@ -1085,6 +1162,7 @@ class AutonomyNode(Node):
                 'turn_dir': 'left' if self._turn_dir > 0 else 'right',
                 'explore_target_deg': (round(math.degrees(self._target_yaw), 1)
                                        if self._target_yaw is not None else None),
+                'explore_via': time.monotonic() < self._via_until,
                 'visited_cells': len(self._visits),
                 'cliff_points': len(self._cliff_pts) + len(self._cliff_marks),
                 'cliff_marks': [[round(x, 2), round(y, 2)] for x, y in self._cliff_marks],
