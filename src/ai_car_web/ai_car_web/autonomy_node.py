@@ -263,6 +263,7 @@ class AutonomyNode(Node):
         self.declare_parameter('nav_plan_topic', '/plan')
         self.declare_parameter('nav_frame', 'map')
         self.declare_parameter('nav_cmd_timeout', 0.5)
+        self.declare_parameter('nav_max_angular', 0.5)
         self.declare_parameter('nav_auto_wait', 5.0)
         # まだ行っていない所のはし（SLAM の地図で、空きと不明のさかい）を行き先にして Nav2 で行く。新しいマスに
         # frontier_stale_sec 秒入らなかったら、いちばん近い「はし」（frontier_min_cells 以上のかたまり、壁から
@@ -356,6 +357,7 @@ class AutonomyNode(Node):
         self.cliff_escape_timeout = float(g('cliff_escape_timeout').value)
         self.nav_frame = g('nav_frame').value
         self.nav_cmd_timeout = float(g('nav_cmd_timeout').value)
+        self.nav_max_angular = float(g('nav_max_angular').value)
         self.nav_auto_wait = float(g('nav_auto_wait').value)
         self.frontier_stale = float(g('frontier_stale_sec').value)
         self.frontier_min_cells = int(g('frontier_min_cells').value)
@@ -931,7 +933,14 @@ class AutonomyNode(Node):
             self._set_behavior('nav')
             with self._lock:
                 fresh = now - self._nav_cmd_stamp <= self.nav_cmd_timeout
-                return self._nav_cmd if fresh else Twist()
+                if not fresh:
+                    return Twist()
+                cmd = Twist()
+                cmd.linear.x = self._nav_cmd.linear.x
+                cmd.linear.y = self._nav_cmd.linear.y
+                cmd.angular.z = max(-self.nav_max_angular,
+                                    min(self.nav_max_angular, self._nav_cmd.angular.z))
+                return cmd
         if self._nav_hold:
             self._set_behavior(self._nav_hold)
             return Twist()
