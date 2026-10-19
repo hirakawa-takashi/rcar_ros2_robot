@@ -449,6 +449,10 @@ nodes:
       - {name: explore_cell, ref: autonomy_node.explore_cell, unit: m, desc: 行った所を覚えるマスの大きさ（/odom）。曲がる先の向きの、行ける所まで（進める距離 − stop_distance、最大 3 m）のマスに入った回数が少ない向きほど選ばれやすい（重み＝進める距離 × まだ行っていない度合いの 2 乗）。壁ぎわ・行き止まりのマスは数えない}
       - {name: explore_reach_deg, ref: autonomy_node.explore_reach_deg, unit: deg, desc: 曲がる先の向きまでこれより近くなったら回るのをやめる}
       - {name: explore_turn_timeout, ref: autonomy_node.explore_turn_timeout, unit: s, desc: 曲がる先の向きまで回るのは最大この秒数（すべったときなど）}
+      - {name: explore_via, ref: autonomy_node.explore_via, unit: bool, desc: 細い通路の入口を探す。まっすぐ explore_min_free 進めない向きでも、入口の手前まで進んで、そこから曲がれば車の幅で進めるなら候補にする}
+      - {name: explore_via_deg, ref: autonomy_node.explore_via_deg, unit: deg, desc: 入口の手前から、この角度（±）までの向きに曲がれるかを見る}
+      - {name: explore_via_min_m, ref: autonomy_node.explore_via_min_m, unit: m, desc: 入口の手前までこれより短いときは、入口として見ない}
+      - {name: explore_via_sec, ref: autonomy_node.explore_via_sec, unit: s, desc: 入口へ向いたあと、この秒数は向きを選びなおさずに入口の手前までまっすぐ進む}
       - {name: slow_hysteresis_m, ref: autonomy_node.slow_hysteresis_m, unit: m, desc: 減速から前進にもどるのは slow_distance + これより空いてから（減速と前進を何度も行き来しない）}
       - {name: slow_keep_sec, ref: autonomy_node.slow_keep_sec, unit: s, desc: 減速をやめてこの秒数以内にまた減速したら、前と同じ向きに曲がる}
       - {name: turn_max_deg, ref: autonomy_node.turn_max_deg, unit: deg, desc: その場でこの角度回っても出口がなければ stuck で止まる}

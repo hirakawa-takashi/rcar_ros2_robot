@@ -158,6 +158,10 @@ autonomy_node:
     explore_cell: 0.5
     explore_reach_deg: 5.0
     explore_turn_timeout: 8.0
+    explore_via: true
+    explore_via_deg: 60.0
+    explore_via_min_m: 0.3
+    explore_via_sec: 10.0
     # 減速から前進にもどるのは 0.8 + 0.15 m より空いてから。3 秒以内にまた減速したら同じ向きに曲がる
     slow_hysteresis_m: 0.15
     slow_keep_sec: 3.0
