@@ -83,6 +83,30 @@ def _wrap(a: float) -> float:
     return math.atan2(math.sin(a), math.cos(a))
 
 
+def _reachable(ok, row, col, search):
+    """ok の True のマスを 4 近傍でたどって、(row, col) のいちばん近くの ok のマス（search マス以内）から行ける所。"""
+    h, w = ok.shape
+    r0, r1, c0, c1 = max(row - search, 0), min(row + search + 1, h), max(col - search, 0), min(col + search + 1, w)
+    if r0 >= r1 or c0 >= c1:
+        return None
+    rr, cc = np.nonzero(ok[r0:r1, c0:c1])
+    if len(rr) == 0:
+        return None
+    k = int(np.argmin((rr + r0 - row) ** 2 + (cc + c0 - col) ** 2))
+    reach = np.zeros_like(ok)
+    reach[rr[k] + r0, cc[k] + c0] = True
+    while True:
+        grow = reach.copy()
+        grow[1:, :] |= reach[:-1, :]
+        grow[:-1, :] |= reach[1:, :]
+        grow[:, 1:] |= reach[:, :-1]
+        grow[:, :-1] |= reach[:, 1:]
+        grow &= ok
+        if grow.sum() == reach.sum():
+            return reach
+        reach = grow
+
+
 def _clusters(mask, min_cells):
     """mask の True のつながったかたまり（8 近傍）のうち min_cells 以上のものの、まん中にいちばん近いマス (行, 列)。"""
     cells = set(zip(*np.nonzero(mask)))
@@ -251,7 +275,7 @@ class AutonomyNode(Node):
         self.declare_parameter('frontier_clear_m', 0.25)
         self.declare_parameter('frontier_min_dist', 0.8)
         self.declare_parameter('frontier_timeout_sec', 90.0)
-        self.declare_parameter('frontier_retry_sec', 300.0)
+        self.declare_parameter('frontier_retry_sec', 1800.0)
         # LiDAR で見えていても車が行っていない所（通ったマスから frontier_visited_m より遠い空き、
         # frontier_min_area_cells 以上のかたまり）も行き先にする。見えている所は「はし」にならないため
         self.declare_parameter('frontier_visited_m', 0.75)
@@ -823,6 +847,12 @@ class AutonomyNode(Node):
             if r0 < r1 and c0 < c1:
                 visited[r0:r1, c0:c1] |= disk[r0 - ri + rv:r1 - ri + rv, c0 - ci + rv:c1 - ci + rv]
         ok = free & ~near_wall
+        # 車の所から、壁から frontier_clear_m 以上はなれた空きだけを通って行ける所（行けないすき間の向こうは選ばない）
+        reach = _reachable(ok, int((mp[1] - oy) / res), int((mp[0] - ox) / res),
+                           int(math.ceil(0.4 / res)))
+        if reach is None:
+            return None
+        ok &= reach
         targets = (_clusters(ok & edge, self.frontier_min_cells)
                    + _clusters(ok & ~visited, self.frontier_min_area))
         bad = [(bx, by) for bx, by, t in self._frontier_bad if now - t < self.frontier_retry]
