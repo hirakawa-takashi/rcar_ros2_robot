@@ -991,6 +991,14 @@ class AutonomyNode(Node):
             if pose is not None:
                 self._add_cliff(pose)
             self.get_logger().info('前に段差: 下がって回る')
+            if self._frontier is not None:
+                # Nav2 は段差の印を知らないので、その行き先はやめる（frontier_retry_sec えらばない）
+                f = self._frontier
+                self._nav_cancel('前に段差')
+                self._frontier_bad.append((f['x'], f['y'], now))
+                self._frontier = None
+                self._nav_hold = None
+                self._new_cell_at = now
         if self._escape is not None:
             esc_cmd = self._escape_step(now, s, pose, cliff_front, cliff_back)
             if esc_cmd is not None:
