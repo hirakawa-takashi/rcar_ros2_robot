@@ -152,10 +152,11 @@ autonomy_node:
     # 左右とも 0.4 m より空いていれば、曲がる向きはランダム。旋回は 0〜0.8 秒ランダムに長くする（同じ所をくるくる回らない）
     random_side_distance: 0.4
     turn_random_sec: 0.8
-    explore_step_deg: 15.0
+    explore_step_deg: 5.0
+    explore_min_turn_deg: 15.0
     explore_min_free: 1.0
     explore_cell: 0.5
-    explore_reach_deg: 10.0
+    explore_reach_deg: 5.0
     explore_turn_timeout: 8.0
     # 減速から前進にもどるのは 0.8 + 0.15 m より空いてから。3 秒以内にまた減速したら同じ向きに曲がる
     slow_hysteresis_m: 0.15
