@@ -214,6 +214,7 @@ class PerceptionNode(Node):
         self.declare_parameter('jetson_topic', '/jetson_detections')
         self.declare_parameter('jetson_max_age', 2.0)
         self.declare_parameter('front_angle_deg', 60.0)
+        self.declare_parameter('scan_min_points', 100)
         self.declare_parameter('stop_distance', 0.35)
         self.declare_parameter('slow_distance', 0.8)
         # 360° の見張り: 車体の箱（LiDAR の中心から、x 前・y 左）[x_min, x_max, y_min, y_max] を
@@ -302,6 +303,7 @@ class PerceptionNode(Node):
 
         self._lock = threading.Lock()
         self._scan_front = None
+        self._scan_points = 0
         self._scan_sectors = None
         self._scan_move = None
         self._scan_stamp = 0.0
@@ -414,6 +416,7 @@ class PerceptionNode(Node):
     # --- パラメータ ---
     def _load_tunables(self):
         self.front_angle = math.radians(float(self.get_parameter('front_angle_deg').value))
+        self.scan_min_points = int(self.get_parameter('scan_min_points').value)
         self.stop_distance = float(self.get_parameter('stop_distance').value)
         self.slow_distance = float(self.get_parameter('slow_distance').value)
         self.body_box = tuple(float(v) for v in self.get_parameter('body_box_m').value)
@@ -540,6 +543,7 @@ class PerceptionNode(Node):
         with self._lock:
             self._scan_move = {'gaps': gaps, 'turn_free_deg': turn}
             self._scan_front = min(front) if front else None
+            self._scan_points = len(xs)
             self._scan_sectors = {
                 k: (round(min(v), 3) if v else None) for k, v in sectors.items()}
             self._scan_bearings = bearings
@@ -956,6 +960,7 @@ class PerceptionNode(Node):
             sectors = self._scan_sectors
             move = self._scan_move
             scan_age = now - self._scan_stamp if self._scan_stamp else None
+            scan_points = self._scan_points
             detections = list(self._detections)
             det_age = now - self._detection_stamp if self._detection_stamp else None
             thermal_state = self._thermal_state
@@ -966,9 +971,14 @@ class PerceptionNode(Node):
             stamps = list(self._inference_times)
             recent_ms = list(self._inference_ms_recent)
 
-        scan_valid = front is not None and scan_age is not None and scan_age < 1.5
+        # 前（front_angle_deg）に反射が 1 点もなくても、ほかの向きが見えていれば LiDAR は動いている
+        # （せまい通路の先が遠い・黒い・ガラス）。止めずに減速にする
+        scan_valid = (scan_age is not None and scan_age < 1.5
+                      and scan_points >= self.scan_min_points)
         if not scan_valid:
             level, reason = 'unknown', 'LiDAR データなし'
+        elif front is None:
+            level, reason = 'slow', '前に LiDAR の反射なし（遠い・黒い・ガラス）'
         elif front <= self.stop_distance:
             level, reason = 'stop', f'前方 {front:.2f} m に障害物'
         elif front <= self.slow_distance:
