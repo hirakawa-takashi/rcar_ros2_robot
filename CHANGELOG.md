@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.11.7] - 2026-10-19
+
+### Fixed
+- slam_toolbox: `transform_timeout` 0.2 → 0.5 s。地図で選んだ行き先へ Nav2 で走ると、10 秒で 6 回「Lookup would require extrapolation into the future」（RPP の `transformPose`）／「Transform data too old when converting from map to odom」で止まった（エラー 102）。slam_toolbox は map→odom の時刻を `transform_timeout` だけ先にして出すが、止まっていても先にしている分は平均 0.10 s（0.03〜0.17 s）しか残っていなかった。走っているとラズパイが重く、さらに 0.03〜0.34 s 足りなくなる。v1.11.2 の Nav2 `transform_tolerance` 0.5 s は、この「未来の時刻」のときには効かない
+
 ## [1.11.6] - 2026-10-19
 
 ### Fixed
