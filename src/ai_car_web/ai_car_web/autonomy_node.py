@@ -150,10 +150,12 @@ class AutonomyNode(Node):
         self.declare_parameter('turn_random_sec', 0.8)
         # 曲がる先の選び方: まわり 360° を explore_step_deg ごとに、車の幅で explore_min_free m 以上まっすぐ進める向きを候補にし、
         # 「遠くまで空いている × まだ行っていない（/odom の explore_cell m マスに入った回数が少ない）」ほど選ばれやすいランダムで選ぶ
-        self.declare_parameter('explore_step_deg', 15.0)
+        # 細い出口（車の幅＋十数 cm）は 10〜15° の幅でしか見えないので、5° ごとに調べる。前 explore_min_turn_deg 以内は候補にしない
+        self.declare_parameter('explore_step_deg', 5.0)
+        self.declare_parameter('explore_min_turn_deg', 15.0)
         self.declare_parameter('explore_min_free', 1.0)
         self.declare_parameter('explore_cell', 0.5)
-        self.declare_parameter('explore_reach_deg', 10.0)
+        self.declare_parameter('explore_reach_deg', 5.0)
         self.declare_parameter('explore_turn_timeout', 8.0)
         # 減速から前進にもどるのは slow_distance + slow_hysteresis_m より空いてから。
         # slow_keep_sec 以内にまた減速したら、前と同じ向きに曲がる（向きを選びなおさない）
@@ -226,6 +228,7 @@ class AutonomyNode(Node):
         self.turn_random = float(g('turn_random_sec').value)
         self._turn_extra = 0.0
         self.explore_step = math.radians(float(g('explore_step_deg').value))
+        self.explore_min_turn = math.radians(float(g('explore_min_turn_deg').value))
         self.explore_min_free = float(g('explore_min_free').value)
         self.explore_cell = float(g('explore_cell').value)
         self.explore_reach = math.radians(float(g('explore_reach_deg').value))
@@ -868,19 +871,21 @@ class AutonomyNode(Node):
             free = list(self._free)
         cands, weights = [], []
         for th, d in free:
-            if d < self.explore_min_free or abs(th) < self.explore_step:
+            if d < self.explore_min_free or abs(th) < self.explore_min_turn:
                 continue
             reach = min(d, 3.0)
             novelty = 1.0
             if pose is not None and self._toward_cliff(pose, th, reach):
                 continue
             if pose is not None:
-                # その向きの 0.5 m 〜 reach 先のマスが、どれだけ「まだ行っていない」か（0〜1）
+                # その向きの、行ける所まで（前の物の stop_distance 手前まで）のマスが、どれだけ「まだ行っていない」か（0〜1）。
+                # 壁ぎわ・行き止まりのマスは車が入れないので、まだ行っていないままになる。そこは数えない
                 yaw = pose[2] + th
-                steps = max(1, int(reach / self.explore_cell))
+                span = max(reach - self.stop_d, self.explore_cell)
+                steps = max(1, int(span / self.explore_cell))
                 novelty = 0.0
                 for k in range(1, steps + 1):
-                    r = k * reach / steps
+                    r = k * span / steps
                     cell = (math.floor((pose[0] + r * math.cos(yaw)) / self.explore_cell),
                             math.floor((pose[1] + r * math.sin(yaw)) / self.explore_cell))
                     novelty += 1.0 / (1.0 + self._visits.get(cell, 0))

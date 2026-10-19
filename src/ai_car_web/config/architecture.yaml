@@ -443,9 +443,10 @@ nodes:
       - {name: min_turn_sec, ref: autonomy_node.min_turn_sec, unit: s, desc: 旋回の最短継続時間}
       - {name: random_side_distance, ref: autonomy_node.random_side_distance, unit: m, desc: 左右の両方がこれより空いていれば、曲がる向きをランダムに選ぶ（同じ所をくるくる回らないため）}
       - {name: turn_random_sec, ref: autonomy_node.turn_random_sec, unit: s, desc: 旋回を 0〜この秒数だけランダムに長くして、向きを毎回少し変える}
-      - {name: explore_step_deg, ref: autonomy_node.explore_step_deg, unit: deg, desc: 曲がる先の候補の向き。まわり 360° をこの角度ごとに調べる}
+      - {name: explore_step_deg, ref: autonomy_node.explore_step_deg, unit: deg, desc: 曲がる先の候補の向き。まわり 360° をこの角度ごとに調べる（細い出口は 10〜15° の幅でしか見えないので 5°）}
+      - {name: explore_min_turn_deg, ref: autonomy_node.explore_min_turn_deg, unit: deg, desc: 今の前からこの角度以内の向きは曲がる先の候補にしない}
       - {name: explore_min_free, ref: autonomy_node.explore_min_free, unit: m, desc: 車の幅でこれ以上まっすぐ進める向きだけを曲がる先の候補にする}
-      - {name: explore_cell, ref: autonomy_node.explore_cell, unit: m, desc: 行った所を覚えるマスの大きさ（/odom）。曲がる先の向きの 0.5〜3 m 先のマスに入った回数が少ない向きほど選ばれやすい（重み＝進める距離 × まだ行っていない度合いの 2 乗）}
+      - {name: explore_cell, ref: autonomy_node.explore_cell, unit: m, desc: 行った所を覚えるマスの大きさ（/odom）。曲がる先の向きの、行ける所まで（進める距離 − stop_distance、最大 3 m）のマスに入った回数が少ない向きほど選ばれやすい（重み＝進める距離 × まだ行っていない度合いの 2 乗）。壁ぎわ・行き止まりのマスは数えない}
       - {name: explore_reach_deg, ref: autonomy_node.explore_reach_deg, unit: deg, desc: 曲がる先の向きまでこれより近くなったら回るのをやめる}
       - {name: explore_turn_timeout, ref: autonomy_node.explore_turn_timeout, unit: s, desc: 曲がる先の向きまで回るのは最大この秒数（すべったときなど）}
       - {name: slow_hysteresis_m, ref: autonomy_node.slow_hysteresis_m, unit: m, desc: 減速から前進にもどるのは slow_distance + これより空いてから（減速と前進を何度も行き来しない）}
