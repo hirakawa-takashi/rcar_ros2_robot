@@ -169,7 +169,7 @@ autonomy_node:
     frontier_clear_m: 0.25
     frontier_min_dist: 0.8
     frontier_timeout_sec: 90.0
-    frontier_retry_sec: 300.0
+    frontier_retry_sec: 1800.0
     frontier_visited_m: 0.75
     frontier_min_area_cells: 40
     # 減速から前進にもどるのは 0.8 + 0.15 m より空いてから。3 秒以内にまた減速したら同じ向きに曲がる

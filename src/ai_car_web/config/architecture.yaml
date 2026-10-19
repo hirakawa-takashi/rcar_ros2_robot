@@ -459,7 +459,7 @@ nodes:
       - {name: frontier_clear_m, ref: autonomy_node.frontier_clear_m, unit: m, desc: 壁からこれより近い「はし」は行き先にしない}
       - {name: frontier_min_dist, ref: autonomy_node.frontier_min_dist, unit: m, desc: 車からこれより近い「はし」は行き先にしない}
       - {name: frontier_timeout_sec, ref: autonomy_node.frontier_timeout_sec, unit: s, desc: この秒数で着かなければやめて、ふつうの走行にもどる。段差の印の cliff_avoid_m 以内に近づいてもやめる}
-      - {name: frontier_retry_sec, ref: autonomy_node.frontier_retry_sec, unit: s, desc: 行けなかった「はし」の 0.6 m 以内は、この秒数えらばない}
+      - {name: frontier_retry_sec, ref: autonomy_node.frontier_retry_sec, unit: s, desc: 行けなかった「はし」の 0.6 m 以内は、この秒数えらばない。車の所から、壁から frontier_clear_m 以上はなれた空きだけを通って行ける所だけを選ぶ}
       - {name: frontier_visited_m, ref: autonomy_node.frontier_visited_m, unit: m, desc: 通ったマスからこれより遠い空き（LiDAR で見えていても車が行っていない所）も行き先にする}
       - {name: frontier_min_area_cells, ref: autonomy_node.frontier_min_area_cells, unit: cell, desc: 行っていない空きのかたまりがこのマス数より小さければ使わない}
       - {name: slow_hysteresis_m, ref: autonomy_node.slow_hysteresis_m, unit: m, desc: 減速から前進にもどるのは slow_distance + これより空いてから（減速と前進を何度も行き来しない）}
