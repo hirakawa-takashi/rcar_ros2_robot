@@ -38,8 +38,9 @@ from std_srvs.srv import Trigger
 
 try:
     from slam_toolbox.srv import Reset as SlamReset
+    from slam_toolbox.srv import DeserializePoseGraph, SerializePoseGraph
 except ImportError:
-    SlamReset = None
+    SlamReset = DeserializePoseGraph = SerializePoseGraph = None
 
 from ai_car_web.architecture import load_architecture, read_program
 from ai_car_web.dev_diary import find_repo, query_dev_diary, sync_dev_diary
@@ -241,6 +242,19 @@ def _map_server_table():
 MAP_SERVER_TABLE = _map_server_table()
 
 
+def compose_map_pose(pose, odom_at, odom_now):
+    """/pose（map）に、そのときから今までの /odom の動きを足した map の位置。"""
+    x, y, yaw = pose['x'], pose['y'], math.radians(pose['yaw_deg'])
+    if odom_at and odom_now:
+        dyaw = yaw - math.radians(odom_at['yaw_deg'])
+        dx, dy = odom_now['x'] - odom_at['x'], odom_now['y'] - odom_at['y']
+        c, s = math.cos(dyaw), math.sin(dyaw)
+        x, y = x + c * dx - s * dy, y + s * dx + c * dy
+        yaw += math.radians(odom_now['yaw_deg'] - odom_at['yaw_deg'])
+    yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+    return {'x': round(x, 3), 'y': round(y, 3), 'yaw_deg': round(math.degrees(yaw), 2)}
+
+
 def write_map_files(name, grid):
     """地図を map_server の形（name.pgm と name.yaml）で書く。grid は _map_cb で取っておいたもの。"""
     width, height = grid['width'], grid['height']
@@ -348,6 +362,10 @@ class DashboardNode(Node):
         self.declare_parameter('stereo_depth_image_topic', '/stereo/depth/compressed')
         # 地図の保存先（空なら ~/maps）
         self.declare_parameter('map_save_dir', '')
+        # 「地図を保存」で slam_toolbox の地図データ（pose graph）も保存し、起動したときに読みこむ。空で無効
+        self.declare_parameter('slam_serialize_service', '/slam_toolbox/serialize_map')
+        self.declare_parameter('slam_deserialize_service', '/slam_toolbox/deserialize_map')
+        self.declare_parameter('slam_load_on_start', True)
         # Jetson から POST /api/jetson/detections で受けた検出を流すトピック。空で無効
         self.declare_parameter('jetson_detections_topic', '/jetson_detections')
 
@@ -465,6 +483,13 @@ class DashboardNode(Node):
                                   if slam_reset_service and SlamReset is not None else None)
         self.map_save_dir = self.get_parameter('map_save_dir').value or os.path.join(
             os.path.expanduser('~'), 'maps')
+        srv = self.get_parameter('slam_serialize_service').value
+        self.slam_serialize_client = (self.create_client(SerializePoseGraph, srv)
+                                      if srv and SerializePoseGraph is not None else None)
+        srv = self.get_parameter('slam_deserialize_service').value
+        self.slam_deserialize_client = (self.create_client(DeserializePoseGraph, srv)
+                                        if srv and DeserializePoseGraph is not None else None)
+        self.slam_load_on_start = bool(self.get_parameter('slam_load_on_start').value)
         depth_topic = self.get_parameter('stereo_depth_topic').value
         if depth_topic:
             self.create_subscription(String, depth_topic, self._stereo_depth_cb, 10)
@@ -515,7 +540,10 @@ class DashboardNode(Node):
         self._map_stamp = 0.0
         self._slam_pose = None
         self._slam_pose_stamp = 0.0
+        self._slam_pose_odom = None
         self._map_saved = None
+        self._map_loaded = None
+        self._slam_load_pending = self.slam_load_on_start and self.slam_deserialize_client is not None
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -524,6 +552,8 @@ class DashboardNode(Node):
         self._frame_times = deque(maxlen=60)
 
         self.create_timer(0.1, self._watchdog_cb)
+        if self._slam_load_pending:
+            self.create_timer(2.0, self._slam_load_cb)
         if not self.api_token:
             self.get_logger().warn(
                 'API 認証が無効です（api_token 未設定）: 同一ネットワークの誰でも操作できます')
@@ -642,6 +672,7 @@ class DashboardNode(Node):
                 'yaw_deg': round(math.degrees(yaw), 2),
             }
             self._slam_pose_stamp = time.time()
+            self._slam_pose_odom = self._odom
 
     def _slam_state(self):
         now = time.time()
@@ -656,7 +687,99 @@ class DashboardNode(Node):
             'pose_age': round(pose_age, 1) if pose_age is not None else None,
             'can_save': self._map_grid is not None,
             'saved': self._map_saved,
+            'loaded': self._map_loaded,
         }
+
+    def _map_pose_now(self):
+        """今の車の位置（map）。/pose は地図にスキャンを足したときだけ来るので、そのあとの /odom の動きを足す。"""
+        with self._lock:
+            pose, at, now = self._slam_pose, self._slam_pose_odom, self._odom
+        if pose is None:
+            return None
+        return compose_map_pose(pose, at, now)
+
+    def _slam_files(self):
+        return os.path.join(self.map_save_dir, 'slam_latest.json')
+
+    def _save_slam_graph(self, pose):
+        """slam_toolbox の地図データを保存し、次の起動で読みこむ印（slam_latest.json）を書く。"""
+        client = self.slam_serialize_client
+        if client is None:
+            return {'ok': False, 'reason': '地図データの保存が無効'}
+        if not client.service_is_ready():
+            return {'ok': False, 'reason': 'slam_toolbox が応答しない'}
+        if pose is None:
+            return {'ok': False, 'reason': '地図の上の車の位置がまだ分からない'}
+        base = os.path.join(self.map_save_dir, time.strftime('slam_%Y%m%d_%H%M%S'))
+        done = threading.Event()
+        future = client.call_async(SerializePoseGraph.Request(filename=base))
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(20.0):
+            return {'ok': False, 'reason': 'slam_toolbox から返事がない'}
+        res = future.result()
+        if res is None or res.result != SerializePoseGraph.Response.RESULT_SUCCESS:
+            return {'ok': False, 'reason': 'slam_toolbox が地図データを書けなかった'}
+        with self._lock:
+            marks = (self._autonomy or {}).get('cliff_marks') or []
+        latest = self._slam_files()
+        old = None
+        try:
+            with open(latest) as f:
+                old = json.load(f).get('base')
+        except (OSError, ValueError, AttributeError):
+            pass
+        info = {'base': base, 'pose': pose, 'cliff_marks': marks, 'stamp': round(time.time(), 1)}
+        with open(latest + '.tmp', 'w') as f:
+            json.dump(info, f)
+        os.replace(latest + '.tmp', latest)
+        if old and old != base:
+            for ext in ('.posegraph', '.data'):
+                try:
+                    os.remove(old + ext)
+                except OSError:
+                    pass
+        return {'ok': True, 'pose': pose, 'marks': len(marks)}
+
+    def _slam_load_cb(self):
+        """起動したら 1 回だけ、保存した地図データを、保存したときの車の位置から始めるように読みこむ。"""
+        if not self._slam_load_pending:
+            return
+        try:
+            with open(self._slam_files()) as f:
+                info = json.load(f)
+            base, pose = info['base'], info['pose']
+            ok = all(os.path.exists(base + ext) for ext in ('.posegraph', '.data'))
+        except (OSError, ValueError, KeyError, TypeError):
+            ok = False
+        if not ok:
+            self._slam_load_pending = False
+            return
+        if self._map_stamp == 0.0 or not self.slam_deserialize_client.service_is_ready():
+            return
+        self._slam_load_pending = False
+        req = DeserializePoseGraph.Request(
+            filename=base, match_type=DeserializePoseGraph.Request.START_AT_GIVEN_POSE)
+        req.initial_pose.x = float(pose['x'])
+        req.initial_pose.y = float(pose['y'])
+        req.initial_pose.theta = math.radians(float(pose['yaw_deg']))
+        name = os.path.basename(base)
+        marks = info.get('cliff_marks') or []
+
+        def done(future):
+            ok = future.result() is not None
+            if ok and self.cliff_edit_pub is not None:
+                for m in marks:
+                    self.cliff_edit_pub.publish(String(data=json.dumps(
+                        {'action': 'add', 'x': float(m[0]), 'y': float(m[1])})))
+            with self._lock:
+                self._map_loaded = {'ok': ok, 'name': name, 'pose': pose, 'marks': len(marks),
+                                    'stamp': round(time.time(), 1),
+                                    'reason': '' if ok else 'slam_toolbox が読みこめなかった'}
+            self.get_logger().info(
+                f'保存した地図 {name} を読みこんだ（始めの位置 x {pose["x"]:.2f} y {pose["y"]:.2f}、段差の印 {len(marks)}）'
+                if ok else f'保存した地図 {name} を読みこめなかった')
+
+        self.slam_deserialize_client.call_async(req).add_done_callback(done)
 
     def map_png(self):
         with self._lock:
@@ -669,13 +792,20 @@ class DashboardNode(Node):
         if grid is None:
             return {'ok': False, 'reason': '地図がまだ届いていない（use_slam:=true）'}
         name = os.path.join(self.map_save_dir, time.strftime('map_%Y%m%d_%H%M%S'))
+        pose = self._map_pose_now()
         try:
             os.makedirs(self.map_save_dir, exist_ok=True)
             write_map_files(name, grid)
             ok, reason = True, ''
         except OSError as exc:
             ok, reason = False, f'保存に失敗（{exc}）'
-        saved = {'ok': ok, 'name': name, 'stamp': round(time.time(), 1), 'reason': reason}
+        graph = {'ok': False, 'reason': ''}
+        if ok:
+            try:
+                graph = self._save_slam_graph(pose)
+            except OSError as exc:
+                graph = {'ok': False, 'reason': f'地図データの保存に失敗（{exc}）'}
+        saved = {'ok': ok, 'name': name, 'stamp': round(time.time(), 1), 'reason': reason, 'graph': graph}
         with self._lock:
             self._map_saved = saved
         return saved

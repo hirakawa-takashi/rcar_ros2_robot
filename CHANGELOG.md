@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-20
+
+### Added
+- 保存した地図を、ダッシュボードの再起動・電源の入れ直しのあとも使う。「地図を保存」（`POST /api/slam/save`）で、今までの地図の絵（.pgm / .yaml）に加えて、slam_toolbox の地図データ（`/slam_toolbox/serialize_map` → `maps/slam_YYYYmmdd_HHMMSS.posegraph` / `.data`）と、`maps/slam_latest.json`（そのときの車の位置 = 最後の `/pose` に、そのあとの `/odom` の動きを足したもの・段差の印）を書く。前の地図データは消す
+- dashboard_node は起動して `/map` が来たら 1 回だけ、`/slam_toolbox/deserialize_map`（`START_AT_GIVEN_POSE`、保存したときの車の位置）で読みこみ、段差の印を `/cliff_marks_edit` で autonomy_node に戻す。slam_toolbox は最初のスキャンを近くの地図と照合して位置を直すので、車は保存したときと同じ所・向き（だいたい 20 cm・20° 以内）に置いて起動する。`slam_load_on_start: false` で無効。SLAM のカードに「起動時の地図」を出す
+
 ## [1.11.7] - 2026-10-19
 
 ### Fixed
