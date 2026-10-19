@@ -155,6 +155,12 @@ class AutonomyNode(Node):
         self.declare_parameter('explore_cell', 0.5)
         self.declare_parameter('explore_reach_deg', 10.0)
         self.declare_parameter('explore_turn_timeout', 8.0)
+        # 減速から前進にもどるのは slow_distance + slow_hysteresis_m より空いてから。
+        # slow_keep_sec 以内にまた減速したら、前と同じ向きに曲がる（向きを選びなおさない）
+        self.declare_parameter('slow_hysteresis_m', 0.15)
+        self.declare_parameter('slow_keep_sec', 3.0)
+        # その場で turn_max_deg 回っても出口がなければ止まる（ぐるぐる回りつづけない）
+        self.declare_parameter('turn_max_deg', 400.0)
         # 前の近さを見る帯の半分の幅 [m]（車の幅 0.28 m の半分 + 6 cm）
         self.declare_parameter('path_half_width', 0.20)
         # 左右の両方にこれより近い物があれば、まん中へ横にずれる [m]
@@ -224,6 +230,12 @@ class AutonomyNode(Node):
         self.explore_cell = float(g('explore_cell').value)
         self.explore_reach = math.radians(float(g('explore_reach_deg').value))
         self.explore_turn_timeout = float(g('explore_turn_timeout').value)
+        self.slow_hyst = float(g('slow_hysteresis_m').value)
+        self.slow_keep = float(g('slow_keep_sec').value)
+        self.turn_max = math.radians(float(g('turn_max_deg').value))
+        self._slow_left = -float('inf')
+        self._turn_acc = 0.0
+        self._turn_yaw = None
         self._free = []          # [(向き rad, 車の幅で進める距離 m)]
         self._visits = {}        # /odom のマス → 入った回数
         self._last_cell = None
@@ -504,9 +516,19 @@ class AutonomyNode(Node):
         for cx, cy in self._known_cliffs():
             dx, dy = cx - pose[0], cy - pose[1]
             along = dx * c + dy * sn
-            if along > 0.0 and abs(dy * c - dx * sn) <= self.path_half + 0.1:
+            # 車の前のはし（0.2 m）より手前の印は、もう車の下なので見ない（前の段差センサーにまかせる）
+            if along > 0.2 and abs(dy * c - dx * sn) <= self.path_half + 0.1:
                 best = min(best, along)
         return best
+
+    def _spun_out(self, pose) -> bool:
+        """その場の旋回で回った角度をたして、turn_max をこえたら True。"""
+        if pose is None:
+            return False
+        if self._turn_yaw is not None:
+            self._turn_acc += abs(_wrap(pose[2] - self._turn_yaw))
+        self._turn_yaw = pose[2]
+        return self._turn_acc > self.turn_max
 
     def _tilted(self, now, tilt) -> bool:
         """AUTO に入ったときより tilt_stop 以上のかたむきが tilt_hold 秒つづいたら True。"""
@@ -776,6 +798,11 @@ class AutonomyNode(Node):
 
         self._count_visit(pose)
         if in_turn:
+            if self._spun_out(pose):
+                self._set_behavior('stuck')
+                self.get_logger().warn(
+                    f'{math.degrees(self.turn_max):.0f}° 回っても出口がないので止まる')
+                return cmd
             left_rad = self._target_left(pose)
             if left_rad is not None and now - self._behavior_since < self.explore_turn_timeout:
                 # 曲がる先の向きまで回る（そこまで回って、前がまだふさがっていれば回りつづける）
@@ -793,12 +820,14 @@ class AutonomyNode(Node):
             self._turn_dir = self._pre_dir if self._pre_dir is not None else self._pick_turn(s, pose)
             self._pre_dir = None
             self._turn_extra = random.uniform(0.0, self.turn_random)
+            self._turn_acc, self._turn_yaw = 0.0, None
             self._set_behavior('turn')
             cmd.angular.z = self._turn_dir * self.turn
             return cmd
 
-        if path_v <= self.slow_d:
-            if self._behavior != 'slow' or self._pre_dir is None:
+        if path_v <= self.slow_d + (self.slow_hyst if self._behavior == 'slow' else 0.0):
+            if self._pre_dir is None or (self._behavior != 'slow'
+                                         and now - self._slow_left > self.slow_keep):
                 self._pre_dir = self._pick_turn(s, pose)
             self._set_behavior('slow')
             cmd.linear.x = self.slow
@@ -809,8 +838,11 @@ class AutonomyNode(Node):
                 near = (self.slow_d - path_v) / max(self.slow_d - self.stop_d, 1e-3)
                 cmd.angular.z = self._pre_dir * self.pre_turn_gain * self.turn * max(0.0, min(1.0, near))
         else:
-            self._pre_dir = None
-            self._target_yaw = None
+            if self._behavior == 'slow':
+                self._slow_left = now
+            if now - self._slow_left > self.slow_keep:
+                self._pre_dir = None
+                self._target_yaw = None
             self._set_behavior('forward')
             cmd.linear.x = self.cruise
         if cmd.angular.z == 0.0:
