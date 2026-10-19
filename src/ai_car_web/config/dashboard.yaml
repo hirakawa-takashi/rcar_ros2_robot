@@ -219,6 +219,7 @@ autonomy_node:
     nav_plan_topic: "/plan"
     nav_frame: "map"
     nav_cmd_timeout: 0.5   # Nav2 の速度がこれより古ければゼロ
+    nav_max_angular: 0.5   # Nav2 の回る速さの上限 [rad/s]（約 29°/秒。v1.11.3 試走のせまい通路では平均 39°/秒で左右にゆれた）
     nav_auto_wait: 5.0     # 「ここへ行く」から自動に入らないままこの秒数で行き先をやめる
 
 joy_teleop_node:
