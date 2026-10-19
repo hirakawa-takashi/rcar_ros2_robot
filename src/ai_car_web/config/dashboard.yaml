@@ -162,6 +162,16 @@ autonomy_node:
     explore_via_deg: 60.0
     explore_via_min_m: 0.3
     explore_via_sec: 10.0
+    # まだ行っていない所のはしへ Nav2 で行く（新しいマスに 30 秒入らなかったら）
+    frontier_map_topic: "/map"
+    frontier_stale_sec: 30.0
+    frontier_min_cells: 6
+    frontier_clear_m: 0.25
+    frontier_min_dist: 0.8
+    frontier_timeout_sec: 90.0
+    frontier_retry_sec: 300.0
+    frontier_visited_m: 0.75
+    frontier_min_area_cells: 40
     # 減速から前進にもどるのは 0.8 + 0.15 m より空いてから。3 秒以内にまた減速したら同じ向きに曲がる
     slow_hysteresis_m: 0.15
     slow_keep_sec: 3.0
