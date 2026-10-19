@@ -51,7 +51,7 @@ import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav2_msgs.action import ComputePathToPose, NavigateToPose
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
@@ -81,6 +81,29 @@ MAX_PATH_POINTS = 120
 
 def _wrap(a: float) -> float:
     return math.atan2(math.sin(a), math.cos(a))
+
+
+def _clusters(mask, min_cells):
+    """mask の True のつながったかたまり（8 近傍）のうち min_cells 以上のものの、まん中にいちばん近いマス (行, 列)。"""
+    cells = set(zip(*np.nonzero(mask)))
+    out = []
+    while cells:
+        seed = cells.pop()
+        group, stack = [seed], [seed]
+        while stack:
+            cy, cx = stack.pop()
+            for ny in (cy - 1, cy, cy + 1):
+                for nx in (cx - 1, cx, cx + 1):
+                    if (ny, nx) in cells:
+                        cells.remove((ny, nx))
+                        group.append((ny, nx))
+                        stack.append((ny, nx))
+        if len(group) < min_cells:
+            continue
+        gy = sum(c[0] for c in group) / len(group)
+        gx = sum(c[1] for c in group) / len(group)
+        out.append(min(group, key=lambda c: (c[0] - gy) ** 2 + (c[1] - gx) ** 2))
+    return out
 
 
 def _path_points(path: Path):
@@ -217,6 +240,22 @@ class AutonomyNode(Node):
         self.declare_parameter('nav_frame', 'map')
         self.declare_parameter('nav_cmd_timeout', 0.5)
         self.declare_parameter('nav_auto_wait', 5.0)
+        # まだ行っていない所のはし（SLAM の地図で、空きと不明のさかい）を行き先にして Nav2 で行く。新しいマスに
+        # frontier_stale_sec 秒入らなかったら、いちばん近い「はし」（frontier_min_cells 以上のかたまり、壁から
+        # frontier_clear_m 以上、frontier_min_dist m 以上先、段差の印から cliff_avoid_m + 0.2 m 以上）へ向かう。
+        # 着いた・行けなかった・frontier_timeout_sec 秒たった・段差の印に近づいたら、ふつうの走行にもどる。
+        # 行けなかった所の 0.6 m 以内は frontier_retry_sec 秒えらばない。frontier_map_topic を空にすると無効
+        self.declare_parameter('frontier_map_topic', '/map')
+        self.declare_parameter('frontier_stale_sec', 30.0)
+        self.declare_parameter('frontier_min_cells', 6)
+        self.declare_parameter('frontier_clear_m', 0.25)
+        self.declare_parameter('frontier_min_dist', 0.8)
+        self.declare_parameter('frontier_timeout_sec', 90.0)
+        self.declare_parameter('frontier_retry_sec', 300.0)
+        # LiDAR で見えていても車が行っていない所（通ったマスから frontier_visited_m より遠い空き、
+        # frontier_min_area_cells 以上のかたまり）も行き先にする。見えている所は「はし」にならないため
+        self.declare_parameter('frontier_visited_m', 0.75)
+        self.declare_parameter('frontier_min_area_cells', 40)
 
         g = self.get_parameter
         self.offset = math.radians(float(g('scan_angle_offset_deg').value))
@@ -294,6 +333,20 @@ class AutonomyNode(Node):
         self.nav_frame = g('nav_frame').value
         self.nav_cmd_timeout = float(g('nav_cmd_timeout').value)
         self.nav_auto_wait = float(g('nav_auto_wait').value)
+        self.frontier_stale = float(g('frontier_stale_sec').value)
+        self.frontier_min_cells = int(g('frontier_min_cells').value)
+        self.frontier_clear = float(g('frontier_clear_m').value)
+        self.frontier_min_dist = float(g('frontier_min_dist').value)
+        self.frontier_timeout = float(g('frontier_timeout_sec').value)
+        self.frontier_retry = float(g('frontier_retry_sec').value)
+        self.frontier_visited = float(g('frontier_visited_m').value)
+        self.frontier_min_area = int(g('frontier_min_area_cells').value)
+        self._grid = None          # (占有の配列 [行=y, 列=x], 解像度, 原点 x, 原点 y)
+        self._frontier = None      # 向かっている「はし」 {'x', 'y', 'since'}
+        self._frontier_bad = []    # [(x, y, いつ)] 行けなかった「はし」
+        self._frontier_tried = 0.0
+        self._frontier_count = 0
+        self._new_cell_at = time.monotonic()
 
         self._lock = threading.Lock()
         self._mode = None
@@ -352,6 +405,11 @@ class AutonomyNode(Node):
             self.create_subscription(String, g('nav_goal_topic').value, self._nav_goal_cb, 10)
             self.create_subscription(Twist, g('nav_cmd_topic').value, self._nav_cmd_cb, 10)
             self.create_subscription(Path, g('nav_plan_topic').value, self._nav_plan_cb, 10)
+            if g('frontier_map_topic').value:
+                self.create_subscription(
+                    OccupancyGrid, g('frontier_map_topic').value, self._grid_cb,
+                    QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                               reliability=ReliabilityPolicy.RELIABLE))
         rate = float(g('publish_rate').value)
         self.create_timer(1.0 / max(rate, 1.0), self._timer_cb)
         self.create_timer(0.2, self._status_cb)
@@ -710,6 +768,121 @@ class AutonomyNode(Node):
         elif reason is not None:
             self._nav = self._nav_state('idle')
 
+    # --- まだ行っていない所のはしへ（Nav2） ---
+    def _grid_cb(self, msg: OccupancyGrid):
+        info = msg.info
+        grid = np.asarray(msg.data, dtype=np.int8).reshape(info.height, info.width)
+        with self._lock:
+            self._grid = (grid, info.resolution, info.origin.position.x, info.origin.position.y)
+
+    def _map_pose(self, pose):
+        """/odom の (x, y, yaw) → map。map → odom がまだ分からなければ None。"""
+        mo = self._map_odom
+        if pose is None or mo is None:
+            return None
+        c, sn = math.cos(mo[2]), math.sin(mo[2])
+        return (mo[0] + c * pose[0] - sn * pose[1], mo[1] + sn * pose[0] + c * pose[1],
+                _wrap(pose[2] + mo[2]))
+
+    def _find_frontier(self, mp, now):
+        """地図の「空き」と「不明」のさかいのかたまりのうち、えらべる中でいちばん近い所 (x, y)。なければ None。"""
+        with self._lock:
+            g = self._grid
+        if g is None:
+            return None
+        grid, res, ox, oy = g
+        h, w = grid.shape
+        free, unknown, occ = grid == 0, grid < 0, grid >= 65
+        edge = np.zeros_like(free)
+        edge[1:, :] |= unknown[:-1, :]
+        edge[:-1, :] |= unknown[1:, :]
+        edge[:, 1:] |= unknown[:, :-1]
+        edge[:, :-1] |= unknown[:, 1:]
+        # 壁から frontier_clear_m 以内は行き先にしない
+        r = max(1, int(math.ceil(self.frontier_clear / res)))
+        near_wall = np.zeros_like(occ)
+        oy_i, ox_i = np.nonzero(occ)
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                if dx * dx + dy * dy > r * r:
+                    continue
+                yy, xx = oy_i + dy, ox_i + dx
+                ok = (yy >= 0) & (yy < h) & (xx >= 0) & (xx < w)
+                near_wall[yy[ok], xx[ok]] = True
+        # 車が行った所（/odom のマスのまん中を map にしたもの）の frontier_visited_m 以内
+        visited = np.zeros_like(free)
+        rv = int(math.ceil(self.frontier_visited / res))
+        yy, xx = np.mgrid[-rv:rv + 1, -rv:rv + 1]
+        disk = yy * yy + xx * xx <= rv * rv
+        for (vx, vy) in list(self._visits):
+            m = self._map_pose(((vx + 0.5) * self.explore_cell, (vy + 0.5) * self.explore_cell, 0.0))
+            if m is None:
+                continue
+            ci, ri = int((m[0] - ox) / res), int((m[1] - oy) / res)
+            r0, r1, c0, c1 = max(ri - rv, 0), min(ri + rv + 1, h), max(ci - rv, 0), min(ci + rv + 1, w)
+            if r0 < r1 and c0 < c1:
+                visited[r0:r1, c0:c1] |= disk[r0 - ri + rv:r1 - ri + rv, c0 - ci + rv:c1 - ci + rv]
+        ok = free & ~near_wall
+        targets = (_clusters(ok & edge, self.frontier_min_cells)
+                   + _clusters(ok & ~visited, self.frontier_min_area))
+        bad = [(bx, by) for bx, by, t in self._frontier_bad if now - t < self.frontier_retry]
+        best, best_d = None, float('inf')
+        for cy, cx in targets:
+            x, y = ox + (cx + 0.5) * res, oy + (cy + 0.5) * res
+            d = math.hypot(x - mp[0], y - mp[1])
+            if (d < self.frontier_min_dist or d >= best_d
+                    or any(math.hypot(x - bx, y - by) < 0.6 for bx, by in bad)
+                    or any(math.hypot(x - mx, y - my) < self.cliff_avoid + 0.2
+                           for mx, my in self._cliff_marks)):
+                continue
+            best, best_d = (x, y), d
+        return best
+
+    def _frontier_start(self, now, pose) -> bool:
+        """新しいマスに frontier_stale 秒入っていなければ、いちばん近い「はし」へ Nav2 で向かいはじめる。"""
+        if (self.nav_client is None or self._frontier is not None
+                or self._nav['state'] in ('planning', 'sending', 'active')
+                or now - self._new_cell_at < self.frontier_stale or now - self._frontier_tried < 10.0):
+            return False
+        self._frontier_tried = now
+        mp = self._map_pose(pose)
+        goal = self._find_frontier(mp, now) if mp is not None else None
+        if goal is None:
+            return False
+        yaw = math.degrees(math.atan2(goal[1] - mp[1], goal[0] - mp[0]))
+        self._nav_goal_cb(String(data=json.dumps(
+            {'action': 'go', 'x': goal[0], 'y': goal[1], 'yaw_deg': yaw})))
+        self._frontier = {'x': round(goal[0], 2), 'y': round(goal[1], 2), 'since': now}
+        self._frontier_count += 1
+        self.get_logger().info(
+            f'まだ行っていない所のはしへ: x {goal[0]:.2f} y {goal[1]:.2f}'
+            f'（{math.hypot(goal[0] - mp[0], goal[1] - mp[1]):.1f} m 先）')
+        return True
+
+    def _frontier_watch(self, now, pose):
+        """「はし」へ向かっているあいだ。終わった・時間切れ・段差の印に近づいたら、ふつうの走行にもどる。"""
+        f = self._frontier
+        state = self._nav['state']
+        reason = None
+        if state not in ('sending', 'active'):
+            reason = None if state == 'succeeded' else (self._nav.get('reason') or state)
+        else:
+            mp = self._map_pose(pose)
+            if now - f['since'] > self.frontier_timeout:
+                reason = f'{self.frontier_timeout:.0f} 秒で着かない'
+            elif mp is not None and any(math.hypot(mp[0] - mx, mp[1] - my) < self.cliff_avoid
+                                        for mx, my in self._cliff_marks):
+                reason = '段差の印に近づいた'
+            else:
+                return
+            self._nav_cancel(reason)
+        if reason is not None:
+            self._frontier_bad.append((f['x'], f['y'], now))
+        self.get_logger().info(f"はし（x {f['x']} y {f['y']}）: {'着いた' if reason is None else reason}")
+        self._frontier = None
+        self._nav_hold = None
+        self._new_cell_at = now
+
     def _nav_step(self, now, mode):
         """Level 2 の速度。行き先がないときは None（Level 1 の走行）。"""
         state = self._nav['state']
@@ -753,6 +926,8 @@ class AutonomyNode(Node):
         cmd = Twist()
         nav_cmd = self._nav_step(now, mode)
         if mode != 'auto':
+            self._frontier = None
+            self._new_cell_at = now
             self._escape = None
             self._unstick = None
             self._unstick_times = []
@@ -790,8 +965,12 @@ class AutonomyNode(Node):
             esc_cmd = self._escape_step(now, s, pose, cliff_front, cliff_back)
             if esc_cmd is not None:
                 return esc_cmd
+        if self._frontier is not None:
+            self._frontier_watch(now, pose)
         if nav_cmd is not None:
             return nav_cmd
+        if self._frontier_start(now, pose):
+            return cmd
 
         front = s.get('front')
         path_v = s.get('path') if s.get('path') is not None else float('inf')
@@ -1004,6 +1183,8 @@ class AutonomyNode(Node):
             return
         cell = (math.floor(pose[0] / self.explore_cell), math.floor(pose[1] / self.explore_cell))
         if cell != self._last_cell:
+            if cell not in self._visits:
+                self._new_cell_at = time.monotonic()
             self._visits[cell] = self._visits.get(cell, 0) + 1
             self._last_cell = cell
 
@@ -1164,6 +1345,9 @@ class AutonomyNode(Node):
                                        if self._target_yaw is not None else None),
                 'explore_via': time.monotonic() < self._via_until,
                 'visited_cells': len(self._visits),
+                'frontier': ({'x': self._frontier['x'], 'y': self._frontier['y']}
+                             if self._frontier else None),
+                'frontier_goals': self._frontier_count,
                 'cliff_points': len(self._cliff_pts) + len(self._cliff_marks),
                 'cliff_marks': [[round(x, 2), round(y, 2)] for x, y in self._cliff_marks],
                 'tilt_deg': (round(math.degrees(max(abs(_wrap(self._tilt[0] - self._tilt_base[0])),
