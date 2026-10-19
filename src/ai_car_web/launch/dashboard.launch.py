@@ -183,6 +183,8 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file],
             condition=IfCondition(use_perception),
+            respawn=True,
+            respawn_delay=2.0,
         ),
         Node(
             package='ai_car_web',

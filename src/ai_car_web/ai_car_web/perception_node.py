@@ -997,6 +997,7 @@ class PerceptionNode(Node):
             'level': level,
             'reason': reason,
             'front_distance': round(front, 3) if front is not None else None,
+            'scan_age': round(scan_age, 2) if scan_age is not None else None,
             'sectors': sectors,
             'move': dict(
                 move, step_deg=self.move_step, stop_gap=self.move_stop_gap,

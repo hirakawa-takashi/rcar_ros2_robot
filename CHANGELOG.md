@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-10-19
+
+### Fixed
+- v1.10.0 の試走（約 8 分）で、AUTO が「LiDAR データなし」で 5 回止まった（`perception_node` の LiDAR の判定が 1.5 秒より古くなった）。止まる前に、slam_toolbox が「queue is full」で LiDAR を捨てていた。止まっていないときは、/scan は 7 Hz で来ていて、`/obstacle_status` も 0.2 秒ごとに出ていた。走っているときにラズパイが重くなるのが原因とみる（load average 約 9、`perception_node` 82%）。表示だけに使っている 1 眼の奥行きの AI を `mono_depth_rate` 15 → 5 Hz にした
+- `perception_node` を `respawn=True` にした（ほかのノードと同じ。ダッシュボードを再起動しないで、`perception_node` だけ入れかえられる。ダッシュボードを再起動すると SLAM の地図が消えるため）
+- `/obstacle_status` に `scan_age`（LiDAR の判定の古さ 秒）を足した。次に止まったら、どこでおくれたかを調べるため
+
 ## [1.10.0] - 2026-10-19
 
 ### Added

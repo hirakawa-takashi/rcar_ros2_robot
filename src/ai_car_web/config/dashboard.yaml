@@ -389,7 +389,7 @@ perception_node:
     # /stereo/depth_status・/stereo/depth/compressed に出す（トピック名は前の 2 眼カメラのときのまま）。空で無効
     # 取得: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/scdepthv3.hef
     mono_depth_hef: "/home/super/AI-CAR_ws/models/scdepthv3.hef"
-    mono_depth_rate: 15.0
+    mono_depth_rate: 5.0       # 表示だけなので 5 Hz（15 Hz のとき、走行中に LiDAR の処理が 1.5 秒おくれて AUTO が止まった）
     # まずは表示だけ（減速・停止には使わない）
     mono_depth_guard: false
     mono_camera_height_m: 0.100
