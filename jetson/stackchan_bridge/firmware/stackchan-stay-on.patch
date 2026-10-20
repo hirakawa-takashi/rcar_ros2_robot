@@ -1,0 +1,27 @@
+--- a/main/hal/board/stackchan.cc
++++ b/main/hal/board/stackchan.cc
+@@ -328,11 +328,10 @@
+ 
+     bool ShouldEnablePowerSave(bool has_external_power, bool is_discharging) const
+     {
+-        // USB がささっていれば、USB の電気が足りず電池も使っている（discharging）ときでも自分で電源を切らない
+-        if (has_external_power) {
+-            return xiaozhi_config_.allowShutdownWhenCharging;
+-        }
+-        return is_discharging;
++        // 電源ボタンで切るまで、画面も電源も点けたまま（使わない時間で眠る・切るをしない）
++        (void)has_external_power;
++        (void)is_discharging;
++        return false;
+     }
+ 
+     void UpdatePowerSaveEnabled(bool has_external_power, bool is_discharging)
+@@ -383,7 +382,7 @@
+             GetDisplay()->SetPowerSaveMode(false);
+             GetBacklight()->RestoreBrightness();
+         });
+-        power_save_timer_->OnShutdownRequest([this]() { pmic_->PowerOff(); });
++        power_save_timer_->OnShutdownRequest([]() { ESP_LOGW(TAG, "Idle shutdown ignored (stay on until the power button)"); });
+         UpdatePowerSaveEnabled(pmic_->IsExternalPowerConnected(), pmic_->IsDischarging());
+     }
+ 

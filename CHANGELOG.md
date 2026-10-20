@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.12.3] - 2026-10-21
+
+### Changed
+- スタックちゃんのファーム（`stackchan-stay-on.patch`、新しい）: 使わない時間で画面を消す（300 秒）・電源を切る（600 秒）を、USB があってもなくてもしない（`ShouldEnablePowerSave()` が いつも false、`OnShutdownRequest` は `PowerOff()` を呼ばずログだけ）。電源ボタンで切ったときだけ消える。2026/10/21 05:22 に切れたとき、15 分後の電池は 100%（充電中）で、電池が空になったのではなかった
+- `jetson/stackchan_bridge/README.md`: ファームの作り方を StackChan `036eade` に固定（2026/10/20 の v1.6.0 では `xiaozhi-fallback-pc.patch`・`stackchan-camera-follow-server.patch` が通らない）。`StackChan/firmware/` の中の `git apply` は `main/…` のパッチを黙って飛ばすので、`patch -p1 <` にした
+
 ## [1.12.2] - 2026-10-21
 
 ### Added
