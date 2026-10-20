@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-10-21
+
+### Changed
+- `perception_node`: 1 眼の奥行きの AI（SC-Depth v3）を止めた（`mono_depth_hef: ""`）。減速・停止には使っておらず（`mono_depth_guard: false`）、表示だけなのに、1 枚 54 ms（JPEG をほどく・小さくする・奥行きの計算・色の画像）を 1 秒に約 5 回、CPU でしていた。車を止めて 60 秒ずつ測ると、`perception_node` 48% → 21%、ラズパイ全体 242% → 212%（400% のうち）。止めているとき、カメラカードの「1眼の距離」は「-」または「止まっている」になる。使うときは `mono_depth_hef` に `/home/super/AI-CAR_ws/models/scdepthv3.hef` を入れる
+
 ## [1.12.0] - 2026-10-20
 
 ### Added
