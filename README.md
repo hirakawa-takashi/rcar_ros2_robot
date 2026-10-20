@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.12.0（2026-10-19。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.12.1（2026-10-21。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -83,7 +83,7 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 | `encoder_odom_node` | 4 輪のエンコーダー（GPIO v2 uAPI、距離）と IMU（`/imu/data`、回った向き）→ `/odom`・TF `odom → base_footprint`（20 Hz） |
 | `cliff_node` | 前後の VL53L1X（0x30 / 0x31）→ `/cliff_status`（20 Hz） |
 | `imu_node` | BNO055（0x29）→ `/imu/data`（20 Hz）・`/imu/mag` |
-| `perception_node` | `/scan` → `/obstacle_status`。カメラ画像で 1 眼の奥行きの AI（SC-Depth v3・Hailo-8、表示だけ） |
+| `perception_node` | `/scan` → `/obstacle_status`。カメラ画像で 1 眼の奥行きの AI（SC-Depth v3・Hailo-8、表示だけ。今は `mono_depth_hef: ""` で止めている） |
 | `autonomy_node` | Level 1 自律走行（LiDAR の反応で前進・旋回）と Level 2（`/nav_goal` の行き先へ Nav2 で向かい、`/cmd_vel_nav` を中継）→ `/cmd_vel_auto` |
 | Nav2（`nav2.launch.py`） | `controller_server`（Regulated Pure Pursuit）・`planner_server`（NavFn）・`behavior_server`・`bt_navigator`。slam_toolbox の `/map` と map → odom の TF を使い、速度は `/cmd_vel_nav`。`use_nav2`（既定 true、`use_slam:=true` のとき 40 秒後に起動） |
 | `joy_teleop_node` | Logitech F710 → `/joy_cmd` |
@@ -259,7 +259,7 @@ curl -L -o ~/AI-CAR_ws/models/yolov8m.hef \
   https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8m.hef
 ```
 
-今の設定では `config/dashboard.yaml` の `perception_node.hef_path` を空（`""`）にして YOLO は止めている。AI HAT+ は 1 眼の奥行きの AI（SC-Depth v3、`mono_depth_hef: ~/AI-CAR_ws/models/scdepthv3.hef`、15 Hz、表示だけ）に使う。YOLOv8m / s / n を使うときは `hef_path` に `~/AI-CAR_ws/models/yolov8m.hef` などを書く。
+今の設定では `config/dashboard.yaml` の `perception_node.hef_path` を空（`""`）にして YOLO は止めている。AI HAT+ の 1 眼の奥行きの AI（SC-Depth v3、表示だけ）も、CPU を軽くするため `mono_depth_hef: ""` で止めている（使うときは `~/AI-CAR_ws/models/scdepthv3.hef`、5 Hz）。YOLOv8m / s / n を使うときは `hef_path` に `~/AI-CAR_ws/models/yolov8m.hef` などを書く。
 
 ## 依存
 
