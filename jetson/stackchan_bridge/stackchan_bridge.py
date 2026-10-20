@@ -336,6 +336,8 @@ BRIGHT_LEVELS = ((30, 10), (70, 35), (256, 75))  # 映像の明るさがこれ�
 BRIGHT_MARGIN = 8  # 境目の近くで行ったり来たりしないよう、±8 しても同じ段のときだけ変える
 BRIGHT_EVERY = 60.0
 BRIGHT_MIN_FRAMES = 5
+STATUS_TOOL = 'self.get_device_status'
+BATTERY_EVERY = 300.0  # 電池の量（%）を記録する間かく（秒）
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend.txt')
 PC_VOICE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pc_voice.txt')
@@ -353,7 +355,8 @@ STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': N
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc_voice': None, 'standby': False}
+          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc_voice': None, 'standby': False,
+          'battery': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
 FRAME = {'jpeg': None, 'times': [], 'viewer_at': 0.0, 'on': False}
@@ -1560,6 +1563,7 @@ class Session:
         """会話モードが 30 秒だまったら「じゃあ、またね。」で呼びかけ待ちにもどし、その 30 秒後に居眠りする。
         60 秒ごとに 1 回送ってスタックちゃんの 120 秒の時間切れを防ぎ、画面の明るさを映像に合わせる。"""
         last = bright_last = time.monotonic()
+        battery_last = last - BATTERY_EVERY + 30.0
         while True:
             await asyncio.sleep(1)
             try:
@@ -1582,6 +1586,9 @@ class Session:
                 if time.monotonic() - bright_last >= BRIGHT_EVERY:
                     bright_last = time.monotonic()
                     await self.adjust_brightness()
+                if time.monotonic() - battery_last >= BATTERY_EVERY and not self.busy():
+                    battery_last = time.monotonic()
+                    await self.read_battery()
                 if STATUS['state'] == 'listening' and not self.busy() and self.asleep():
                     set_status(state='waiting')
                 if time.monotonic() - last >= KEEPALIVE:
@@ -1649,6 +1656,25 @@ class Session:
         log(f'画面の明るさ: {self.bright} → {level}（映像の明るさ {light:.0f}）')
         self.bright = level
         set_status(screen=level)
+
+    async def read_battery(self):
+        """電池の量（%）と充電中かを記録する（USB につないだまま電池がへって切れていないかを見る）。"""
+        fut, sending = self.mcp_call('tools/call', {'name': STATUS_TOOL, 'arguments': {}})
+        await sending
+        try:
+            res = await asyncio.wait_for(fut, 5)
+        except asyncio.TimeoutError:
+            log('MCP: 本体の状態の返事がありません')
+            return
+        try:
+            text = ''.join(c.get('text', '') for c in (res.get('result') or {}).get('content', []))
+            battery = json.loads(text).get('battery')
+        except (ValueError, AttributeError):
+            battery = None
+        if not isinstance(battery, dict):
+            return
+        log(f'電池: {battery.get("level")}%（充電{"中" if battery.get("charging") else "していない"}）')
+        set_status(battery={**battery, 'at': time.time()})
 
     async def send(self, **msg):
         msg['session_id'] = self.sid
