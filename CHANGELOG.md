@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-10-22
+
+### Changed
+- ユーザーの判断で、v1.17.0 の「人・犬・猫で早めにゆっくり・止まる」をやめた（`living_guard: false`、`hef_path: ""` で YOLO も止める）。AI HAT+ はまた何も動かさない。`drive_mode_node` の自動のときの減速（`living.enabled` が true のときだけ効く）は残してあるが、今は働かない
+
 ## [1.17.0] - 2026-10-22
 
 ### Added
