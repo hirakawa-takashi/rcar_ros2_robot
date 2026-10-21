@@ -10,7 +10,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 | No | 部品名 | 仕様・備考 | 接続方法 |
 |----|--------|-----------|---------|
 | 1 | **Raspberry Pi 5** | 8GB RAM（メインボード） | — |
-| 2 | **Raspberry Pi AI HAT+** | Hailo-8・26TOPS NPU。今は 1 眼の奥行きの AI（SC-Depth v3）に使う（YOLO は `hef_path` を空にして止めている） | Pi 5 GPIO ヘッダー |
+| 2 | **Raspberry Pi AI HAT+** | Hailo-8・26TOPS NPU。今は使っていない（YOLO は `hef_path` を空にして止めている） | Pi 5 GPIO ヘッダー |
 | 3 | **Adafruit DC & Stepper Motor HAT**（Adafruit 2348） | モーター駆動制御（4ch、PCA9685 0x60 + TB6612 ×2）。2026/10/12 に同型品へ交換 | Pi 5 GPIO ヘッダー（I²C） |
 | 4 | **Raspberry Pi Camera Module 3 Wide**（SC0874、IMX708） | 横の画角 102°。960×540・30fps・JPEG 品質 80（`camera_ros`） | CSI バス |
 | 5 | **LiDAR（RPLIDAR A1M8）** | 2D レーザースキャナ（最大距離8m） | USB シリアル |
@@ -48,7 +48,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 │  │ Toolbox  │   └──────────┘               │
 │  └──────────┘                               │
 │                                             │
-│  AI HAT+ (Hailo-8 26TOPS) ← SC-Depth v3     │
+│  AI HAT+ (Hailo-8 26TOPS)                   │
 └──┬───────┬──────────┬──────────┬───────┬────┘
    │       │          │          │       │
  CSIバス   I²C        USB        GPIO    I²C
@@ -121,5 +121,5 @@ Adafruit Motor HAT にエンコーダー入力はないため、Motor+/Motor− 
 
 ## メモ
 - カメラ解像度は 960×540 / 30fps・JPEG 品質80 に設定（CPU 負荷とダッシュボード表示の滑らかさのバランス）
-- AI HAT+ は NPU 推論用（`perception_node`。今は SC-Depth v3、表示だけ）
+- AI HAT+ は NPU 推論用（`perception_node`。今は止めている）
 - GY-BNO055 は `/imu/data`（20 Hz）と `/imu/mag`（磁気は表示だけ、向きの制御には使わない）を公開

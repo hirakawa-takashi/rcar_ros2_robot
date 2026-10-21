@@ -31,7 +31,7 @@ overview:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
     - {name: FastAPI + uvicorn, role: Web ダッシュボード / REST / WebSocket}
-    - {name: HailoRT 4.24, role: AI HAT+ 推論（1 眼の奥行きの AI SC-Depth v3。YOLOv8m は hef_path を空にして止めている）}
+    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8m。今は hef_path を空にして止めている）}
     - {name: libcamera (rpicam), role: Camera Module 3 Wide 取り込み（camera_ros）}
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
 
@@ -52,7 +52,6 @@ system:
       items:
         - LiDAR（A1M8）で障害物までの距離
         - Camera Module 3 Wide（960×540・30 fps）
-        - AI HAT+ の 1 眼の奥行きの AI（SC-Depth v3）で床から出っぱった低い物を見つける（表示だけ）
         - 落下防止センサー（VL53L1X）前後 2 個で段差を見る（20 Hz）
         - 運転モード・自律走行・安全ガード（LiDAR 360° の見張り）
         - IMU（BNO055）で向きを保ってまっすぐ走る
@@ -359,7 +358,7 @@ nodes:
     file: ai_car_web/dashboard_node.py
     role: FastAPI サーバー（別スレッド）+ rclpy ノード。ブラウザと ROS 2 の橋渡し。Web 操作とゲームパッドの指令を同じ経路で /cmd_vel_manual に変換する
     publishes: [/cmd_vel_manual, /drive_mode_request, /jetson_detections]
-    subscribes: [/scan, /imu/data, /imu/mag, /imu/mag_status, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status, /map, /pose, /stereo/depth_status, /stereo/depth/compressed]
+    subscribes: [/scan, /imu/data, /imu/mag, /imu/mag_status, /odom, /system_status, /camera/image_raw/compressed, /obstacle_status, /joy_cmd, /drive_mode, /autonomy_status, /cliff_status, /map, /pose]
     params:
       - {name: max_linear_speed, ref: dashboard_node.max_linear_speed, unit: m/s, desc: 正規化指令 1.0 のときの並進速度}
       - {name: max_angular_speed, ref: dashboard_node.max_angular_speed, unit: rad/s, desc: 正規化指令 1.0 のときの旋回速度}
@@ -488,7 +487,7 @@ nodes:
     file: ai_car_web/perception_node.py
     role: LiDAR 360° を 5° ごとに、車体の端（body_box_m）から物までの空き（move）と、左右に回れる角度（turn_free_deg）を出す。前方 ±30° を左 / 中央 / 右で評価し 停止 / 減速 / 安全 / 不明 を判定。カメラ画像を AI HAT+（YOLOv8m）で推論し、LiDAR の同方位距離を物体に付与。温度で推論レートを制御し、複数フレームで検出を確認
     publishes: [/obstacle_status]
-    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /stereo/depth_status, /jetson_detections]
+    subscribes: [/scan, /camera/image_raw/compressed, /system_status, /jetson_detections]
     params:
       - {name: stop_distance, ref: perception_node.stop_distance, unit: m, desc: 停止判定}
       - {name: slow_distance, ref: perception_node.slow_distance, unit: m, desc: 減速判定}
@@ -500,10 +499,6 @@ nodes:
       - {name: living_guard, ref: perception_node.living_guard, unit: '', desc: 人・動物の検出で減速・停止する（false は表示のみ）}
       - {name: living_slow_distance, ref: perception_node.living_slow_distance, unit: m, desc: 人・動物がこの距離以内で減速}
       - {name: living_stop_distance, ref: perception_node.living_stop_distance, unit: m, desc: 人・動物がこの距離以内で停止}
-      - {name: stereo_guard, ref: perception_node.stereo_guard, unit: '', desc: 1 眼の奥行きの AI で見つけた低い障害物で減速・停止する（mono_depth_guard も true のときだけ。false は表示のみ）}
-      - {name: stereo_slow_distance, ref: perception_node.stereo_slow_distance, unit: m, desc: 低い障害物がこの距離以内で減速}
-      - {name: stereo_stop_distance, ref: perception_node.stereo_stop_distance, unit: m, desc: 低い障害物がこの距離以内で停止}
-      - {name: stereo_low_margin, ref: perception_node.stereo_low_margin, unit: m, desc: LiDAR の距離が 1 眼の距離よりこれ以上遠ければ低い物}
       - {name: inference_rate, ref: perception_node.inference_rate, unit: Hz, desc: 推論レート上限}
       - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
       - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
@@ -602,8 +597,6 @@ topics:
   - {name: /cliff_status, type: std_msgs/String (JSON), desc: 落下防止センサーの段差判定 level（unwired / unknown / floor / cliff）・前後の床からの高さ height_cm（床 0 cm）と距離・前進 / 後退の停止（20 Hz）}
   - {name: /system_status, type: std_msgs/String (JSON), desc: Pi / AI HAT+ の状態（1 Hz）}
   - {name: /obstacle_status, type: std_msgs/String (JSON), desc: 障害物判定 level / 距離 / 検出物体（5 Hz）}
-  - {name: /stereo/depth_status, type: std_msgs/String (JSON), desc: 1 眼の奥行きの AI の低い物（通り道の中のいちばん近い物の距離・左右・高さ・方位、処理時間）。perception_node が出して自分で低い障害物の判定に使う（名前は前の 2 眼カメラのときのまま）}
-  - {name: /stereo/depth/compressed, type: sensor_msgs/CompressedImage, desc: 1 眼の奥行きの距離の色の画像（perception_node が出す）}
   - {name: /jetson_detections, type: std_msgs/String (JSON), desc: Jetson（NanoOWL）の物体検出（名前・信頼度・画面の位置）。POST /api/jetson/detections から dashboard_node が流す。表示のみ}
   - {name: /joy_cmd, type: geometry_msgs/Twist, desc: ゲームパッドの正規化指令（10 Hz）}
   - {name: /cmd_vel_manual, type: geometry_msgs/Twist, desc: Web + ゲームパッドの手動速度指令}
@@ -696,7 +689,6 @@ api:
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
-    - {method: GET, path: /api/camera/depth_stream, desc: 1 眼の奥行きの距離の色の映像（MJPEG）, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
     - {method: POST, path: '/api/mypc/{action}', desc: パソコンの再起動・更新（reboot / upgrade）を頼む（次に状態が届いたときの返事で伝える）, auth: true}
     - {method: POST, path: /api/stackchan/backend, desc: スタックちゃんの考える所を Jetson / パソコンに切り替える, auth: true}
@@ -724,7 +716,7 @@ status:
   known_issues:
     - 電源は PD なし（バッテリー PD 12V → DROK 5.2V → USB-A → ラズパイ）。ラズパイは 3 A の電源と見ている（usb_max_current_enable=1 で USB に 1.6 A まで）。Camera Module 3 Wide にしてからは電圧低下 0 回だが、余裕は少ない
     - 落下防止センサー（VL53L1X ×2）は前後とも配線済み（0x30 / 0x31 で距離が読める）。段差の前で本当に止まるかは、床でまだ確かめていない
-    - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある（1 眼の奥行きの低い物は表示だけ）
+    - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある
     - /odom の横移動は寸法からの計算値（前後は 1.8 m、旋回は 1.5 回転で床合わせ済み）
     - IMU（BNO055）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で地球の約 3 倍あり、向きは目安だけ
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）
@@ -756,7 +748,6 @@ programs:
   - {place: ラズパイ, name: encoder_odom_node, file: src/ai_car_web/ai_car_web/encoder_odom_node.py, role: 4 輪のエンコーダー（距離）と IMU（回った向き）→ /odom と TF, video: encoder_odom_node_yukkuri.mp4}
   - {place: ラズパイ, name: autonomy_node, file: src/ai_car_web/ai_car_web/autonomy_node.py, role: 自律走行（Level 1 は LiDAR で減速・停止・旋回、Level 2 は Nav2 の行き先へ）, video: autonomy_node_yukkuri.mp4}
   - {place: ラズパイ, name: perception_node, file: src/ai_car_web/ai_car_web/perception_node.py, role: LiDAR と AI HAT+ の YOLO で障害物を判定, video: perception_node_yukkuri.mp4}
-  - {place: ラズパイ, name: mono_depth, file: src/ai_car_web/ai_car_web/mono_depth.py, role: 1 眼の奥行きの AI（SC-Depth v3）で低い物（表示だけ）, video: mono_depth_yukkuri.mp4}
   - {place: ラズパイ, name: seg_display_node, file: src/ai_car_web/ai_car_web/seg_display_node.py, role: TM1637 の 7 セグ LED に状態を出す（既定は使わない）, video: seg_display_node_yukkuri.mp4}
   - {place: ラズパイ, name: lidar_watchdog_node, file: src/ai_car_web/ai_car_web/lidar_watchdog_node.py, role: /scan が止まったら rplidar・USB をつなぎ直す, video: lidar_watchdog_node_yukkuri.mp4}
   - {place: ラズパイ, name: imu_node, file: src/ai_car_web/ai_car_web/imu_node.py, role: BNO055 → /imu/data・/imu/mag, video: imu_node_yukkuri.mp4}

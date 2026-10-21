@@ -10,8 +10,6 @@ dashboard_node:
     odom_topic: "/odom"
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"
-    stereo_depth_topic: "/stereo/depth_status"
-    stereo_depth_image_topic: "/stereo/depth/compressed"
     # ブラウザへの MJPEG 配信レート（カメラ取り込み 15fps と同じ）
     camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
@@ -360,7 +358,7 @@ perception_node:
     move_slow_gap: 0.7       # 手動ではこれ以下で半分の速さ
     turn_center_m: [-0.043, -0.008]  # その場で回る中心（天板の真ん中）
     turn_stop_deg: 5.0       # その向きに回れる角度がこれより小さいと、その向きの回転を止める（反対向きは回れる）
-    # 物の名前を当てる YOLO（yolov8m.hef）は使わない。AI HAT+ は 1 眼の奥行きの AI だけに使う
+    # 物の名前を当てる YOLO（yolov8m.hef）は使わない。今は AI HAT+ で動かす AI はない
     hef_path: ""
     # 推論レート上限（YOLO を使うとき。検出確定は 3 フレーム中 2 回。YOLOv8m の実効上限は約 12Hz）
     inference_rate: 15.0
@@ -377,9 +375,6 @@ perception_node:
     scan_max_age: 1.0
     cluster_gap: 0.25
     danger_distance: 0.3
-    # 物の枠の距離のマス（/stereo/depth_grid）。出すノードがないので使わない（物の枠の距離は LiDAR）
-    stereo_grid_topic: ""
-    stereo_grid_min_ratio: 0.3
     # Jetson（jetson/owl_detector の NanoOWL）の物体検出。LiDAR の距離を付けて表示するだけ（速度は変えない）
     jetson_topic: "/jetson_detections"
     jetson_max_age: 2.0
@@ -388,55 +383,12 @@ perception_node:
     living_labels: ["人", "犬", "猫", "鳥"]
     living_slow_distance: 1.5
     living_stop_distance: 0.6
-    # 1 眼の奥行きの AI（下の mono_depth_*）で見つけた低い障害物（LiDAR の線より低い物）の判定。
-    # 減速・停止に使うのは stereo_guard と mono_depth_guard の両方が true のときだけ（名前は前の 2 眼カメラのときのまま）
-    stereo_topic: "/stereo/depth_status"
-    stereo_guard: true
-    stereo_slow_distance: 0.8
-    stereo_stop_distance: 0.45
-    stereo_low_margin: 0.15
-    # 判定が届かなくなってから、古い値を使わなくなるまでの秒数
-    stereo_max_age: 1.5
-    # 1 眼の奥行きの AI（Hailo Model Zoo の SC-Depth v3、320x256、Hailo-8 で約 5.5 ms）。
-    # 床の行の真ん中より 1.07 倍手前に見える所を物とし、物が床につく行から距離を出す。
-    # /stereo/depth_status・/stereo/depth/compressed に出す（トピック名は前の 2 眼カメラのときのまま）。空で無効
-    # 取得: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/scdepthv3.hef
-    # 今は空（止めている）。表示だけなのに、1 枚 54 ms × 5 Hz の CPU を使っていた
-    # （止めると perception_node 48% → 21%、ラズパイ全体 242% → 212%、2026/10/21 停止中に 60 秒ずつ測定）。
-    # 使うときは "/home/super/AI-CAR_ws/models/scdepthv3.hef" にする
-    mono_depth_hef: ""
-    mono_depth_rate: 5.0       # 表示だけなので 5 Hz（15 Hz のとき、走行中に LiDAR の処理が 1.5 秒おくれて AUTO が止まった）
-    # まずは表示だけ（減速・停止には使わない）
-    mono_depth_guard: false
-    mono_camera_height_m: 0.100
-    mono_camera_pitch_deg: 0.0
-    # 車が傾いても距離がずれないよう、カメラの下向きの角度を毎回出す。LiDAR が当たった物
-    # （0.3〜2 m）と床のさかい目の行を、カメラの高さと LiDAR の距離から出る行とくらべる。
-    # AI は物の下のはしを床にとけこませるので、平らな床で出る -2.7° を引く（mono_pitch_bias_deg）。
-    # 実機（10/12）: 平らな床で -0.5〜+0.3°、前輪の下に 7 mm で -4.1°（映像のずれでは -3.7°）
-    mono_auto_pitch: true
-    mono_pitch_bias_deg: -2.7
-    mono_lidar_height_m: 0.175
-    mono_nearer_ratio: 1.07
-    mono_min_height_m: 0.02
-    mono_fill_ratio: 0.5
-    # 遠いと AI の奥行きが縮んで、床と物の差が小さくなるので 1 m まで
-    mono_max_range_m: 1.0
-    mono_min_columns: 3
-    # Camera Module 3 Wide のレンズは車の真ん中より 8 mm 左
-    mono_corridor_center_y_m: -0.008
-    mono_corridor_half_width_m: 0.15
-    # 物の出たり消えたりをおさえる。0.5 秒に 2 回見えたら出し、見えなくなっても 0.4 秒は出す。
-    # 距離は最近 5 回の中央値（今のほうが近ければ今の値）
-    mono_confirm_count: 2
-    mono_confirm_window_s: 0.5
-    mono_hold_s: 0.4
     cpu_temp_warn: 70.0
     cpu_temp_crit: 78.0
     hailo_temp_warn: 75.0
     hailo_temp_crit: 85.0
-    # 実効スループット表示用（SC-Depth v3 320x256 = 10.7 GOP / Hailo-8 公称 26 TOPS）
-    model_gops: 10.7
+    # 実効スループット表示用（YOLOv8m 640x640 = 78.9 GOP / Hailo-8 公称 26 TOPS）
+    model_gops: 78.9
     hailo_peak_tops: 26.0
 
 rplidar:

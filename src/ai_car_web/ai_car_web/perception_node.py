@@ -24,8 +24,6 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import CompressedImage, LaserScan
 from std_msgs.msg import String
 
-from ai_car_web import mono_depth
-
 # COCO 80 クラス（YOLOv8 の class_id 順）。表示用に日本語名を持つ。
 COCO_CLASSES = [
     '人', '自転車', '車', 'バイク', '飛行機', 'バス', '電車', 'トラック', 'ボート',
@@ -45,17 +43,9 @@ COCO_CLASSES = [
 LEVEL_RANK = {'unknown': 0, 'clear': 0, 'slow': 1, 'stop': 2}
 
 
-CAMERA_ASPECT = 540.0 / 960.0
-
-
 def image_x_to_bearing(x, hfov):
     """画像の横位置（0 = 左端、1 = 右端）を、カメラから見た方位角 [rad]（左が正）にする（ピンホール）。"""
     return math.atan((0.5 - x) * 2.0 * math.tan(hfov / 2.0))
-
-
-def bearing_to_image_x(bearing, hfov):
-    """image_x_to_bearing の逆。方位角 [rad]（左が正）を画像の横位置（0 = 左端、1 = 右端）にする。"""
-    return 0.5 - math.tan(bearing) / (2.0 * math.tan(hfov / 2.0))
 
 
 def scan_point_in_camera(r, angle, offset_x, offset_y):
@@ -160,7 +150,7 @@ def _confirm_detections(history, confirm):
 
 
 def make_hailo_vdevice():
-    """YOLO と奥行きの AI を順番に回せる（ROUND_ROBIN）Hailo-8 の VDevice。"""
+    """YOLO を動かす（ROUND_ROBIN）Hailo-8 の VDevice。"""
     from hailo_platform import HailoSchedulingAlgorithm, VDevice
     params = VDevice.create_params()
     params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
@@ -168,7 +158,7 @@ def make_hailo_vdevice():
 
 
 class HailoDetector:
-    """Hailo-8 上で HEF（YOLO・奥行きの AI）を実行する最小ラッパー。"""
+    """Hailo-8 上で HEF（YOLO）を実行する最小ラッパー。"""
 
     def __init__(self, hef_path: str, vdevice):
         from hailo_platform import (HEF, ConfigureParams, FormatType, HailoStreamInterface,
@@ -245,47 +235,12 @@ class PerceptionNode(Node):
         self.declare_parameter('living_labels', ['人', '犬', '猫', '鳥'])
         self.declare_parameter('living_slow_distance', 1.5)
         self.declare_parameter('living_stop_distance', 0.6)
-        # 1 眼の奥行きの AI（stereo_topic の JSON）で見つけた通り道の中の物。
-        # LiDAR の同じ方向の距離が stereo_low_margin 以上遠い（光が上を通る）ものだけを低い物とする。
-        # 減速・停止に使うのは stereo_guard と mono_depth_guard の両方が true のときだけ
-        self.declare_parameter('stereo_topic', '/stereo/depth_status')
-        self.declare_parameter('stereo_guard', False)
-        self.declare_parameter('stereo_slow_distance', 0.8)
-        self.declare_parameter('stereo_stop_distance', 0.45)
-        self.declare_parameter('stereo_low_margin', 0.15)
-        self.declare_parameter('stereo_max_age', 1.5)
-        # 物の枠の距離: マスの距離（JSON の grid_cm）で測れればそれを使い、
-        # 測れない所は LiDAR の距離にする。空でマスを使わない
-        self.declare_parameter('stereo_grid_topic', '')
-        # 1 眼の奥行きの AI（SC-Depth v3 の HEF）で床から出っぱった低い物を見つけ、
-        # stereo_topic・mono_depth_image_topic に出す。空で無効
-        self.declare_parameter('mono_depth_hef', '')
-        self.declare_parameter('mono_depth_rate', 10.0)
-        self.declare_parameter('mono_depth_image_topic', '/stereo/depth/compressed')
-        self.declare_parameter('mono_depth_guard', False)
-        self.declare_parameter('mono_camera_height_m', 0.100)
-        self.declare_parameter('mono_camera_pitch_deg', 0.0)
-        self.declare_parameter('mono_auto_pitch', False)
-        self.declare_parameter('mono_pitch_bias_deg', 0.0)
-        self.declare_parameter('mono_lidar_height_m', 0.175)
-        self.declare_parameter('mono_nearer_ratio', 1.07)
-        self.declare_parameter('mono_min_height_m', 0.02)
-        self.declare_parameter('mono_fill_ratio', 0.5)
-        self.declare_parameter('mono_max_range_m', 1.0)
-        self.declare_parameter('mono_min_columns', 3)
-        self.declare_parameter('mono_corridor_center_y_m', 0.0)
-        self.declare_parameter('mono_corridor_half_width_m', 0.15)
-        # 物の出たり消えたりをおさえる: window 秒に confirm 回見えたら出し、見えなくても hold 秒は出す
-        self.declare_parameter('mono_confirm_count', 2)
-        self.declare_parameter('mono_confirm_window_s', 0.5)
-        self.declare_parameter('mono_hold_s', 0.4)
-        self.declare_parameter('stereo_grid_min_ratio', 0.3)
         self.declare_parameter('cpu_temp_warn', 70.0)
         self.declare_parameter('cpu_temp_crit', 78.0)
         self.declare_parameter('hailo_temp_warn', 75.0)
         self.declare_parameter('hailo_temp_crit', 85.0)
         # 実効スループット算出用。model_gops は 1 推論あたりの演算量 [GOP]
-        # （YOLOv8m 640x640 = 78.9 GOP、YOLO なしのときは SC-Depth v3 = 10.7 GOP）、
+        # （YOLOv8m 640x640 = 78.9 GOP）、
         # peak_tops は Hailo-8 の公称性能。
         self.declare_parameter('model_gops', 28.6)
         self.declare_parameter('hailo_peak_tops', 26.0)
@@ -320,10 +275,6 @@ class PerceptionNode(Node):
         self._thermal_state = 'normal'
         self._thermal_scale = 1.0
         self._detector_note = ''
-        self._stereo = None
-        self._stereo_stamp = 0.0
-        self._grid = None
-        self._grid_stamp = 0.0
         self._jetson = None
         self._jetson_stamp = 0.0
 
@@ -336,12 +287,6 @@ class PerceptionNode(Node):
             self._camera_cb, sensor_qos)
         self.create_subscription(
             String, self.get_parameter('system_status_topic').value, self._system_cb, 10)
-        stereo_topic = self.get_parameter('stereo_topic').value
-        if stereo_topic:
-            self.create_subscription(String, stereo_topic, self._stereo_cb, 10)
-        grid_topic = self.get_parameter('stereo_grid_topic').value
-        if grid_topic:
-            self.create_subscription(String, grid_topic, self._grid_cb, 10)
         jetson_topic = self.get_parameter('jetson_topic').value
         if jetson_topic:
             self.create_subscription(String, jetson_topic, self._jetson_cb, 10)
@@ -350,8 +295,7 @@ class PerceptionNode(Node):
         self._detector_lock = threading.Lock()
         self._vdevice = None
         hef_path = self.get_parameter('hef_path').value
-        mono_hef = self.get_parameter('mono_depth_hef').value
-        if hef_path or mono_hef:
+        if hef_path:
             try:
                 self._vdevice = make_hailo_vdevice()
             except Exception as exc:  # noqa: BLE001 - 実機依存のため握りつぶして通知する
@@ -366,46 +310,6 @@ class PerceptionNode(Node):
                 self.get_logger().warning(self._detector_note)
         elif not hef_path:
             self._detector_note = 'hef_path が未設定のためカメラ推論は無効です'
-
-        self._depth = None
-        self._depth_busy = False
-        self._depth_started = 0.0
-        self._depth_frame_stamp = 0.0
-        self._depth_times = deque(maxlen=20)
-        if mono_hef and self._vdevice is not None:
-            try:
-                self._depth = HailoDetector(mono_hef, self._vdevice)
-                self.get_logger().info(f'1 眼の奥行きの AI を初期化しました: {mono_hef}')
-            except Exception as exc:  # noqa: BLE001 - 実機依存のため握りつぶして通知する
-                self.get_logger().warning(f'1 眼の奥行きの AI を初期化できません: {exc}')
-        if self._depth is not None:
-            g = self.get_parameter
-            self.mono_rate = float(g('mono_depth_rate').value)
-            self.mono_guard = bool(g('mono_depth_guard').value)
-            self.mono_height = float(g('mono_camera_height_m').value)
-            self.mono_nearer = float(g('mono_nearer_ratio').value)
-            self.mono_min_height = float(g('mono_min_height_m').value)
-            self.mono_fill = float(g('mono_fill_ratio').value)
-            self.mono_max_range = float(g('mono_max_range_m').value)
-            self.mono_min_cols = int(g('mono_min_columns').value)
-            self.mono_center_y = float(g('mono_corridor_center_y_m').value)
-            self.mono_half_width = float(g('mono_corridor_half_width_m').value)
-            self._mono_tracker = mono_depth.ObjectTracker(
-                int(g('mono_confirm_count').value), float(g('mono_confirm_window_s').value),
-                float(g('mono_hold_s').value))
-            self.mono_pitch = float(g('mono_camera_pitch_deg').value)
-            self.mono_auto_pitch = bool(g('mono_auto_pitch').value)
-            self.mono_pitch_bias = float(g('mono_pitch_bias_deg').value)
-            self.mono_lidar_height = float(g('mono_lidar_height_m').value)
-            self._mono_pitches = deque(maxlen=5)
-            self._mono_rays = {}
-            self._mono_down, self._mono_left = self._mono_camera_rays(self.mono_pitch)
-            self._depth_status_pub = self.create_publisher(String, stereo_topic, 10)
-            self._depth_image_pub = self.create_publisher(
-                CompressedImage, g('mono_depth_image_topic').value, sensor_qos)
-            self.create_timer(0.02, self._depth_tick)
-        else:
-            self.mono_guard = False
 
         self._infer_busy = False
         self._infer_started = 0.0
@@ -445,12 +349,6 @@ class PerceptionNode(Node):
         self.living_labels = set(self.get_parameter('living_labels').value)
         self.living_slow_distance = float(self.get_parameter('living_slow_distance').value)
         self.living_stop_distance = float(self.get_parameter('living_stop_distance').value)
-        self.stereo_guard = bool(self.get_parameter('stereo_guard').value)
-        self.stereo_slow_distance = float(self.get_parameter('stereo_slow_distance').value)
-        self.stereo_stop_distance = float(self.get_parameter('stereo_stop_distance').value)
-        self.stereo_low_margin = float(self.get_parameter('stereo_low_margin').value)
-        self.stereo_max_age = float(self.get_parameter('stereo_max_age').value)
-        self.stereo_grid_min_ratio = float(self.get_parameter('stereo_grid_min_ratio').value)
         self.jetson_max_age = float(self.get_parameter('jetson_max_age').value)
         self.cpu_temp_warn = float(self.get_parameter('cpu_temp_warn').value)
         self.cpu_temp_crit = float(self.get_parameter('cpu_temp_crit').value)
@@ -485,12 +383,6 @@ class PerceptionNode(Node):
             'living_labels': lambda v: setattr(self, 'living_labels', set(v)),
             'living_slow_distance': lambda v: setattr(self, 'living_slow_distance', float(v)),
             'living_stop_distance': lambda v: setattr(self, 'living_stop_distance', float(v)),
-            'stereo_guard': lambda v: setattr(self, 'stereo_guard', bool(v)),
-            'stereo_slow_distance': lambda v: setattr(self, 'stereo_slow_distance', float(v)),
-            'stereo_stop_distance': lambda v: setattr(self, 'stereo_stop_distance', float(v)),
-            'stereo_low_margin': lambda v: setattr(self, 'stereo_low_margin', float(v)),
-            'stereo_max_age': lambda v: setattr(self, 'stereo_max_age', float(v)),
-            'stereo_grid_min_ratio': lambda v: setattr(self, 'stereo_grid_min_ratio', float(v)),
             'jetson_max_age': lambda v: setattr(self, 'jetson_max_age', float(v)),
             'cpu_temp_warn': lambda v: setattr(self, 'cpu_temp_warn', float(v)),
             'cpu_temp_crit': lambda v: setattr(self, 'cpu_temp_crit', float(v)),
@@ -565,27 +457,6 @@ class PerceptionNode(Node):
             self._cpu_temp = cpu
             self._hailo_temp = hailo
 
-    def _stereo_cb(self, msg: String):
-        try:
-            data = json.loads(msg.data)
-        except json.JSONDecodeError:
-            return
-        if isinstance(data, dict):
-            with self._lock:
-                self._stereo = data
-                self._stereo_stamp = time.time()
-
-    def _grid_cb(self, msg: String):
-        try:
-            data = json.loads(msg.data)
-            cols, rows = int(data['cols']), int(data['rows'])
-            cells = np.asarray(data['cm'], dtype=np.float64).reshape(rows, cols) / 100.0
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            return
-        with self._lock:
-            self._grid = cells
-            self._grid_stamp = time.time()
-
     def _jetson_cb(self, msg: String):
         """Jetson の検出に、同じ方向の LiDAR の距離を付けて保持する。"""
         try:
@@ -634,47 +505,9 @@ class PerceptionNode(Node):
         }
 
     def _detection_distance(self, x_min, y_min, x_max, y_max):
-        """物の枠の距離と、出した方法（'stereo' / 'lidar' / None）。"""
-        distance = self._stereo_distance_for_box(x_min, y_min, x_max, y_max)
-        if distance is not None:
-            return distance, 'stereo'
+        """物の枠の距離と、出した方法（'lidar' / None）。"""
         distance = self._distance_for_box(x_min, x_max)
         return distance, ('lidar' if distance is not None else None)
-
-    def _stereo_distance_for_box(self, x_min, y_min, x_max, y_max):
-        """枠の真ん中（縦横の半分）にかかるマスの距離。
-
-        測れたマスが stereo_grid_min_ratio より少なければ None。マスの距離を近い順に
-        まとめ、測れたマスの 3 割以上がある、いちばん手前のまとまりの中央値を返す。
-        """
-        with self._lock:
-            grid = self._grid
-            stamp = self._grid_stamp
-        if grid is None or time.time() - stamp > self.stereo_max_age:
-            return None
-        rows, cols = grid.shape
-        mx, my = (x_max - x_min) / 4.0, (y_max - y_min) / 4.0
-        xs = (np.arange(cols) + 0.5) / cols
-        ys = (np.arange(rows) + 0.5) / rows
-        cx = np.nonzero((xs >= x_min + mx) & (xs <= x_max - mx))[0]
-        cy = np.nonzero((ys >= y_min + my) & (ys <= y_max - my))[0]
-        if not len(cx):
-            cx = [min(int((x_min + x_max) / 2.0 * cols), cols - 1)]
-        if not len(cy):
-            cy = [min(int((y_min + y_max) / 2.0 * rows), rows - 1)]
-        cells = grid[np.ix_(cy, cx)].ravel()
-        vals = np.sort(cells[cells > 0])
-        if not len(vals) or len(vals) < self.stereo_grid_min_ratio * len(cells):
-            return None
-        clusters = [[vals[0]]]
-        for r in vals[1:]:
-            if r - clusters[-1][-1] > max(self.cluster_gap, 0.1 * r):
-                clusters.append([r])
-            else:
-                clusters[-1].append(r)
-        need = max(1, int(math.ceil(0.3 * len(vals))))
-        cluster = next((c for c in clusters if len(c) >= need), max(clusters, key=len))
-        return round(float(cluster[len(cluster) // 2]), 3)
 
     def _distance_for_box(self, x_min: float, x_max: float):
         """画像上の横位置を方位角に変換し、LiDAR から距離を引く。
@@ -790,129 +623,6 @@ class PerceptionNode(Node):
         finally:
             self._infer_busy = False
 
-    def _depth_tick(self):
-        scale = self._update_thermal()
-        if self._depth_busy or scale <= 0.0:
-            return
-        interval = 1.0 / max(0.2, self.mono_rate * scale)
-        with self._lock:
-            frame = self._frame
-            frame_stamp = self._frame_stamp
-        now = time.time()
-        if frame is None or now - self._depth_started < interval:
-            return
-        if frame_stamp == self._depth_frame_stamp or now - frame_stamp > 2.0:
-            return
-        self._depth_busy = True
-        self._depth_started = now
-        self._depth_frame_stamp = frame_stamp
-        threading.Thread(target=self._run_depth, args=(frame,), daemon=True).start()
-
-    def _run_depth(self, frame: bytes):
-        """1 眼の奥行きの AI で床から出っぱった物を探し、状態と色の画像を出す。"""
-        try:
-            import cv2
-            image = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
-            if image is None:
-                return
-            t0 = time.perf_counter()
-            w, h = self._depth.input_width, self._depth.input_height
-            rgb = cv2.cvtColor(cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA),
-                               cv2.COLOR_BGR2RGB)
-            raw = self._depth.infer(rgb)
-            infer_ms = (time.perf_counter() - t0) * 1000.0
-            disp = mono_depth.sc_disparity(np.asarray(raw, dtype=np.float32)[0, :, :, 0])
-            pitch = self._mono_frame_pitch(disp)
-            down, left = self._mono_camera_rays(pitch['deg'])
-            bottom, top, obst = mono_depth.obstacle_columns(
-                disp, down, self.mono_height, self.mono_nearer, self.mono_min_height,
-                self.mono_fill)
-            objects = mono_depth.group_objects(
-                bottom, top, down, left, self.mono_height, self.mono_max_range,
-                self.mono_min_cols)
-            raw_nearest = mono_depth.in_corridor(
-                objects, self.mono_center_y, self.mono_half_width)
-            objects = self._mono_tracker.update(objects, time.monotonic())
-            nearest = mono_depth.in_corridor(objects, self.mono_center_y, self.mono_half_width)
-            ms = (time.perf_counter() - t0) * 1000.0
-            if self._detector is None:
-                with self._lock:
-                    self._inference_ms = round(infer_ms, 1)
-                    self._inference_times.append(time.time())
-                    self._inference_ms_recent.append(infer_ms)
-            times = self._depth_times
-            times.append(time.monotonic())
-            fps = ((len(times) - 1) / (times[-1] - times[0])
-                   if len(times) >= 2 and times[-1] > times[0] else None)
-            if self._depth_image_pub.get_subscription_count() > 0:
-                img = mono_depth.colorize(disp, obst, (480, 270))
-                if nearest:
-                    x0, x1 = int(nearest['x_min'] * 480), int(nearest['x_max'] * 480)
-                    cv2.rectangle(img, (x0, 0), (x1, 269), (255, 255, 255), 2)
-                ok, jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                if ok:
-                    out = CompressedImage()
-                    out.format = 'jpeg'
-                    out.data = jpeg.tobytes()
-                    self._depth_image_pub.publish(out)
-            msg = String()
-            msg.data = json.dumps({
-                'ok': True,
-                'reason': '',
-                'source': 'mono',
-                'nearest': nearest,
-                'nearest_raw': raw_nearest,
-                'objects': objects[:5],
-                'ms': round(ms, 1),
-                'infer_ms': round(infer_ms, 1),
-                'fps': round(fps, 1) if fps else None,
-                'size': [w, h],
-                'max_range_m': self.mono_max_range,
-                'corridor_half_width_m': self.mono_half_width,
-                'min_height_m': self.mono_min_height,
-                'pitch': pitch,
-            }, ensure_ascii=False)
-            self._depth_status_pub.publish(msg)
-        except Exception as exc:  # noqa: BLE001 - 推論失敗でノードを落とさない
-            self.get_logger().warning(f'1 眼の奥行きの推論エラー: {exc}')
-        finally:
-            self._depth_busy = False
-
-    def _mono_camera_rays(self, pitch_deg):
-        """下向きの角度（0.1 度ごと）の camera_rays。同じ角度は作り直さない。"""
-        key = round(pitch_deg, 1)
-        rays = self._mono_rays.get(key)
-        if rays is None:
-            if len(self._mono_rays) > 200:
-                self._mono_rays.clear()
-            rays = mono_depth.camera_rays(
-                self._depth.input_height, self._depth.input_width,
-                float(self.get_parameter('camera_hfov_deg').value), CAMERA_ASPECT, key)
-            self._mono_rays[key] = rays
-        return rays
-
-    def _mono_frame_pitch(self, disp):
-        """このコマのカメラの下向きの角度。LiDAR の点と床のさかい目から出し、最近 1 秒の
-        中央値（最近 5 回・1 秒以内）。出せないときは決めた角度（mono_camera_pitch_deg）。"""
-        now = time.monotonic()
-        out = {'deg': self.mono_pitch, 'source': 'fixed', 'points': 0, 'spread_deg': None}
-        if not self.mono_auto_pitch:
-            return out
-        with self._lock:
-            bearings = self._scan_bearings
-            scan_stamp = self._scan_stamp
-        if time.time() - scan_stamp <= self.scan_max_age:
-            off, n, spread = mono_depth.contact_pitch(
-                disp, self._mono_down, self._mono_left, bearings, self.mono_height,
-                self.mono_lidar_height)
-            out.update(points=n, spread_deg=None if spread is None else round(spread, 2))
-            if off is not None:
-                self._mono_pitches.append((now, max(-10.0, min(10.0, off - self.mono_pitch_bias))))
-        recent = [d for t, d in self._mono_pitches if now - t <= 1.0]
-        if recent:
-            out.update(deg=round(self.mono_pitch + float(np.median(recent)), 2), source='lidar')
-        return out
-
     def _parse_detections(self, raw, geom):
         """HAILO NMS BY CLASS 出力（正規化座標）を検出リストへ変換する。"""
         r, pad_x, pad_y, img_w, img_h = geom
@@ -992,9 +702,6 @@ class PerceptionNode(Node):
         living = self._living_assessment(detections)
         if self.living_guard and LEVEL_RANK[living['level']] > LEVEL_RANK.get(level, 0):
             level, reason = living['level'], living['reason']
-        stereo = self._stereo_assessment(now)
-        if stereo['enabled'] and LEVEL_RANK[stereo['level']] > LEVEL_RANK.get(level, 0):
-            level, reason = stereo['level'], stereo['reason']
 
         # 前方セクターに写っている物体のみ障害物種別として扱う
         labels = [
@@ -1024,7 +731,6 @@ class PerceptionNode(Node):
             'detections': detections,
             'front_labels': labels,
             'living': living,
-            'stereo': stereo,
             'jetson': self._jetson_assessment(now),
             'inference_ms': inference_ms,
             'inference_age': round(det_age, 2) if det_age is not None else None,
@@ -1067,67 +773,6 @@ class PerceptionNode(Node):
             'slow_distance': self.living_slow_distance,
             'stop_distance': self.living_stop_distance,
         }
-
-    def _stereo_assessment(self, now):
-        """奥行きの距離のいちばん近い物を LiDAR と比べ、低い障害物の減速・停止の判定を作る。"""
-        with self._lock:
-            stereo = self._stereo
-            age = now - self._stereo_stamp if self._stereo_stamp else None
-        mono = bool(stereo and stereo.get('source') == 'mono')
-        result = {
-            'enabled': self.stereo_guard and (not mono or self.mono_guard),
-            'ready': False,
-            'level': 'clear',
-            'reason': '',
-            'distance': None,
-            'lidar_distance': None,
-            'low': False,
-            'slow_distance': self.stereo_slow_distance,
-            'stop_distance': self.stereo_stop_distance,
-        }
-        if stereo is None or age is None or age > self.stereo_max_age:
-            result['reason'] = '/stereo/depth_status 未受信'
-            return result
-        if not stereo.get('ok'):
-            result['reason'] = stereo.get('reason') or '測れない'
-            return result
-        result['ready'] = True
-        result['objects'] = [self._stereo_object(o) for o in (stereo.get('objects') or [])
-                             if o.get('bearing_min_deg') is not None]
-        nearest = stereo.get('nearest')
-        if not nearest or nearest.get('bearing_min_deg') is None:
-            return result
-        item = self._stereo_object(nearest)
-        result.update(item)
-        distance, low = item['distance'], item['low']
-        if low:
-            where = f"低い障害物 {distance:.2f} m（{'1' if mono else '2'} 眼）"
-            if distance <= self.stereo_stop_distance:
-                result['level'], result['reason'] = 'stop', f'前方 {where} で停止'
-            elif distance <= self.stereo_slow_distance:
-                result['level'], result['reason'] = 'slow', f'前方 {where} で減速'
-        return result
-
-    def _stereo_object(self, obj):
-        """奥行きで見つけた物 1 個の距離・横の位置・横幅・同じ向きの LiDAR の距離・低い物か・映像の上の枠。"""
-        distance = obj['distance_m']
-        b_min, b_max = (math.radians(obj[k]) for k in ('bearing_min_deg', 'bearing_max_deg'))
-        lidar = self._distance_for_bearings(b_min, b_max)
-        width = obj.get('width_m')
-        if width is None:
-            width = round(distance * (math.tan(b_max) - math.tan(b_min)), 3)
-        item = {'distance': distance, 'lateral': obj.get('lateral_m'), 'width': width,
-                'lidar_distance': lidar,
-                'low': lidar is None or lidar > distance + self.stereo_low_margin}
-        if obj.get('depression_min_deg') is not None:
-            # 前方カメラの映像（960x540）の上の位置。ピンホールとして縦の画角は横から出す
-            v_tan = math.tan(self.camera_hfov / 2.0) * CAMERA_ASPECT
-            x1, x2 = (min(max(bearing_to_image_x(math.radians(b), self.camera_hfov), 0.0), 1.0)
-                      for b in (obj['bearing_max_deg'], obj['bearing_min_deg']))
-            y1, y2 = (min(max(0.5 + math.tan(math.radians(e)) / (2.0 * v_tan), 0.0), 1.0)
-                      for e in (obj['depression_min_deg'], obj['depression_max_deg']))
-            item['box'] = [round(x1, 3), round(y1, 3), round(x2, 3), round(y2, 3)]
-        return item
 
     def _throughput(self, stamps, recent_ms, now):
         """実測推論レートから実効スループットを換算する。
@@ -1178,8 +823,6 @@ def main(args=None):
     finally:
         if node._detector is not None:
             node._detector.close()
-        if node._depth is not None:
-            node._depth.close()
         if node._vdevice is not None:
             node._vdevice.release()
         node.destroy_node()
