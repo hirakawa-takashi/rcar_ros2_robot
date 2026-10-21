@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.18.1（2026-10-22。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.19.0（2026-10-22。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -302,7 +302,7 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 | `oled_panel` | `jetson-oled.service` | ケースの OLED に CPU・温度・メモリ・SSD・IP |
 | `ollama` | `ollama.service`・`ollama-preload.service` | 会話の AI（qwen2.5:3b）を読み込んだままにする |
 | `health_log` | `jetson-health.service`・`.timer` | 前の起動の記録と 1 分ごとの様子 |
-| `object_finder` | `jetson-finder.service` | 声で覚えた物を探す。「これは〇〇、覚えて」でカメラのまん中の物を覚え、「〇〇を探して」で自動走行しながら探し、見つけたら車を止める（場所は覚えない、5 分で見つからなければ止める） |
+| `object_finder` | `jetson-finder.service` | 声で覚えた物を探す。「覚えて」でカメラのまん中の物を覚え、物を動かしてから「探して」で自動走行しながら最後に覚えた物を探し、見つけたら車を止める（場所は覚えない、5 分で見つからなければ止める。名前つきも使える） |
 | `owl_detector` | `jetson-owl.service` | NanoOWL の物体検出（ラズパイへ `/jetson_detections`）。メモリを空けるため 2026/10 から止めている（disabled） |
 | `power_saving` | - | Wi-Fi の省電力を切る |
 | `voice_chat` | - | Bluetooth のスピーカー＆マイクで話す（試し） |

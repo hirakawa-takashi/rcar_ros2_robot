@@ -257,7 +257,10 @@ DRIVE_DIRS = (('back', r'後ろ|うしろ|後退|こうたい|バック|ばっ�
               ('right', r'右|みぎ'), ('left', r'左|ひだり'))
 DRIVE_NUM = r'(\d+(?:\.\d+)?|[一二三四五六七八九十半]+)'
 DRIVE_MAX_CHARS = 30
-# 声で物を覚える・探す（jetson/object_finder）。「これは赤いコップ、覚えて」「赤いコップを探して」
+# 声で物を覚える・探す（jetson/object_finder）。「覚えて」「探して」（最後に覚えた物）。名前つきも使える
+FIND_REGISTER_BARE = re.compile(r'(?:これを?|これは|これも)?(?:覚えて|おぼえて|登録して|とうろくして)(?:おいて|ください|下さい|くれ|ね|ほしい)*')
+FIND_SEARCH_BARE = re.compile(r'(?:それを?|あれを?|さっきの(?:を|物を?|ものを?)?)?(?:探して|さがして|見つけて|みつけて)'
+                              r'(?:きて|ください|下さい|くれ|ね|ほしい)*')
 FIND_REGISTER = re.compile(r'(?:これは|これを|これ)?(.{1,15}?)(?:です|だよ|だ)?(?:を|お)?'
                            r'(?:覚えて|おぼえて|登録して|とうろくして)(?:ください|下さい|くれ|ね|ほしい)*')
 FIND_SEARCH = re.compile(r'(.{1,15}?)(?:を|お)?(?:探して|さがして|見つけて|みつけて)(?:きて|ください|下さい|くれ|ね|ほしい)*')
@@ -812,6 +815,9 @@ def find_command(text):
     t = re.sub(r'[\s、。,.!！?？「」]', '', text or '')
     if not t or len(t) > DRIVE_MAX_CHARS:
         return None
+    for kind, pat in (('register', FIND_REGISTER_BARE), ('search', FIND_SEARCH_BARE)):
+        if pat.fullmatch(t):
+            return {'kind': kind, 'name': ''}
     for kind, pat in (('register', FIND_REGISTER), ('search', FIND_SEARCH)):
         m = pat.fullmatch(t)
         if m and m.group(1) not in ('これ', 'それ', 'あれ', 'なに', '何', 'を', 'お', 'は'):
@@ -833,27 +839,27 @@ def finder_api(url, path, body=None, timeout=3.0):
 
 
 def register_object(finder, name):
-    """カメラのまん中の物を name で覚えて、話す 1 文を返す。"""
+    """カメラのまん中の物を name（空なら名前なし）で覚えて、話す 1 文を返す。"""
     try:
         res = finder_api(finder, '/register', {'name': name}, timeout=15.0)
     except Exception as e:  # noqa: BLE001 - つながらなければ覚えない
         log(f'物さがしのエラー: {e}')
         return '物を見る AI につながらないよ。'
     if res.get('ok'):
-        return f'{name}を覚えたよ。'
+        return f'{name}を覚えたよ。' if name else '覚えたよ。'
     log(f'物さがし: 登録できません（{res.get("error")}）')
     return 'カメラのまん中に物が見えないよ。カメラの前のまん中に置いてね。'
 
 
 def search_car(url, finder, name, stop):
-    """自動走行で部屋を回って name を探す。見つけた・やめたら車を止めて、話す 1 文を返す。"""
+    """自動走行で部屋を回って name（空なら最後に覚えた物）を探す。見つけた・やめたら車を止めて、話す 1 文を返す。"""
     try:
         res = finder_api(finder, '/search', {'name': name})
     except Exception as e:  # noqa: BLE001 - つながらなければ走らない
         log(f'物さがしのエラー: {e}')
         return '物を見る AI につながらないから、探せないよ。'
     if not res.get('ok'):
-        return f'{name}は、まだ覚えていないよ。'
+        return f'{name}は、まだ覚えていないよ。' if name else 'まだ何も覚えていないよ。先に「覚えて」と言ってね。'
     try:
         if not (car_api(url, '/api/drive_mode', {'mode': 'auto'}) or {}).get('ok'):
             finder_api(finder, '/search/stop', {})
@@ -879,7 +885,7 @@ def search_car(url, finder, name, stop):
                 continue
             if s.get('found'):
                 log(f'物さがし: {name} を見つけた（点 {s.get("score")}、枠 {s.get("box")}）')
-                return f'{name}を発見しました。'
+                return f'{name}を発見しました。' if name else '見つけました。'
             if not s.get('active'):
                 return '物を見る AI が止まったから、探すのをやめたよ。'
             dm = st.get('drive_mode') or {}
@@ -888,7 +894,7 @@ def search_car(url, finder, name, stop):
                 return f'ラズパイが自動走行をやめたから、探すのをやめたよ（{why}）。' if why else \
                     'ラズパイが自動走行をやめたから、探すのをやめたよ。'
             if time.monotonic() - t0 > FIND_TIMEOUT:
-                return f'{FIND_TIMEOUT / 60:.0f} 分探したけど、{name}は見つかりませんでした。'
+                return f'{FIND_TIMEOUT / 60:.0f} 分探したけど、' + (f'{name}は見つかりませんでした。' if name else '見つかりませんでした。')
     finally:
         for path, body in (('/api/stop', {}), ('/api/drive_mode', {'mode': 'manual'})):
             try:
@@ -2175,7 +2181,7 @@ class Session:
         if cmd['kind'] == 'register':
             await self.say(await asyncio.to_thread(register_object, a.finder_url, cmd['name']))
             return
-        await self.say(f"{cmd['name']}を探すね。")
+        await self.say(f"{cmd['name']}を探すね。" if cmd['name'] else '探すね。')
         stop = self.drive_stop = threading.Event()
         self.drive_task = asyncio.create_task(self.find(cmd['name'], stop))
 
