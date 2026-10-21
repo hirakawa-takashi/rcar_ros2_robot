@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-10-22
+
+### Added
+- 声で覚えた物を探す（`jetson/object_finder`、`jetson-finder.service`）。NanoOWL の「画像で探す」で、カメラのまん中に置いた物の見た目を名前といっしょに覚える（場所は覚えない）。「〇〇を探して」で自動走行で部屋を回り、点 0.9 以上が 3 回中 2 回なら車を止めて、スタックちゃんが「〇〇を発見しました」と言う。5 分で見つからなければ止めて「見つかりませんでした」
+- `stackchan_bridge`: 「これは〇〇、覚えて」「〇〇を探して」（`find_command`・`register_object`・`search_car`、`--finder-url`）。探すあいだも「止まって」で止まる
+
+### Fixed
+- `stackchan_bridge`: 声の「止まって」で `/api/stop` を GET で呼んでいて 405 になっていた。POST にした
+
 ## [1.17.1] - 2026-10-22
 
 ### Changed

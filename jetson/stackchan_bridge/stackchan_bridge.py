@@ -257,6 +257,12 @@ DRIVE_DIRS = (('back', r'後ろ|うしろ|後退|こうたい|バック|ばっ�
               ('right', r'右|みぎ'), ('left', r'左|ひだり'))
 DRIVE_NUM = r'(\d+(?:\.\d+)?|[一二三四五六七八九十半]+)'
 DRIVE_MAX_CHARS = 30
+# 声で物を覚える・探す（jetson/object_finder）。「これは赤いコップ、覚えて」「赤いコップを探して」
+FIND_REGISTER = re.compile(r'(?:これは|これを|これ)?(.{1,15}?)(?:です|だよ|だ)?(?:を|お)?'
+                           r'(?:覚えて|おぼえて|登録して|とうろくして)(?:ください|下さい|くれ|ね|ほしい)*')
+FIND_SEARCH = re.compile(r'(.{1,15}?)(?:を|お)?(?:探して|さがして|見つけて|みつけて)(?:きて|ください|下さい|くれ|ね|ほしい)*')
+FIND_TIMEOUT = 300.0   # 5 分で見つからなければやめる
+FIND_PERIOD = 0.5
 DRIVE_LIMITS = {'m': 2.0, 'deg': 720.0, 's': 10.0}
 DRIVE_DEFAULT = {'move': 0.5, 'turn': 90.0}
 DRIVE_SPEED = {'move': 1.0, 'turn': 0.5}
@@ -801,6 +807,100 @@ def drive_command(text):
     return cmd
 
 
+def find_command(text):
+    """聞き取りから「覚えて」「探して」の命令を作る。命令でなければ None。"""
+    t = re.sub(r'[\s、。,.!！?？「」]', '', text or '')
+    if not t or len(t) > DRIVE_MAX_CHARS:
+        return None
+    for kind, pat in (('register', FIND_REGISTER), ('search', FIND_SEARCH)):
+        m = pat.fullmatch(t)
+        if m and m.group(1) not in ('これ', 'それ', 'あれ', 'なに', '何', 'を', 'お', 'は'):
+            return {'kind': kind, 'name': m.group(1)}
+    return None
+
+
+def finder_api(url, path, body=None, timeout=3.0):
+    """物さがし（object_finder）の API。覚えていない・まん中に物がないなどは {'ok': False, 'error'}。"""
+    data = None if body is None else json.dumps(body).encode()
+    req = urllib.request.Request(url.rstrip('/') + path, data, {'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read() or b'null')
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 409):
+            return json.loads(e.read() or b'{}')
+        raise
+
+
+def register_object(finder, name):
+    """カメラのまん中の物を name で覚えて、話す 1 文を返す。"""
+    try:
+        res = finder_api(finder, '/register', {'name': name}, timeout=15.0)
+    except Exception as e:  # noqa: BLE001 - つながらなければ覚えない
+        log(f'物さがしのエラー: {e}')
+        return '物を見る AI につながらないよ。'
+    if res.get('ok'):
+        return f'{name}を覚えたよ。'
+    log(f'物さがし: 登録できません（{res.get("error")}）')
+    return 'カメラのまん中に物が見えないよ。カメラの前のまん中に置いてね。'
+
+
+def search_car(url, finder, name, stop):
+    """自動走行で部屋を回って name を探す。見つけた・やめたら車を止めて、話す 1 文を返す。"""
+    try:
+        res = finder_api(finder, '/search', {'name': name})
+    except Exception as e:  # noqa: BLE001 - つながらなければ走らない
+        log(f'物さがしのエラー: {e}')
+        return '物を見る AI につながらないから、探せないよ。'
+    if not res.get('ok'):
+        return f'{name}は、まだ覚えていないよ。'
+    try:
+        if not (car_api(url, '/api/drive_mode', {'mode': 'auto'}) or {}).get('ok'):
+            finder_api(finder, '/search/stop', {})
+            return '自動走行にできなかったよ。'
+    except Exception as e:  # noqa: BLE001
+        log(f'走行のエラー: {e}')
+        return 'AI-CAR につながらないから、探せないよ。'
+    t0, errors = time.monotonic(), 0
+    try:
+        while True:
+            if stop.is_set():
+                return '止まったよ。'
+            time.sleep(FIND_PERIOD)
+            try:
+                s = finder_api(finder, '/search')
+                st = car_api(url, '/api/status')
+                errors = 0
+            except Exception as e:  # noqa: BLE001 - 3 回続けてだめなら止める
+                errors += 1
+                if errors >= 3:
+                    log(f'物さがしのエラー: {e}')
+                    return 'ようすがわからなくなったから、止まったよ。'
+                continue
+            if s.get('found'):
+                log(f'物さがし: {name} を見つけた（点 {s.get("score")}、枠 {s.get("box")}）')
+                return f'{name}を発見しました。'
+            if not s.get('active'):
+                return '物を見る AI が止まったから、探すのをやめたよ。'
+            dm = st.get('drive_mode') or {}
+            if dm.get('mode') != 'auto' and time.monotonic() - t0 > 2.0:
+                why = dm.get('guard') or dm.get('reason_label') or dm.get('reason')
+                return f'ラズパイが自動走行をやめたから、探すのをやめたよ（{why}）。' if why else \
+                    'ラズパイが自動走行をやめたから、探すのをやめたよ。'
+            if time.monotonic() - t0 > FIND_TIMEOUT:
+                return f'{FIND_TIMEOUT / 60:.0f} 分探したけど、{name}は見つかりませんでした。'
+    finally:
+        for path, body in (('/api/stop', {}), ('/api/drive_mode', {'mode': 'manual'})):
+            try:
+                car_api(url, path, body)
+            except Exception as e:  # noqa: BLE001 - 届かなくてもラズパイの安全機構は動く
+                log(f'走行のエラー: {e}')
+        try:
+            finder_api(finder, '/search/stop', {})
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def car_api(url, path, body=None, timeout=2.0):
     """ダッシュボードの API を呼んで JSON を返す（POST は X-API-Token つき）。"""
     data = None if body is None else json.dumps(body).encode()
@@ -845,7 +945,7 @@ def drive_car(url, cmd, stop):
     try:
         while True:
             if stop.is_set():
-                car_api(url, '/api/stop')
+                car_api(url, '/api/stop', {})
                 return '止まったよ。'
             try:
                 st = car_api(url, '/api/status')
@@ -2052,7 +2152,7 @@ class Session:
             await self.drive_task
         if cmd['kind'] == 'stop':
             try:
-                await asyncio.to_thread(car_api, self.args.car_url, '/api/stop')
+                await asyncio.to_thread(car_api, self.args.car_url, '/api/stop', {})
                 log('走行: 止めました')
                 await self.say('止まったよ。')
             except Exception as e:  # noqa: BLE001 - 止められなくても会話は続ける
@@ -2063,6 +2163,32 @@ class Session:
         await self.say(cmd['words'])
         self.drive_stop = threading.Event()
         self.drive_task = asyncio.create_task(self.drive(cmd, self.drive_stop))
+
+    async def start_find(self, cmd):
+        """「〇〇を覚えて」「〇〇を探して」。探すあいだは走る命令と同じく「止まって」で止まる。"""
+        a = self.args
+        if self.drive_stop:
+            self.drive_stop.set()
+        if self.drive_task:
+            await self.drive_task
+        log(f'物さがし: {cmd}')
+        if cmd['kind'] == 'register':
+            await self.say(await asyncio.to_thread(register_object, a.finder_url, cmd['name']))
+            return
+        await self.say(f"{cmd['name']}を探すね。")
+        stop = self.drive_stop = threading.Event()
+        self.drive_task = asyncio.create_task(self.find(cmd['name'], stop))
+
+    async def find(self, name, stop):
+        try:
+            words = await asyncio.to_thread(search_car, self.args.car_url, self.args.finder_url, name, stop)
+            log(f'物さがし: {words}')
+            await self.say(words)
+        except ConnectionClosed:
+            pass
+        finally:
+            if self.drive_stop is stop:
+                self.drive_task = self.drive_stop = None
 
     async def drive(self, cmd, stop):
         try:
@@ -2255,6 +2381,11 @@ class Session:
                 await self.say(WAKE_REPLY)
                 await self.need_cloud()
                 return
+            find = find_command(self.wake.sub('', text) if self.wake else text)
+            if find:
+                await self.send(type='stt', text=text)
+                await self.start_find(find)
+                return
             drive = drive_command(self.wake.sub('', text) if self.wake else text)
             if drive:
                 await self.send(type='stt', text=text)
@@ -2425,6 +2556,8 @@ async def main():
     p.add_argument('--max-seconds', type=float, default=15.0)
     p.add_argument('--car-url', default=os.environ.get('AI_CAR_URL', 'http://100.70.35.31:8080'),
                    help='AI-CAR のダッシュボード（ラズパイ）。ここの /api/status の値を答えに使う')
+    p.add_argument('--finder-url', default=os.environ.get('AI_FINDER_URL', 'http://127.0.0.1:8095'),
+                   help='声で覚えた物を探す jetson/object_finder')
     p.add_argument('--no-car-talk', dest='car_talk', action='store_false',
                    help='自動運転＆ミニコン＆ローカルのとき、AI-CAR の動きをしゃべる実況をしない')
     p.add_argument('--turns', type=int, default=3, help='覚えておく会話の往復の数')

@@ -65,6 +65,7 @@ system:
         - スタックちゃんの受け口（stackchan_bridge）。「ミニコンにして」「パソコンにして」で考える所を、「ネットにして」「ローカルにして」で会話の AI（ネットの XiaoZhi か家の AI）を切り替える。2 つは別々に選べる。パソコンのときの「ネット」は、会話はパソコンの AI のまま、天気・ニュースなど新しいことだけミニコンがネットで調べて渡す。声を選ぶと話し方・性格もその声のキャラクターになる
         - 「前に 1 メートル進んで」「右に 90 度回って」「止まって」を AI-CAR の速度の指令にする。進んだ距離はエンコーダー、回った角度は IMU で見て止める
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
+        - 声で覚えた物を探す（jetson-finder.service、NanoOWL の「画像で探す」）。「これは〇〇、覚えて」でカメラのまん中の物の見た目を覚え（場所は覚えない）、「〇〇を探して」で自動走行で部屋を回り、点 0.9 以上が 3 回中 2 回なら車を止めて「〇〇を発見しました」と言う。5 分で見つからなければ止める
         - 温度・メモリ・電力・AI の部品・セキュリティ更新の状況を 1 秒ごとに AI-CAR へ送る（jetson-status.service）
         - Ubuntu のセキュリティ更新だけを毎日自動で入れる（JetPack は外す、自動の再起動はしない）
     - id: stackchan
@@ -775,6 +776,7 @@ programs:
   - {place: Jetson, name: jetson-upgrade.sh, file: jetson/status_reporter/jetson-upgrade.sh, role: 「Jetson を更新」ボタンの更新, video: jetson-upgrade_sh_yukkuri.mp4}
   - {place: Jetson, name: oled_panel, file: jetson/oled_panel/oled_panel.py, role: ケースの OLED に CPU・温度・IP, video: oled_panel_yukkuri.mp4}
   - {place: Jetson, name: owl_detector, file: jetson/owl_detector/owl_detector.py, role: NanoOWL で物を探す（今は止めている）, video: owl_detector_yukkuri.mp4}
+  - {place: Jetson, name: object_finder, file: jetson/object_finder/object_finder.py, role: 声で覚えた物をカメラ画像から探す（NanoOWL の画像で探す）, video: object_finder_yukkuri.mp4}
   - {place: Jetson, name: jetson_health.sh, file: jetson/health_log/jetson_health.sh, role: 1 分ごとの様子の記録, video: jetson_health_sh_yukkuri.mp4}
   - {place: Jetson, name: power_saving, file: jetson/power_saving/install.sh, role: Wi-Fi の省電力を切る, video: power_saving_yukkuri.mp4}
   - {place: パソコン, name: pc_status, file: jetson/stackchan_bridge/pc/pc_status.py, role: 温度・負荷率・メモリを AI-CAR へ送る, video: pc_status_yukkuri.mp4}
