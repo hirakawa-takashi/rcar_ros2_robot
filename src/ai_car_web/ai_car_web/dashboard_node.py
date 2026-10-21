@@ -544,6 +544,7 @@ class DashboardNode(Node):
         self._map_saved = None
         self._map_loaded = None
         self._slam_load_pending = self.slam_load_on_start and self.slam_deserialize_client is not None
+        self._marks_to_restore, self._marks_tries = [], 0
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -742,6 +743,9 @@ class DashboardNode(Node):
 
     def _slam_load_cb(self):
         """起動したら 1 回だけ、保存した地図データを、保存したときの車の位置から始めるように読みこむ。"""
+        if self._marks_to_restore:
+            self._restore_marks()
+            return
         if not self._slam_load_pending:
             return
         try:
@@ -768,9 +772,8 @@ class DashboardNode(Node):
         def done(future):
             ok = future.result() is not None
             if ok and self.cliff_edit_pub is not None:
-                for m in marks:
-                    self.cliff_edit_pub.publish(String(data=json.dumps(
-                        {'action': 'add', 'x': float(m[0]), 'y': float(m[1])})))
+                self._marks_to_restore = [(float(m[0]), float(m[1])) for m in marks]
+                self._restore_marks()
             with self._lock:
                 self._map_loaded = {'ok': ok, 'name': name, 'pose': pose, 'marks': len(marks),
                                     'stamp': round(time.time(), 1),
@@ -780,6 +783,21 @@ class DashboardNode(Node):
                 if ok else f'保存した地図 {name} を読みこめなかった')
 
         self.slam_deserialize_client.call_async(req).add_done_callback(done)
+
+    def _restore_marks(self):
+        """保存した段差の印を、autonomy_node の印に入るまで 2 秒ごとに送りなおす（起動直後は届かないことがある）。"""
+        with self._lock:
+            have = (self._autonomy or {}).get('cliff_marks') or []
+        missing = [(x, y) for x, y in self._marks_to_restore
+                   if not any(math.hypot(x - m[0], y - m[1]) < 0.15 for m in have)]
+        if not missing or self._marks_tries >= 30:
+            if missing:
+                self.get_logger().warn(f'段差の印 {len(missing)} 個を autonomy_node に戻せなかった')
+            self._marks_to_restore = []
+            return
+        self._marks_tries += 1
+        for x, y in missing:
+            self.cliff_edit_pub.publish(String(data=json.dumps({'action': 'add', 'x': x, 'y': y})))
 
     def map_png(self):
         with self._lock:
