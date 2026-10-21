@@ -6,8 +6,8 @@
 
 HTTP（--host:--port、ふつうは 127.0.0.1:8095。Jetson の中だけ）:
   GET  /objects               覚えている名前
-  POST /register {"name"}     今の画像のまん中の物を覚える
-  POST /search {"name"}       探しはじめる（前の探しはやめる）
+  POST /register {"name"}     今の画像のまん中の物を覚える（name が空なら「覚えた物」。最後に覚えた物として残す）
+  POST /search {"name"}       探しはじめる（name が空なら最後に覚えた物。前の探しはやめる）
   GET  /search                探しているようす {"name", "active", "found", "score", "box", "frames"}
   POST /search/stop           探すのをやめる
 """
@@ -30,6 +30,8 @@ import torch
 import torch.nn.functional as F
 
 # 登録のとき「物らしさ」を測る言葉（いちばん高い点を使う）
+DEFAULT_NAME = '覚えた物'
+LAST_KEY = '_last'   # objects.json の中の「最後に覚えた物の名前」
 OBJECT_PROMPTS = ['a photo of an object', 'a bottle', 'a cup', 'a toy', 'a box', 'a bag', 'a can']
 
 
@@ -95,6 +97,7 @@ class Finder:
         return i, emb[i], [round(float(v)) for v in box[i].tolist()], float(obj[i])
 
     def register(self, name, image=None):
+        name = name or DEFAULT_NAME
         image = image or fetch(self.snapshot_url)
         picked = self.pick_center(image)
         if picked is None:
@@ -105,6 +108,7 @@ class Finder:
         image.crop(box).save(os.path.join(self.args.data, key + '.jpg'), quality=90)
         objs = self.objects()
         objs[name] = {'file': key, 'box': box, 'objectness': round(objness, 3), 'at': time.time()}
+        objs[LAST_KEY] = name
         self.save_objects(objs)
         print(f'登録: {name} 枠 {box} 物らしさ {objness:.2f}', flush=True)
         return {'ok': True, 'name': name, 'box': box, 'objectness': round(objness, 3)}
@@ -117,7 +121,10 @@ class Finder:
 
     def start_search(self, name):
         objs = self.objects()
-        if name not in objs:
+        name = name or objs.get(LAST_KEY)
+        if not name:
+            return {'ok': False, 'error': 'まだ何も覚えていません'}
+        if name == LAST_KEY or name not in objs:
             return {'ok': False, 'error': f'{name} は覚えていません'}
         query = torch.load(os.path.join(self.args.data, objs[name]['file'] + '.pt')).cuda()
         with self.state_lock:
@@ -199,8 +206,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(f.stop_search())
             return
         name = str(self._body().get('name') or '').strip()
-        if not name or self.path not in ('/register', '/search'):
-            self._send({'ok': False, 'error': 'name がありません'}, 400)
+        if self.path not in ('/register', '/search'):
+            self._send({'ok': False, 'error': 'not found'}, 404)
             return
         try:
             res = f.register(name) if self.path == '/register' else f.start_search(name)
