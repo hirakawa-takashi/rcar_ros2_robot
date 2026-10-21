@@ -159,6 +159,8 @@
   #video { z-index: 22; }
   .vidplayer { display: block; width: 100%; max-height: 78vh; background: #000; }
   .vidlink { padding: 2px 8px; font-size: 12px; white-space: nowrap; cursor: pointer; }
+  .aboutvideo { float: right; margin: 4px 0 0 12px; }
+  .aboutvideo .vidlink { padding: 6px 14px; font-size: 14px; }
   .proghead { font-size: 12px; color: #9fb0c7; margin-left: 12px; }
   .progcode { margin: 0; padding: 12px 0; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
               white-space: pre; overflow-x: auto; tab-size: 4; }
@@ -2894,7 +2896,10 @@ function renderAboutTab(id) {
   if (!architectureData) { body.innerHTML = '<span class="badge">読み込み中...</span>'; return; }
   if (architectureData.error) { body.innerHTML = `<span class="badge crit">${esc(architectureData.error)}</span>`; return; }
   parkWiringCards();
-  body.innerHTML = (ABOUT_RENDERS[id] || renderOverview)(architectureData);
+  const tabVideo = architectureData[id]?.video_url;
+  const tabLabel = (ABOUT_TABS.find(([t]) => t === id) || [])[1] || id;
+  body.innerHTML = (tabVideo ? `<div class="aboutvideo"><button class="vidlink" data-src="${esc(tabVideo)}" data-name="${esc(tabLabel)}" title="このタブの解説動画を見る">▶ 解説動画</button></div>` : '') +
+    (ABOUT_RENDERS[id] || renderOverview)(architectureData);
   const slot = document.getElementById('about_wiring');
   if (slot) { const store = document.getElementById('wiring_store'); while (store.firstChild) slot.appendChild(store.firstChild); }
   if (id === 'print3d') initPrint3d();

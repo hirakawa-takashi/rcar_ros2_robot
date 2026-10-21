@@ -3,6 +3,7 @@
 # dashboard.yaml の実値を `param:` 参照で埋め込む（{node}.{parameter}）。
 
 overview:
+  video: overview_tab_yukkuri.mp4
   title: AI-CAR
   subtitle: Raspberry Pi 5 + ROS 2 Jazzy のメカナム 4 輪自律走行ロボット
   developer: ひらかわたかし
@@ -35,6 +36,7 @@ overview:
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
 
 system:
+  video: system_tab_yukkuri.mp4
   summary:
     - AI-CAR（Raspberry Pi 5）・ミニコン（Jetson Orin Nano Super）・パソコン（Windows 11 の WSL Ubuntu、RTX 4080 SUPER）・M5 スタックちゃんを、家の Wi-Fi と Tailscale でつなぐ。ローカルのときはクラウドを使わず、家の中で動かす
     - AI-CAR は走る・測る・止まるを受け持つ。安全の判定（LiDAR 360° の見張り・前後の段差センサー・指令の途絶）は AI-CAR の中だけで行い、ほかの機械が止まっても安全に止まる
@@ -97,6 +99,7 @@ system:
     - {from: person, to: stackchan, short: 話す, desc: 「スタックちゃん」と呼んで会話モードにし、声で話しかけて返事を聞く（30 秒だまると「じゃあ、またね。」）, via: 声, state: done, both: true}
 
 hardware:
+  video: hardware_tab_yukkuri.mp4
   center: {id: pi5, label: Raspberry Pi 5, sub: 8GB / Ubuntu 24.04 / ROS 2 Jazzy}
   devices:
     - {id: ai_hat, label: AI HAT+, sub: Hailo-8 NPU 26 TOPS, bus: PCIe（GPIO ヘッダー経由）, power: 5V, jump: hat, side: top}
