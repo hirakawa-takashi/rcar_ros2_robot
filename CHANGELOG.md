@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-10-21
+
+### Added
+- スタックちゃんが切れた理由を記録する。`firmware/stackchan-power-reason.patch`（stay-on のあと）で、起動のたびに電源の IC（AXP2101）の「前に入った理由（0x20）・前に切れた理由（0x21）」と ESP32 の起動のしかた（`esp_reset_reason`）を読み、`self.get_device_status` の `power` に入れる。橋わたし（stackchan_bridge）は電池の記録といっしょに、変わったときだけ「前に切れた理由: 電圧が下がった（VSYS）…」と日本語で記録する
+
 ## [1.14.2] - 2026-10-21
 
 ### Fixed

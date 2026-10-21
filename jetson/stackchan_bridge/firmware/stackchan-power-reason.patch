@@ -1,0 +1,59 @@
+--- a/main/hal/board/stackchan.cc
++++ b/main/hal/board/stackchan.cc
+@@ -17,6 +17,8 @@
+ #include <esp_lcd_ili9341.h>
+ #include <esp_timer.h>
+ #include <algorithm>
++#include <cJSON.h>
++#include <esp_system.h>
+ #include "stackchan_camera.h"
+ #include "hal_bridge.h"
+ 
+@@ -94,6 +96,10 @@
+     // Power Init
+     Pmic(i2c_master_bus_handle_t i2c_bus, uint8_t addr) : Axp2101(i2c_bus, addr)
+     {
++        // 電源の IC が覚えている「前に入った理由（0x20）・前に切れた理由（0x21）」
++        power_on_source  = ReadReg(0x20);
++        power_off_source = ReadReg(0x21);
++        ESP_LOGW(TAG, "AXP2101 power on source=0x%02X, power off source=0x%02X", power_on_source, power_off_source);
+         uint8_t data = ReadReg(0x90);
+         data |= 0b10110100;
+         WriteReg(0x90, data);
+@@ -116,6 +122,9 @@
+         SetBrightness(0);
+     }
+ 
++    uint8_t power_on_source  = 0;
++    uint8_t power_off_source = 0;
++
+     void SetBrightness(uint8_t brightness)
+     {
+         if (brightness == 0) {
+@@ -639,6 +648,26 @@
+         return true;
+     }
+ 
++    virtual std::string GetDeviceStatusJson() override
++    {
++        auto json = WifiBoard::GetDeviceStatusJson();
++        auto root = cJSON_Parse(json.c_str());
++        if (root == nullptr || pmic_ == nullptr) {
++            cJSON_Delete(root);
++            return json;
++        }
++        auto power = cJSON_CreateObject();
++        cJSON_AddNumberToObject(power, "on_source", pmic_->power_on_source);
++        cJSON_AddNumberToObject(power, "off_source", pmic_->power_off_source);
++        cJSON_AddNumberToObject(power, "reset_reason", esp_reset_reason());
++        cJSON_AddItemToObject(root, "power", power);
++        auto str = cJSON_PrintUnformatted(root);
++        std::string out = str ? str : json;
++        cJSON_free(str);
++        cJSON_Delete(root);
++        return out;
++    }
++
+     virtual void SetPowerSaveLevel(PowerSaveLevel level) override
+     {
+         if (level != PowerSaveLevel::LOW_POWER) {
