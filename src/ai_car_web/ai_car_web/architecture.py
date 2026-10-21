@@ -113,5 +113,6 @@ def load_architecture(path, params, repo_dir=None):
     if isinstance(result.get('programs'), list):
         _add_line_counts(result['programs'], repo_dir)
         _add_videos(result['programs'], repo_dir)
+    _add_videos([v for k, v in result.items() if k != 'programs' and isinstance(v, dict)], repo_dir)
     result['generated_at'] = time.time()
     return result
