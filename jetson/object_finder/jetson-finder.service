@@ -1,0 +1,21 @@
+[Unit]
+Description=AI-CAR find registered objects with NanoOWL image query (Jetson)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=-/etc/jetson-owl.env
+ExecStartPre=-/usr/bin/docker rm -f jetson-finder
+ExecStart=/usr/bin/docker run --rm --name jetson-finder --runtime nvidia --network host \
+  -e AI_CAR_URL \
+  -v /home/jetson/object_finder:/object_finder:ro \
+  -v /home/jetson/owl/hf:/data/models/huggingface \
+  -v /home/jetson/objects:/data/objects \
+  dustynv/nanoowl:r36.3.0 python3 -u /object_finder/object_finder.py
+ExecStop=/usr/bin/docker stop -t 5 jetson-finder
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
