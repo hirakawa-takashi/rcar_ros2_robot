@@ -51,6 +51,12 @@ def _gap_toward(move: dict, vx: float, vy: float):
     return gaps[int(round(math.degrees(math.atan2(vy, vx)) / step)) % len(gaps)]
 
 
+def _living_slow(obstacle: dict) -> bool:
+    """カメラの AI が前に人・動物を見つけて「減速」と言っている（living_guard が true のときだけ）。"""
+    living = obstacle.get('living') or {}
+    return bool(living.get('enabled')) and living.get('level') == 'slow'
+
+
 def _moving(msg: Twist, eps: float = 1e-3) -> bool:
     return (abs(msg.linear.x) > eps or abs(msg.linear.y) > eps
             or abs(msg.angular.z) > eps)
@@ -386,6 +392,8 @@ class DriveModeNode(Node):
             out.linear.y *= 0.5
         elif manual and out.linear.x > 0.0:
             out.linear.x *= float(obstacle.get('speed_scale', 1.0))
+        elif out.linear.x > 0.0 and _living_slow(obstacle):
+            out.linear.x *= 0.5
         free = (move.get('turn_free_deg') or {}).get(
             'left' if out.angular.z > 0.0 else 'right') if out.angular.z != 0.0 else None
         if free is not None and free < move.get('turn_stop_deg', 5.0):

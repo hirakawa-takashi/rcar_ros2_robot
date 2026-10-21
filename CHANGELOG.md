@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-10-22
+
+### Added
+- AI HAT+ で YOLOv8m をまた動かし（`hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"`、`inference_rate` 15 → 10）、人・犬・猫・鳥を見つけたら早めにゆっくり・止まる `living_guard` を true にした（カメラの画面の中央半分に写り、LiDAR の距離が 1.5 m 以内で減速、0.6 m 以内で停止）。自動のときも減速が効くように、`drive_mode_node` が `/obstacle_status` の `living` が「減速」なら前進を半分にする（手動はこれまでどおり `speed_scale`）。実機（10/22、車は止めたまま）: perception_node は 1 コアの約 27 %（AI なし）→ 37 %（10 回/秒、実際 8.8 回/秒）、推論 約 32 ms。15 回/秒は約 45 %（実際 12.7 回/秒）。YOLOv8s も CPU は同じだった
+
 ## [1.16.0] - 2026-10-21
 
 ### Removed
