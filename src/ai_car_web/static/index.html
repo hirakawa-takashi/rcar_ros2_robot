@@ -156,6 +156,9 @@
                    vertical-align: top; }
   .proglink { color: #9cc4f0; cursor: pointer; }
   #program { z-index: 21; }
+  #video { z-index: 22; }
+  .vidplayer { display: block; width: 100%; max-height: 78vh; background: #000; }
+  .vidlink { padding: 2px 8px; font-size: 12px; white-space: nowrap; cursor: pointer; }
   .proghead { font-size: 12px; color: #9fb0c7; margin-left: 12px; }
   .progcode { margin: 0; padding: 12px 0; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
               white-space: pre; overflow-x: auto; tab-size: 4; }
@@ -359,6 +362,14 @@
       <button id="diary_close" class="aboutclose" aria-label="閉じる">×</button></div>
     <div id="diary_tabs" class="abouttabs"></div>
     <div id="diary_body" class="aboutbody"><span class="badge">読み込み中...</span></div>
+  </div>
+</div>
+
+<div id="video" class="modal hidden">
+  <div class="aboutpanel" role="dialog" aria-modal="true" aria-labelledby="video_title">
+    <div class="abouthead"><h2 id="video_title">解説動画</h2>
+      <button id="video_close" class="aboutclose" aria-label="閉じる">×</button></div>
+    <video id="video_player" class="vidplayer" controls preload="metadata"></video>
   </div>
 </div>
 
@@ -2775,12 +2786,13 @@ function renderPrograms(programs) {
   const rows = programs.map(p => [esc(p.place || '-'),
     p.file && !p.external ? `<a href="#" class="proglink" data-file="${esc(p.file)}" title="クリックで中身を見る">${esc(p.name || p.file)}</a>` : esc(p.name || '-'),
     p.external ? `外部パッケージ ${esc(p.external)}` : `<code>${esc(p.file || '-')}</code>`, esc(p.role || '-'),
-    `<span style="display:block;text-align:right">${p.external ? '外部' : Number.isFinite(p.lines) ? fmt(p.lines) : '-'}</span>`]);
+    `<span style="display:block;text-align:right">${p.external ? '外部' : Number.isFinite(p.lines) ? fmt(p.lines) : '-'}</span>`,
+    p.video_url ? `<button class="vidlink" data-src="${esc(p.video_url)}" data-name="${esc(p.name || p.file)}" title="解説動画を見る">▶ 動画</button>` : '']);
   rows.push(['<b>合計</b>', `<b>${fmt(count)} 本</b>${externals ? `（外部 ${fmt(externals)}）` : ''}`,
     esc(Object.entries(counts).map(([k, n]) => `${k} ${fmt(n)} 本`).join(' / ')), esc(Object.entries(totals).map(([k, n]) => `${k} ${fmt(n)}`).join(' / ')),
-    `<b style="display:block;text-align:right">${fmt(total)}</b>`]);
-  return `<h3>プログラム一覧</h3>${aboutTable(['動く所', '名前', 'ファイル', '役割', '行数'], rows)}` +
-    '<div class="note">行数は空行・コメントもふくむファイルの行数（wc -l と同じ）。表示するときにラズパイのファイルから数えます。名前をクリックすると、プログラムの中身を出します。</div>';
+    `<b style="display:block;text-align:right">${fmt(total)}</b>`, '']);
+  return `<h3>プログラム一覧</h3>${aboutTable(['動く所', '名前', 'ファイル', '役割', '行数', '動画'], rows)}` +
+    '<div class="note">行数は空行・コメントもふくむファイルの行数（wc -l と同じ）。表示するときにラズパイのファイルから数えます。名前をクリックすると、プログラムの中身を出します。「▶ 動画」は、コードを出して声で説明する解説動画です（ラズパイの videos/ にあるものだけ出ます）。</div>';
 }
 function renderDrive(a) {
   const d = a.drive_modes || {}, states = d.states || [], transitions = d.transitions || [], current = latestTelemetry.drive_mode?.mode;
@@ -3516,7 +3528,8 @@ fetch('/api/version').then(r => r.json()).then(v => {
 document.getElementById('about').addEventListener('click', ev => { if (ev.target.id === 'about') closeAbout(); });
 document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape') return;
-  if (!document.getElementById('program').classList.contains('hidden')) closeProgram();
+  if (!document.getElementById('video').classList.contains('hidden')) closeVideo();
+  else if (!document.getElementById('program').classList.contains('hidden')) closeProgram();
   else closeAbout();
 });
 
@@ -3535,7 +3548,25 @@ function openProgram(file) {
     body.parentElement.scrollTop = 0;
   }).catch(() => { body.textContent = '/api/program の取得に失敗しました'; });
 }
+function closeVideo() {
+  const player = document.getElementById('video_player');
+  player.pause();
+  player.removeAttribute('src');
+  player.load();
+  document.getElementById('video').classList.add('hidden');
+}
+function openVideo(src, name) {
+  document.getElementById('video_title').textContent = `解説動画: ${name}`;
+  const player = document.getElementById('video_player');
+  player.src = src;
+  document.getElementById('video').classList.remove('hidden');
+  player.play().catch(() => {});
+}
+document.getElementById('video_close').addEventListener('click', closeVideo);
+document.getElementById('video').addEventListener('click', ev => { if (ev.target.id === 'video') closeVideo(); });
 document.getElementById('about_body').addEventListener('click', ev => {
+  const vid = ev.target.closest('.vidlink');
+  if (vid) { ev.preventDefault(); openVideo(vid.dataset.src, vid.dataset.name); return; }
   const link = ev.target.closest('.proglink');
   if (!link) return;
   ev.preventDefault();

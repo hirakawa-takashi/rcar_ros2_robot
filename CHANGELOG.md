@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-21
+
+### Added
+- プロジェクト説明の「プログラム一覧」に「動画」の列を足した。`architecture.yaml` の `programs` に `video: <ファイル名>` を書き、そのファイルがラズパイの `videos/`（ワークスペースの直下、git には入れない）にあると「▶ 動画」ボタンが出る。押すと画面の中で再生する（`/videos/…` で配る。とばし見できる）。まずは `perception_node` の解説動画（`perception_node_kaisetsu.mp4`、9 分 53 秒）を試しに付けた
+
 ## [1.12.3] - 2026-10-21
 
 ### Changed
