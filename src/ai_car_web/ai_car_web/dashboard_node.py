@@ -42,7 +42,7 @@ try:
 except ImportError:
     SlamReset = DeserializePoseGraph = SerializePoseGraph = None
 
-from ai_car_web.architecture import load_architecture, read_program
+from ai_car_web.architecture import VIDEO_DIR, load_architecture, read_program
 from ai_car_web.dev_diary import find_repo, query_dev_diary, sync_dev_diary
 from ai_car_web.version import load_version
 from ai_car_web.gpio_pinout import build_pinout
@@ -1744,6 +1744,10 @@ def create_app(node: DashboardNode) -> FastAPI:
             pass
 
     app.mount('/static', StaticFiles(directory=static_dir), name='static')
+    if node.repo_dir:
+        video_dir = os.path.join(node.repo_dir, VIDEO_DIR)
+        os.makedirs(video_dir, exist_ok=True)
+        app.mount('/videos', StaticFiles(directory=video_dir), name='videos')
     if os.path.isdir(print3d_dir):
         app.mount('/print3d', StaticFiles(directory=print3d_dir, follow_symlink=True),
                   name='print3d')

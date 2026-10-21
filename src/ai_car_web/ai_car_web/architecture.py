@@ -5,6 +5,8 @@ import time
 
 import yaml
 
+VIDEO_DIR = 'videos'
+
 
 def _resolve_refs(value, params):
     if isinstance(value, dict):
@@ -80,10 +82,22 @@ def _add_line_counts(programs, repo_dir):
             program['lines'] = count_lines(repo_dir, program.get('file'))
 
 
+def _add_videos(programs, repo_dir):
+    """video に書いた解説動画が repo_dir/videos にあれば、video_url（/videos/…）を入れる。"""
+    for program in programs:
+        if not isinstance(program, dict):
+            continue
+        name = program.get('video')
+        path = _repo_file(repo_dir, os.path.join(VIDEO_DIR, name)) if isinstance(name, str) else None
+        ok = bool(path) and os.path.dirname(path) == _repo_file(repo_dir, VIDEO_DIR) \
+            and os.path.isfile(path)
+        program['video_url'] = f'/videos/{name}' if ok else None
+
+
 def load_architecture(path, params, repo_dir=None):
     """構成 YAML を読み、参照パラメータを実値に解決して返す。
 
-    repo_dir を渡すと、programs の各ファイルの行数を lines に入れる。
+    repo_dir を渡すと、programs の各ファイルの行数を lines に、解説動画があれば video_url に入れる。
     """
     if not path or not os.path.exists(path):
         error = f'{path} が見つかりません' if path else '構成設定ファイル未指定'
@@ -98,5 +112,6 @@ def load_architecture(path, params, repo_dir=None):
     result = _resolve_refs(data, params or {})
     if isinstance(result.get('programs'), list):
         _add_line_counts(result['programs'], repo_dir)
+        _add_videos(result['programs'], repo_dir)
     result['generated_at'] = time.time()
     return result

@@ -2,6 +2,7 @@ build/
 install/
 log/
 maps/
+videos/
 __pycache__/
 *.pyc
 *.egg-info/
