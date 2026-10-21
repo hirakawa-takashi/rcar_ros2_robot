@@ -31,7 +31,7 @@ overview:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
     - {name: FastAPI + uvicorn, role: Web ダッシュボード / REST / WebSocket}
-    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8m。今は hef_path を空にして止めている）}
+    - {name: HailoRT 4.24, role: AI HAT+ 推論（YOLOv8m。カメラの絵に物の名前を出すだけ。速さには使わない）}
     - {name: libcamera (rpicam), role: Camera Module 3 Wide 取り込み（camera_ros）}
     - {name: systemd ai-car-dashboard.service, role: 起動時の自動起動（Restart=always）}
 
@@ -504,7 +504,7 @@ nodes:
       - {name: score_threshold, ref: perception_node.score_threshold, unit: '', desc: 検出信頼度の下限}
       - {name: detect_confirm_frames, ref: perception_node.detect_confirm_frames, unit: frame, desc: 検出を確定するフレーム数}
       - {name: detect_history_frames, ref: perception_node.detect_history_frames, unit: frame, desc: 検出確認に使う履歴長}
-      - {name: model_gops, ref: perception_node.model_gops, unit: GOP, desc: YOLOv8m 640x640 の演算量（YOLO を使うときだけ。今は hef_path が空）}
+      - {name: model_gops, ref: perception_node.model_gops, unit: GOP, desc: YOLOv8m 640x640 の演算量（AI HAT+ の負荷率の表示用）}
       - {name: cpu_temp_warn, ref: perception_node.cpu_temp_warn, unit: ℃, desc: 推論 40% へ}
       - {name: cpu_temp_crit, ref: perception_node.cpu_temp_crit, unit: ℃, desc: 推論停止（LiDAR 判定は継続）}
       - {name: hailo_temp_warn, ref: perception_node.hailo_temp_warn, unit: ℃, desc: 推論 40% へ}
@@ -667,7 +667,7 @@ autonomy:
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
     - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
-    - （YOLO を使うときだけ。今は hef_path が空で止めている）カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 63 mm・横 0 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
+    - （10 回/秒）カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 63 mm・横 0 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
     - LiDAR /scan → 360° を 5° ごとに車体の端からの空き（move）と左右に回れる角度（turn_free_deg）→ drive_mode_node が動く向き・回る向きごとに止める
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（表示）
 
