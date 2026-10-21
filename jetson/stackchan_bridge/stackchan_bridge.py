@@ -337,6 +337,27 @@ BRIGHT_MARGIN = 8  # 境目の近くで行ったり来たりしないよう、±
 BRIGHT_EVERY = 60.0
 BRIGHT_MIN_FRAMES = 5
 STATUS_TOOL = 'self.get_device_status'
+# 電源の IC（AXP2101）の 0x20（入った理由）・0x21（切れた理由）のビット
+POWER_ON_BITS = ['電源ボタン', 'IRQ', 'USB をさした', '電池の充電がもどった', '電池を入れた', 'EN']
+POWER_OFF_BITS = ['電源ボタンがずっと押されたまま', 'プログラムが切った', '電源ボタンの長押し',
+                  '電圧が下がった（VSYS）', 'USB の電圧が高すぎた', '中の電圧が下がった（DCDC）',
+                  '中の電圧が高すぎた（DCDC）', '熱くなりすぎた']
+RESET_REASONS = ['不明', '電源が入った', '外のピン', 'プログラムで起動し直した', 'エラーで止まった',
+                 '見張り（割りこみ）', '見張り（仕事）', '見張り（そのほか）', '深い眠りから起きた',
+                 '電圧が下がった（ESP32）', 'SDIO']
+
+
+def power_bits(value, names, index=False):
+    """電源の理由の数を、日本語にする（index なら番号、そうでなければビットの集まり）。"""
+    if not isinstance(value, (int, float)):
+        return '分からない'
+    value = int(value)
+    if index:
+        return names[value] if 0 <= value < len(names) else f'番号 {value}'
+    found = [n for i, n in enumerate(names) if value >> i & 1]
+    return f'{"・".join(found) or "なし"}（0x{value:02X}）'
+
+
 BATTERY_EVERY = 300.0  # 電池の量（%）を記録する間かく（秒）
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend.txt')
@@ -1674,6 +1695,12 @@ class Session:
         if not isinstance(battery, dict):
             return
         log(f'電池: {battery.get("level")}%（充電{"中" if battery.get("charging") else "していない"}）')
+        power = json.loads(text).get('power')
+        if isinstance(power, dict) and power != getattr(self, 'power_logged', None):
+            self.power_logged = power
+            log(f'前に切れた理由: {power_bits(power.get("off_source"), POWER_OFF_BITS)} / '
+                f'入った理由: {power_bits(power.get("on_source"), POWER_ON_BITS)} / '
+                f'起動のしかた: {power_bits(power.get("reset_reason"), RESET_REASONS, index=True)}')
         set_status(battery={**battery, 'at': time.time()})
 
     async def send(self, **msg):
