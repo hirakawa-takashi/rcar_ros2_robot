@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-10-21
+
+### Removed
+- 使っていない 1 眼の奥行きの AI（SC-Depth v3）を消した。`ai_car_web/mono_depth.py`、`perception_node` の `/stereo/depth_status`・`/stereo/depth/compressed` を出す処理・低い障害物の判定（`stereo_*`・`mono_*` のパラメータ、`/obstacle_status` の `stereo`）・どこからも届かない `/stereo/depth_grid` の受け取り、`dashboard_node` の 2 つのトピックの受け取り・`stereo_depth`・`GET /api/camera/depth_stream`、ダッシュボードのカメラカードの「1眼の距離」の行・「距離の画像」ボタン・カメラ映像の低い物の印。`dashboard.yaml`・`architecture.yaml`（トピック・パラメータ・API・プログラム一覧）・README・PROJECT_STATUS・HARDWARE_BOM からも消した。`model_gops` は YOLOv8m の 78.9 にした
+
 ## [1.15.0] - 2026-10-21
 
 ### Added

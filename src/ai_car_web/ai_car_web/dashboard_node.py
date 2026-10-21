@@ -357,9 +357,6 @@ class DashboardNode(Node):
         self.declare_parameter('slam_reset_service', '/slam_toolbox/reset')
         # スタックちゃんのカードに出す会話の様子（Jetson の stackchan_bridge）。空なら Jetson が送ってくる IP アドレスの 8003
         self.declare_parameter('stackchan_bridge_url', '')
-        # 1 眼の奥行きの AI の距離（perception_node が出す）。空で無効
-        self.declare_parameter('stereo_depth_topic', '/stereo/depth_status')
-        self.declare_parameter('stereo_depth_image_topic', '/stereo/depth/compressed')
         # 地図の保存先（空なら ~/maps）
         self.declare_parameter('map_save_dir', '')
         # 「地図を保存」で slam_toolbox の地図データ（pose graph）も保存し、起動したときに読みこむ。空で無効
@@ -490,13 +487,6 @@ class DashboardNode(Node):
         self.slam_deserialize_client = (self.create_client(DeserializePoseGraph, srv)
                                         if srv and DeserializePoseGraph is not None else None)
         self.slam_load_on_start = bool(self.get_parameter('slam_load_on_start').value)
-        depth_topic = self.get_parameter('stereo_depth_topic').value
-        if depth_topic:
-            self.create_subscription(String, depth_topic, self._stereo_depth_cb, 10)
-        depth_image_topic = self.get_parameter('stereo_depth_image_topic').value
-        if depth_image_topic:
-            self.create_subscription(
-                CompressedImage, depth_image_topic, self._depth_image_cb, sensor_qos)
 
         self._lock = threading.Lock()
         self._last_cmd = Twist()
@@ -521,10 +511,6 @@ class DashboardNode(Node):
         self._autonomy_stamp = 0.0
         self._cliff = None
         self._cliff_stamp = 0.0
-        self._stereo_depth = None
-        self._stereo_depth_stamp = 0.0
-        self._depth_frame = None
-        self._depth_frame_count = 0
         self._jetson_host = None
         self._jetson_host_stamp = 0.0
         self._mypc_host = None
@@ -926,35 +912,6 @@ class DashboardNode(Node):
         with self._lock:
             self._cliff = payload
             self._cliff_stamp = self.get_clock().now().nanoseconds * 1e-9
-
-    def _stereo_depth_cb(self, msg: String):
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError:
-            return
-        with self._lock:
-            self._stereo_depth = payload
-            self._stereo_depth_stamp = self.get_clock().now().nanoseconds * 1e-9
-
-    def _depth_image_cb(self, msg: CompressedImage):
-        data = bytes(msg.data)
-        with self._lock:
-            self._depth_frame = data
-            self._depth_frame_count += 1
-
-    def latest_depth_frame(self):
-        """最新の距離の色の JPEG と通し番号を返す。未受信なら (None, 0)。"""
-        with self._lock:
-            return self._depth_frame, self._depth_frame_count
-
-    def _stereo_depth_state(self):
-        if self._stereo_depth is None:
-            return None
-        age = self.get_clock().now().nanoseconds * 1e-9 - self._stereo_depth_stamp
-        state = dict(self._stereo_depth)
-        state['alive'] = age < 3.0
-        state['age_s'] = round(age, 1)
-        return state
 
     def request_drive_mode(self, mode: str):
         """運転モードの切替を drive_mode_node へ要求する。"""
@@ -1468,7 +1425,6 @@ class DashboardNode(Node):
                 'drive_mode': self._drive_mode_state(),
                 'autonomy': self._autonomy_state(),
                 'cliff': self._cliff_state(),
-                'stereo_depth': self._stereo_depth_state(),
                 'slam': self._slam_state(),
                 'jetson_host': self._jetson_host_state(),
                 'mypc_host': self._mypc_host_state(),
@@ -1745,10 +1701,6 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.get('/api/camera/stream')
     def stream():
         return mjpeg(node.latest_frame)
-
-    @app.get('/api/camera/depth_stream')
-    def depth_stream():
-        return mjpeg(node.latest_depth_frame)
 
     @app.websocket('/ws')
     async def telemetry_ws(websocket: WebSocket):

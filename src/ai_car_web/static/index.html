@@ -415,10 +415,6 @@
       <tr><td class="k">検出物体</td><td class="v" id="o_labels" title="-">-</td></tr>
       <tr><td class="k">人・動物</td><td class="v" id="o_living" title="-">-</td></tr>
       <tr><td class="k">Jetson 検出</td><td class="v" id="o_jetson" title="-">-</td></tr>
-      <tr>
-        <td class="k" id="sd_label">1眼の距離</td>
-        <td class="v"><span id="sd_val" title="-" style="display:inline-block; max-width:calc(100% - 7em); overflow:hidden; text-overflow:ellipsis; vertical-align:middle">-</span> <button id="sd_view" style="padding:3px 10px; font-size:12px">距離の画像</button></td>
-      </tr>
       <tr><td class="k">左/中/右 [m]</td><td class="v" id="o_sectors">-</td></tr>
       <tr><td class="k">速度制限</td><td class="v" id="o_scale">-</td></tr>
       <tr>
@@ -1248,7 +1244,6 @@ function drawCar(ctx, cx, cy, scale) {
   ctx.restore();
 }
 // カメラの見える範囲（扇形）と、カメラで見つけた物の位置を LiDAR の図に点で重ねる。
-// 1 眼の奥行きの AI で見つけた低い物は、色を距離（LiDAR の点と同じ距離帯）、点の直径を横幅の 2 倍（小さい物も見えるように）にする。
 // 物の位置は画面の横位置から出した方向と、perception_node が LiDAR で付けた距離（カメラから前方の距離）
 function drawCameraView(ctx, cx, cy, scale, range, o, bands) {
   if (!o || o.camera_hfov_deg == null) return;
@@ -1296,18 +1291,6 @@ function drawCameraView(ctx, cx, cy, scale, range, o, bands) {
     const [qx, qy] = toPx(ox + d.distance, oy + d.distance * t);
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(qx, qy, 5, 0, Math.PI * 2); ctx.fill();
-  }
-
-  const st = o.stereo;
-  const stItems = st ? (st.objects && st.objects.length ? st.objects : [st]) : [];
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.5;
-  for (const it of stItems) {
-    if (it.distance == null || it.lateral == null || it.distance > reach) continue;
-    const [qx, qy] = toPx(ox + it.distance, oy + it.lateral);
-    const r = Math.max(2.5, (it.width || 0) * scale);
-    ctx.fillStyle = bandColor(bands, it.distance);
-    ctx.beginPath(); ctx.arc(qx, qy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
@@ -1824,7 +1807,6 @@ function renderAll(d) {
   aiHosts = {jetson: d.jetson_host, pc: d.mypc_host};
   renderJetsonHost();
   renderCamera(d.camera);
-  renderStereoDepth(d.stereo_depth, obs && obs.stereo);
   renderLinks(d);
 }
 
@@ -2105,86 +2087,14 @@ function drawDetections(o, bands) {
     ctx.fillStyle = '#0e1116';
     ctx.fillText(text, x1 * w + 8, ty + 30);
   }
-  const st = o && o.stereo;
-  const stItems = st ? (st.objects && st.objects.length ? st.objects : [st]) : [];
-  for (const it of stItems) {
-    if (!it.box || it.distance == null) continue;
-    drawStereoBox(ctx, w, h, it, bandColor(bands, it.distance));
-  }
-}
-
-function drawStereoBox(ctx, w, h, st, color) {
-  const [x1, y1, x2, y2] = st.box;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
-  ctx.strokeRect(x1 * w, y1 * h, (x2 - x1) * w, (y2 - y1) * h);
-  const text = st.distance.toFixed(2);
-  ctx.font = 'bold 32px sans-serif';
-  const tw = ctx.measureText(text).width + 16;
-  const ty = Math.max(0, y1 * h - 40);
-  ctx.fillStyle = color;
-  ctx.fillRect(x1 * w, ty, tw, 40);
-  ctx.fillStyle = '#0e1116';
-  ctx.fillText(text, x1 * w + 8, ty + 30);
 }
 
 let camStreaming = false;
-let camDepth = false;
-const camSrc = () => `/api/camera/${camDepth ? 'depth_stream' : 'stream'}?t=${Date.now()}`;
-
-document.getElementById('sd_view').addEventListener('click', () => {
-  camDepth = !camDepth;
-  document.getElementById('sd_view').textContent = camDepth ? 'カメラの映像' : '距離の画像';
-  document.getElementById('cam_overlay').style.display = camDepth ? 'none' : '';
-  if (camStreaming) document.getElementById('cam').src = camSrc();
-});
-
-// 1 眼の距離に使ったカメラの下向きの角度（mono_auto_pitch）
-function monoPitchText(p) {
-  if (!p) return '';
-  return p.source === 'lidar'
-    ? `カメラの下向き ${fmt(p.deg, 1)}°（LiDAR の ${p.points} 点の床とのさかい目から）。`
-    : `カメラの下向き ${fmt(p.deg, 1)}°（決めた角度${p.points ? `・LiDAR ${p.points} 点では出せない` : ''}）。`;
-}
-
-// 1 眼の奥行きの AI の距離（perception_node が出す）
-function renderStereoDepth(sd, judge) {
-  const cell = document.getElementById('sd_val');
-  const mono = !!(sd && sd.source === 'mono');
-  if (!sd || !sd.alive) {
-    cell.textContent = sd ? '止まっている' : '-';
-    cell.title = '1 眼の奥行きの AI から届いていません';
-    return;
-  }
-  if (!sd.ok) {
-    cell.textContent = sd.reason || '測れない';
-    cell.title = '-';
-    return;
-  }
-  const n = sd.nearest;
-  const side = n ? (Math.abs(n.lateral_m) < 0.03 ? '正面'
-    : `${n.lateral_m > 0 ? '左' : '右'} ${fmt(Math.abs(n.lateral_m), 2)} m`) : '';
-  const mode = judge && judge.enabled ? '' : '（表示のみ）';
-  const verdict = !n || !judge || judge.distance == null ? ''
-    : !judge.low ? ' LiDAR にも見える'
-    : judge.level === 'clear' ? ' 低い物' : ` → ${LEVEL_TEXT[judge.level] || judge.level}${mode}`;
-  cell.textContent = n
-    ? `${fmt(n.distance_m, 2)} m（${side}・高さ ${fmt(n.height_m, 2)} m）${verdict}` +
-      ((sd.objects || []).length > 1 ? `・近くに ${sd.objects.length} 個` : '')
-    : `${fmt(sd.max_range_m, 1)} m 以内になし`;
-  cell.title = `通り道（片側 ${fmt(sd.corridor_half_width_m, 2)} m）の中で、床より ` +
-    `${fmt(sd.min_height_m, 2)} m 以上高い物。${fmt(sd.fps, 1)} 回/秒・${fmt(sd.ms, 0)} ms・` +
-    (mono ? `1 眼の奥行きの AI（推論 ${fmt(sd.infer_ms, 1)} ms）。${monoPitchText(sd.pitch)}`
-      : `測れた画素 ${Math.round((sd.valid_ratio || 0) * 100)}%・床の高さ ${fmt(sd.floor_height_m, 3)} m。`) +
-    (judge ? `LiDAR ${fmt(judge.lidar_distance)} m。減速 ${fmt(judge.slow_distance)} m / 停止 ${fmt(judge.stop_distance)} m` +
-      (judge.enabled ? '' : `。${mono ? 'mono_depth_guard' : 'stereo_guard'} が false なので速度制限には使わない`) : '');
-}
-
 function renderCamera(cam) {
   const img = document.getElementById('cam');
   if (cam && cam.available && !camStreaming) {
     camStreaming = true;
-    img.src = camSrc();
+    img.src = `/api/camera/stream?t=${Date.now()}`;
   } else if (!(cam && cam.available) && camStreaming) {
     camStreaming = false;
     img.removeAttribute('src');
