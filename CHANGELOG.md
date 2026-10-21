@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-10-22
+
+### Changed
+- AI HAT+ の YOLOv8m をまた動かす（`hef_path: /home/super/AI-CAR_ws/models/yolov8m.hef`）。カメラの絵に物の名前（テレビ・ボトルなど）を出すだけで、`living_guard: false` のまま（人・犬・猫で減速・停止はしない）
+
 ## [1.18.0] - 2026-10-22
 
 ### Added

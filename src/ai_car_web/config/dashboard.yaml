@@ -358,9 +358,9 @@ perception_node:
     move_slow_gap: 0.7       # 手動ではこれ以下で半分の速さ
     turn_center_m: [-0.043, -0.008]  # その場で回る中心（天板の真ん中）
     turn_stop_deg: 5.0       # その向きに回れる角度がこれより小さいと、その向きの回転を止める（反対向きは回れる）
-    # 物の名前を当てる YOLO（yolov8m.hef）は使わない。今は AI HAT+ で動かす AI はない
-    hef_path: ""
-    # 推論レート上限（YOLO を使うとき。検出確定は 3 フレーム中 2 回）。10 回/秒で perception_node は 1 コアの約 27 → 37 %
+    # 物の名前を当てる YOLO（AI HAT+）。カメラの絵に物の名前（テレビ・ボトルなど）を出すだけ（living_guard: false）
+    hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
+    # 推論レート上限（検出確定は 3 フレーム中 2 回）。10 回/秒で perception_node は 1 コアの約 27 → 37 %
     inference_rate: 10.0
     score_threshold: 0.5
     detect_confirm_frames: 2

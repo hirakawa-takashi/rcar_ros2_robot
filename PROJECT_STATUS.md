@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.18.0（2026-10-22）
+- バージョン: 1.18.1（2026-10-22）
 - 更新日: 2026/10/17
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin
@@ -37,9 +37,9 @@
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は 3 m で固定、3 m より遠い点は描かない）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`。`lidar_watchdog_node` が `/scan` の 3 秒途絶で rplidar を止め、respawn で起動し直させる（USB が抜けてつながり直すと、rplidar は `/scan` を出さなくなるため）。2 回続けて戻らなければ LiDAR の USB をつなぎ直す（電池の電圧低下の後に CP2102 が返事をしなくなったとき用）。4 回で USB の電気を 3 秒切って入れ直し（`ai-car-usb-power-cycle`、uhubctl、ゲームパッドも数秒切れる）、7 回でラズパイを再起動する（この起動で `/scan` が来ていて、起動から 30 分たっているときだけ）
   - カメラノード: `dashboard.launch.py` の `use_camera` で Camera Module 3 Wide の `camera_ros`（libcamera）を起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
-  - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像の AI は、今は動かしていない（物の名前を当てる YOLO `yolov8m.hef` は `hef_path: ""` で止めている。2026/10/22 の v1.17.0 だけ動かした。`hef_path` に入れれば、検出枠を履歴3中2回で確認して物体名を補助情報として付ける）。結果は `/obstacle_status`（JSON, 5Hz）
+  - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像の AI（AI HAT+ の YOLO `yolov8m.hef`、10 回/秒）で、検出枠を履歴3中2回で確認して物体名（テレビ・ボトルなど）を補助情報として付ける（表示だけ。速さには使わない）。結果は `/obstacle_status`（JSON, 5Hz）
   - 検出物体の距離: LiDAR の距離（画面に「（LiDAR）」）。LiDAR は床から 17.5 cm の 1 本の線なので、高い所の物（テレビなど）では手前の低い物の距離になることがある。LiDAR の距離: 画像の横位置を `camera_hfov_deg`（102°）で方位角に変換し、LiDAR の同方位の距離を採用（LiDAR の点は、LiDAR の中心から見たカメラの位置 `camera_offset_x_m` 0.063 / `camera_offset_y_m` 0.0（真ん前 63 mm。Camera Module 3 Wide のレンズの先、CAD 値）に移し、カメラから見た方位で照合する。距離はカメラのレンズから前方への距離）。カメラ映像に検出枠と距離を重畳し（枠の色は LiDAR の図の点と同じ距離の色: `danger_distance` 以内 赤 #ff5c6c / 停止距離以内 橙 #ff8a4c / 減速距離以内 黄 #f5b942 / それより遠い 水色 #35d6ff、距離不明 灰色）、LiDAR 点群マップでは前方 ±30°（`front_angle_deg` 60°）内かつ 0.3m 以内の点を赤点で表示。点群マップには前方／後方／左／右のラベルを表示（上＝前方）。方位角範囲内の点は距離でクラスタリングし（`cluster_gap` 0.25m）、最も手前のまとまりの中央値を採用する。スキャンが `scan_max_age`（1秒）より古い場合は距離を出さない。LiDAR の取り付け向きは `scan_angle_offset_deg` で補正する。画面の「前方」は前方カメラの正面とし、カメラの画面の真ん中に置いたボトルが LiDAR で右 4°・0.47 m に見えたことから −1.7° とした（2026/10 実測。`dashboard_node`・`perception_node`・`autonomy_node` と URDF の `laser` の向きで同じ値）
-  - 人・動物の早めの減速・停止: カメラの前方（画面の中央半分）に写った人・犬・猫・鳥（`living_labels`）の LiDAR 距離が 1.5 m（`living_slow_distance`）以内で減速、0.6 m（`living_stop_distance`）以内で停止と判定し、`/obstacle_status` の `living` に出す。`living_guard: true` のとき（今は false。YOLO も止めている）、LiDAR の判定より厳しい方を `level`・`speed_scale` に使う。停止は前進を止め、減速は前進を半分にする（手動・自動とも。自動では `drive_mode_node` が `living` を見て半分にする）
+  - 人・動物の早めの減速・停止: カメラの前方（画面の中央半分）に写った人・犬・猫・鳥（`living_labels`）の LiDAR 距離が 1.5 m（`living_slow_distance`）以内で減速、0.6 m（`living_stop_distance`）以内で停止と判定し、`/obstacle_status` の `living` に出す。`living_guard: true` のとき（今は false。物の名前を出すだけ）、LiDAR の判定より厳しい方を `level`・`speed_scale` に使う。停止は前進を止め、減速は前進を半分にする（手動・自動とも。自動では `drive_mode_node` が `living` を見て半分にする）
   - システム構成（プロジェクト説明の「システム構成」タブ、`architecture.yaml` の `system`）: AI-CAR・Jetson Orin Nano Super・M5 スタックちゃんの役割とやりとり（① 画像 ② 名前・位置・スタックちゃんとの声・スタックちゃんのカメラの映像・声の命令（話して走る）はどれも稼働中）を図と表で出す
   - 液晶（ZJY-IPS130-V2.0、ST7789）は 2026/10 に取り外し、`lcd_display_node`・launch の `use_lcd_display`・`dashboard.yaml` の設定・`gpio_pins.yaml` の配線（pin 16/17/18/19/20/22/23）を消した。旧 TM1637 の `seg_display_node` は残っている（既定では起動しない）
   - Jetson の物体検出（表示のみ）: Jetson Orin Nano Super の `jetson/owl_detector`（NanoOWL、`jetson-owl.service`）が AI-CAR のカメラ画像から `prompts.json` の物（段ボール箱・袋など）を探し、`POST /api/jetson/detections` → `/jetson_detections` → `perception_node` が LiDAR の距離を付けて `/obstacle_status` の `jetson` に出す。2 秒以上届かないと「未接続」。速度制限には使わない。LiDAR の図にもカメラの見える範囲（扇形）と物の位置を点で重ねる（名前・距離の吹き出しは出さない）
