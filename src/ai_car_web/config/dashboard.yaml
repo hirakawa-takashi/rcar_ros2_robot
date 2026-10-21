@@ -358,10 +358,10 @@ perception_node:
     move_slow_gap: 0.7       # 手動ではこれ以下で半分の速さ
     turn_center_m: [-0.043, -0.008]  # その場で回る中心（天板の真ん中）
     turn_stop_deg: 5.0       # その向きに回れる角度がこれより小さいと、その向きの回転を止める（反対向きは回れる）
-    # 物の名前を当てる YOLO（yolov8m.hef）は使わない。今は AI HAT+ で動かす AI はない
-    hef_path: ""
-    # 推論レート上限（YOLO を使うとき。検出確定は 3 フレーム中 2 回。YOLOv8m の実効上限は約 12Hz）
-    inference_rate: 15.0
+    # 物の名前を当てる YOLO（AI HAT+）。人・犬・猫を見つけるのに使う（living_guard）
+    hef_path: "/home/super/AI-CAR_ws/models/yolov8m.hef"
+    # 推論レート上限（検出確定は 3 フレーム中 2 回）。10 回/秒で perception_node は 1 コアの約 27 → 37 %
+    inference_rate: 10.0
     score_threshold: 0.5
     detect_confirm_frames: 2
     detect_history_frames: 3
@@ -378,8 +378,8 @@ perception_node:
     # Jetson（jetson/owl_detector の NanoOWL）の物体検出。LiDAR の距離を付けて表示するだけ（速度は変えない）
     jetson_topic: "/jetson_detections"
     jetson_max_age: 2.0
-    # 人・動物を見つけたら早めに減速・停止する。false の間は判定を表示するだけ（実機の準備ができたら true）
-    living_guard: false
+    # 人・動物を見つけたら早めに減速・停止する（手動・自動とも）。false にすると判定を表示するだけ
+    living_guard: true
     living_labels: ["人", "犬", "猫", "鳥"]
     living_slow_distance: 1.5
     living_stop_distance: 0.6
