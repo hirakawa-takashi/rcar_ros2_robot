@@ -9,7 +9,9 @@ import asyncio
 import hmac
 import json
 import math
+import glob
 import os
+import re
 import struct
 import subprocess
 import threading
@@ -77,6 +79,19 @@ class CliffMarkRequest(BaseModel):
     action: str
     x: float
     y: float
+
+
+class SlamSaveRequest(BaseModel):
+    """地図を保存するときの名前（同じ名前があれば上書き）。空なら日時。"""
+
+    name: str = ''
+
+
+class SlamMapRequest(BaseModel):
+    """保存した地図の id（slam_YYYYmmdd_HHMMSS）。rename のときは新しい名前も。"""
+
+    id: str
+    name: str = ''
 
 
 class NavRequest(BaseModel):
@@ -184,6 +199,8 @@ PI_REBOOT_DELAY = 10.0
 STACKCHAN_BRIDGE_PORT = 8003
 STACKCHAN_TIMEOUT = 2.0
 STACKCHAN_PHOTO_TIMEOUT = 20.0
+# 名前を付けて保存した地図の id（ファイル名の元）
+SLAM_ID_RE = re.compile(r'slam_\d{8}_\d{6}')
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
@@ -362,7 +379,7 @@ class DashboardNode(Node):
         # 「地図を保存」で slam_toolbox の地図データ（pose graph）も保存し、起動したときに読みこむ。空で無効
         self.declare_parameter('slam_serialize_service', '/slam_toolbox/serialize_map')
         self.declare_parameter('slam_deserialize_service', '/slam_toolbox/deserialize_map')
-        self.declare_parameter('slam_load_on_start', True)
+        self.declare_parameter('slam_load_on_start', False)
         # Jetson から POST /api/jetson/detections で受けた検出を流すトピック。空で無効
         self.declare_parameter('jetson_detections_topic', '/jetson_detections')
 
@@ -539,7 +556,7 @@ class DashboardNode(Node):
         self._frame_times = deque(maxlen=60)
 
         self.create_timer(0.1, self._watchdog_cb)
-        if self._slam_load_pending:
+        if self.slam_deserialize_client is not None:
             self.create_timer(2.0, self._slam_load_cb)
         if not self.api_token:
             self.get_logger().warn(
@@ -688,8 +705,67 @@ class DashboardNode(Node):
     def _slam_files(self):
         return os.path.join(self.map_save_dir, 'slam_latest.json')
 
-    def _save_slam_graph(self, pose):
-        """slam_toolbox の地図データを保存し、次の起動で読みこむ印（slam_latest.json）を書く。"""
+    def _map_base(self, map_id):
+        if not isinstance(map_id, str) or not SLAM_ID_RE.fullmatch(map_id):
+            raise HTTPException(status_code=400, detail='地図の id がおかしい')
+        return os.path.join(self.map_save_dir, map_id)
+
+    def _map_info(self, map_id):
+        """保存した地図 1 つの情報（<id>.json）。なければ 404。"""
+        base = self._map_base(map_id)
+        try:
+            with open(base + '.json', encoding='utf-8') as f:
+                info = json.load(f)
+        except (OSError, ValueError):
+            raise HTTPException(status_code=404, detail='その地図はありません')
+        info['id'] = map_id
+        info['base'] = base
+        return info
+
+    def list_maps(self):
+        """名前を付けて保存した地図（新しい順）。地図の絵・写真があるか、今使っているかも。"""
+        maps = []
+        for path in glob.glob(os.path.join(self.map_save_dir, 'slam_*.json')):
+            map_id = os.path.basename(path)[:-5]
+            if not SLAM_ID_RE.fullmatch(map_id):
+                continue
+            try:
+                info = self._map_info(map_id)
+            except HTTPException:
+                continue
+            base = info['base']
+            if not all(os.path.exists(base + ext) for ext in ('.posegraph', '.data')):
+                continue
+            maps.append({'id': map_id, 'name': info.get('name') or map_id,
+                         'stamp': info.get('stamp'), 'pose': info.get('pose'),
+                         'cliff_marks': info.get('cliff_marks') or [], 'map': info.get('map'),
+                         'png': os.path.exists(base + '.png'), 'photo': os.path.exists(base + '.jpg')})
+        maps.sort(key=lambda m: m['stamp'] or 0, reverse=True)
+        with self._lock:
+            loaded = self._map_loaded
+        return {'maps': maps, 'current': loaded.get('id') if loaded and loaded.get('ok') else None}
+
+    def map_file(self, map_id, ext):
+        path = self._map_base(map_id) + ext
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail='ありません')
+        return path
+
+    def _remove_map_files(self, base):
+        for ext in ('.posegraph', '.data', '.json', '.png', '.jpg'):
+            try:
+                os.remove(base + ext)
+            except OSError:
+                pass
+
+    def _write_latest(self, info):
+        latest = self._slam_files()
+        with open(latest + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump({k: info[k] for k in ('base', 'pose', 'cliff_marks', 'stamp') if k in info}, f)
+        os.replace(latest + '.tmp', latest)
+
+    def _save_slam_graph(self, pose, name=''):
+        """slam_toolbox の地図データを、名前・始めの位置・段差の印・地図の絵・カメラの写真といっしょに保存する。"""
         client = self.slam_serialize_client
         if client is None:
             return {'ok': False, 'reason': '地図データの保存が無効'}
@@ -697,7 +773,8 @@ class DashboardNode(Node):
             return {'ok': False, 'reason': 'slam_toolbox が応答しない'}
         if pose is None:
             return {'ok': False, 'reason': '地図の上の車の位置がまだ分からない'}
-        base = os.path.join(self.map_save_dir, time.strftime('slam_%Y%m%d_%H%M%S'))
+        map_id = time.strftime('slam_%Y%m%d_%H%M%S')
+        base = os.path.join(self.map_save_dir, map_id)
         done = threading.Event()
         future = client.call_async(SerializePoseGraph.Request(filename=base))
         future.add_done_callback(lambda _: done.set())
@@ -706,29 +783,68 @@ class DashboardNode(Node):
         res = future.result()
         if res is None or res.result != SerializePoseGraph.Response.RESULT_SUCCESS:
             return {'ok': False, 'reason': 'slam_toolbox が地図データを書けなかった'}
+        now = self.get_clock().now().nanoseconds * 1e-9
         with self._lock:
             marks = (self._autonomy or {}).get('cliff_marks') or []
-        latest = self._slam_files()
-        old = None
-        try:
-            with open(latest) as f:
-                old = json.load(f).get('base')
-        except (OSError, ValueError, AttributeError):
-            pass
-        info = {'base': base, 'pose': pose, 'cliff_marks': marks, 'stamp': round(time.time(), 1)}
-        with open(latest + '.tmp', 'w') as f:
-            json.dump(info, f)
-        os.replace(latest + '.tmp', latest)
-        if old and old != base:
-            for ext in ('.posegraph', '.data'):
-                try:
-                    os.remove(old + ext)
-                except OSError:
-                    pass
-        return {'ok': True, 'pose': pose, 'marks': len(marks)}
+            png, meta = self._map_png, dict(self._map or {})
+            frame = self._frame if self._frame is not None and now - self._frame_stamp < 3.0 else None
+            loaded = self._map_loaded
+        name = (name or '').strip()[:30] or (loaded.get('name') if loaded and loaded.get('ok') else '') \
+            or time.strftime('地図 %m/%d %H:%M')
+        meta.pop('rev', None)
+        info = {'name': name, 'pose': pose, 'cliff_marks': marks, 'stamp': round(time.time(), 1), 'map': meta}
+        if png:
+            with open(base + '.png', 'wb') as f:
+                f.write(png)
+        if frame:
+            with open(base + '.jpg', 'wb') as f:
+                f.write(frame)
+        with open(base + '.json', 'w', encoding='utf-8') as f:
+            json.dump(info, f, ensure_ascii=False)
+        info['base'] = base
+        self._write_latest(info)
+        replaced = [m['id'] for m in self.list_maps()['maps'] if m['name'] == name and m['id'] != map_id]
+        for old in replaced:
+            self._remove_map_files(self._map_base(old))
+        with self._lock:
+            self._map_loaded = {'ok': True, 'id': map_id, 'name': name, 'pose': pose, 'marks': len(marks),
+                                'stamp': round(time.time(), 1), 'reason': '', 'saved': True}
+        return {'ok': True, 'id': map_id, 'name': name, 'pose': pose, 'marks': len(marks),
+                'replaced': len(replaced)}
+
+    def _deserialize(self, info, on_done=None):
+        """保存した地図データを、保存したときの車の位置から始めるように読みこみ、段差の印を入れかえる。"""
+        base, pose = info['base'], info['pose']
+        req = DeserializePoseGraph.Request(
+            filename=base, match_type=DeserializePoseGraph.Request.START_AT_GIVEN_POSE)
+        req.initial_pose.x = float(pose['x'])
+        req.initial_pose.y = float(pose['y'])
+        req.initial_pose.theta = math.radians(float(pose['yaw_deg']))
+        map_id = os.path.basename(base)
+        name = info.get('name') or map_id
+        marks = info.get('cliff_marks') or []
+
+        def done(future):
+            ok = future.result() is not None
+            if ok and self.cliff_edit_pub is not None:
+                if self.cliff_clear_pub is not None:
+                    self.cliff_clear_pub.publish(String(data='clear'))
+                self._marks_to_restore = [(float(m[0]), float(m[1])) for m in marks]
+                self._marks_tries = 0
+            with self._lock:
+                self._map_loaded = {'ok': ok, 'id': map_id, 'name': name, 'pose': pose, 'marks': len(marks),
+                                    'stamp': round(time.time(), 1),
+                                    'reason': '' if ok else 'slam_toolbox が読みこめなかった'}
+            self.get_logger().info(
+                f'保存した地図 {name}（{map_id}）を読みこんだ（始めの位置 x {pose["x"]:.2f} y {pose["y"]:.2f}、段差の印 {len(marks)}）'
+                if ok else f'保存した地図 {name}（{map_id}）を読みこめなかった')
+            if on_done is not None:
+                on_done(ok)
+
+        self.slam_deserialize_client.call_async(req).add_done_callback(done)
 
     def _slam_load_cb(self):
-        """起動したら 1 回だけ、保存した地図データを、保存したときの車の位置から始めるように読みこむ。"""
+        """保存した段差の印を戻す。slam_load_on_start なら起動して 1 回だけ、最後に使った地図を読みこむ。"""
         if self._marks_to_restore:
             self._restore_marks()
             return
@@ -737,8 +853,13 @@ class DashboardNode(Node):
         try:
             with open(self._slam_files()) as f:
                 info = json.load(f)
-            base, pose = info['base'], info['pose']
-            ok = all(os.path.exists(base + ext) for ext in ('.posegraph', '.data'))
+            info['base'], info['pose']
+            ok = all(os.path.exists(info['base'] + ext) for ext in ('.posegraph', '.data'))
+            try:
+                with open(info['base'] + '.json', encoding='utf-8') as f:
+                    info.update(json.load(f))
+            except (OSError, ValueError):
+                pass
         except (OSError, ValueError, KeyError, TypeError):
             ok = False
         if not ok:
@@ -747,28 +868,60 @@ class DashboardNode(Node):
         if self._map_stamp == 0.0 or not self.slam_deserialize_client.service_is_ready():
             return
         self._slam_load_pending = False
-        req = DeserializePoseGraph.Request(
-            filename=base, match_type=DeserializePoseGraph.Request.START_AT_GIVEN_POSE)
-        req.initial_pose.x = float(pose['x'])
-        req.initial_pose.y = float(pose['y'])
-        req.initial_pose.theta = math.radians(float(pose['yaw_deg']))
-        name = os.path.basename(base)
-        marks = info.get('cliff_marks') or []
+        self._deserialize(info)
 
-        def done(future):
-            ok = future.result() is not None
-            if ok and self.cliff_edit_pub is not None:
-                self._marks_to_restore = [(float(m[0]), float(m[1])) for m in marks]
-                self._restore_marks()
-            with self._lock:
-                self._map_loaded = {'ok': ok, 'name': name, 'pose': pose, 'marks': len(marks),
-                                    'stamp': round(time.time(), 1),
-                                    'reason': '' if ok else 'slam_toolbox が読みこめなかった'}
-            self.get_logger().info(
-                f'保存した地図 {name} を読みこんだ（始めの位置 x {pose["x"]:.2f} y {pose["y"]:.2f}、段差の印 {len(marks)}）'
-                if ok else f'保存した地図 {name} を読みこめなかった')
+    def load_map(self, map_id):
+        """選んだ地図を読みこむ（止まっているときだけ）。車は、その地図の始めの位置・向きに置いておく。"""
+        info = self._map_info(map_id)
+        if self._moving():
+            raise HTTPException(status_code=409, detail='走行中は地図を変えられません（先に止めてください）')
+        client = self.slam_deserialize_client
+        if client is None or not client.service_is_ready():
+            raise HTTPException(status_code=503, detail='slam_toolbox が応答しません（use_slam:=true）')
+        if self._map_stamp == 0.0:
+            raise HTTPException(status_code=503, detail='slam_toolbox の地図がまだ来ていません（少し待つ）')
+        if not all(os.path.exists(info['base'] + ext) for ext in ('.posegraph', '.data')):
+            raise HTTPException(status_code=404, detail='地図データ（.posegraph / .data）がありません')
+        if self.nav_goal_pub is not None:
+            self.nav_goal_pub.publish(String(data=json.dumps(
+                {'action': 'cancel', 'x': 0.0, 'y': 0.0, 'yaw_deg': 0.0})))
+        self._slam_load_pending = False
+        done, result = threading.Event(), {}
 
-        self.slam_deserialize_client.call_async(req).add_done_callback(done)
+        def finished(ok):
+            result['ok'] = ok
+            done.set()
+
+        self._deserialize(info, finished)
+        if not done.wait(30.0):
+            return {'ok': False, 'reason': 'slam_toolbox から返事がない'}
+        if result['ok']:
+            self._write_latest(info)
+        return {'ok': result['ok'], 'id': map_id, 'name': info.get('name') or map_id,
+                'reason': '' if result['ok'] else 'slam_toolbox が読みこめなかった'}
+
+    def rename_map(self, map_id, name):
+        info = self._map_info(map_id)
+        name = (name or '').strip()[:30]
+        if not name:
+            raise HTTPException(status_code=400, detail='名前が空です')
+        if any(m['name'] == name and m['id'] != map_id for m in self.list_maps()['maps']):
+            raise HTTPException(status_code=409, detail=f'「{name}」はもうあります')
+        base = info.pop('base')
+        info.pop('id', None)
+        info['name'] = name
+        with open(base + '.json.tmp', 'w', encoding='utf-8') as f:
+            json.dump(info, f, ensure_ascii=False)
+        os.replace(base + '.json.tmp', base + '.json')
+        with self._lock:
+            if self._map_loaded and self._map_loaded.get('id') == map_id:
+                self._map_loaded = dict(self._map_loaded, name=name)
+        return {'ok': True, 'id': map_id, 'name': name}
+
+    def delete_map(self, map_id):
+        info = self._map_info(map_id)
+        self._remove_map_files(info['base'])
+        return {'ok': True, 'id': map_id}
 
     def _restore_marks(self):
         """保存した段差の印を、autonomy_node の印に入るまで 2 秒ごとに送りなおす（起動直後は届かないことがある）。"""
@@ -789,8 +942,8 @@ class DashboardNode(Node):
         with self._lock:
             return self._map_png
 
-    def save_map(self):
-        """最後に届いた /map を map_save_dir に map_server の形（.pgm / .yaml）で保存する。"""
+    def save_map(self, name=''):
+        """最後に届いた /map を map_save_dir に map_server の形（.pgm / .yaml）で、地図データは名前を付けて保存する。"""
         with self._lock:
             grid = self._map_grid
         if grid is None:
@@ -806,7 +959,7 @@ class DashboardNode(Node):
         graph = {'ok': False, 'reason': ''}
         if ok:
             try:
-                graph = self._save_slam_graph(pose)
+                graph = self._save_slam_graph(pose, name)
             except OSError as exc:
                 graph = {'ok': False, 'reason': f'地図データの保存に失敗（{exc}）'}
         saved = {'ok': ok, 'name': name, 'stamp': round(time.time(), 1), 'reason': reason, 'graph': graph}
@@ -842,6 +995,9 @@ class DashboardNode(Node):
             self._slam_pose = None
             self._slam_pose_stamp = 0.0
             self._map_saved = None
+            self._map_loaded = {'ok': True, 'id': None, 'name': '', 'new': True, 'pose': None, 'marks': 0,
+                                'stamp': round(time.time(), 1), 'reason': ''}
+        self._marks_to_restore = []
         self.get_logger().info('SLAM の地図をクリア')
         return {'ok': True}
 
@@ -1618,8 +1774,32 @@ def create_app(node: DashboardNode) -> FastAPI:
         return Response(content=png, media_type='image/png', headers={'Cache-Control': 'no-store'})
 
     @app.post('/api/slam/save', dependencies=[Depends(require_token)])
-    def slam_save():
-        return node.save_map()
+    def slam_save(req: SlamSaveRequest | None = None):
+        return node.save_map(req.name if req else '')
+
+    @app.get('/api/slam/maps')
+    def slam_maps():
+        return node.list_maps()
+
+    @app.get('/api/slam/maps/{map_id}/map.png')
+    def slam_map_png(map_id: str):
+        return FileResponse(node.map_file(map_id, '.png'), media_type='image/png')
+
+    @app.get('/api/slam/maps/{map_id}/photo.jpg')
+    def slam_map_photo(map_id: str):
+        return FileResponse(node.map_file(map_id, '.jpg'), media_type='image/jpeg')
+
+    @app.post('/api/slam/maps/load', dependencies=[Depends(require_token)])
+    def slam_map_load(req: SlamMapRequest):
+        return node.load_map(req.id)
+
+    @app.post('/api/slam/maps/rename', dependencies=[Depends(require_token)])
+    def slam_map_rename(req: SlamMapRequest):
+        return node.rename_map(req.id, req.name)
+
+    @app.post('/api/slam/maps/delete', dependencies=[Depends(require_token)])
+    def slam_map_delete(req: SlamMapRequest):
+        return node.delete_map(req.id)
 
     @app.post('/api/slam/clear', dependencies=[Depends(require_token)])
     def slam_clear():
