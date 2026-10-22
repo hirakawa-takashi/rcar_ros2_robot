@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.19.3（2026-10-22。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.19.4（2026-10-23。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
