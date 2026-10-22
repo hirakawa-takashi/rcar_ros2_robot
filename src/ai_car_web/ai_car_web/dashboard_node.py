@@ -50,7 +50,7 @@ from ai_car_web.dev_diary import find_repo, query_dev_diary, sync_dev_diary
 from ai_car_web.version import load_version
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
-from ai_car_web.patrol import coverage_points, new_objects, order_points
+from ai_car_web.patrol import coverage_points, frontier_goal, new_objects, order_points
 
 MAX_SCAN_POINTS = 720
 
@@ -105,6 +105,14 @@ class PlaceRequest(BaseModel):
     y: float | None = None
     here: bool = False
     new_name: str = ''
+
+
+class MappingRequest(BaseModel):
+    """地図作り。go は今の地図を消し、止まって北をはかってから、まだ見ていない所（はし）を Nav2 で自動で回る。
+    cancel はやめる。north は北の向きを deg 度直す（スマホのコンパスに合わせる）。"""
+
+    action: str = 'go'
+    deg: float = 0.0
 
 
 class PatrolRequest(BaseModel):
@@ -241,6 +249,13 @@ PATROL_SPACING_M = 1.5    # 地図をこの升に分けて、升ごとに 1 つ�
 PATROL_CLEAR_M = 0.35     # 壁・不明からこれより近い所には置かない（Nav2 の inflation 0.30 m より外）
 PATROL_MAX = 25           # 見る所（緑の点をふくむ）の上限。多ければ升を大きくする
 PATROL_NEAR_GREEN_M = 0.75  # 緑の点にこれより近い「見る所」は置かない（緑の点で見る）
+MAP_NORTH_S = 10.0       # 地図作りの始めに、止まったまま北をはかる秒数
+MAP_WAIT_S = 20.0        # そのあと地図と車の位置が来るまで待つ秒数
+MAP_DWELL_S = 2.0        # はしに着いたら止まって北をはかり、次をえらぶ
+MAP_LIMIT_S = 900.0      # 15 分でやめる（のこり 1 分でスタートにもどりはじめる）
+MAP_MAX_GOALS = 40
+MAP_CLEAR_M = 0.30       # 壁・まだ見ていない所から、これだけはなれた所を行き先にする
+MAP_SPEED_PERCENT = 10.0  # 地図作りのあいだの「出力」の上限
 PATROL_LIMIT_S = 900.0    # 15 分でやめる
 PATROL_LEG_TIMEOUT_S = 120.0  # 1 か所にこの秒数で着かなければ、とばして次へ
 PATROL_DWELL_S = 1.5      # 向きを変えたあと止まって待ってから写真・検出を見る（ぶれ・検出のおくれ）
@@ -445,6 +460,9 @@ class DashboardNode(Node):
         self.declare_parameter('slam_pose_topic', '/pose')
         # 地図クリアで呼ぶ slam_toolbox のサービス。空で無効
         self.declare_parameter('slam_reset_service', '/slam_toolbox/reset')
+        # 磁気の北と本当の北のずれ（東がプラス）。熊本は西へ約 7.3°
+        self.declare_parameter('north_declination_deg', -7.3)
+        self.north_declination = float(self.get_parameter('north_declination_deg').value)
         # スタックちゃんのカードに出す会話の様子（Jetson の stackchan_bridge）。空なら Jetson が送ってくる IP アドレスの 8003
         self.declare_parameter('stackchan_bridge_url', '')
         # 地図の保存先（空なら ~/maps）
@@ -627,6 +645,8 @@ class DashboardNode(Node):
         self._marks_to_restore, self._marks_tries = [], 0
         self._places = []
         self._route = None
+        self._north = None
+        self._north_samples = []
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -773,6 +793,7 @@ class DashboardNode(Node):
             'saved': self._map_saved,
             'loaded': self._map_loaded,
             'places': self._places,
+            'north': self._north,
         }
 
     def _map_pose_now(self):
@@ -820,7 +841,7 @@ class DashboardNode(Node):
             maps.append({'id': map_id, 'name': info.get('name') or map_id,
                          'stamp': info.get('stamp'), 'pose': info.get('pose'),
                          'cliff_marks': info.get('cliff_marks') or [], 'map': info.get('map'),
-                         'places': clean_places(info.get('places')),
+                         'places': clean_places(info.get('places')), 'north': info.get('north'),
                          'png': os.path.exists(base + '.png'), 'photo': os.path.exists(base + '.jpg')})
         maps.sort(key=lambda m: m['stamp'] or 0, reverse=True)
         with self._lock:
@@ -872,10 +893,11 @@ class DashboardNode(Node):
             frame = self._frame if self._frame is not None and now - self._frame_stamp < 3.0 else None
             loaded = self._map_loaded
             places = list(self._places)
+            north = self._north
         name = (name or '').strip()[:30] or (loaded.get('name') if loaded and loaded.get('ok') else '') \
             or time.strftime('地図 %m/%d %H:%M')
         meta.pop('rev', None)
-        info = {'name': name, 'pose': pose, 'cliff_marks': marks, 'places': places,
+        info = {'name': name, 'pose': pose, 'cliff_marks': marks, 'places': places, 'north': north,
                 'stamp': round(time.time(), 1), 'map': meta}
         if png:
             with open(base + '.png', 'wb') as f:
@@ -919,6 +941,8 @@ class DashboardNode(Node):
             with self._lock:
                 if ok:
                     self._places = places
+                    self._north = info.get('north')
+                    self._north_samples = []
                 self._map_loaded = {'ok': ok, 'id': map_id, 'name': name, 'pose': pose, 'marks': len(marks),
                                     'stamp': round(time.time(), 1),
                                     'reason': '' if ok else 'slam_toolbox が読みこめなかった'}
@@ -1086,6 +1110,8 @@ class DashboardNode(Node):
                                 'stamp': round(time.time(), 1), 'reason': ''}
             self._places = []
             self._route = None
+            self._north = None
+        self._north_samples = []
         self._marks_to_restore = []
         self.get_logger().info('SLAM の地図をクリア')
         return {'ok': True}
@@ -1195,6 +1221,8 @@ class DashboardNode(Node):
         base = info.pop('base')
         info.pop('id', None)
         info['places'] = places
+        with self._lock:
+            info['north'] = self._north
         with open(base + '.json.tmp', 'w', encoding='utf-8') as f:
             json.dump(info, f, ensure_ascii=False)
         os.replace(base + '.json.tmp', base + '.json')
@@ -1335,6 +1363,8 @@ class DashboardNode(Node):
         self.get_logger().info(f'緑の点を回る: {state} {reason}')
         if r.get('kind') == 'patrol':
             self._patrol_finish(r)
+        if r.get('kind') == 'explore':
+            self.set_drive_output(r['_out0'] * 100.0)
 
     def _route_next(self, now):
         """今の点を終えて次へ（着いた）。最後なら終わる。"""
@@ -1354,6 +1384,16 @@ class DashboardNode(Node):
     def _route_fail(self, reason, now):
         """今の点に行けない。順に回るときは止まる。パトロールは、とばして次へ。"""
         r = self._route
+        if r.get('kind') == 'explore':
+            p = r['stops'][r['index']]
+            if r.get('_returning'):
+                self._route_end('done', f'スタートにもどれなかった（{reason}）')
+                return
+            r['skipped'].append(p['name'])
+            r['_bad'].append((p['x'], p['y']))
+            self.get_logger().info(f'地図作り: とばす {reason}')
+            self._explore_next(now)
+            return
         if r.get('kind') != 'patrol':
             self._route_end('failed', reason)
             return
@@ -1367,13 +1407,27 @@ class DashboardNode(Node):
             return
         now = time.monotonic()
         patrol = r.get('kind') == 'patrol'
+        explore = r.get('kind') == 'explore'
+        if explore and r.get('phase') in ('north', 'wait'):
+            self._north_sample()
+            if now - r['_start'] >= MAP_NORTH_S:
+                r['phase'] = 'wait'
+                self._explore_next(now)
+            return
+        if explore and r.get('_dwell_at') is not None:
+            self._north_sample()
+            if now - r['_dwell_at'] >= MAP_DWELL_S:
+                r['_dwell_at'] = None
+                self._explore_next(now)
+            return
         dm = self._drive_mode_state() or {}
         if now - r['_sent'] > 3.0 and dm.get('mode') != 'auto':
             why = dm.get('guard') or dm.get('reason') or '自動を抜けた'
             self._route_end('stopped', str(why))
             return
-        if patrol and now - r['_start'] > PATROL_LIMIT_S:
-            self._route_end('timeout', f'{PATROL_LIMIT_S / 60:.0f} 分たった')
+        limit_s = PATROL_LIMIT_S if patrol else MAP_LIMIT_S
+        if (patrol or explore) and now - r['_start'] > limit_s:
+            self._route_end('timeout', f'{limit_s / 60:.0f} 分たった')
             return
         if r.get('_dwell_at') is not None:
             if now - r['_dwell_at'] >= PATROL_DWELL_S:
@@ -1400,6 +1454,13 @@ class DashboardNode(Node):
                 and auto.get('alive') and (nav.get('age_s') or 0) < waited + 0.5)
         state = nav.get('state') if mine else None
         if state == 'succeeded':
+            if explore:
+                r['arrived'].append(p['name'])
+                if r.get('_returning'):
+                    self._route_end('done')
+                else:
+                    r['_dwell_at'] = now
+                return
             if patrol:
                 if r.get('look') is None:
                     r['look'], r['_look_yaw0'] = 0, sent.get('yaw_deg', 0.0)
@@ -1439,9 +1500,125 @@ class DashboardNode(Node):
         if state is None and waited > ROUTE_START_WAIT_S:
             self._route_end('failed', 'Nav2 が受け付けない')
             return
-        limit = PATROL_LEG_TIMEOUT_S if patrol else ROUTE_LEG_TIMEOUT_S
+        limit = PATROL_LEG_TIMEOUT_S if patrol or explore else ROUTE_LEG_TIMEOUT_S
         if waited > limit:
             self._route_fail(f'{p["name"]}まで {limit:.0f} 秒たっても着かない', now)
+
+    # --- 地図作り（北・自動の探検） ---
+    def _north_sample(self):
+        """1 回: 地図の上で本当の北がどの向きか（車の向き＋磁気の向き＋偏角）をためる。止まっているときだけ呼ぶ。"""
+        with self._lock:
+            mag = self._mag
+        st = self._mag_status_state()
+        pose = self._map_pose_now()
+        if not mag or not st or not st.get('alive') or not st.get('ok') or pose is None:
+            return False
+        if mag.get('stamp') and abs(time.time() - mag['stamp']) > 2.0:
+            return False
+        # heading_deg は磁北から時計まわり、yaw_deg は地図の x から反時計まわり。北は地図の yaw + heading の向き
+        self._north_samples.append(_wrap_deg(pose['yaw_deg'] + mag['heading_deg'] + self.north_declination))
+        self._north_set()
+        return True
+
+    def _north_set(self, adjust=None):
+        a = self._north_samples
+        with self._lock:
+            old = self._north or {}
+        adj = old.get('adjust', 0.0) if adjust is None else adjust
+        measured, spread = old.get('measured'), old.get('spread')
+        if a:
+            mean = math.degrees(math.atan2(sum(math.sin(math.radians(v)) for v in a),
+                                           sum(math.cos(math.radians(v)) for v in a)))
+            dev = sorted(_wrap_deg(v - mean) for v in a)
+            measured = _wrap_deg(mean + dev[len(dev) // 2])
+            spread = (sum(d * d for d in dev) / len(dev)) ** 0.5 if len(dev) > 1 else None
+        if measured is None:
+            return None
+        north = {'deg': round(_wrap_deg(measured + adj), 1), 'measured': round(measured, 1), 'adjust': adj,
+                 'n': len(a) or old.get('n', 0), 'spread': round(spread, 1) if spread is not None else None}
+        with self._lock:
+            self._north = north
+        return north
+
+    def _exploring(self):
+        r = self._route
+        return r is not None and r['state'] == 'running' and r.get('kind') == 'explore'
+
+    def north_adjust(self, deg):
+        with self._lock:
+            old = self._north
+        if not old:
+            return {'ok': False, 'error': 'まだ北が分かりません（地図作りの始めにはかります）'}
+        north = self._north_set(max(-180.0, min(180.0, old.get('adjust', 0.0) + float(deg))))
+        self._save_places()
+        return {'ok': True, 'north': north}
+
+    def request_mapping(self, req: MappingRequest):
+        if req.action == 'cancel':
+            if self._exploring():
+                self._route_end('stopped', 'やめる指示')
+            return {'ok': True}
+        if req.action == 'north':
+            return self.north_adjust(req.deg)
+        if req.action != 'go':
+            return {'ok': False, 'error': f'不明な指示: {req.action}'}
+        if self.nav_goal_pub is None:
+            return {'ok': False, 'error': '地図の行き先が無効です'}
+        r = self._route
+        if r is not None and r['state'] == 'running':
+            return {'ok': False, 'error': 'いま回っています。先にやめてください'}
+        auto = self._autonomy_state() or {}
+        if not auto.get('alive') or not (auto.get('nav') or {}).get('available'):
+            return {'ok': False, 'error': 'Nav2 が動いていません'}
+        res = self.clear_map()
+        if not res.get('ok'):
+            return {'ok': False, 'error': res.get('reason') or '地図を消せない'}
+        with self._lock:
+            out0 = self._output
+            self._route = {'state': 'running', 'kind': 'explore', 'phase': 'north', 'stops': [], 'names': [],
+                           'index': 0, 'arrived': [], 'skipped': [], 'reason': '', 'retries': 0,
+                           'stamp': round(time.time(), 1), 'map': '', 'id': int(time.time() * 1000),
+                           '_sent': None, '_arrived_at': None, '_start': time.monotonic(), '_bad': [],
+                           '_home': None, '_out0': out0}
+        self.set_drive_output(min(out0 * 100.0, MAP_SPEED_PERCENT))
+        self.get_logger().info('地図作り: 北をはかってから、まだ見ていない所を回る')
+        return {'ok': True, 'route': self._route_state()}
+
+    def _explore_next(self, now):
+        """次の「はし」へ Nav2 で向かう。もうなければスタートにもどり、着いたら終わる。"""
+        r = self._route
+        with self._lock:
+            grid = self._map_grid
+        pose = self._map_pose_now()
+        if grid is None or pose is None:
+            if now - r['_start'] > MAP_NORTH_S + MAP_WAIT_S:
+                self._route_end('failed', '地図か車の位置が来ない（SLAM）')
+            return
+        first = r['phase'] != 'explore'
+        if r['_home'] is None:
+            r['_home'] = {'name': 'スタート', 'x': round(pose['x'], 2), 'y': round(pose['y'], 2)}
+        goal = None
+        if len(r['stops']) < MAP_MAX_GOALS and now - r['_start'] < MAP_LIMIT_S - 60.0:
+            goal = frontier_goal(grid, (pose['x'], pose['y']), MAP_CLEAR_M, bad=r['_bad'])
+        if goal is None:
+            home = r['_home']
+            if first or math.hypot(pose['x'] - home['x'], pose['y'] - home['y']) < 0.3:
+                self._route_end('done', '' if not first else 'まだ見ていない所がない')
+                return
+            r['_returning'] = True
+            stop = dict(home)
+        else:
+            stop = {'name': f'はし {len(r["stops"]) + 1}', 'x': goal['x'], 'y': goal['y']}
+        r['stops'].append(stop)
+        r['names'].append(stop['name'])
+        r['index'] = len(r['stops']) - 1
+        r['phase'], r['retries'], r['_dwell_at'] = 'explore', 0, None
+        self._route_send(yaw=math.degrees(math.atan2(stop['y'] - pose['y'], stop['x'] - pose['x'])))
+        self.get_logger().info(f'地図作り: {stop["name"]}へ x {stop["x"]} y {stop["y"]}')
+        if first:
+            res = self.request_drive_mode('auto')
+            if not res.get('ok'):
+                self._route_end('failed', res.get('error') or '自動にできない')
 
     # --- パトロール ---
     def _patrolling(self):
@@ -2387,6 +2564,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/slam/clear', dependencies=[Depends(require_token)])
     def slam_clear():
         return node.clear_map()
+
+    @app.post('/api/slam/mapping', dependencies=[Depends(require_token)])
+    def slam_mapping(req: MappingRequest):
+        return node.request_mapping(req)
 
     @app.post('/api/imu/mag_calibrate', dependencies=[Depends(require_token)])
     def imu_mag_calibrate():

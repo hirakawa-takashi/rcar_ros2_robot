@@ -29,6 +29,7 @@ overview:
     - {state: done, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション。床で試走して、まだ行っていない所を回る探索に使っている）}
     - {state: done, text: 'Level 2: 地図の緑の点（名前つきの場所）を順に回る（「台所、玄関の順で移動して」。いちばん短い道で、ふさがったらまわり道を 3 回までさがす。道がなければそこで止まる。床ではまだ試していない）'}
     - {state: done, text: 'Level 3: パトロール（「パトロールして」。地図の全部を 1.5 m ごとの見る所と緑の点で回り、4 方向を見て、人（YOLO）・床の物（LiDAR と地図）・新しい段差を報告する。行けない所はとばす。15 分まで。床ではまだ試していない）'}
+    - {state: done, text: 'Level 3: 地図作り（「新しい地図を作る」で、北をはかってから、まだ見ていない所を自分で回って地図を作る。地図は北を上に出す。床ではまだ試していない）'}
     - {state: todo, text: 'Level 3: パトロールで、ふだんの写真とくらべて、いつもとちがう所を見つける（B）'}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
@@ -760,6 +761,7 @@ api:
     - {method: POST, path: /api/slam/maps/load, desc: 選んだ地図を、保存したときの車の位置から始めるように読みこむ（止まっているときだけ）, auth: true}
     - {method: POST, path: /api/slam/maps/rename, desc: 保存した地図の名前を変える（/delete で消す）, auth: true}
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
+    - {method: POST, path: /api/slam/mapping, desc: '地図作り {action: go|cancel|north, deg}。go は地図を消し、10 秒止まって北をはかってから、まだ見ていない所のはしを Nav2 で回り、最後にスタートにもどる（出力 10%、15 分まで）。north は北の向きを deg 度直す', auth: true}
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
     - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
