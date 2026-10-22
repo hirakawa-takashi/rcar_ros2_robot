@@ -729,6 +729,7 @@
       <tr><td class="k">点の一覧</td><td class="v wrap" id="pl_list">-</td></tr>
       <tr><td class="k">順に回る</td><td class="v"><input id="rt_names" placeholder="例: 台所、玄関" size="18"> <button id="rt_go">順に回る</button> <button id="rt_cancel" disabled>やめる</button></td></tr>
       <tr><td class="k">回るようす</td><td class="v wrap" id="rt_state">-</td></tr>
+      <tr><td class="k">地図作り</td><td class="v wrap"><button id="mp_cancel" disabled>やめる</button> <button id="mp_n_m" title="北の向きを 1° 直す（スマホのコンパスに合わせる）">北 −1°</button> <button id="mp_n_p" title="北の向きを 1° 直す（スマホのコンパスに合わせる）">北 ＋1°</button> <span id="mp_msg"></span></td></tr>
       <tr><td class="k">パトロール</td><td class="v"><button id="pt_go">パトロールする</button> <button id="pt_cancel" disabled>やめる</button> <button id="pt_plan">回る所を見る</button> <span id="pt_msg"></span></td></tr>
       <tr><td class="k">パトロールの結果</td><td class="v wrap" id="pt_result">-</td></tr>
       <tr><td class="k">行き先 x / y [m]</td><td class="v" id="nv_goal">-</td></tr>
@@ -1905,6 +1906,73 @@ function renderSlam(sl) {
   renderPlaces();
   drawSlam();
 }
+// 地図の絵を、北を上にして canvas に出す（北が分からないときは地図のまま）
+function mapView(W, H, m, north) {
+  const rot = north == null ? 0 : (90 - north) * Math.PI / 180;
+  const c = Math.cos(rot), sn = Math.sin(rot);
+  const bw = Math.abs(m.width * c) + Math.abs(m.height * sn), bh = Math.abs(m.width * sn) + Math.abs(m.height * c);
+  const s = Math.min(W / bw, H / bh);
+  const cx = m.origin_x + m.width * m.resolution / 2, cy = m.origin_y + m.height * m.resolution / 2;
+  const toPx = (x, y) => {
+    const dx = (x - cx) / m.resolution, dy = (y - cy) / m.resolution;
+    return [W / 2 + (dx * c - dy * sn) * s, H / 2 - (dx * sn + dy * c) * s];
+  };
+  const fromPx = (u, v) => {
+    const rx = (u - W / 2) / s, ry = -(v - H / 2) / s;
+    return [cx + (rx * c + ry * sn) * m.resolution, cy + (-rx * sn + ry * c) * m.resolution];
+  };
+  const draw = (ctx, img) => {
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(-rot);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, -m.width * s / 2, -m.height * s / 2, m.width * s, m.height * s);
+    ctx.restore();
+  };
+  return {m, s, rot, toPx, fromPx, draw};
+}
+function drawCompass(ctx, W, north) {
+  const x = W - 34, y = 34, r = 20;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.beginPath();
+  ctx.arc(x, y, r + 10, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (north == null) {
+    ctx.fillStyle = '#9aa7b8';
+    ctx.fillText('北 ?', x, y);
+  } else {
+    [['N', 0, '#ff5a5a'], ['E', 90, '#e6edf3'], ['S', 180, '#e6edf3'], ['W', 270, '#e6edf3']].forEach(([t, a, col]) => {
+      ctx.fillStyle = col;
+      ctx.fillText(t, x + r * Math.sin(a * Math.PI / 180), y - r * Math.cos(a * Math.PI / 180));
+    });
+  }
+  ctx.restore();
+}
+const MAP_PHASE = {north: '止まって北をはかっている', wait: '地図を待っている'};
+function renderMapping(sl) {
+  const rt = latestTelemetry.route;
+  const mine = rt && rt.kind === 'explore';
+  const run = mine && rt.state === 'running';
+  document.getElementById('mp_cancel').disabled = !run;
+  const n = sl && sl.north;
+  const nt = n ? `北 ${fmt(n.deg, 0)}°（${n.n} 回はかった${n.spread != null ? `・ばらつき ${fmt(n.spread, 0)}°` : ''}${n.adjust ? `・手で ${n.adjust > 0 ? '+' : ''}${fmt(n.adjust, 0)}°` : ''}）` : '北はまだ分からない';
+  let t = '';
+  if (mine) {
+    t = run ? (MAP_PHASE[rt.phase] || `${rt.target || ''}へ（着いた ${rt.arrived.length}・行けない ${rt.skipped.length}）`)
+      : `${ROUTE_WORDS[rt.state] || rt.state}${rt.reason ? `（${rt.reason}）` : ''}。「地図を保存」で名前を付ける`;
+  }
+  document.getElementById('mp_msg').textContent = [t, nt].filter(Boolean).join(' / ');
+}
+document.getElementById('mp_cancel').addEventListener('click', () => { apiPost('/api/slam/mapping', {action: 'cancel'}); });
+[['mp_n_m', -1], ['mp_n_p', 1]].forEach(([id, deg]) => document.getElementById(id).addEventListener('click', () => {
+  apiPost('/api/slam/mapping', {action: 'north', deg}).then(r => r && r.json()).then(j => {
+    if (j && j.ok === false) document.getElementById('mp_msg').textContent = j.error || '';
+  }).catch(() => {});
+}));
 function drawSlam() {
   const canvas = document.getElementById('slam_map');
   const ctx = canvas.getContext('2d');
@@ -1912,15 +1980,14 @@ function drawSlam() {
   ctx.fillStyle = '#0e1116';
   ctx.fillRect(0, 0, W, H);
   const sl = latestTelemetry.slam;
+  renderMapping(sl);
   const m = sl && sl.alive && sl.map;
   if (!m || !slamImg.naturalWidth) return;
-  const s = Math.min(W / m.width, H / m.height);
-  const ox = (W - m.width * s) / 2, oy = (H - m.height * s) / 2;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(slamImg, ox, oy, m.width * s, m.height * s);
-  const toPx = (x, y) => [ox + (x - m.origin_x) / m.resolution * s,
-    oy + (m.height - (y - m.origin_y) / m.resolution) * s];
-  slamView = {m, s, ox, oy};
+  const north = sl.north ? sl.north.deg : null;
+  const view = mapView(W, H, m, north);
+  view.draw(ctx, slamImg);
+  const toPx = view.toPx, s = view.s;
+  slamView = view;
   const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.alive ? latestTelemetry.autonomy.nav : null;
   const live = navLive(nav);
   if (live && nav.path && nav.path.length > 1) {
@@ -1952,11 +2019,11 @@ function drawSlam() {
     ctx.moveTo(gx + 6, gy - 6); ctx.lineTo(gx - 6, gy + 6);
     ctx.stroke();
   }
+  drawCompass(ctx, W, north);
   const p = sl.pose;
   if (!p) return;
-  const px = ox + (p.x - m.origin_x) / m.resolution * s;
-  const py = oy + (m.height - (p.y - m.origin_y) / m.resolution) * s;
-  const a = -p.yaw_deg * Math.PI / 180;
+  const [px, py] = toPx(p.x, p.y);
+  const a = -(p.yaw_deg * Math.PI / 180 + view.rot);
   const r = Math.max(8, 0.15 / m.resolution * s);
   ctx.fillStyle = '#f0a030';
   ctx.beginPath();
@@ -2131,9 +2198,7 @@ document.getElementById('slam_map').addEventListener('click', (ev) => {
   const c = ev.currentTarget;
   const r = c.getBoundingClientRect();
   const u = (ev.clientX - r.left) * c.width / r.width, v = (ev.clientY - r.top) * c.height / r.height;
-  const {m, s, ox, oy} = slamView;
-  const x = m.origin_x + (u - ox) / s * m.resolution;
-  const y = m.origin_y + (m.height - (v - oy) / s) * m.resolution;
+  const [x, y] = slamView.fromPx(u, v);
   if (document.getElementById('pl_edit').checked) {
     const places = (latestTelemetry.slam && latestTelemetry.slam.places) || [];
     const near = places.find(p => Math.hypot(p.x - x, p.y - y) < 0.3);
@@ -2245,11 +2310,11 @@ function drawMapsPreview() {
     ctx.fillText('地図の絵はありません', 20, 30);
     return;
   }
-  const s = Math.min(W / m.width, H / m.height);
-  const ox = (W - m.width * s) / 2, oy = (H - m.height * s) / 2;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(mapsImg, ox, oy, m.width * s, m.height * s);
-  const toPx = (x, y) => [ox + (x - m.origin_x) / m.resolution * s, oy + (m.height - (y - m.origin_y) / m.resolution) * s];
+  const north = sel.north ? sel.north.deg : null;
+  const view = mapView(W, H, m, north);
+  view.draw(ctx, mapsImg);
+  const toPx = view.toPx, s = view.s;
+  drawCompass(ctx, W, north);
   ctx.fillStyle = 'rgba(255, 60, 60, 0.85)';
   sel.cliff_marks.forEach(([x, y]) => {
     const [u, v] = toPx(x, y);
@@ -2261,7 +2326,7 @@ function drawMapsPreview() {
   const p = sel.pose;
   if (!p) return;
   const [px, py] = toPx(p.x, p.y);
-  const a = -p.yaw_deg * Math.PI / 180;
+  const a = -(p.yaw_deg * Math.PI / 180 + view.rot);
   const r = Math.max(22, 0.3 / m.resolution * s);
   ctx.fillStyle = '#f0a030';
   ctx.strokeStyle = '#000';
@@ -2321,10 +2386,10 @@ document.getElementById('maps_delete').addEventListener('click', () => {
   }).catch(() => {});
 });
 document.getElementById('maps_new').addEventListener('click', () => {
-  if (!confirm('今の地図を消して、今いる所から新しい地図を作ります（保存した地図は消えません）。よいですか？')) return;
+  if (!confirm('今の地図を消して、新しい地図を作ります（保存した地図は消えません）。\n10 秒止まって北をはかってから、車が自分で動いて、まだ見ていない所を回ります（出力 10% まで、15 分まで）。よいですか？')) return;
   navPick = null;
-  apiPost('/api/slam/clear').then(r => r && r.json()).then(j => {
-    document.getElementById('maps_msg').textContent = j && j.ok ? '' : mapsError(j);
+  apiPost('/api/slam/mapping', {action: 'go'}).then(r => r && r.json()).then(j => {
+    document.getElementById('maps_msg').textContent = j && j.ok ? '' : (j && j.error) || mapsError(j);
     if (j && j.ok) closeMaps();
   }).catch(() => {});
 });

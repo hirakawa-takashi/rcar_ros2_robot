@@ -7,6 +7,8 @@ dashboard_node:
     scan_topic: "/scan"
     imu_topic: "/imu/data"
     mag_topic: "/imu/mag"
+    # 地図作りで北をはかるとき、磁気の北を本当の北に直す角度（東がプラス）。熊本は西へ約 7.3°
+    north_declination_deg: -7.3
     odom_topic: "/odom"
     system_status_topic: "/system_status"
     camera_topic: "/camera/image_raw/compressed"

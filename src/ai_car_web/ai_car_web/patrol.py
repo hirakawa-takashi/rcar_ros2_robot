@@ -146,3 +146,75 @@ def new_objects(grid, pose, points, lidar_offset=(0.0, 0.0), max_range_m=2.5, ma
             clusters.append({'sx': x, 'sy': y, 'n': 1})
     return [{'x': round(cl['sx'] / cl['n'], 2), 'y': round(cl['sy'] / cl['n'], 2), 'n': cl['n']}
             for cl in clusters if cl['n'] >= min_points]
+
+
+def _bfs(ok, row, col):
+    """ok の中を、(row, col) から 4 近傍で何マスで行けるか（行けない所は -1）。"""
+    dist = np.full(ok.shape, -1, dtype=np.int32)
+    front = np.zeros_like(ok)
+    front[row, col] = True
+    seen = front.copy()
+    dist[row, col] = 0
+    d = 0
+    while front.any():
+        d += 1
+        grow = np.zeros_like(ok)
+        grow[1:, :] |= front[:-1, :]
+        grow[:-1, :] |= front[1:, :]
+        grow[:, 1:] |= front[:, :-1]
+        grow[:, :-1] |= front[:, 1:]
+        grow &= ok & ~seen
+        dist[grow] = d
+        seen |= grow
+        front = grow
+    return dist
+
+
+def frontier_goal(grid, start, clear_m=0.3, min_cells=5, min_dist_m=0.5, bad=(), bad_m=0.6):
+    """地図の「はし」（車が行ける所で、まだ見ていない所のすぐ手前）のかたまりのうち、道のりがいちばん近い所。
+
+    {'x', 'y', 'path_m', 'cells'} か、もうなければ None。bad の (x, y) から bad_m 以内はえらばない。
+    """
+    cells = _cells(grid)
+    res = grid['resolution']
+    free = (cells >= 0) & (cells <= FREE_MAX)
+    r = max(1, int(math.ceil(clear_m / res)))
+    ok = free & ~_dilate(~free, r)
+    if not ok.any():
+        return None
+    col, row = _to_cell(grid, *start)
+    rows, cols = np.nonzero(ok)
+    i = int(np.argmin((rows - row) ** 2 + (cols - col) ** 2))
+    if math.hypot(rows[i] - row, cols[i] - col) * res > 0.6:
+        return None
+    dist = _bfs(ok, rows[i], cols[i])
+    edge = (dist >= 0) & _dilate(cells < 0, r + 1)
+    left = set(zip(*np.nonzero(edge)))
+    best = None
+    while left:
+        stack = [left.pop()]
+        group = []
+        while stack:
+            cy, cx = stack.pop()
+            group.append((cy, cx))
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    q = (cy + dy, cx + dx)
+                    if q in left:
+                        left.remove(q)
+                        stack.append(q)
+        if len(group) < min_cells:
+            continue
+        for cy, cx in sorted(group, key=lambda c: dist[c]):
+            x, y = _to_world(grid, cx, cy)
+            if math.hypot(x - start[0], y - start[1]) < min_dist_m:
+                continue
+            if any(math.hypot(x - bx, y - by) < bad_m for bx, by in bad):
+                continue
+            if best is None or dist[cy, cx] < best['_d']:
+                best = {'x': round(float(x), 2), 'y': round(float(y), 2), 'path_m': round(float(dist[cy, cx]) * res, 2),
+                        'cells': len(group), '_d': int(dist[cy, cx])}
+            break
+    if best:
+        best.pop('_d')
+    return best
