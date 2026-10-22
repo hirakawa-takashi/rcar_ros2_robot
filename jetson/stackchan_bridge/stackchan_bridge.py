@@ -304,7 +304,14 @@ PRIMARY_TIMEOUT = 3.0
 PRIMARY_HANDBACK_CHECKS = 3
 STANDBY_ONLY = 'ミニコンが止まっているあいだは、パソコンで話します。'
 FACE_TOOL = 'self.robot.set_face_color'
-FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00}
+FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00, 'patrol': 0xFF8000}
+# パトロール: 「パトロールして」で地図の全部を回る。見ているあいだ首を左右にふる。PATROL_TELL_EVERY か所ごとに話す
+PATROL = re.compile(r'(?:パトロール|ぱとろーる|見回り|みまわり|巡回|じゅんかい)(?:を)?'
+                    r'(?:して|しに行って|してきて|に行って|開始|スタート|お願い|おねがい|はじめて|始めて)?' + PLACE_TAIL)
+PATROL_TELL_EVERY = 5
+PATROL_HEAD_EVERY = 2.0
+PATROL_BANNER_EVERY = 10.0  # 画面のふきだし「パトロール中」を、会話でほかの字になっても、この秒数ごとに出しなおす
+PATROL_HEAD = ({'yaw': -40, 'pitch': 10, 'speed': 150}, {'yaw': 40, 'pitch': 10, 'speed': 150})
 # 自動運転の実況: ダッシュボードを CAR_TALK_POLL 秒ごとに見て、動きが変わったら話す。同じ動きが続くと CAR_TALK_EVERY 秒ごとに様子を話す
 CAR_TALK_POLL = 1.0
 CAR_TALK_EVERY = 6.0
@@ -828,6 +835,41 @@ def drive_command(text):
         f"{cmd['m']:g} メートル" if 'm' in cmd else f"{cmd['s']:g} 秒"
     cmd['words'] = f'{DIR_WORDS[d]} {amount}{"下がる" if d == "back" else "進む"}よ。'
     return cmd
+
+
+def is_patrol(text):
+    return bool(PATROL.fullmatch(re.sub(r'[\s、。！？!?,.]', '', text or '')))
+
+
+def patrol_words(rt, seen, told):
+    """パトロールのようすから、まだ言っていない「異常」「〇か所見た」と、終わったときの言葉を作る。"""
+    an = rt.get('anomalies') or []
+    state = rt.get('state')
+    out = []
+    if state == 'running':
+        out += [f"{a['where']}に、{a['text'].split('（')[0]}よ。" for a in an[seen:]]
+        done = len(rt.get('arrived') or []) + len(rt.get('skipped') or [])
+        if done // PATROL_TELL_EVERY > told // PATROL_TELL_EVERY and done < len(rt.get('stops') or []):
+            out.append(f"{done} か所見たよ。あと {len(rt['stops']) - done} か所。")
+        return out
+    if state == 'stopped':
+        return ['パトロールをやめたよ。']
+    if state == 'failed':
+        return [f"{(rt.get('reason') or '動けなかった').split('（')[0]}から、パトロールをやめたよ。"]
+    out.append('パトロール終わり。' if state == 'done' else '15 分たったから、パトロールを終わるね。')
+    out.append(f'異常は {len(an)} つ。' + ''.join(f"{a['where']}に、{a['text'].split('（')[0]}。" for a in an[:5])
+               if an else '異常はなかったよ。')
+    if rt.get('skipped'):
+        out.append(f"行けなかった所が {len(rt['skipped'])} か所あったよ。")
+    return out
+
+
+def patrol_banner(rt):
+    """スタックちゃんの画面のふきだしに出す字（例: パトロール中 3/14 異常 1）。"""
+    n = len(rt.get('stops') or [])
+    done = len(rt.get('arrived') or []) + len(rt.get('skipped') or [])
+    an = len(rt.get('anomalies') or [])
+    return f"パトロール中 {min(done + 1, n)}/{n}" + (f' 異常 {an}' if an else '')
 
 
 def find_command(text):
@@ -1743,6 +1785,7 @@ class Session:
         self.cloud_tts = False
         self.keep_task = None
         self.bright_tool = False
+        self.patrolling = False
         self.bright = None
         self.dozing = False
         self.doze_at = 0.0
@@ -1790,7 +1833,8 @@ class Session:
                     await self.doze()
                 if self.dozing and not self.asleep():
                     await self.wake_face()
-                if self.asleep() and not self.dozing and not self.busy() and time.monotonic() >= self.idle_head_at:
+                if (self.asleep() and not self.dozing and not self.busy() and not self.patrolling
+                        and time.monotonic() >= self.idle_head_at):
                     self.idle_head_at = time.monotonic() + random.uniform(*IDLE_HEAD_EVERY)
                     await self.idle_head()
                 if time.monotonic() - bright_last >= BRIGHT_EVERY:
@@ -2302,6 +2346,92 @@ class Session:
         self.drive_task = asyncio.create_task(self.route(res['route']['id'], stop))
         return True
 
+    async def start_patrol(self):
+        """「パトロールして」。地図の全部の「見る所」と緑の点を回る。「止まって」で止まる。"""
+        url = self.args.car_url
+        if self.drive_stop:
+            self.drive_stop.set()
+        if self.drive_task:
+            await self.drive_task
+        try:
+            res = await asyncio.to_thread(car_api, url, '/api/patrol', {'action': 'go'})
+        except Exception as e:  # noqa: BLE001
+            log(f'パトロールのエラー: {e}')
+            await self.say('AI-CAR につながらないよ。')
+            return
+        log(f'パトロール: {res.get("ok")} {res.get("error") or ""}')
+        if not res.get('ok'):
+            await self.say(f"パトロールできなかったよ。{res.get('error') or ''}")
+            return
+        await self.say(f"パトロールするね。見る所は {len(res['route']['stops'])} か所。")
+        stop = self.drive_stop = threading.Event()
+        self.drive_task = asyncio.create_task(self.patrol(res['route']['id'], stop))
+
+    async def patrol_head(self, i):
+        self.head = [PATROL_HEAD[i % 2]['yaw'], PATROL_HEAD[i % 2]['pitch']]
+        head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': PATROL_HEAD[i % 2]})
+        await sending
+        head.cancel()
+
+    async def patrol(self, route_id, stop):
+        """顔をオレンジにして、見ているあいだ首を左右にふる。異常・5 か所ごと・終わりを話す。"""
+        url, seen, told, errors, sweep, head_at = self.args.car_url, 0, 0, 0, 0, 0.0
+        banner, banner_at = '', 0.0
+        self.patrolling = True
+        await self.set_face('patrol')
+        try:
+            while True:
+                await asyncio.sleep(FIND_PERIOD)
+                if stop.is_set():
+                    await asyncio.to_thread(car_api, url, '/api/patrol', {'action': 'cancel'})
+                    return
+                try:
+                    rt = (await asyncio.to_thread(car_api, url, '/api/status')).get('route') or {}
+                    errors = 0
+                except Exception as e:  # noqa: BLE001 - 3 回続けてだめなら止める
+                    errors += 1
+                    if errors >= 3:
+                        log(f'パトロールのエラー: {e}')
+                        await self.say('ようすがわからなくなったよ。')
+                        return
+                    continue
+                if rt.get('id') != route_id:
+                    return
+                said = False
+                for words in patrol_words(rt, seen, told):
+                    await self.say(words)
+                    said = True
+                seen = len(rt.get('anomalies') or [])
+                told = len(rt.get('arrived') or []) + len(rt.get('skipped') or [])
+                if rt.get('state') != 'running':
+                    log(f"パトロール: {rt.get('state')} {rt.get('reason') or ''} 異常 {seen}")
+                    return
+                text = patrol_banner(rt)
+                if not self.busy() and (said or text != banner or time.monotonic() - banner_at >= PATROL_BANNER_EVERY):
+                    # 声なしの sentence_start は、画面のふきだしの字だけを変える（つぎに話すまで残る）
+                    await self.send(type='tts', state='sentence_start', text=text)
+                    banner, banner_at = text, time.monotonic()
+                if rt.get('look') is not None and not self.busy() and time.monotonic() >= head_at:
+                    head_at = time.monotonic() + PATROL_HEAD_EVERY
+                    sweep += 1
+                    await self.patrol_head(sweep)
+        except ConnectionClosed:
+            pass
+        except Exception as e:  # noqa: BLE001
+            log(f'パトロールのエラー: {e}')
+        finally:
+            self.patrolling = False
+            try:
+                await self.set_face(STATUS['mode'])
+                head, sending = self.mcp_call('tools/call', {'name': HEAD_TOOL, 'arguments': HOME_HEAD})
+                await sending
+                head.cancel()
+                self.head = [0, 0]
+            except Exception:  # noqa: BLE001
+                pass
+            if self.drive_stop is stop:
+                self.drive_task = self.drive_stop = None
+
     async def route(self, route_id, stop):
         """回るようすを見て、点に着くたびに話す。「止まって」（stop）でやめる。"""
         url, said, retries, errors = self.args.car_url, 0, 0, 0
@@ -2553,6 +2683,10 @@ class Session:
                 await self.send(type='stt', text=text)
                 await self.say(WAKE_REPLY)
                 await self.need_cloud()
+                return
+            if is_patrol(self.wake.sub('', text) if self.wake else text):
+                await self.send(type='stt', text=text)
+                await self.start_patrol()
                 return
             place = place_command(self.wake.sub('', text) if self.wake else text)
             if place and await self.start_place(place):

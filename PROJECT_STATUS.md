@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.21.1（2026-10-23）
+- バージョン: 1.22.0（2026-10-22）
 - 更新日: 2026/10/17
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin
@@ -24,6 +24,7 @@
   - RViz2設定（`rviz/ai_car.rviz`）: RobotModel / TF / LaserScan
 - ai_car_web
   - `dashboard_node`: FastAPI サーバー（別スレッド）+ rclpy ノード
+  - パトロール（v1.22.0、Level 3）: `POST /api/patrol`。`patrol.py` が地図の通れる所に 1.5 m ごとの見る所を置き、緑の点といっしょに短い順に並べる。見る所ごとに 90° ずつ 4 回見て、人（YOLO）・地図になかった床の物（LiDAR）・新しい段差を `~/patrols/<日時>/report.json` と写真に残す。行けない所はとばす、15 分まで。床ではまだ試していない
   - 「プロジェクト説明」ボタンと 9 タブの全画面モーダルを追加（「3D プリント」タブは STL ダウンロード・三面図・立体図・ドラッグで回せる 3D 表示・印刷設定・組み立て手順）。`architecture.yaml` と `/api/architecture` から構成を表示し、`dashboard.yaml` の実値（秘密値はマスク）と実機の生存ノード / Topic を反映
   - Publish: `/cmd_vel_manual`（geometry_msgs/Twist、手動指令。`/cmd_vel` は `drive_mode_node` が発行）、`/drive_mode_request`、`~/status`
   - `drive_mode_node`（運転モード管理）: `/cmd_vel_manual`（Web + ゲームパッド）と `/cmd_vel_auto`（自律走行）のどちらか一方だけを `/cmd_vel` に中継する。モードは manual / auto / stop（起動時 manual）。状態は `/drive_mode`（JSON, transient local, 5Hz）、切替要求は `/drive_mode_request`（JSON `{mode: manual|auto|stop|toggle, source}`）。安全機構: 自動へ入る条件（`/obstacle_status` が新鮮で stop / unknown でない・ゲームパッド接続中・スティック中立・`/cmd_vel_auto` 生存）を満たさないと拒否（`last_reject` に理由）、自動指令が `auto_timeout` 0.5 秒途絶／ゲームパッド切断／障害物判定途絶で STOP、自動中に手動指令を検出すると手動へ復帰（`manual_override`）、モード遷移時はゼロ速度を publish、最終段で LiDAR の 360° を使い、動く向き（前後左右・ななめ）の車体の端から 0.25 m（`move_stop_gap`）以内に物があればその向きの動きを、その向きに回ると車体の箱に点が入る（1° ずつ回して `turn_center_m` のまわりに確かめる、回れる角度が 5° `turn_stop_deg` より小さい）ならその向きの回転だけを 0 にする。ななめの向きが止まっても、前後・横の片方が空いていればその分だけ動く。手動は 0.7 m（`move_slow_gap`）以内で半分の速さ。LiDAR データなし（unknown）・判定の途絶中は前後左右の動きを 0 にする（`obstacle_guard`、手動・ゲームパッド・声・自動のどれも。止めた理由は `/drive_mode` の `guard`）。すき間は `perception_node` が車体の箱 `body_box_m`（LiDAR の中心から 後ろ 0.176・前 0.090・右 0.135・左 0.190 m。左は LiDAR の左 17 cm の箱まで）を 5° ごとの向きへ動かして求め、`/obstacle_status` の `move` に出す。launch 引数 `use_drive_mode`
