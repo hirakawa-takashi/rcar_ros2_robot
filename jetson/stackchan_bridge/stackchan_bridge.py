@@ -893,9 +893,11 @@ def split_places(text, known):
     return [], [p for p in parts if place_key(p) not in names] or [text]
 
 
-def route_words(rt, said):
-    """回るようすから、まだ言っていない「着いた」と、終わったときの 1 文を作る。"""
+def route_words(rt, said, retries=0):
+    """回るようすから、まだ言っていない「着いた」「まわり道」と、終わったときの 1 文を作る。"""
     out = [f'{n}に着いたよ。' for n in (rt.get('arrived') or [])[said:]]
+    if rt.get('state') == 'running' and (rt.get('retries') or 0) > retries:
+        out.append('ふさがっているから、まわり道をさがすね。')
     state = rt.get('state')
     if state == 'done':
         out.append('全部回ったから、止まるね。')
@@ -2302,7 +2304,7 @@ class Session:
 
     async def route(self, route_id, stop):
         """回るようすを見て、点に着くたびに話す。「止まって」（stop）でやめる。"""
-        url, said, errors = self.args.car_url, 0, 0
+        url, said, retries, errors = self.args.car_url, 0, 0, 0
         try:
             while True:
                 await asyncio.sleep(FIND_PERIOD)
@@ -2321,9 +2323,9 @@ class Session:
                     continue
                 if rt.get('id') != route_id:
                     return
-                for words in route_words(rt, said):
+                for words in route_words(rt, said, retries):
                     await self.say(words)
-                said = len(rt.get('arrived') or [])
+                said, retries = len(rt.get('arrived') or []), rt.get('retries') or 0
                 if rt.get('state') != 'running':
                     log(f"緑の点を回る: {rt.get('state')} {rt.get('reason') or ''}")
                     return
