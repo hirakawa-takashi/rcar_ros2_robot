@@ -2812,7 +2812,11 @@ function powerWiringHtml(pw) {
   const fit = (t, size, w) => Math.max(8, Math.min(size, size * (w - 12) / Math.max(1, textW(t, size))));
   const systems = pw.systems.map(sys => {
     const parts = sys.parts || [], wires = sys.wires || [], plan = sys.state === 'plan';
-    const W = 1200, gap = 52, n = parts.length, bw = (W - 40 - gap * (n - 1)) / n, bh = 92, top = 34;
+    const W = 1200, gap = 52, n = parts.length, bw = (W - 40 - gap * (n - 1)) / n, top = 34;
+    const lines = t => t ? String(t).split(' / ') : [];
+    const termRows = Math.max(0, ...parts.map(p => Math.max(lines(p.in).length, 1) + Math.max(lines(p.out).length, 1)));
+    const subRows = Math.max(1, ...parts.map(p => lines(p.sub).length));
+    const termTop = 46 + 16 * subRows, bh = termRows ? termTop + 10 + 15 * termRows + 4 : 92;
     const by = sys.bypass, H = top + bh + (by ? 70 : 30);
     let svg = `<svg class="aboutsvg" viewBox="0 0 ${W} ${H}">`;
     if (by) {
@@ -2827,6 +2831,19 @@ function powerWiringHtml(pw) {
       svg += `<rect x="${x}" y="${top}" width="${bw}" height="${bh}" rx="10" fill="#1e232b" stroke="${plan ? '#f0b44c' : '#3a4657'}" stroke-width="2"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
         `<text x="${cx}" y="${top + 30}" fill="#e8eaed" text-anchor="middle" font-size="${fit(p.label, 14, bw)}" font-weight="bold">${esc(p.label)}</text>` +
         subs.map((t, j) => `<text x="${cx}" y="${top + 54 + 16 * j}" fill="#9fb0c7" text-anchor="middle" font-size="${fit(t, 11, bw)}">${esc(t)}</text>`).join('');
+      if (termRows) {
+        let ty = top + termTop + 10;
+        svg += `<line x1="${x + 8}" y1="${top + termTop - 4}" x2="${x + bw - 8}" y2="${top + termTop - 4}" stroke="#3a4657"/>`;
+        [['入', p.in, '#8fc8ff'], ['出', p.out, '#ffc27a']].forEach(([tag, val, color]) => {
+          const ls = lines(val);
+          if (!ls.length) { ty += 15; return; }
+          ls.forEach((t, j) => {
+            const s = (j ? '　 ' : `${tag} `) + t;
+            svg += `<text x="${x + 8}" y="${ty}" fill="${color}" font-size="${fit(s, 11, bw - 4)}">${esc(s)}</text>`;
+            ty += 15;
+          });
+        });
+      }
       const w = wires[i];
       if (i < n - 1 && w) {
         const x1 = x + bw, x2 = x1 + gap, y = top + bh / 2, color = powerColor(w.power);
