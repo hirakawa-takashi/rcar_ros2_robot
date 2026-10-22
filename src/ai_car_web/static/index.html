@@ -3478,6 +3478,7 @@ function openVideo(src, name) {
   document.getElementById('video_title').textContent = `解説動画: ${name}`;
   const player = document.getElementById('video_player');
   player.src = src;
+  player.volume = 0.2;
   document.getElementById('video').classList.remove('hidden');
   player.play().catch(() => {});
 }
