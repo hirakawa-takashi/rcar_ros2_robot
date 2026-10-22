@@ -729,6 +729,8 @@
       <tr><td class="k">点の一覧</td><td class="v wrap" id="pl_list">-</td></tr>
       <tr><td class="k">順に回る</td><td class="v"><input id="rt_names" placeholder="例: 台所、玄関" size="18"> <button id="rt_go">順に回る</button> <button id="rt_cancel" disabled>やめる</button></td></tr>
       <tr><td class="k">回るようす</td><td class="v wrap" id="rt_state">-</td></tr>
+      <tr><td class="k">パトロール</td><td class="v"><button id="pt_go">パトロールする</button> <button id="pt_cancel" disabled>やめる</button> <button id="pt_plan">回る所を見る</button> <span id="pt_msg"></span></td></tr>
+      <tr><td class="k">パトロールの結果</td><td class="v wrap" id="pt_result">-</td></tr>
       <tr><td class="k">行き先 x / y [m]</td><td class="v" id="nv_goal">-</td></tr>
       <tr><td class="k">道 / 残り [m]</td><td class="v" id="nv_state">-</td></tr>
       <tr><td class="k">行き先へ</td><td class="v"><button id="nv_go" disabled>ここへ行く</button> <button id="nv_cancel" disabled>やめる</button> <span id="nv_msg"></span></td></tr>
@@ -1939,6 +1941,7 @@ function drawSlam() {
     });
   }
   drawPlaces(ctx, (sl.places || []), toPx, Math.max(5, 0.08 / m.resolution * s), latestTelemetry.route);
+  drawPatrol(ctx, toPx, Math.max(5, 0.08 / m.resolution * s));
   const g = (live && nav.goal) || navPick;
   if (g) {
     const [gx, gy] = toPx(g.x, g.y);
@@ -1991,7 +1994,39 @@ function drawPlaces(ctx, places, toPx, r, route) {
     ctx.fillText(p.name, u + r + 5, v + 4);
   });
 }
-const ROUTE_WORDS = {running: '回っている', done: '全部着いた', failed: '行けなくて止まった', stopped: 'やめた'};
+const ROUTE_WORDS = {running: '回っている', done: '全部着いた', failed: '行けなくて止まった', stopped: 'やめた', timeout: '15 分たって終わった'};
+let ptPlan = null, ptKey = '';
+// パトロールの「見る所」（青い点。見終わった所はうすく）と、見つけた異常（黄色の四角）
+function drawPatrol(ctx, toPx, r) {
+  const rt = latestTelemetry.route;
+  const run = rt && rt.kind === 'patrol' && rt.state === 'running';
+  (run ? rt.stops : (ptPlan || [])).forEach((q, i) => {
+    if (q.green) return;
+    const [u, v] = toPx(q.x, q.y);
+    ctx.fillStyle = run && i < rt.index ? 'rgba(80, 160, 255, 0.35)' : '#50a0ff';
+    ctx.beginPath();
+    ctx.arc(u, v, r * 0.6, 0, 2 * Math.PI);
+    ctx.fill();
+  });
+  ((rt && rt.kind === 'patrol' && rt.anomalies) || []).forEach(a => {
+    const [u, v] = toPx(a.x, a.y);
+    ctx.strokeStyle = '#ffd23c';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(u - r, v - r, 2 * r, 2 * r);
+  });
+}
+function loadPatrolReports() {
+  fetch('/api/patrol').then(r => r.json()).then(j => {
+    const rep = (j.reports || [])[0];
+    const box = document.getElementById('pt_result');
+    if (!rep) { box.textContent = 'まだありません'; return; }
+    const an = rep.anomalies || [];
+    const items = an.map(a => `<li>${esc(a.where)}: ${esc(a.text)}${a.photo != null ? ` <a href="/api/patrol/${rep.pid}/${a.photo}.jpg" target="_blank">写真</a>` : ''}</li>`).join('');
+    box.innerHTML = `${esc(rep.pid)} ${esc(ROUTE_WORDS[rep.state] || rep.state)}・${rep.arrived.length} か所見た` +
+      `${rep.skipped.length ? `・行けなかった ${esc(rep.skipped.join('、'))}` : ''}・${Math.round((rep.duration_s || 0) / 60)} 分` +
+      (an.length ? `<ul>${items}</ul>` : '<br>異常なし');
+  }).catch(() => {});
+}
 function routeText(rt) {
   if (!rt) return '';
   const arrived = rt.arrived && rt.arrived.length ? ` / 着いた ${rt.arrived.join('、')}` : '';
@@ -2024,6 +2059,13 @@ function renderPlaces() {
   document.getElementById('rt_state').textContent = routeText(rt) || '-';
   document.getElementById('rt_go').disabled = running || !places.length;
   document.getElementById('rt_cancel').disabled = !running;
+  const pt = rt && rt.kind === 'patrol' ? rt : null;
+  const pRun = !!pt && pt.state === 'running';
+  document.getElementById('pt_go').disabled = running;
+  document.getElementById('pt_cancel').disabled = !pRun;
+  const key = pt ? `${pt.id}/${pt.state}` : '-';
+  if (key !== ptKey) { ptKey = key; loadPatrolReports(); }
+  if (pRun) document.getElementById('pt_msg').textContent = `${pt.index + 1} / ${pt.stops.length} か所目（${pt.target || ''}）・異常 ${pt.anomalies.length}`;
   document.getElementById('pl_here').disabled = !(sl && sl.pose);
 }
 function placePost(body) {
@@ -2048,6 +2090,24 @@ document.getElementById('rt_go').addEventListener('click', () => {
   apiPost('/api/route', {action: 'go', names}).then(r => r && r.json()).then(j => {
     if (j && j.ok === false) el.textContent = j.error || '失敗しました';
   }).catch(() => {});
+});
+document.getElementById('pt_go').addEventListener('click', () => {
+  const el = document.getElementById('pt_msg');
+  apiPost('/api/patrol', {action: 'go'}).then(r => r && r.json()).then(j => {
+    if (j && j.ok === false) el.textContent = j.error || '失敗しました';
+    else ptPlan = null;
+  }).catch(() => {});
+});
+document.getElementById('pt_cancel').addEventListener('click', () => {
+  apiPost('/api/patrol', {action: 'cancel'}).catch(() => {});
+});
+document.getElementById('pt_plan').addEventListener('click', () => {
+  const el = document.getElementById('pt_msg');
+  fetch('/api/patrol/plan').then(r => r.json()).then(j => {
+    if (!j.ok) { el.textContent = j.error || '失敗しました'; return; }
+    ptPlan = j.stops;
+    el.textContent = `見る所 ${j.stops.length} か所（青い点・緑の点）・まっすぐの距離で ${j.line_m} m`;
+  }).catch(() => { el.textContent = '失敗しました'; });
 });
 document.getElementById('rt_cancel').addEventListener('click', () => {
   apiPost('/api/route', {action: 'cancel'}).catch(() => {});

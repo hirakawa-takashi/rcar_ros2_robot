@@ -50,6 +50,7 @@ from ai_car_web.dev_diary import find_repo, query_dev_diary, sync_dev_diary
 from ai_car_web.version import load_version
 from ai_car_web.gpio_pinout import build_pinout
 from ai_car_web.motor_hat import load_motor_hat
+from ai_car_web.patrol import coverage_points, new_objects, order_points
 
 MAX_SCAN_POINTS = 720
 
@@ -104,6 +105,12 @@ class PlaceRequest(BaseModel):
     y: float | None = None
     here: bool = False
     new_name: str = ''
+
+
+class PatrolRequest(BaseModel):
+    """地図の全部の「見る所」と緑の点を回って、異常（人・床の物・新しい段差）を見る（go）。cancel はやめて止まる。"""
+
+    action: str = 'go'
 
 
 class RouteRequest(BaseModel):
@@ -230,6 +237,22 @@ ROUTE_RETRIES = 3        # 行けなかった点に、まわり道をさがし�
 ROUTE_RETRY_WAIT_S = 2.0  # 向かいなおす前に止まって待つ（LiDAR の地図に、ふさいでいる物を入れる）
 # Nav2（ComputePathToPose）の「道がない」エラー。行き先が地図の外・ふさがっている・道がない。まわり道もない
 NAV_NO_DETOUR = {204, 206, 208}
+PATROL_SPACING_M = 1.5    # 地図をこの升に分けて、升ごとに 1 つ「見る所」を置く
+PATROL_CLEAR_M = 0.35     # 壁・不明からこれより近い所には置かない（Nav2 の inflation 0.30 m より外）
+PATROL_MAX = 25           # 見る所（緑の点をふくむ）の上限。多ければ升を大きくする
+PATROL_NEAR_GREEN_M = 0.75  # 緑の点にこれより近い「見る所」は置かない（緑の点で見る）
+PATROL_LIMIT_S = 900.0    # 15 分でやめる
+PATROL_LEG_TIMEOUT_S = 120.0  # 1 か所にこの秒数で着かなければ、とばして次へ
+PATROL_DWELL_S = 1.5      # 向きを変えたあと止まって待ってから写真・検出を見る（ぶれ・検出のおくれ）
+PATROL_LOOKS = 4          # 1 か所で 90° ずつ 4 回見る
+PATROL_KEEP = 10          # 残すパトロールの結果の数
+PATROL_ID_RE = re.compile(r'\d{8}-\d{6}')
+PERSON_LABELS = {'人'}
+LIDAR_OFFSET = (0.043, 0.008)  # base_footprint から見た LiDAR の位置 [前, 左] m
+
+
+def _wrap_deg(a):
+    return (a + 180.0) % 360.0 - 180.0
 
 
 def place_key(name):
@@ -426,6 +449,8 @@ class DashboardNode(Node):
         self.declare_parameter('stackchan_bridge_url', '')
         # 地図の保存先（空なら ~/maps）
         self.declare_parameter('map_save_dir', '')
+        # パトロールの結果（report.json と写真）の保存先（空なら ~/patrols）
+        self.declare_parameter('patrol_dir', '')
         # 「地図を保存」で slam_toolbox の地図データ（pose graph）も保存し、起動したときに読みこむ。空で無効
         self.declare_parameter('slam_serialize_service', '/slam_toolbox/serialize_map')
         self.declare_parameter('slam_deserialize_service', '/slam_toolbox/deserialize_map')
@@ -545,6 +570,8 @@ class DashboardNode(Node):
         slam_reset_service = self.get_parameter('slam_reset_service').value
         self.slam_reset_client = (self.create_client(SlamReset, slam_reset_service)
                                   if slam_reset_service and SlamReset is not None else None)
+        self.patrol_dir = self.get_parameter('patrol_dir').value or os.path.join(
+            os.path.expanduser('~'), 'patrols')
         self.map_save_dir = self.get_parameter('map_save_dir').value or os.path.join(
             os.path.expanduser('~'), 'maps')
         srv = self.get_parameter('slam_serialize_service').value
@@ -1246,6 +1273,8 @@ class DashboardNode(Node):
             return {'ok': False, 'error': f'不明な指示: {req.action}'}
         if self.nav_goal_pub is None:
             return {'ok': False, 'error': '地図の行き先が無効です'}
+        if self._patrolling():
+            return {'ok': False, 'error': 'パトロール中です。先にやめてください'}
         names = [n.strip() for n in req.names if place_key(n)][:20]
         if not names:
             return {'ok': False, 'error': '行く所がありません'}
@@ -1273,16 +1302,19 @@ class DashboardNode(Node):
             return {'ok': False, 'error': res.get('error') or '自動にできない'}
         return {'ok': True, 'route': self._route_state()}
 
-    def _route_send(self):
+    def _route_send(self, yaw=None):
+        """今の点へ go を送る。yaw を渡せば、その向き（パトロールで同じ所で向きを変える）。"""
         r = self._route
         p = r['stops'][r['index']]
-        # 着いたときの向きは、次の点の方（最後の点は来た向き）。点ごとにその場で回りなおさない
-        nxt = r['stops'][r['index'] + 1] if r['index'] + 1 < len(r['stops']) else None
-        frm = p if nxt else (r['stops'][r['index'] - 1] if r['index'] else self._map_pose_now())
-        to = nxt or p
-        yaw = math.degrees(math.atan2(to['y'] - frm['y'], to['x'] - frm['x'])) if frm and frm is not to else 0.0
-        self.nav_goal_pub.publish(String(data=json.dumps(
-            {'action': 'go', 'x': p['x'], 'y': p['y'], 'yaw_deg': round(yaw, 1)})))
+        if yaw is None:
+            # 着いたときの向きは、次の点の方（最後の点は来た向き）。点ごとにその場で回りなおさない
+            nxt = r['stops'][r['index'] + 1] if r['index'] + 1 < len(r['stops']) else None
+            frm = p if nxt else (r['stops'][r['index'] - 1] if r['index'] else self._map_pose_now())
+            to = nxt or p
+            yaw = math.degrees(math.atan2(to['y'] - frm['y'], to['x'] - frm['x'])) if frm and frm is not to else 0.0
+        goal = {'x': p['x'], 'y': p['y'], 'yaw_deg': round(_wrap_deg(yaw), 1)}
+        self.nav_goal_pub.publish(String(data=json.dumps(dict(goal, action='go'))))
+        r['_goal'] = goal
         r['_sent'] = time.monotonic()
         r['_arrived_at'] = None
         r['target'] = p['name']
@@ -1301,16 +1333,57 @@ class DashboardNode(Node):
         self.neutralize()
         self.request_drive_mode('manual')
         self.get_logger().info(f'緑の点を回る: {state} {reason}')
+        if r.get('kind') == 'patrol':
+            self._patrol_finish(r)
+
+    def _route_next(self, now):
+        """今の点を終えて次へ（着いた）。最後なら終わる。"""
+        r = self._route
+        r['arrived'].append(r['stops'][r['index']]['name'])
+        self._route_advance(now)
+
+    def _route_advance(self, now):
+        r = self._route
+        r['retries'], r['look'], r['_dwell_at'] = 0, None, None
+        r['index'] += 1
+        if r['index'] >= len(r['stops']):
+            self._route_end('done')
+        else:
+            r['_arrived_at'] = now
+
+    def _route_fail(self, reason, now):
+        """今の点に行けない。順に回るときは止まる。パトロールは、とばして次へ。"""
+        r = self._route
+        if r.get('kind') != 'patrol':
+            self._route_end('failed', reason)
+            return
+        r['skipped'].append(r['stops'][r['index']]['name'])
+        self.get_logger().info(f'パトロール: とばす {reason}')
+        self._route_advance(now)
 
     def _route_tick(self):
         r = self._route
         if r is None or r['state'] != 'running':
             return
         now = time.monotonic()
+        patrol = r.get('kind') == 'patrol'
         dm = self._drive_mode_state() or {}
         if now - r['_sent'] > 3.0 and dm.get('mode') != 'auto':
             why = dm.get('guard') or dm.get('reason') or '自動を抜けた'
             self._route_end('stopped', str(why))
+            return
+        if patrol and now - r['_start'] > PATROL_LIMIT_S:
+            self._route_end('timeout', f'{PATROL_LIMIT_S / 60:.0f} 分たった')
+            return
+        if r.get('_dwell_at') is not None:
+            if now - r['_dwell_at'] >= PATROL_DWELL_S:
+                r['_dwell_at'] = None
+                self._patrol_look()
+                r['look'] += 1
+                if r['look'] < PATROL_LOOKS:
+                    self._route_send(yaw=r['_look_yaw0'] + 360.0 / PATROL_LOOKS * r['look'])
+                else:
+                    self._route_next(now)
             return
         if r['_arrived_at'] is not None:
             if now - r['_arrived_at'] >= (ROUTE_RETRY_WAIT_S if r.get('_retry') else ROUTE_PAUSE_S):
@@ -1320,31 +1393,38 @@ class DashboardNode(Node):
         auto = self._autonomy_state() or {}
         nav = auto.get('nav') or {}
         p = r['stops'][r['index']]
-        g = nav.get('goal') or {}
+        g, sent = nav.get('goal') or {}, r.get('_goal') or {}
         waited = now - r['_sent']
-        mine = (abs((g.get('x') or 0) - p['x']) < 0.02 and abs((g.get('y') or 0) - p['y']) < 0.02
+        mine = (abs((g.get('x') or 0) - sent.get('x', 0)) < 0.02 and abs((g.get('y') or 0) - sent.get('y', 0)) < 0.02
+                and abs(_wrap_deg((g.get('yaw_deg') or 0) - sent.get('yaw_deg', 0))) < 1.0
                 and auto.get('alive') and (nav.get('age_s') or 0) < waited + 0.5)
         state = nav.get('state') if mine else None
         if state == 'succeeded':
-            r['arrived'].append(p['name'])
-            r['retries'] = 0
-            r['index'] += 1
-            if r['index'] >= len(r['stops']):
-                self._route_end('done')
-            else:
-                r['_arrived_at'] = now
+            if patrol:
+                if r.get('look') is None:
+                    r['look'], r['_look_yaw0'] = 0, sent.get('yaw_deg', 0.0)
+                r['_dwell_at'] = now
+                return
+            self._route_next(now)
             return
         if state == 'canceled':
             self._route_end('stopped', nav.get('reason') or 'やめた')
+            return
+        if state == 'unavailable':
+            self._route_end('failed', nav.get('reason') or 'Nav2 が動いていない')
+            return
+        if patrol and r.get('look') is not None and state in ROUTE_FAIL:
+            # その場で向きを変えられなかった（壁が近いなど）。のこりの向きは見ないで次へ
+            self._route_next(now)
             return
         if state == 'aborted':
             m = re.search(r'エラー (\d+)', nav.get('reason') or '')
             code = int(m.group(1)) if m else None
             if code in NAV_NO_DETOUR:
-                self._route_end('failed', f'{p["name"]}に行けない（まわり道がない。Nav2 のエラー {code}）')
+                self._route_fail(f'{p["name"]}に行けない（まわり道がない。Nav2 のエラー {code}）', now)
             elif r['retries'] >= ROUTE_RETRIES:
-                self._route_end('failed', f'{p["name"]}に行けない（まわり道を {ROUTE_RETRIES} 回さがしても着かない。'
-                                          f'{nav.get("reason") or ""}）')
+                self._route_fail(f'{p["name"]}に行けない（まわり道を {ROUTE_RETRIES} 回さがしても着かない。'
+                                 f'{nav.get("reason") or ""}）', now)
             else:
                 # ふさがっていた・進めなかった。止まって待ってから、今いる所から道を考えなおして向かう（まわり道）
                 r['retries'] += 1
@@ -1354,13 +1434,217 @@ class DashboardNode(Node):
                                        f'{nav.get("reason") or ""}）')
             return
         if state in ROUTE_FAIL:
-            self._route_end('failed', f'{p["name"]}に行けない（{nav.get("reason") or nav.get("label") or state}）')
+            self._route_fail(f'{p["name"]}に行けない（{nav.get("reason") or nav.get("label") or state}）', now)
             return
         if state is None and waited > ROUTE_START_WAIT_S:
             self._route_end('failed', 'Nav2 が受け付けない')
             return
-        if waited > ROUTE_LEG_TIMEOUT_S:
-            self._route_end('failed', f'{p["name"]}まで {ROUTE_LEG_TIMEOUT_S / 60:.0f} 分たっても着かない')
+        limit = PATROL_LEG_TIMEOUT_S if patrol else ROUTE_LEG_TIMEOUT_S
+        if waited > limit:
+            self._route_fail(f'{p["name"]}まで {limit:.0f} 秒たっても着かない', now)
+
+    # --- パトロール ---
+    def _patrolling(self):
+        r = self._route
+        return r is not None and r['state'] == 'running' and r.get('kind') == 'patrol'
+
+    def _patrol_stops(self):
+        """(見る所の列, 地図, 車の位置, エラー)。緑の点と、地図を升に分けた「見る所」を、道のりが短くなる順に。"""
+        with self._lock:
+            grid = self._map_grid
+            greens = [dict(p, green=True) for p in self._places]
+        pose = self._map_pose_now()
+        if grid is None:
+            return None, None, None, 'まだ地図がありません'
+        if pose is None:
+            return None, None, None, '地図の上の車の位置がまだ分かりません'
+        start = (pose['x'], pose['y'])
+        spacing = PATROL_SPACING_M
+        while True:
+            pts = [q for q in coverage_points(grid, start, spacing, PATROL_CLEAR_M)
+                   if all(math.hypot(q['x'] - g['x'], q['y'] - g['y']) >= PATROL_NEAR_GREEN_M for g in greens)]
+            if len(pts) + len(greens) <= PATROL_MAX or spacing > 5.0:
+                break
+            spacing += 0.25
+        stops = order_points(start, pts + greens[:PATROL_MAX])[:PATROL_MAX]
+        n = 0
+        for q in stops:
+            if not q.get('green'):
+                n += 1
+                q['name'] = f'見る所 {n}'
+        if not stops:
+            return None, None, None, '地図に行ける所がありません'
+        return stops, grid, pose, ''
+
+    def patrol_plan(self):
+        """回る所と順番だけ（走らない）。"""
+        stops, _, pose, err = self._patrol_stops()
+        if err:
+            return {'ok': False, 'error': err}
+        length, (px, py) = 0.0, (pose['x'], pose['y'])
+        for q in stops:
+            length += math.hypot(q['x'] - px, q['y'] - py)
+            px, py = q['x'], q['y']
+        return {'ok': True, 'stops': stops, 'line_m': round(length, 1)}
+
+    def request_patrol(self, req: PatrolRequest):
+        if req.action == 'cancel':
+            if self._patrolling():
+                self._route_end('stopped', 'やめる指示')
+            return {'ok': True}
+        if req.action != 'go':
+            return {'ok': False, 'error': f'不明な指示: {req.action}'}
+        if self.nav_goal_pub is None:
+            return {'ok': False, 'error': '地図の行き先が無効です'}
+        r = self._route
+        if r is not None and r['state'] == 'running':
+            return {'ok': False, 'error': 'いま回っています。先にやめてください'}
+        auto = self._autonomy_state() or {}
+        if not auto.get('alive') or not (auto.get('nav') or {}).get('available'):
+            return {'ok': False, 'error': 'Nav2 が動いていません'}
+        stops, grid, _, err = self._patrol_stops()
+        if err:
+            return {'ok': False, 'error': err}
+        pid = time.strftime('%Y%m%d-%H%M%S')
+        os.makedirs(os.path.join(self.patrol_dir, pid), exist_ok=True)
+        with self._lock:
+            loaded = self._map_loaded
+            self._route = {'state': 'running', 'kind': 'patrol', 'pid': pid, 'stops': stops,
+                           'names': [q['name'] for q in stops], 'index': 0, 'arrived': [], 'skipped': [],
+                           'anomalies': [], 'reason': '', 'retries': 0, 'stamp': round(time.time(), 1),
+                           'map': loaded.get('name') if loaded and loaded.get('ok') else '',
+                           'id': int(time.time() * 1000), '_sent': None, '_arrived_at': None,
+                           '_start': time.monotonic(), '_ref': grid, '_shots': [], '_objs': [],
+                           '_cliff0': [tuple(m[:2]) for m in auto.get('cliff_marks') or []]}
+        self.get_logger().info(f'パトロール: {len(stops)} か所 {" → ".join(q["name"] for q in stops)}')
+        self._route_send()
+        res = self.request_drive_mode('auto')
+        if not res.get('ok'):
+            self._route_end('failed', res.get('error') or '自動にできない')
+            return {'ok': False, 'error': res.get('error') or '自動にできない'}
+        return {'ok': True, 'route': self._route_state()}
+
+    def _patrol_where(self, x, y):
+        r = self._route
+        cands = [q for q in r['stops'] if q.get('green')] + [q for q in r['stops'] if not q.get('green')]
+        best = min(cands, key=lambda q: math.hypot(q['x'] - x, q['y'] - y))
+        return f'{best["name"]}{" " if best["name"][-1:].isdigit() else ""}の近く'
+
+    def _patrol_look(self):
+        """止まって見る 1 回: 写真を残し、人（YOLO）と、地図になかった床の物（LiDAR）を見る。"""
+        r = self._route
+        pose = self._map_pose_now()
+        frame, _ = self.latest_frame()
+        now_ros = self.get_clock().now().nanoseconds * 1e-9
+        with self._lock:
+            obstacle, ob_at, scan = self._obstacle, self._obstacle_stamp, self._scan
+        shot = {'stop': r['stops'][r['index']]['name'], 'look': r['look'], 'photo': None,
+                'x': pose['x'] if pose else None, 'y': pose['y'] if pose else None,
+                'yaw_deg': pose['yaw_deg'] if pose else None}
+        if frame:
+            n = len(r['_shots'])
+            try:
+                with open(os.path.join(self.patrol_dir, r['pid'], f'{n}.jpg'), 'wb') as f:
+                    f.write(frame)
+                shot['photo'] = n
+            except OSError as e:
+                self.get_logger().warn(f'パトロールの写真を書けない: {e}')
+        r['_shots'].append(shot)
+        if pose is None:
+            return
+        yaw = math.radians(pose['yaw_deg'])
+        if obstacle and now_ros - ob_at < 2.0:
+            hfov = math.radians(float(obstacle.get('camera_hfov_deg') or 102.0))
+            cam_x = float(obstacle.get('camera_offset_x_m') or 0.0)
+            for d in obstacle.get('detections') or []:
+                if d.get('label') not in PERSON_LABELS:
+                    continue
+                a = (0.5 - float(d.get('center_x', 0.5))) * hfov
+                dist = d.get('distance')
+                lx, ly = (cam_x + dist * math.cos(a), dist * math.sin(a)) if dist else (0.0, 0.0)
+                x = pose['x'] + math.cos(yaw) * lx - math.sin(yaw) * ly
+                y = pose['y'] + math.sin(yaw) * lx + math.cos(yaw) * ly
+                if any(o['kind'] == 'person' and math.hypot(o['x'] - x, o['y'] - y) < 1.0 for o in r['anomalies']):
+                    continue
+                text = f'人がいる（{dist:.1f} m 先）' if dist else '人がいる'
+                r['anomalies'].append({'kind': 'person', 'x': round(x, 2), 'y': round(y, 2), 'photo': shot['photo'],
+                                       'where': self._patrol_where(x, y), 'text': text})
+                self.get_logger().info(f'パトロール: {text} x {x:.2f} y {y:.2f}')
+        if scan and now_ros - (scan.get('stamp') or 0) < 1.0:
+            for o in new_objects(r['_ref'], pose, scan.get('points'), LIDAR_OFFSET):
+                old = next((q for q in r['_objs'] if math.hypot(q['x'] - o['x'], q['y'] - o['y']) < 0.3), None)
+                if old is None:
+                    r['_objs'].append(dict(o, looks=1))
+                else:
+                    old['looks'] += 1
+
+    def _patrol_photo_for(self, r, x, y):
+        """(x, y) の方を向いて、いちばん近くでとった写真の番号。"""
+        best, score = None, None
+        for sh in r['_shots']:
+            if sh['photo'] is None or sh['x'] is None:
+                continue
+            d = math.hypot(x - sh['x'], y - sh['y'])
+            a = abs(_wrap_deg(math.degrees(math.atan2(y - sh['y'], x - sh['x'])) - sh['yaw_deg']))
+            if d > 3.0 or a > 45.0:
+                continue
+            if score is None or d + a / 45.0 < score:
+                best, score = sh['photo'], d + a / 45.0
+        return best
+
+    def _patrol_finish(self, r):
+        """床の物（2 回以上見えた物）と、新しい段差の印を足して、結果を保存する。"""
+        objs = sorted((o for o in r['_objs'] if o['looks'] >= 2), key=lambda o: -o['looks'])[:5]
+        for o in objs:
+            r['anomalies'].append({'kind': 'object', 'x': o['x'], 'y': o['y'],
+                                   'photo': self._patrol_photo_for(r, o['x'], o['y']),
+                                   'where': self._patrol_where(o['x'], o['y']), 'text': '床に物がある（地図になかった物）'})
+        auto = self._autonomy_state() or {}
+        for m in auto.get('cliff_marks') or []:
+            x, y = m[0], m[1]
+            if all(math.hypot(x - a, y - b) >= 0.15 for a, b in r['_cliff0']):
+                r['anomalies'].append({'kind': 'cliff', 'x': x, 'y': y, 'photo': self._patrol_photo_for(r, x, y),
+                                       'where': self._patrol_where(x, y), 'text': '新しい段差'})
+        r['duration_s'] = round(time.monotonic() - r['_start'])
+        report = dict({k: v for k, v in r.items() if not k.startswith('_')}, shots=r['_shots'])
+        base = os.path.join(self.patrol_dir, r['pid'])
+        try:
+            os.makedirs(base, exist_ok=True)
+            with open(os.path.join(base, 'report.json.tmp'), 'w', encoding='utf-8') as f:
+                json.dump(report, f, ensure_ascii=False)
+            os.replace(os.path.join(base, 'report.json.tmp'), os.path.join(base, 'report.json'))
+            for old in sorted(d for d in os.listdir(self.patrol_dir) if PATROL_ID_RE.fullmatch(d))[:-PATROL_KEEP]:
+                for fn in os.listdir(os.path.join(self.patrol_dir, old)):
+                    os.remove(os.path.join(self.patrol_dir, old, fn))
+                os.rmdir(os.path.join(self.patrol_dir, old))
+        except OSError as e:
+            self.get_logger().warn(f'パトロールの結果を書けない: {e}')
+        self.get_logger().info(f'パトロール: {r["state"]} 異常 {len(r["anomalies"])} とばした {len(r["skipped"])}')
+
+    def patrol_reports(self):
+        """保存したパトロールの結果（新しい順、写真の一覧なし）。"""
+        out = []
+        try:
+            ids = sorted((d for d in os.listdir(self.patrol_dir) if PATROL_ID_RE.fullmatch(d)), reverse=True)
+        except OSError:
+            ids = []
+        for pid in ids[:PATROL_KEEP]:
+            try:
+                with open(os.path.join(self.patrol_dir, pid, 'report.json'), encoding='utf-8') as f:
+                    rep_ = json.load(f)
+            except (OSError, ValueError):
+                continue
+            rep_.pop('shots', None)
+            out.append(rep_)
+        return {'reports': out}
+
+    def patrol_photo(self, pid, n):
+        if not PATROL_ID_RE.fullmatch(pid or ''):
+            raise HTTPException(status_code=400, detail='id がおかしい')
+        path = os.path.join(self.patrol_dir, pid, f'{int(n)}.jpg')
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail='ありません')
+        return path
 
     def request_nav(self, req: NavRequest):
         """地図の行き先を autonomy_node へ送る。go のときは運転モードを自動にする。"""
@@ -2044,6 +2328,22 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/route', dependencies=[Depends(require_token)])
     def route(req: RouteRequest):
         return node.request_route(req)
+
+    @app.get('/api/patrol')
+    def patrol_reports():
+        return node.patrol_reports()
+
+    @app.get('/api/patrol/plan')
+    def patrol_plan():
+        return node.patrol_plan()
+
+    @app.get('/api/patrol/{pid}/{n}.jpg')
+    def patrol_photo(pid: str, n: int):
+        return FileResponse(node.patrol_photo(pid, n), media_type='image/jpeg')
+
+    @app.post('/api/patrol', dependencies=[Depends(require_token)])
+    def patrol(req: PatrolRequest):
+        return node.request_patrol(req)
 
     @app.post('/api/cliff_marks', dependencies=[Depends(require_token)])
     def cliff_marks(req: CliffMarkRequest):

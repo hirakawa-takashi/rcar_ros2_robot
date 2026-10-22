@@ -28,6 +28,8 @@ overview:
     - {state: done, text: スタックちゃんに話して走る（「前に 1 メートル進んで」など）}
     - {state: done, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション。床で試走して、まだ行っていない所を回る探索に使っている）}
     - {state: done, text: 'Level 2: 地図の緑の点（名前つきの場所）を順に回る（「台所、玄関の順で移動して」。いちばん短い道で、ふさがったらまわり道を 3 回までさがす。道がなければそこで止まる。床ではまだ試していない）'}
+    - {state: done, text: 'Level 3: パトロール（「パトロールして」。地図の全部を 1.5 m ごとの見る所と緑の点で回り、4 方向を見て、人（YOLO）・床の物（LiDAR と地図）・新しい段差を報告する。行けない所はとばす。15 分まで。床ではまだ試していない）'}
+    - {state: todo, text: 'Level 3: パトロールで、ふだんの写真とくらべて、いつもとちがう所を見つける（B）'}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
@@ -761,6 +763,10 @@ api:
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
     - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
+    - {method: GET, path: /api/patrol, desc: '前のパトロールの結果（新しい順 10 回） {reports: [{pid, state, arrived, skipped, anomalies: [{kind: person|object|cliff, x, y, where, text, photo}], duration_s}]}', auth: false}
+    - {method: GET, path: /api/patrol/plan, desc: 'パトロールで回る所と順番だけ（走らない） {stops, line_m}', auth: false}
+    - {method: GET, path: '/api/patrol/<pid>/<n>.jpg', desc: 'パトロールでとった写真', auth: false}
+    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。15 分まで。ようすは /api/status の route（kind: patrol）', auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
@@ -816,6 +822,7 @@ status:
 # 行数はダッシュボードが表示するときに数える。external は外のパッケージ（行数なし）。
 programs:
   - {place: ラズパイ, name: dashboard_node, file: src/ai_car_web/ai_car_web/dashboard_node.py, role: ダッシュボードの FastAPI サーバーと ROS 2 の橋渡し, video: dashboard_node_yukkuri.mp4}
+  - {place: ラズパイ, name: patrol, file: src/ai_car_web/ai_car_web/patrol.py, role: パトロールの計算（地図の見る所・回る順番・地図になかった床の物）}
   - {place: ラズパイ, name: ダッシュボードの画面, file: src/ai_car_web/static/index.html, role: ブラウザの画面（HTML・JavaScript）, video: index_yukkuri.mp4}
   - {place: ラズパイ, name: joy_teleop_node, file: src/ai_car_web/ai_car_web/joy_teleop_node.py, role: F710 ゲームパッドで手動操作, video: joy_teleop_node_yukkuri.mp4}
   - {place: ラズパイ, name: drive_mode_node, file: src/ai_car_web/ai_car_web/drive_mode_node.py, role: 手動・自動・停止の切り替えと /cmd_vel の選択, video: drive_mode_node_yukkuri.mp4}
