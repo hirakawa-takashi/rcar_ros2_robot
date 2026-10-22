@@ -119,15 +119,16 @@ hardware:
       - バッテリーの USB-C 口は 2 つあり、1 つを車に、もう 1 つを充電に使う
       - 12V は、USB-C のプラグの中の PD トリガー（小さな部品）が、CC（合図の線）でバッテリーと話して出してもらう。CC があるのは USB-C のところだけで、丸プラグや端子台の線は＋と−の 2 本だけ
       - 線の色は 赤 = 12V、オレンジ = 5V、灰色 = CC（合図の線。電気はほとんど流れない）。点線は「予定（部品待ち）」
+      - 箱の下の「入」「出」は、その部品の端子の形。オス = 差しこむ側（プラグ）、メス = 差しこまれる側（口・ジャック）
     systems:
       - title: ラズパイ側（バッテリー 1 → DROK → Raspberry Pi 5）
         parts:
-          - {label: バッテリー 1, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD}
-          - {label: USB スイッチ（下）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る}
-          - {label: PD トリガーケーブル, sub: SZSL 12V 固定 3A / 1 m（B0D3QG33J7）}
-          - {label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）}
-          - {label: USB ケーブル, sub: USB-A → USB-C / 30 cm くらい}
-          - {label: Raspberry Pi 5, sub: 電源の USB-C 口 / PD なし・3 A と見る}
+          - {label: バッテリー 1, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD, out: USB-C メス（口）}
+          - {label: USB スイッチ（下）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る, in: USB-C オス, out: USB-C メス}
+          - {label: PD トリガーケーブル, sub: SZSL 12V 固定 3A / 1 m（B0D3QG33J7）, in: USB-C オス / （中に PD トリガー）, out: 丸プラグ オス / 5.5×2.5 mm・中が＋}
+          - {label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, in: DC ジャック メス / （穴の大きさ 未確認）, out: USB-A メス}
+          - {label: USB ケーブル, sub: USB-A → USB-C / 30 cm くらい, in: USB-A オス, out: USB-C オス / （L 字がおすすめ）}
+          - {label: Raspberry Pi 5, sub: 電源の USB-C 口 / PD なし・3 A と見る, in: USB-C メス / （電源の口・5V だけ）}
         wires:
           - {power: 12V, joint: バッテリーの USB-C 口 ← スイッチの USB-C プラグ, desc: "VBUS（＋）・GND（−）・CC（合図）がそのまま通る。はじめは 5V で、PD トリガーとの話し合いのあと 12V になる"}
           - {power: 12V, joint: スイッチの USB-C ← PD トリガーケーブルの USB-C プラグ（オス）, desc: プラグの中に PD トリガーがある。ここで「12V ください」とたのむ}
@@ -140,11 +141,11 @@ hardware:
           - いまの困りごと：スイッチは＋（VBUS）だけを切って CC はつないだまま。充電のあと OFF → ON にしても、バッテリーが「新しくつながった」と気づかず、12V を出しなおさないことがある（USB-C を抜いて差すと直る）。下の「予定」で直す
       - title: モーター側（バッテリー 2 → Motor HAT → モーター ×4）
         parts:
-          - {label: バッテリー 2, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD}
-          - {label: USB スイッチ（上）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る}
-          - {label: PD トリガーケーブル, sub: 12V 固定 / USB-C プラグの中で 12V をたのむ}
-          - {label: Adafruit Motor HAT, sub: 電源の端子台 / ＋ と −（ねじでとめる）}
-          - {label: モーター ×4, sub: 520 エンコーダー付き / M1〜M4}
+          - {label: バッテリー 2, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD, out: USB-C メス（口）}
+          - {label: USB スイッチ（上）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る, in: USB-C オス, out: USB-C メス}
+          - {label: PD トリガーケーブル, sub: 12V 固定 / USB-C プラグの中で 12V をたのむ, in: USB-C オス / （中に PD トリガー）, out: ＋ 赤・− 黒 / （先の形 未確認）}
+          - {label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2 / I2C 0x60, in: 電源の端子台 / ＋・−（ねじ）, out: M1〜M4 の端子台 / 各 2 本（ねじ）}
+          - {label: モーター ×4, sub: 520 エンコーダー付き / M1〜M4, in: モーター線 / 黒 Motor+・赤 Motor−}
         wires:
           - {power: 12V, joint: バッテリーの USB-C 口 ← スイッチの USB-C プラグ, desc: ラズパイ側と同じ。VBUS・GND・CC がそのまま通る}
           - {power: 12V, joint: スイッチの USB-C ← PD トリガーケーブルの USB-C プラグ（オス）, desc: プラグの中の PD トリガーが 12V をたのむ}
@@ -158,13 +159,13 @@ hardware:
         state: plan
         bypass: {from: 2, to: 4, power: 12V, label: VBUS（＋）・GND（−）は基板 A → 基板 B へ太い線で直結（スイッチを通さない）}
         parts:
-          - {label: バッテリー, sub: USB-C 口}
-          - {label: C-C ケーブル 15 cm, sub: ELECOM / MPA-CCECSS015BK}
-          - {label: 基板 A, sub: USB-C メス（PENGLIN）}
-          - {label: 6 ピンスイッチ, sub: CC1・CC2 だけ切る / ロック付き}
-          - {label: 基板 B, sub: USB-C メス（PENGLIN）}
-          - {label: PD トリガーケーブル, sub: 今のものをそのまま}
-          - {label: DROK / Motor HAT, sub: 上の ③ から先は / 今と同じ}
+          - {label: バッテリー, sub: USB-C 口, out: USB-C メス}
+          - {label: C-C ケーブル 15 cm, sub: ELECOM / MPA-CCECSS015BK, in: USB-C オス, out: USB-C オス}
+          - {label: 基板 A, sub: PENGLIN, in: USB-C メス, out: はんだの穴 / VBUS・GND・CC1・CC2}
+          - {label: 6 ピンスイッチ, sub: CC1・CC2 だけ切る / ロック付き, in: 各列のまん中の足 / （共通）, out: 各列の ON 側の足 / （ロックで鳴る方）}
+          - {label: 基板 B, sub: PENGLIN, in: はんだの穴 / VBUS・GND・CC1・CC2, out: USB-C メス}
+          - {label: PD トリガーケーブル, sub: 今のものをそのまま, in: USB-C オス / （中に PD トリガー）, out: 丸プラグ オス / または ＋ 赤・− 黒}
+          - {label: DROK / Motor HAT, sub: 上の ③ から先は / 今と同じ, in: DC ジャック メス / または 端子台（ねじ）}
         wires:
           - {power: 12V, joint: バッテリーの USB-C 口 ← C-C ケーブル, desc: 100W 対応の短いケーブル}
           - {power: 12V, joint: C-C ケーブル → 基板 A の USB-C 口, desc: 基板 A は線をはんだ付けで出すための小さな板}
