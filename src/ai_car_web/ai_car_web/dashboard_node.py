@@ -226,6 +226,10 @@ ROUTE_PAUSE_S = 2.0      # 点に着いたら、ここだけ止まってから�
 ROUTE_LEG_TIMEOUT_S = 180.0  # 1 つの点にこれより長くかかったらやめる
 ROUTE_START_WAIT_S = 10.0    # Nav2 がこの間に受け付けなければやめる
 ROUTE_FAIL = {'aborted', 'no_path', 'unavailable', 'canceled'}
+ROUTE_RETRIES = 3        # 行けなかった点に、まわり道をさがして向かいなおす回数
+ROUTE_RETRY_WAIT_S = 2.0  # 向かいなおす前に止まって待つ（LiDAR の地図に、ふさいでいる物を入れる）
+# Nav2（ComputePathToPose）の「道がない」エラー。行き先が地図の外・ふさがっている・道がない。まわり道もない
+NAV_NO_DETOUR = {204, 206, 208}
 
 
 def place_key(name):
@@ -1259,7 +1263,7 @@ class DashboardNode(Node):
             return {'ok': False, 'error': 'Nav2 が動いていません'}
         with self._lock:
             self._route = {'state': 'running', 'stops': stops, 'names': [p['name'] for p in stops],
-                           'index': 0, 'arrived': [], 'reason': '', 'stamp': round(time.time(), 1),
+                           'index': 0, 'arrived': [], 'reason': '', 'retries': 0, 'stamp': round(time.time(), 1),
                            'id': int(time.time() * 1000), '_sent': None, '_arrived_at': None}
         self.get_logger().info(f'緑の点を回る: {" → ".join(p["name"] for p in stops)}')
         self._route_send()
@@ -1272,8 +1276,11 @@ class DashboardNode(Node):
     def _route_send(self):
         r = self._route
         p = r['stops'][r['index']]
-        pose = self._map_pose_now()
-        yaw = math.degrees(math.atan2(p['y'] - pose['y'], p['x'] - pose['x'])) if pose else 0.0
+        # 着いたときの向きは、次の点の方（最後の点は来た向き）。点ごとにその場で回りなおさない
+        nxt = r['stops'][r['index'] + 1] if r['index'] + 1 < len(r['stops']) else None
+        frm = p if nxt else (r['stops'][r['index'] - 1] if r['index'] else self._map_pose_now())
+        to = nxt or p
+        yaw = math.degrees(math.atan2(to['y'] - frm['y'], to['x'] - frm['x'])) if frm and frm is not to else 0.0
         self.nav_goal_pub.publish(String(data=json.dumps(
             {'action': 'go', 'x': p['x'], 'y': p['y'], 'yaw_deg': round(yaw, 1)})))
         r['_sent'] = time.monotonic()
@@ -1306,7 +1313,8 @@ class DashboardNode(Node):
             self._route_end('stopped', str(why))
             return
         if r['_arrived_at'] is not None:
-            if now - r['_arrived_at'] >= ROUTE_PAUSE_S:
+            if now - r['_arrived_at'] >= (ROUTE_RETRY_WAIT_S if r.get('_retry') else ROUTE_PAUSE_S):
+                r['_retry'] = False
                 self._route_send()
             return
         auto = self._autonomy_state() or {}
@@ -1319,6 +1327,7 @@ class DashboardNode(Node):
         state = nav.get('state') if mine else None
         if state == 'succeeded':
             r['arrived'].append(p['name'])
+            r['retries'] = 0
             r['index'] += 1
             if r['index'] >= len(r['stops']):
                 self._route_end('done')
@@ -1327,6 +1336,22 @@ class DashboardNode(Node):
             return
         if state == 'canceled':
             self._route_end('stopped', nav.get('reason') or 'やめた')
+            return
+        if state == 'aborted':
+            m = re.search(r'エラー (\d+)', nav.get('reason') or '')
+            code = int(m.group(1)) if m else None
+            if code in NAV_NO_DETOUR:
+                self._route_end('failed', f'{p["name"]}に行けない（まわり道がない。Nav2 のエラー {code}）')
+            elif r['retries'] >= ROUTE_RETRIES:
+                self._route_end('failed', f'{p["name"]}に行けない（まわり道を {ROUTE_RETRIES} 回さがしても着かない。'
+                                          f'{nav.get("reason") or ""}）')
+            else:
+                # ふさがっていた・進めなかった。止まって待ってから、今いる所から道を考えなおして向かう（まわり道）
+                r['retries'] += 1
+                r['_retry'] = True
+                r['_arrived_at'] = now
+                self.get_logger().info(f'緑の点: {p["name"]}にまわり道で向かいなおす（{r["retries"]} 回目、'
+                                       f'{nav.get("reason") or ""}）')
             return
         if state in ROUTE_FAIL:
             self._route_end('failed', f'{p["name"]}に行けない（{nav.get("reason") or nav.get("label") or state}）')

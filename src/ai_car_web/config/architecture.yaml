@@ -27,7 +27,7 @@ overview:
     - {state: done, text: IMU で向きを保ってまっすぐ走る（heading_hold）}
     - {state: done, text: スタックちゃんに話して走る（「前に 1 メートル進んで」など）}
     - {state: done, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション。床で試走して、まだ行っていない所を回る探索に使っている）}
-    - {state: done, text: 'Level 2: 地図の緑の点（名前つきの場所）を順に回る（「台所、玄関の順で移動して」。行けない点があればそこで止まる。床ではまだ試していない）'}
+    - {state: done, text: 'Level 2: 地図の緑の点（名前つきの場所）を順に回る（「台所、玄関の順で移動して」。いちばん短い道で、ふさがったらまわり道を 3 回までさがす。道がなければそこで止まる。床ではまだ試していない）'}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
@@ -760,7 +760,7 @@ api:
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
-    - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。行けない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route', auth: true}
+    - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
