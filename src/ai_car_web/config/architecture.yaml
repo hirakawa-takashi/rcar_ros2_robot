@@ -113,6 +113,70 @@ hardware:
     - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
     - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C（PD なし。ラズパイは 3 A の電源と見る）, power: 5V, side: top}
+  power_wiring:
+    summary:
+      - バッテリーは 2 個。1 個はラズパイ側（DROK で 5.2V にしてラズパイへ）、もう 1 個はモーター側（12V のまま Motor HAT へ）。2 つの 12V の線どうしはつながない
+      - バッテリーの USB-C 口は 2 つあり、1 つを車に、もう 1 つを充電に使う
+      - 12V は、USB-C のプラグの中の PD トリガー（小さな部品）が、CC（合図の線）でバッテリーと話して出してもらう。CC があるのは USB-C のところだけで、丸プラグや端子台の線は＋と−の 2 本だけ
+      - 線の色は 赤 = 12V、オレンジ = 5V、灰色 = CC（合図の線。電気はほとんど流れない）。点線は「予定（部品待ち）」
+    systems:
+      - title: ラズパイ側（バッテリー 1 → DROK → Raspberry Pi 5）
+        parts:
+          - {label: バッテリー 1, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD}
+          - {label: USB スイッチ（下）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る}
+          - {label: PD トリガーケーブル, sub: SZSL 12V 固定 3A / 1 m（B0D3QG33J7）}
+          - {label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）}
+          - {label: USB ケーブル, sub: USB-A → USB-C / 30 cm くらい}
+          - {label: Raspberry Pi 5, sub: 電源の USB-C 口 / PD なし・3 A と見る}
+        wires:
+          - {power: 12V, joint: バッテリーの USB-C 口 ← スイッチの USB-C プラグ, desc: "VBUS（＋）・GND（−）・CC（合図）がそのまま通る。はじめは 5V で、PD トリガーとの話し合いのあと 12V になる"}
+          - {power: 12V, joint: スイッチの USB-C ← PD トリガーケーブルの USB-C プラグ（オス）, desc: プラグの中に PD トリガーがある。ここで「12V ください」とたのむ}
+          - {power: 12V, joint: 丸プラグ（オス、5.5 × 2.5 mm、中が＋）→ DROK の DC ジャック（メス）, desc: "ケーブルの中は＋（赤）と−（黒）の 2 本だけ。中が−（センターマイナス）のケーブルは使わない。DROK のジャックの穴の大きさはまだ実物で測っていない（3D の説明では 5.5 × 2.1 mm と読んでいる）"}
+          - {power: 5V, joint: DROK の USB-A 口（メス）← USB-A → USB-C ケーブルの USB-A プラグ, desc: "5.2V / 最大 5A。30 cm くらい（ラズパイ側は L 字がおすすめ）"}
+          - {power: 5V, joint: ケーブルの USB-C プラグ → Raspberry Pi 5 の電源の USB-C 口, desc: "PD のやりとりはないので、ラズパイは「3 A の電源」と見る（usb_max_current_enable=1 で USB 機器に 1.6 A まで）。AI HAT+・カメラ・LiDAR・IMU・落下防止センサー・エンコーダーの電気もここから"}
+        notes:
+          - 12V の PD トリガーケーブルを、ラズパイの USB-C 口に直接さすと、ラズパイがこわれる。② と ⑤ は同じ USB-C の形なので、まちがえないようにする
+          - DROK の USB-A（出力）に 12V を入れない
+          - いまの困りごと：スイッチは＋（VBUS）だけを切って CC はつないだまま。充電のあと OFF → ON にしても、バッテリーが「新しくつながった」と気づかず、12V を出しなおさないことがある（USB-C を抜いて差すと直る）。下の「予定」で直す
+      - title: モーター側（バッテリー 2 → Motor HAT → モーター ×4）
+        parts:
+          - {label: バッテリー 2, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD}
+          - {label: USB スイッチ（上）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る}
+          - {label: PD トリガーケーブル, sub: 12V 固定 / USB-C プラグの中で 12V をたのむ}
+          - {label: Adafruit Motor HAT, sub: 電源の端子台 / ＋ と −（ねじでとめる）}
+          - {label: モーター ×4, sub: 520 エンコーダー付き / M1〜M4}
+        wires:
+          - {power: 12V, joint: バッテリーの USB-C 口 ← スイッチの USB-C プラグ, desc: ラズパイ側と同じ。VBUS・GND・CC がそのまま通る}
+          - {power: 12V, joint: スイッチの USB-C ← PD トリガーケーブルの USB-C プラグ（オス）, desc: プラグの中の PD トリガーが 12V をたのむ}
+          - {power: 12V, joint: ケーブルの＋（赤）・−（黒）→ Motor HAT の電源の端子台, desc: "＋と−を逆にしない。Motor HAT のモーターの電気は 4.5〜13.5V まで（12V は入る）。ケーブルの先の形（丸プラグか、線のままか）は、まだ写真で確かめていない"}
+          - {power: 12V, joint: Motor HAT の M1〜M4 の端子台 → 各モーター, desc: "黒 = Motor+、赤 = Motor−（6 本の線の内わけは「配線詳細」の Motor HAT の図）。速さは PWM（電気を細かく入れたり切ったり）で変える"}
+        notes:
+          - 12V はモーターを回すためだけ。ラズパイにはつながない
+          - Motor HAT の PCA9685（モーターに命令を出す IC）の電気は、ラズパイの 40 ピンの 3V3 からもらう。なので、モーター側のスイッチが OFF でも、ラズパイからは Motor HAT が見える（I2C 0x60）が、車輪は回らない
+          - モーターのエンコーダー（回った量を数える部品）の電気も、ラズパイの 3V3 から
+      - title: 予定：CC も切るスイッチ（ラズパイ側・モーター側とも同じ。部品待ち）
+        state: plan
+        bypass: {from: 2, to: 4, power: 12V, label: VBUS（＋）・GND（−）は基板 A → 基板 B へ太い線で直結（スイッチを通さない）}
+        parts:
+          - {label: バッテリー, sub: USB-C 口}
+          - {label: C-C ケーブル 15 cm, sub: ELECOM / MPA-CCECSS015BK}
+          - {label: 基板 A, sub: USB-C メス（PENGLIN）}
+          - {label: 6 ピンスイッチ, sub: CC1・CC2 だけ切る / ロック付き}
+          - {label: 基板 B, sub: USB-C メス（PENGLIN）}
+          - {label: PD トリガーケーブル, sub: 今のものをそのまま}
+          - {label: DROK / Motor HAT, sub: 上の ③ から先は / 今と同じ}
+        wires:
+          - {power: 12V, joint: バッテリーの USB-C 口 ← C-C ケーブル, desc: 100W 対応の短いケーブル}
+          - {power: 12V, joint: C-C ケーブル → 基板 A の USB-C 口, desc: 基板 A は線をはんだ付けで出すための小さな板}
+          - {power: CC, joint: 基板 A の CC1・CC2 → スイッチ（1 列目 = CC1、2 列目 = CC2）, desc: "各列のまん中の足（共通）と、ロックしたときにつながるはしの足を使う。VBUS（＋）と GND（−）は、スイッチを通さず、太い線（0.5 mm²）で基板 A から基板 B へまっすぐつなぐ"}
+          - {power: CC, joint: スイッチ → 基板 B の CC1・CC2, desc: OFF にすると CC が切れて、バッテリーには「抜いた」と同じに見える。ON で「差した」と同じになり、12V を出しなおす}
+          - {power: 12V, joint: 基板 B の USB-C 口 ← PD トリガーケーブルの USB-C プラグ, desc: PD トリガーはプラグの中なので、ケーブルを短く切っても CC には関係しない}
+          - {power: 12V, joint: PD トリガーケーブル → DROK / Motor HAT, desc: 今と同じ}
+        notes:
+          - 基板に CC の 5.1 kΩ の抵抗（「512」と書いた部品）があると、PD トリガーとじゃまし合うことがある。はんだ付けの前に基板の表と裏の写真で確かめる
+          - はんだ付けのあと、DROK・Motor HAT にはつながずに、テスターで VBUS と CC1・CC2・GND がつながっていない（ピーと鳴らない）ことを確かめる
+          - 次に、PD トリガーケーブルの先をテスターで測り、スイッチ ON で約 12V、OFF で 0V になれば合格。そのあと DROK → ラズパイ、Motor HAT の順につなぐ
+          - いまの LOYELEY スイッチ 2 個は外す。電池 2 個分で、スイッチ 2 個・基板 4 枚・C-C ケーブル 2 本
 
 print3d:
   dir: hardware/3d/battery_lidar_mount
