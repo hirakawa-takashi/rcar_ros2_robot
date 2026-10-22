@@ -9,7 +9,7 @@
  #include "stackchan_camera.h"
  #include "hal_bridge.h"
  
-@@ -94,6 +96,10 @@
+@@ -94,6 +96,20 @@
      // Power Init
      Pmic(i2c_master_bus_handle_t i2c_bus, uint8_t addr) : Axp2101(i2c_bus, addr)
      {
@@ -17,20 +17,31 @@
 +        power_on_source  = ReadReg(0x20);
 +        power_off_source = ReadReg(0x21);
 +        ESP_LOGW(TAG, "AXP2101 power on source=0x%02X, power off source=0x%02X", power_on_source, power_off_source);
++        // 読んだら消す（W1C を試し、残ったら 0 を書く）。次に切れたときの理由と混ざらないように
++        WriteReg(0x20, 0xFF);
++        WriteReg(0x21, 0xFF);
++        power_off_after_clear = ReadReg(0x21);
++        if (power_off_after_clear != 0) {
++            WriteReg(0x20, 0x00);
++            WriteReg(0x21, 0x00);
++            power_off_after_clear = ReadReg(0x21);
++        }
++        ESP_LOGW(TAG, "AXP2101 power off source after clear=0x%02X", power_off_after_clear);
          uint8_t data = ReadReg(0x90);
          data |= 0b10110100;
          WriteReg(0x90, data);
-@@ -116,6 +122,9 @@
+@@ -116,6 +132,10 @@
          SetBrightness(0);
      }
  
 +    uint8_t power_on_source  = 0;
 +    uint8_t power_off_source = 0;
++    uint8_t power_off_after_clear = 0xFF;
 +
      void SetBrightness(uint8_t brightness)
      {
          if (brightness == 0) {
-@@ -639,6 +648,26 @@
+@@ -639,6 +659,27 @@
          return true;
      }
  
@@ -45,6 +56,7 @@
 +        auto power = cJSON_CreateObject();
 +        cJSON_AddNumberToObject(power, "on_source", pmic_->power_on_source);
 +        cJSON_AddNumberToObject(power, "off_source", pmic_->power_off_source);
++        cJSON_AddNumberToObject(power, "off_after_clear", pmic_->power_off_after_clear);
 +        cJSON_AddNumberToObject(power, "reset_reason", esp_reset_reason());
 +        cJSON_AddItemToObject(root, "power", power);
 +        auto str = cJSON_PrintUnformatted(root);

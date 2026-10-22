@@ -101,7 +101,7 @@ WSL は PowerShell の画面を閉じるとしばらくして止まるので、`
 | `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
 | `firmware/stackchan-no-shutdown-on-usb.patch` | `StackChan/firmware/` で `git apply` | USB がささっているときは、何もしなくても自分で電源を切らない。純正は「電池を使っている」と 600 秒で切る。Jetson の USB だと電気が足りず電池も少し使うので、つないだままでも切れていた（電池が空になると切れるのは同じ） |
 | `firmware/stackchan-stay-on.patch` | `StackChan/firmware/` で `patch -p1 <`（no-shutdown-on-usb のあと） | 使わない時間で画面を消す（300 秒）・電源を切る（600 秒）を、USB があってもなくても、しない。消えるのは電源ボタンで切ったときだけ（ボタンは電源の IC が切るので、そのまま使える）。電池だけで使うと、電池が空になるまで点いたまま |
-| `firmware/stackchan-power-reason.patch` | `StackChan/firmware/` で `patch -p1 <`（stay-on のあと） | 起動のたびに、電源の IC（AXP2101）が覚えている「前に切れた理由（0x21: 電源ボタンの長押し・電圧が下がった・熱くなりすぎた など）」「入った理由（0x20）」と、ESP32 の起動のしかたを読んで、`self.get_device_status` の `power` に入れる。橋わたしが `前に切れた理由:` と記録する |
+| `firmware/stackchan-power-reason.patch` | `StackChan/firmware/` で `patch -p1 <`（stay-on のあと） | 起動のたびに、電源の IC（AXP2101）が覚えている「前に切れた理由（0x21: 電源ボタンの長押し・電圧が下がった・熱くなりすぎた など）」「入った理由（0x20）」と、ESP32 の起動のしかたを読んで、`self.get_device_status` の `power` に入れる。橋わたしが `前に切れた理由:` と記録する。読んだあと 0x20・0x21 に 0xFF → 0x00 を書いて消そうとし、残った値を `off_after_clear` に入れる（2026-10-22 の実機では 0x20 が残り、消せなかった。この 2 つは書いても変わらない） |
 
 ```bash
 cd StackChan/firmware

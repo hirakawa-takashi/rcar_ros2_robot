@@ -353,7 +353,15 @@ POWER_OFF_BITS = ['電源ボタンがずっと押されたまま', 'プログラ
                   '中の電圧が高すぎた（DCDC）', '熱くなりすぎた']
 RESET_REASONS = ['不明', '電源が入った', '外のピン', 'プログラムで起動し直した', 'エラーで止まった',
                  '見張り（割りこみ）', '見張り（仕事）', '見張り（そのほか）', '深い眠りから起きた',
-                 '電圧が下がった（ESP32）', 'SDIO']
+                 '電圧が下がった（ESP32）', 'SDIO', 'USB で起動し直した', 'JTAG', 'eFuse のエラー',
+                 '電源の乱れ', 'CPU が止まった']
+
+
+def clear_note(value):
+    """切れた理由を読んだあとに消せたか（off_after_clear。古いファームでは無い）。"""
+    if not isinstance(value, (int, float)):
+        return ''
+    return ' / 記録を消した' if int(value) == 0 else f' / 記録が消せなかった（0x{int(value):02X}）'
 
 
 def power_bits(value, names, index=False):
@@ -1806,7 +1814,8 @@ class Session:
             self.power_logged = power
             log(f'前に切れた理由: {power_bits(power.get("off_source"), POWER_OFF_BITS)} / '
                 f'入った理由: {power_bits(power.get("on_source"), POWER_ON_BITS)} / '
-                f'起動のしかた: {power_bits(power.get("reset_reason"), RESET_REASONS, index=True)}')
+                f'起動のしかた: {power_bits(power.get("reset_reason"), RESET_REASONS, index=True)}'
+                f'{clear_note(power.get("off_after_clear"))}')
         set_status(battery={**battery, 'at': time.time()})
 
     async def send(self, **msg):
