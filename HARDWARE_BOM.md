@@ -70,6 +70,8 @@ Nav2（地図で行き先へ行く、Level 2）は ros-jazzy-navigation2 を入�
 | 12V（モーター） | バッテリー USB-C PD 12V →（USB スイッチ 上）→ Motor HAT の電源端子 | Motor HAT → M1〜M4 |
 
 > **注意**: 12V はモータードライバー専用で、ラズパイには直接つながない。ラズパイの USB-C には USB-A からつなぐので PD のやりとりはなく、ラズパイは「3 A の電源」と見ている（`usb_max_current_enable=1` で USB 機器に 1.6 A まで流す）。2026/10/17 の時点で電圧低下（Undervoltage）は 0 回。
+>
+> つなぎ目ごとの端子の形と電圧の図は、ダッシュボードの「プロジェクト説明」→「ハードウェア構成」→「電源の配線（バッテリー）」にある（元は `src/ai_car_web/config/architecture.yaml` の `hardware.power_wiring`）。
 
 ---
 

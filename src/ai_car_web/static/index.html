@@ -2803,7 +2803,46 @@ function renderHardware(a) {
   svg += '</svg>';
   const rows = devices.map(d => [esc(d.label), esc(d.bus || '-'), `<span class="pwrtxt" style="color:${powerColor(d.power)}">${esc(d.power || '-')}</span>`]);
   return `<h3>構成ブロック</h3>${svg}<div class="powerlegend"><span><i style="background:#e04b4b"></i>12V</span><span><i style="background:#f08b36"></i>5V</span><span><i style="background:#b4d455"></i>3V3</span><span><i style="background:#687383"></i>電源記載なし</span></div><h3>デバイス一覧</h3>` +
-    aboutTable(['デバイス', 'バス', '電源'], rows) + '<h3>配線詳細</h3><div id="about_wiring"></div>';
+    aboutTable(['デバイス', 'バス', '電源'], rows) + powerWiringHtml(h.power_wiring) + '<h3>配線詳細</h3><div id="about_wiring"></div>';
+}
+function powerWiringHtml(pw) {
+  if (!pw?.systems?.length) return '';
+  const num = i => String.fromCharCode(0x2460 + i);
+  const textW = (t, size) => [...String(t || '')].reduce((n, c) => n + (c.charCodeAt(0) > 0xff ? size : size * 0.58), 0);
+  const fit = (t, size, w) => Math.max(8, Math.min(size, size * (w - 12) / Math.max(1, textW(t, size))));
+  const systems = pw.systems.map(sys => {
+    const parts = sys.parts || [], wires = sys.wires || [], plan = sys.state === 'plan';
+    const W = 1200, gap = 52, n = parts.length, bw = (W - 40 - gap * (n - 1)) / n, bh = 92, top = 34;
+    const by = sys.bypass, H = top + bh + (by ? 70 : 30);
+    let svg = `<svg class="aboutsvg" viewBox="0 0 ${W} ${H}">`;
+    if (by) {
+      const cx = i => 20 + i * (bw + gap) + bw / 2, x1 = cx(by.from), x2 = cx(by.to), y0 = top + bh, y1 = y0 + 30;
+      const color = powerColor(by.power);
+      svg += `<path d="M${x1} ${y0} V${y1} H${x2} V${y0}" fill="none" stroke="${color}" stroke-width="4"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
+        `<text x="${(x1 + x2) / 2}" y="${y1 + 20}" fill="${color}" text-anchor="middle" font-size="${fit(by.label, 12, x2 - x1 + bw)}">${esc(by.label)}</text>`;
+    }
+    parts.forEach((p, i) => {
+      const x = 20 + i * (bw + gap), cx = x + bw / 2;
+      const subs = String(p.sub || '').split(' / ');
+      svg += `<rect x="${x}" y="${top}" width="${bw}" height="${bh}" rx="10" fill="#1e232b" stroke="${plan ? '#f0b44c' : '#3a4657'}" stroke-width="2"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
+        `<text x="${cx}" y="${top + 30}" fill="#e8eaed" text-anchor="middle" font-size="${fit(p.label, 14, bw)}" font-weight="bold">${esc(p.label)}</text>` +
+        subs.map((t, j) => `<text x="${cx}" y="${top + 54 + 16 * j}" fill="#9fb0c7" text-anchor="middle" font-size="${fit(t, 11, bw)}">${esc(t)}</text>`).join('');
+      const w = wires[i];
+      if (i < n - 1 && w) {
+        const x1 = x + bw, x2 = x1 + gap, y = top + bh / 2, color = powerColor(w.power);
+        svg += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="4"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
+          `<circle cx="${(x1 + x2) / 2}" cy="${y - 22}" r="11" fill="#11161d" stroke="${color}"/>` +
+          `<text x="${(x1 + x2) / 2}" y="${y - 17}" fill="#e8eaed" text-anchor="middle" font-size="13">${num(i)}</text>` +
+          `<text x="${(x1 + x2) / 2}" y="${y + 22}" fill="${color}" text-anchor="middle" font-size="11">${esc(w.power || '')}</text>`;
+      }
+    });
+    svg += '</svg>';
+    const rows = wires.map((w, i) => [num(i), esc(w.joint || ''),
+      `<span class="pwrtxt" style="color:${powerColor(w.power)}">${esc(w.power || '-')}</span>`, esc(w.desc || '')]);
+    return `<h4>${esc(sys.title || '')}</h4>${svg}${aboutTable(['番号', 'つなぎ目（端子の形）', '電気', '説明'], rows)}` +
+      ((sys.notes || []).length ? `<p><b>注意</b></p>${aboutList(sys.notes)}` : '');
+  }).join('');
+  return `<h3>電源の配線（バッテリー）</h3>${aboutList(pw.summary)}${systems}`;
 }
 function parkWiringCards() {
   const store = document.getElementById('wiring_store');
