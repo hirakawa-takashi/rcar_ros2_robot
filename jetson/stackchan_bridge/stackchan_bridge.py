@@ -42,6 +42,9 @@ XiaoZhi の 2 つの口をまねる:
   `/api/status` の odom（エンコーダー）、回った角度は IMU の yaw で見て、着いたら止める。「止まって」「ストップ」は
   呼びかけなしでも、すぐ `POST /api/stop`。障害物・落下防止・LiDAR の止まりは、いつもどおりラズパイが止める。
   この受け口が落ちても、ラズパイの手動の時間切れ（1 秒）で止まる。自動走行中は動かさない。
+- 地図の緑の点: 「ここを台所として覚えて」で今の車の所に点を置く（`POST /api/places`）。「台所、玄関の順で移動して」
+  「台所に行って」で `POST /api/route`。ラズパイが Nav2 で順に回り、行けない点があればそこで止める。橋わたしは
+  `/api/status` の route を見て「台所に着いたよ。」などと話す。「止まって」で `/api/route` cancel。
 """
 import argparse
 import asyncio
@@ -57,6 +60,7 @@ import re
 import subprocess
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -265,6 +269,14 @@ FIND_REGISTER = re.compile(r'(?:これは|これを|これ)?(.{1,15}?)(?:です|
                            r'(?:覚えて|おぼえて|登録して|とうろくして)(?:ください|下さい|くれ|ね|ほしい)*')
 FIND_SEARCH = re.compile(r'(.{1,15}?)(?:を|お)?(?:探して|さがして|見つけて|みつけて)(?:きて|ください|下さい|くれ|ね|ほしい)*')
 FIND_TIMEOUT = 300.0   # 5 分で見つからなければやめる
+# 地図の緑の点（名前つきの場所）。「ここを台所として覚えて」「台所、玄関の順で移動して」「台所に行って」
+PLACE_TAIL = r'(?:おいて|ください|下さい|くれ|ね|ほしい|ちょうだい)*'
+PLACE_ADD = re.compile(r'(?:ここ|この場所|このばしょ|今の場所|今いる所|今いるところ)(?:を|お|は|が)(.{1,15}?)'
+                       r'(?:として|と|って|に)?(?:覚えて|おぼえて|登録して|とうろくして|名前をつけて|名前を付けて)' + PLACE_TAIL)
+PLACE_ROUTE = re.compile(r'(.{1,40}?)の?(?:順番|順|じゅんばん|じゅん)(?:で|に)(?:移動|いどう|回って|まわって|行って|いって|走って|はしって)'
+                         r'(?:して)?' + PLACE_TAIL)
+PLACE_GO = re.compile(r'(.{1,15}?)(?:に|へ|まで)(?:移動して|いどうして|行って|いって|向かって|むかって)' + PLACE_TAIL)
+PLACE_SPLIT = re.compile(r'(?:それから|そして|次に|つぎに|から|と|、|,|，|\s)+')
 FIND_PERIOD = 0.5
 DRIVE_LIMITS = {'m': 2.0, 'deg': 720.0, 's': 10.0}
 DRIVE_DEFAULT = {'move': 0.5, 'turn': 90.0}
@@ -831,6 +843,67 @@ def find_command(text):
         if m and m.group(1) not in ('これ', 'それ', 'あれ', 'なに', '何', 'を', 'お', 'は'):
             return {'kind': kind, 'name': m.group(1)}
     return None
+
+
+def place_key(name):
+    """場所の名前をくらべる形（ダッシュボードの place_key と同じ）。"""
+    t = unicodedata.normalize('NFKC', name or '')
+    t = re.sub(r'[\s、。,.・「」!！?？]', '', t)
+    return ''.join(chr(ord(c) - 0x60) if 'ァ' <= c <= 'ヶ' else c for c in t).lower()
+
+
+def place_command(text):
+    """聞き取りから緑の点の命令を作る。{'kind': 'place_add', 'name'} か {'kind': 'route', 'text', 'order'}。"""
+    t = re.sub(r'[\s。.!！?？「」]', '', text or '')
+    if not t or len(t) > 50:
+        return None
+    m = PLACE_ADD.fullmatch(t.replace('、', ''))
+    if m:
+        return {'kind': 'place_add', 'name': m.group(1)}
+    m = PLACE_ROUTE.fullmatch(t)
+    if m:
+        return {'kind': 'route', 'text': m.group(1), 'order': True}
+    m = PLACE_GO.fullmatch(t.replace('、', ''))
+    if m:
+        return {'kind': 'route', 'text': m.group(1), 'order': False}
+    return None
+
+
+def split_places(text, known):
+    """「台所、玄関」「台所と玄関」「台所玄関」を、知っている場所の名前の列にする。(名前の列, 知らない部分の列)。"""
+    names = {place_key(n): n for n in known}
+    parts = [p for p in PLACE_SPLIT.split(text or '') if p]
+    if parts and all(place_key(p) in names for p in parts):
+        return [names[place_key(p)] for p in parts], []
+    # 区切りがない・「と」が名前に入っているときは、知っている名前を前からつなげてみる
+    t = place_key(re.sub(r'[、,，\s]', '', text or ''))
+    keys = sorted(names, key=len, reverse=True)
+    best = {0: []}
+    for i in range(len(t)):
+        if i not in best:
+            continue
+        for k in keys:
+            if t.startswith(k, i) and i + len(k) not in best:
+                best[i + len(k)] = best[i] + [names[k]]
+        for sep in ('それから', 'そして', 'つぎに', '次に', 'から', 'と'):
+            if t.startswith(sep, i) and best[i] and i + len(sep) not in best:
+                best[i + len(sep)] = best[i]
+    if len(t) in best and best[len(t)]:
+        return best[len(t)], []
+    return [], [p for p in parts if place_key(p) not in names] or [text]
+
+
+def route_words(rt, said):
+    """回るようすから、まだ言っていない「着いた」と、終わったときの 1 文を作る。"""
+    out = [f'{n}に着いたよ。' for n in (rt.get('arrived') or [])[said:]]
+    state = rt.get('state')
+    if state == 'done':
+        out.append('全部回ったから、止まるね。')
+    elif state == 'failed':
+        out.append(f"{(rt.get('reason') or '行けない所があった').split('（')[0]}から、止まったよ。")
+    elif state == 'stopped':
+        out.append('止まったよ。')
+    return out
 
 
 def finder_api(url, path, body=None, timeout=3.0):
@@ -2179,6 +2252,89 @@ class Session:
         self.drive_stop = threading.Event()
         self.drive_task = asyncio.create_task(self.drive(cmd, self.drive_stop))
 
+    async def start_place(self, cmd):
+        """緑の点の命令。「〇〇に行って」の〇〇が知らない場所なら False（声で走る命令として続けて見る）。"""
+        url = self.args.car_url
+        if cmd['kind'] == 'place_add':
+            try:
+                res = await asyncio.to_thread(car_api, url, '/api/places',
+                                              {'action': 'add', 'name': cmd['name'], 'here': True})
+            except Exception as e:  # noqa: BLE001
+                log(f'緑の点のエラー: {e}')
+                await self.say('AI-CAR につながらないよ。')
+                return True
+            log(f"緑の点: {cmd['name']} を置く → {res}")
+            await self.say(f"ここを{cmd['name']}として覚えたよ。" if res.get('ok')
+                           else f"覚えられなかったよ。{res.get('error') or ''}")
+            return True
+        try:
+            known = [p['name'] for p in (await asyncio.to_thread(car_api, url, '/api/places')).get('places') or []]
+        except Exception as e:  # noqa: BLE001
+            log(f'緑の点のエラー: {e}')
+            if not cmd['order']:
+                return False
+            await self.say('AI-CAR につながらないよ。')
+            return True
+        names, unknown = split_places(cmd['text'], known)
+        if not names:
+            if not cmd['order']:
+                return False
+            await self.say(f"{'、'.join(unknown)}は、知らない場所だよ。" if known else 'まだ地図に場所の点がないよ。')
+            return True
+        if self.drive_stop:
+            self.drive_stop.set()
+        if self.drive_task:
+            await self.drive_task
+        try:
+            res = await asyncio.to_thread(car_api, url, '/api/route', {'action': 'go', 'names': names})
+        except Exception as e:  # noqa: BLE001
+            log(f'緑の点のエラー: {e}')
+            await self.say('AI-CAR につながらないよ。')
+            return True
+        log(f'緑の点を回る: {names} → {res.get("ok")} {res.get("error") or ""}')
+        if not res.get('ok'):
+            await self.say(f"動けなかったよ。{res.get('error') or ''}")
+            return True
+        await self.say(f"{'、'.join(names)}の順に行くね。" if len(names) > 1 else f'{names[0]}に行くね。')
+        stop = self.drive_stop = threading.Event()
+        self.drive_task = asyncio.create_task(self.route(res['route']['id'], stop))
+        return True
+
+    async def route(self, route_id, stop):
+        """回るようすを見て、点に着くたびに話す。「止まって」（stop）でやめる。"""
+        url, said, errors = self.args.car_url, 0, 0
+        try:
+            while True:
+                await asyncio.sleep(FIND_PERIOD)
+                if stop.is_set():
+                    await asyncio.to_thread(car_api, url, '/api/route', {'action': 'cancel'})
+                    return
+                try:
+                    rt = (await asyncio.to_thread(car_api, url, '/api/status')).get('route') or {}
+                    errors = 0
+                except Exception as e:  # noqa: BLE001 - 3 回続けてだめなら止める
+                    errors += 1
+                    if errors >= 3:
+                        log(f'緑の点のエラー: {e}')
+                        await self.say('ようすがわからなくなったよ。')
+                        return
+                    continue
+                if rt.get('id') != route_id:
+                    return
+                for words in route_words(rt, said):
+                    await self.say(words)
+                said = len(rt.get('arrived') or [])
+                if rt.get('state') != 'running':
+                    log(f"緑の点を回る: {rt.get('state')} {rt.get('reason') or ''}")
+                    return
+        except ConnectionClosed:
+            pass
+        except Exception as e:  # noqa: BLE001
+            log(f'緑の点のエラー: {e}')
+        finally:
+            if self.drive_stop is stop:
+                self.drive_task = self.drive_stop = None
+
     async def start_find(self, cmd):
         """「〇〇を覚えて」「〇〇を探して」。探すあいだは走る命令と同じく「止まって」で止まる。"""
         a = self.args
@@ -2395,6 +2551,10 @@ class Session:
                 await self.send(type='stt', text=text)
                 await self.say(WAKE_REPLY)
                 await self.need_cloud()
+                return
+            place = place_command(self.wake.sub('', text) if self.wake else text)
+            if place and await self.start_place(place):
+                await self.send(type='stt', text=text)
                 return
             find = find_command(self.wake.sub('', text) if self.wake else text)
             if find:
