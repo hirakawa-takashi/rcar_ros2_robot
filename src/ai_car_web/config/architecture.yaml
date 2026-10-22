@@ -686,7 +686,11 @@ api:
     - {method: GET, path: '/print3d/{file}', desc: 3D プリント部品の STL・図・OpenSCAD ソース（hardware/3d/battery_lidar_mount）, auth: false}
     - {method: POST, path: /api/cmd_vel, desc: '手動速度指令 {linear_x, linear_y, angular_z} (−1〜1)', auth: true}
     - {method: POST, path: /api/drive_output, desc: 'ダッシュボードの「出力」{percent}（手動・ゲームパッド・自動・声の最大の速さ）', auth: true}
-    - {method: POST, path: /api/slam/save, desc: 今の SLAM の地図を .pgm / .yaml で保存, auth: true}
+    - {method: POST, path: /api/slam/save, desc: "今の SLAM の地図を .pgm / .yaml と、名前（name）を付けた slam_toolbox の地図データ・段差の印・車の位置・カメラの写真で保存（同じ名前は上書き）", auth: true}
+    - {method: GET, path: /api/slam/maps, desc: 名前を付けて保存した地図の一覧（車を置く位置・向き、段差の印、使用中の地図）}
+    - {method: GET, path: "/api/slam/maps/{id}/map.png", desc: 保存した地図の絵（/photo.jpg は保存したときのカメラの写真）}
+    - {method: POST, path: /api/slam/maps/load, desc: 選んだ地図を、保存したときの車の位置から始めるように読みこむ（止まっているときだけ）, auth: true}
+    - {method: POST, path: /api/slam/maps/rename, desc: 保存した地図の名前を変える（/delete で消す）, auth: true}
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}

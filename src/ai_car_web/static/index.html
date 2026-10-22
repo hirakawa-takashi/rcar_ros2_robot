@@ -129,6 +129,18 @@
   .modal { position: fixed; inset: 0; z-index: 20; background: rgba(5, 8, 12, .86);
            display: flex; align-items: center; justify-content: center; padding: 4vh 3vw; }
   .modal.hidden { display: none; }
+  .mapsbody { display: grid; grid-template-columns: 260px 1fr; gap: 14px; padding: 14px 18px; }
+  .mapslist { display: flex; flex-direction: column; gap: 6px; }
+  .mapslist button { text-align: left; padding: 8px 10px; }
+  .mapslist button.sel { outline: 2px solid #f0a030; }
+  .mapslist .sub { display: block; font-size: 12px; color: #9aa7b8; }
+  .mapsview { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 12px; align-items: start; }
+  .mapsview canvas { width: 100%; background: #0e1116; border-radius: 6px; }
+  .mapsview img { width: 100%; border-radius: 6px; }
+  .mapsinfo { font-size: 14px; line-height: 1.6; }
+  .mapsbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .mapsbtns .go { background: #2e7d32; color: #fff; }
+  @media (max-width: 900px) { .mapsbody, .mapsview { grid-template-columns: 1fr; } }
   #wiring_store { display: none; }
   #about_wiring .card { margin-top: 14px; }
   .aboutpanel { width: min(1200px, 100%); max-height: 92vh; overflow: auto;
@@ -366,6 +378,34 @@
       <button id="diary_close" class="aboutclose" aria-label="閉じる">×</button></div>
     <div id="diary_tabs" class="abouttabs"></div>
     <div id="diary_body" class="aboutbody"><span class="badge">読み込み中...</span></div>
+  </div>
+</div>
+
+<div id="maps" class="modal hidden">
+  <div class="aboutpanel" role="dialog" aria-modal="true" aria-labelledby="maps_title">
+    <div class="abouthead"><h2 id="maps_title">地図をえらぶ</h2>
+      <button id="maps_close" class="aboutclose" aria-label="閉じる">×</button></div>
+    <div class="mapsbody">
+      <div>
+        <div id="maps_list" class="mapslist"></div>
+        <div class="mapsbtns"><button id="maps_new" title="保存した地図を使わず、今いる所から新しい地図を作る（保存した地図は消えない）">新しい地図を作る</button></div>
+      </div>
+      <div>
+        <div class="mapsview">
+          <canvas id="maps_canvas" width="640" height="480"></canvas>
+          <div>
+            <img id="maps_photo" alt="保存したときのカメラの写真">
+            <div id="maps_info" class="mapsinfo"></div>
+          </div>
+        </div>
+        <div class="mapsbtns">
+          <button id="maps_load" class="go" disabled>この地図で始める</button>
+          <button id="maps_rename" disabled>名前を変える</button>
+          <button id="maps_delete" disabled>消す</button>
+          <span id="maps_msg"></span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -682,13 +722,13 @@
       <tr><td class="k">自己位置 x / y [m] / 向き [°]</td><td class="v" id="sl_pose">-</td></tr>
       <tr><td class="k">地図の更新</td><td class="v" id="sl_age">-</td></tr>
       <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <button id="sl_clear" disabled>地図をクリア</button> <span id="sl_saved"></span></td></tr>
-      <tr><td class="k">起動時の地図</td><td class="v" id="sl_loaded">-</td></tr>
+      <tr><td class="k">使っている地図</td><td class="v"><button id="sl_pick">地図をえらぶ</button> <span id="sl_loaded">-</span></td></tr>
       <tr><td class="k">段差の印</td><td class="v"><label><input type="checkbox" id="cm_edit"> 地図のクリックで置く（赤い点をクリックで消す）</label> <span id="cm_msg"></span></td></tr>
       <tr><td class="k">行き先 x / y [m]</td><td class="v" id="nv_goal">-</td></tr>
       <tr><td class="k">道 / 残り [m]</td><td class="v" id="nv_state">-</td></tr>
       <tr><td class="k">行き先へ</td><td class="v"><button id="nv_go" disabled>ここへ行く</button> <button id="nv_cancel" disabled>やめる</button> <span id="nv_msg"></span></td></tr>
     </table>
-    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。「地図をクリア」で地図を消して、今いる所から作り直す（保存した地図は消えない）。「地図を保存」は地図の絵（.pgm）と slam_toolbox の地図データ・段差の印・そのときの車の位置を残し、次にダッシュボードが起動したとき、その位置から始めるように読みこむ（車を同じ所・同じ向き（20 cm・20° 以内）に置いてから電源を入れる）。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。</div>
+    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。「地図をクリア」で地図を消して、今いる所から作り直す（保存した地図は消えない）。「地図を保存」は名前（例: アパート）を付けて、地図の絵・slam_toolbox の地図データ・段差の印（赤丸）・そのときの車の位置と向き・カメラの写真を残す（同じ名前は上書き）。起動したら「地図をえらぶ」で部屋の地図を選ぶ。絵のオレンジの矢印の所・向き（20 cm・20° 以内）に車を置いてから「この地図で始める」を押すと、その位置から始めるように読みこむ。選ばなければ、今いる所から新しい地図を作る。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。</div>
   </div>
 
 
@@ -1836,8 +1876,10 @@ function renderSlam(sl) {
   svEl.title = sv ? slSavedTitle(sv) : '';
   const ld = sl && sl.loaded;
   const ldEl = document.getElementById('sl_loaded');
-  ldEl.textContent = ld ? (ld.ok ? `${ld.name} を読んだ（段差の印 ${ld.marks}）` : ld.reason) : '白紙から作った';
+  ldEl.textContent = !ld ? '新しい地図（まだ選んでいない）' : !ld.ok ? ld.reason : ld.new ? '新しい地図'
+    : `${ld.name}${ld.saved ? ' に保存した' : ''}（段差の印 ${ld.marks}）`;
   ldEl.title = ld && ld.pose ? `始めの位置 ${fmt(ld.pose.x)} / ${fmt(ld.pose.y)} / ${fmt(ld.pose.yaw_deg, 0)}°` : '';
+  mapsAutoOpen(sl);
   const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.alive ? latestTelemetry.autonomy.nav : null;
   const g = navLive(nav) && nav.goal;
   document.getElementById('nv_goal').textContent = g ? `${fmt(g.x)} / ${fmt(g.y)}` : (navPick ? `${fmt(navPick.x)} / ${fmt(navPick.y)}` : '-');
@@ -1957,20 +1999,177 @@ document.getElementById('nv_cancel').addEventListener('click', () => {
   navPost({action: 'cancel'});
 });
 document.getElementById('sl_save').addEventListener('click', () => {
-  apiPost('/api/slam/save').then(r => r && r.json()).then(j => {
+  const ld = latestTelemetry.slam && latestTelemetry.slam.loaded;
+  const name = prompt('地図の名前（例: アパート、リビング）。同じ名前の地図は上書きします。\n今の車の位置と向きが、次にこの地図を使うときの「車を置く所」になります。',
+    ld && ld.ok && !ld.new ? ld.name : '');
+  if (name === null) return;
+  apiPost('/api/slam/save', {name}).then(r => r && r.json()).then(j => {
     if (j) document.getElementById('sl_saved').textContent = slSavedText(j);
+  }).catch(() => {});
+});
+
+// 名前を付けて保存した地図をえらぶ。絵に段差の印（赤丸）と、車を置く所・向き（オレンジの矢印）を出す
+let mapsList = [], mapsSel = null, mapsShown = false;
+const mapsImg = new Image();
+mapsImg.onload = () => drawMapsPreview();
+function mapsDate(t) {
+  if (!t) return '';
+  const d = new Date(t * 1000);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function mapsYawWord(deg) {
+  return `${fmt(deg, 0)}°`;
+}
+function openMaps() {
+  document.getElementById('maps').classList.remove('hidden');
+  document.getElementById('maps_msg').textContent = '';
+  loadMapsList();
+}
+function closeMaps() { document.getElementById('maps').classList.add('hidden'); }
+function loadMapsList(selectId) {
+  return fetch('/api/slam/maps').then(r => r.json()).then(j => {
+    mapsList = j.maps || [];
+    const keep = selectId || (mapsSel && mapsSel.id) || j.current;
+    mapsSel = mapsList.find(m => m.id === keep) || mapsList[0] || null;
+    renderMapsList(j.current);
+    return mapsList;
+  }).catch(() => []);
+}
+function renderMapsList(current) {
+  const box = document.getElementById('maps_list');
+  box.innerHTML = mapsList.length ? '' : '<span class="badge">保存した地図はありません</span>';
+  mapsList.forEach(m => {
+    const b = document.createElement('button');
+    b.className = mapsSel && m.id === mapsSel.id ? 'sel' : '';
+    b.innerHTML = `<b></b>${m.id === current ? ' <span class="badge ok">使用中</span>' : ''}<span class="sub">${mapsDate(m.stamp)} 保存・段差の印 ${m.cliff_marks.length}</span>`;
+    b.querySelector('b').textContent = m.name;
+    b.addEventListener('click', () => { mapsSel = m; renderMapsList(current); });
+    box.appendChild(b);
+  });
+  ['maps_load', 'maps_rename', 'maps_delete'].forEach(id => { document.getElementById(id).disabled = !mapsSel; });
+  const photo = document.getElementById('maps_photo');
+  const info = document.getElementById('maps_info');
+  if (!mapsSel) { photo.style.display = 'none'; info.textContent = ''; drawMapsPreview(); return; }
+  const m = mapsSel, p = m.pose || {};
+  photo.style.display = m.photo ? '' : 'none';
+  if (m.photo) photo.src = `/api/slam/maps/${m.id}/photo.jpg`;
+  info.innerHTML = '';
+  [`車を置く所: x ${fmt(p.x)} m / y ${fmt(p.y)} m`, `車の向き: ${mapsYawWord(p.yaw_deg)}（オレンジの矢印の先が車の前）`,
+    `段差の印（赤丸）: ${m.cliff_marks.length} か所`,
+    m.photo ? '上の写真は、保存したときに車の前のカメラで見えたもの。同じ景色になるように置く。' : '',
+    '車を置いたら「この地図で始める」を押す（20 cm・20° 以内）。'].filter(t => t).forEach(t => {
+    const d = document.createElement('div'); d.textContent = t; info.appendChild(d);
+  });
+  mapsImg.removeAttribute('src');
+  if (m.png) mapsImg.src = `/api/slam/maps/${m.id}/map.png`;
+  drawMapsPreview();
+}
+function drawMapsPreview() {
+  const canvas = document.getElementById('maps_canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#0e1116';
+  ctx.fillRect(0, 0, W, H);
+  const sel = mapsSel, m = sel && sel.map;
+  if (!sel) return;
+  if (!m || !m.width || !sel.png || !mapsImg.naturalWidth) {
+    ctx.fillStyle = '#9aa7b8';
+    ctx.font = '16px sans-serif';
+    ctx.fillText('地図の絵はありません', 20, 30);
+    return;
+  }
+  const s = Math.min(W / m.width, H / m.height);
+  const ox = (W - m.width * s) / 2, oy = (H - m.height * s) / 2;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(mapsImg, ox, oy, m.width * s, m.height * s);
+  const toPx = (x, y) => [ox + (x - m.origin_x) / m.resolution * s, oy + (m.height - (y - m.origin_y) / m.resolution) * s];
+  ctx.fillStyle = 'rgba(255, 60, 60, 0.85)';
+  sel.cliff_marks.forEach(([x, y]) => {
+    const [u, v] = toPx(x, y);
+    ctx.beginPath();
+    ctx.arc(u, v, Math.max(5, 0.08 / m.resolution * s), 0, 2 * Math.PI);
+    ctx.fill();
+  });
+  const p = sel.pose;
+  if (!p) return;
+  const [px, py] = toPx(p.x, p.y);
+  const a = -p.yaw_deg * Math.PI / 180;
+  const r = Math.max(22, 0.3 / m.resolution * s);
+  ctx.fillStyle = '#f0a030';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(px + r * Math.cos(a), py + r * Math.sin(a));
+  ctx.lineTo(px + r * 0.6 * Math.cos(a + 2.4), py + r * 0.6 * Math.sin(a + 2.4));
+  ctx.lineTo(px + r * 0.6 * Math.cos(a - 2.4), py + r * 0.6 * Math.sin(a - 2.4));
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = 'bold 15px sans-serif';
+  const tx = Math.min(px + r, W - 84), ty = Math.max(py - r, 20);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+  ctx.fillRect(tx - 4, ty - 16, 84, 22);
+  ctx.fillStyle = '#f0a030';
+  ctx.fillText('ここに置く', tx, ty);
+}
+// 起動したあと、まだ地図を選んでいなければ 1 回だけ開く
+function mapsAutoOpen(sl) {
+  if (mapsShown || !sl || !sl.alive) return;
+  mapsShown = true;
+  if (sl.loaded) return;
+  loadMapsList().then(list => { if (list.length) openMaps(); });
+}
+function mapsError(j) {
+  return j && (j.detail || j.reason) ? (j.detail || j.reason) : '失敗しました';
+}
+document.getElementById('sl_pick').addEventListener('click', openMaps);
+document.getElementById('maps_close').addEventListener('click', closeMaps);
+document.getElementById('maps').addEventListener('click', ev => { if (ev.target.id === 'maps') closeMaps(); });
+document.getElementById('maps_load').addEventListener('click', () => {
+  const m = mapsSel;
+  if (!m) return;
+  const msg = document.getElementById('maps_msg');
+  msg.textContent = `「${m.name}」を読みこみ中...`;
+  apiPost('/api/slam/maps/load', {id: m.id}).then(r => r && r.json()).then(j => {
+    if (j && j.ok) { msg.textContent = ''; closeMaps(); } else msg.textContent = mapsError(j);
+  }).catch(() => { msg.textContent = '失敗しました'; });
+});
+document.getElementById('maps_rename').addEventListener('click', () => {
+  const m = mapsSel;
+  const name = m && prompt('新しい名前', m.name);
+  if (!name) return;
+  apiPost('/api/slam/maps/rename', {id: m.id, name}).then(r => r && r.json()).then(j => {
+    document.getElementById('maps_msg').textContent = j && j.ok ? '名前を変えました' : mapsError(j);
+    loadMapsList(m.id);
+  }).catch(() => {});
+});
+document.getElementById('maps_delete').addEventListener('click', () => {
+  const m = mapsSel;
+  if (!m || !confirm(`「${m.name}」の地図を消します。もとにもどせません。よいですか？`)) return;
+  apiPost('/api/slam/maps/delete', {id: m.id}).then(r => r && r.json()).then(j => {
+    document.getElementById('maps_msg').textContent = j && j.ok ? '消しました' : mapsError(j);
+    mapsSel = null;
+    loadMapsList();
+  }).catch(() => {});
+});
+document.getElementById('maps_new').addEventListener('click', () => {
+  if (!confirm('今の地図を消して、今いる所から新しい地図を作ります（保存した地図は消えません）。よいですか？')) return;
+  navPick = null;
+  apiPost('/api/slam/clear').then(r => r && r.json()).then(j => {
+    document.getElementById('maps_msg').textContent = j && j.ok ? '' : mapsError(j);
+    if (j && j.ok) closeMaps();
   }).catch(() => {});
 });
 // 地図の絵と、次の起動で読みこむ地図データ（そのときの車の位置・向きから始める）
 function slSavedText(j) {
   if (!j.ok) return j.reason;
   const g = j.graph;
-  const tail = g && g.ok ? '（次の起動で読む）' : (g && g.reason ? '（地図データなし）' : '');
-  return `保存: ${j.name.split('/').pop()}${tail}`;
+  if (g && g.ok) return `「${g.name}」に保存${g.replaced ? '（上書き）' : ''}`;
+  return `保存: ${j.name.split('/').pop()}${g && g.reason ? '（地図データなし）' : ''}`;
 }
 function slSavedTitle(j) {
   const g = j.graph;
-  if (g && g.ok) return `次の起動では、車を ${fmt(g.pose.x)} / ${fmt(g.pose.y)} / ${fmt(g.pose.yaw_deg, 0)}° に置く（段差の印 ${g.marks}）`;
+  if (g && g.ok) return `次にこの地図を使うときは、車を ${fmt(g.pose.x)} / ${fmt(g.pose.y)} / ${fmt(g.pose.yaw_deg, 0)}° に置く（段差の印 ${g.marks}）`;
   return g && g.reason ? g.reason : '';
 }
 document.getElementById('sl_clear').addEventListener('click', () => {

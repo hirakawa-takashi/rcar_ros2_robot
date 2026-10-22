@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.19.4（2026-10-23。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.20.0（2026-10-23。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -63,7 +63,7 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 
 - Publish: `/cmd_vel_manual` (`geometry_msgs/Twist`、Web・ゲームパッド・スタックちゃんの手動指令。`/cmd_vel` にするのは `drive_mode_node` だけ)、`/drive_output` (`std_msgs/Float32`、「出力」0.1〜1.0)、`/drive_mode_request`、`/nav_goal`（地図の行き先）、`~/status` (`std_msgs/String`)
 - Subscribe: `/scan`、`/imu/data`、`/imu/mag`、`/odom`、`/map`、`/pose`、`/system_status`、`/camera/image_raw/compressed`、`/obstacle_status`、`/cliff_status`、`/drive_mode`、`/autonomy_status`、`/motor_status`、`/joy_cmd`
-- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`GET /api/program?file=…`（プログラム一覧のファイルの中身）、`GET /api/dev_diary?days=7&before=…&tag=…`（開発日記。DB から 7 日ずつ）、`POST /api/cmd_vel`、`POST /api/stop`、`POST /api/drive_output`、`POST /api/drive_mode`、`POST /api/slam/save`（地図の絵と slam_toolbox の地図データ。次の起動で読みこむ）、`POST /api/nav`（地図の行き先 plan / go / cancel）、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws` など（全部はプロジェクト説明の「Web API」タブ）
+- HTTP: `GET /`、`GET /api/status`、`GET /api/architecture`、`GET /api/program?file=…`（プログラム一覧のファイルの中身）、`GET /api/dev_diary?days=7&before=…&tag=…`（開発日記。DB から 7 日ずつ）、`POST /api/cmd_vel`、`POST /api/stop`、`POST /api/drive_output`、`POST /api/drive_mode`、`POST /api/slam/save`（名前を付けて地図の絵と slam_toolbox の地図データを保存）、`GET /api/slam/maps`・`POST /api/slam/maps/load`（保存した地図の一覧・選んで読みこむ）、`POST /api/nav`（地図の行き先 plan / go / cancel）、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws` など（全部はプロジェクト説明の「Web API」タブ）
 - パラメータ: `src/ai_car_web/config/dashboard.yaml`
 
 操作コマンドは -1.0〜1.0 の正規化値で受け取り、`max_linear_speed` / `max_angular_speed` にスケールされる。
