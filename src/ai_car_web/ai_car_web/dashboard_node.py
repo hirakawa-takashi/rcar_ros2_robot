@@ -16,6 +16,7 @@ import struct
 import subprocess
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -92,6 +93,24 @@ class SlamMapRequest(BaseModel):
 
     id: str
     name: str = ''
+
+
+class PlaceRequest(BaseModel):
+    """地図の緑の点（名前つきの場所、map 座標）。add は置く（here なら今の車の所。同じ名前は動かす）、remove は消す、rename は new_name へ。"""
+
+    action: str
+    name: str = ''
+    x: float | None = None
+    y: float | None = None
+    here: bool = False
+    new_name: str = ''
+
+
+class RouteRequest(BaseModel):
+    """緑の点を names の順に Nav2 で回る（go）。cancel はやめて止まる。"""
+
+    action: str = 'go'
+    names: list[str] = []
 
 
 class NavRequest(BaseModel):
@@ -201,6 +220,33 @@ STACKCHAN_TIMEOUT = 2.0
 STACKCHAN_PHOTO_TIMEOUT = 20.0
 # 名前を付けて保存した地図の id（ファイル名の元）
 SLAM_ID_RE = re.compile(r'slam_\d{8}_\d{6}')
+PLACE_MAX = 30           # 地図 1 つの緑の点（名前つきの場所）の数
+PLACE_NEAR_M = 0.3       # この近さの点は同じ場所とみなす
+ROUTE_PAUSE_S = 2.0      # 点に着いたら、ここだけ止まってから次へ
+ROUTE_LEG_TIMEOUT_S = 180.0  # 1 つの点にこれより長くかかったらやめる
+ROUTE_START_WAIT_S = 10.0    # Nav2 がこの間に受け付けなければやめる
+ROUTE_FAIL = {'aborted', 'no_path', 'unavailable', 'canceled'}
+
+
+def place_key(name):
+    """場所の名前をくらべる形（空白・記号を消し、全角半角をそろえ、カタカナをひらがなにする）。"""
+    t = unicodedata.normalize('NFKC', name or '')
+    t = re.sub(r'[\s、。,.・「」!！?？]', '', t)
+    return ''.join(chr(ord(c) - 0x60) if 'ァ' <= c <= 'ヶ' else c for c in t).lower()
+
+
+def clean_places(items):
+    """保存した緑の点を [{name, x, y}] にそろえる（おかしいものは捨てる）。"""
+    out = []
+    for it in items or []:
+        try:
+            name = str(it['name']).strip()[:20]
+            x, y = round(float(it['x']), 2), round(float(it['y']), 2)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if name and math.isfinite(x) and math.isfinite(y) and all(place_key(o['name']) != place_key(name) for o in out):
+            out.append({'name': name, 'x': x, 'y': y})
+    return out[:PLACE_MAX]
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
@@ -548,6 +594,8 @@ class DashboardNode(Node):
         self._map_loaded = None
         self._slam_load_pending = self.slam_load_on_start and self.slam_deserialize_client is not None
         self._marks_to_restore, self._marks_tries = [], 0
+        self._places = []
+        self._route = None
         self._frame = None
         self._frame_stamp = 0.0
         self._frame_count = 0
@@ -556,6 +604,7 @@ class DashboardNode(Node):
         self._frame_times = deque(maxlen=60)
 
         self.create_timer(0.1, self._watchdog_cb)
+        self.create_timer(0.5, self._route_tick)
         if self.slam_deserialize_client is not None:
             self.create_timer(2.0, self._slam_load_cb)
         if not self.api_token:
@@ -692,6 +741,7 @@ class DashboardNode(Node):
             'can_save': self._map_grid is not None,
             'saved': self._map_saved,
             'loaded': self._map_loaded,
+            'places': self._places,
         }
 
     def _map_pose_now(self):
@@ -739,6 +789,7 @@ class DashboardNode(Node):
             maps.append({'id': map_id, 'name': info.get('name') or map_id,
                          'stamp': info.get('stamp'), 'pose': info.get('pose'),
                          'cliff_marks': info.get('cliff_marks') or [], 'map': info.get('map'),
+                         'places': clean_places(info.get('places')),
                          'png': os.path.exists(base + '.png'), 'photo': os.path.exists(base + '.jpg')})
         maps.sort(key=lambda m: m['stamp'] or 0, reverse=True)
         with self._lock:
@@ -789,10 +840,12 @@ class DashboardNode(Node):
             png, meta = self._map_png, dict(self._map or {})
             frame = self._frame if self._frame is not None and now - self._frame_stamp < 3.0 else None
             loaded = self._map_loaded
+            places = list(self._places)
         name = (name or '').strip()[:30] or (loaded.get('name') if loaded and loaded.get('ok') else '') \
             or time.strftime('地図 %m/%d %H:%M')
         meta.pop('rev', None)
-        info = {'name': name, 'pose': pose, 'cliff_marks': marks, 'stamp': round(time.time(), 1), 'map': meta}
+        info = {'name': name, 'pose': pose, 'cliff_marks': marks, 'places': places,
+                'stamp': round(time.time(), 1), 'map': meta}
         if png:
             with open(base + '.png', 'wb') as f:
                 f.write(png)
@@ -823,6 +876,7 @@ class DashboardNode(Node):
         map_id = os.path.basename(base)
         name = info.get('name') or map_id
         marks = info.get('cliff_marks') or []
+        places = clean_places(info.get('places'))
 
         def done(future):
             ok = future.result() is not None
@@ -832,6 +886,8 @@ class DashboardNode(Node):
                 self._marks_to_restore = [(float(m[0]), float(m[1])) for m in marks]
                 self._marks_tries = 0
             with self._lock:
+                if ok:
+                    self._places = places
                 self._map_loaded = {'ok': ok, 'id': map_id, 'name': name, 'pose': pose, 'marks': len(marks),
                                     'stamp': round(time.time(), 1),
                                     'reason': '' if ok else 'slam_toolbox が読みこめなかった'}
@@ -997,6 +1053,8 @@ class DashboardNode(Node):
             self._map_saved = None
             self._map_loaded = {'ok': True, 'id': None, 'name': '', 'new': True, 'pose': None, 'marks': 0,
                                 'stamp': round(time.time(), 1), 'reason': ''}
+            self._places = []
+            self._route = None
         self._marks_to_restore = []
         self.get_logger().info('SLAM の地図をクリア')
         return {'ok': True}
@@ -1091,6 +1149,193 @@ class DashboardNode(Node):
             return {'ok': False, 'error': '段差の印の編集が無効です'}
         self.cliff_edit_pub.publish(String(data=json.dumps({'action': req.action, 'x': req.x, 'y': req.y})))
         return {'ok': True}
+
+    def _save_places(self):
+        """緑の点を、今使っている保存した地図の <id>.json に書く（まだ保存していない地図なら「地図を保存」のときに書く）。"""
+        with self._lock:
+            loaded, places = self._map_loaded, list(self._places)
+        map_id = loaded.get('id') if loaded and loaded.get('ok') else None
+        if not map_id:
+            return False
+        try:
+            info = self._map_info(map_id)
+        except HTTPException:
+            return False
+        base = info.pop('base')
+        info.pop('id', None)
+        info['places'] = places
+        with open(base + '.json.tmp', 'w', encoding='utf-8') as f:
+            json.dump(info, f, ensure_ascii=False)
+        os.replace(base + '.json.tmp', base + '.json')
+        return True
+
+    def find_place(self, name):
+        key = place_key(name)
+        with self._lock:
+            return next((dict(p) for p in self._places if place_key(p['name']) == key), None) if key else None
+
+    def edit_place(self, req: PlaceRequest):
+        """地図の緑の点を置く・消す・名前を変える。保存した地図を使っていれば、その地図に書く。"""
+        name = (req.name or '').strip()[:20]
+        if req.action not in ('add', 'remove', 'rename'):
+            return {'ok': False, 'error': f'不明な指示: {req.action}'}
+        if not place_key(name):
+            return {'ok': False, 'error': '名前が空です'}
+        if req.action == 'add':
+            if req.here:
+                pose = self._map_pose_now()
+                if pose is None:
+                    return {'ok': False, 'error': '地図の上の車の位置がまだ分かりません'}
+                x, y = pose['x'], pose['y']
+            elif req.x is None or req.y is None or not (math.isfinite(req.x) and math.isfinite(req.y)):
+                return {'ok': False, 'error': 'x・y がありません'}
+            else:
+                x, y = req.x, req.y
+            with self._lock:
+                key = place_key(name)
+                others = [p for p in self._places if place_key(p['name']) != key]
+                if len(others) >= PLACE_MAX:
+                    return {'ok': False, 'error': f'緑の点は {PLACE_MAX} 個までです'}
+                place = {'name': name, 'x': round(float(x), 2), 'y': round(float(y), 2)}
+                self._places = others + [place]
+        else:
+            with self._lock:
+                old = next((p for p in self._places if place_key(p['name']) == place_key(name)), None)
+                if old is None:
+                    return {'ok': False, 'error': f'「{name}」という点はありません'}
+                if req.action == 'remove':
+                    self._places = [p for p in self._places if p is not old]
+                    place = old
+                else:
+                    new = (req.new_name or '').strip()[:20]
+                    if not place_key(new):
+                        return {'ok': False, 'error': '新しい名前が空です'}
+                    if any(p is not old and place_key(p['name']) == place_key(new) for p in self._places):
+                        return {'ok': False, 'error': f'「{new}」はもうあります'}
+                    place = dict(old, name=new)
+                    self._places = [place if p is old else p for p in self._places]
+        saved = self._save_places()
+        self.get_logger().info(f'緑の点 {req.action}: {place["name"]}（x {place["x"]:.2f} y {place["y"]:.2f}）')
+        return {'ok': True, 'place': place, 'saved': saved, 'places': self.places()['places']}
+
+    def places(self):
+        with self._lock:
+            loaded = self._map_loaded
+            return {'places': [dict(p) for p in self._places],
+                    'map': loaded.get('name') if loaded and loaded.get('ok') else ''}
+
+    def _route_state(self):
+        r = self._route
+        if r is None:
+            return None
+        return {k: v for k, v in r.items() if not k.startswith('_')}
+
+    def request_route(self, req: RouteRequest):
+        """緑の点を names の順に回る。知らない名前があれば走らない。行けない点があれば、そこで止まる。"""
+        if req.action == 'cancel':
+            with self._lock:
+                running = self._route is not None and self._route['state'] == 'running'
+            if running:
+                self._route_end('stopped', 'やめる指示')
+            return {'ok': True}
+        if req.action != 'go':
+            return {'ok': False, 'error': f'不明な指示: {req.action}'}
+        if self.nav_goal_pub is None:
+            return {'ok': False, 'error': '地図の行き先が無効です'}
+        names = [n.strip() for n in req.names if place_key(n)][:20]
+        if not names:
+            return {'ok': False, 'error': '行く所がありません'}
+        stops, unknown = [], []
+        for n in names:
+            p = self.find_place(n)
+            if p is None:
+                unknown.append(n)
+            elif not stops or stops[-1]['name'] != p['name']:
+                stops.append(p)
+        if unknown:
+            return {'ok': False, 'error': f'知らない場所: {"、".join(unknown)}', 'unknown': unknown}
+        auto = self._autonomy_state() or {}
+        if not auto.get('alive') or not (auto.get('nav') or {}).get('available'):
+            return {'ok': False, 'error': 'Nav2 が動いていません'}
+        with self._lock:
+            self._route = {'state': 'running', 'stops': stops, 'names': [p['name'] for p in stops],
+                           'index': 0, 'arrived': [], 'reason': '', 'stamp': round(time.time(), 1),
+                           'id': int(time.time() * 1000), '_sent': None, '_arrived_at': None}
+        self.get_logger().info(f'緑の点を回る: {" → ".join(p["name"] for p in stops)}')
+        self._route_send()
+        res = self.request_drive_mode('auto')
+        if not res.get('ok'):
+            self._route_end('failed', res.get('error') or '自動にできない')
+            return {'ok': False, 'error': res.get('error') or '自動にできない'}
+        return {'ok': True, 'route': self._route_state()}
+
+    def _route_send(self):
+        r = self._route
+        p = r['stops'][r['index']]
+        pose = self._map_pose_now()
+        yaw = math.degrees(math.atan2(p['y'] - pose['y'], p['x'] - pose['x'])) if pose else 0.0
+        self.nav_goal_pub.publish(String(data=json.dumps(
+            {'action': 'go', 'x': p['x'], 'y': p['y'], 'yaw_deg': round(yaw, 1)})))
+        r['_sent'] = time.monotonic()
+        r['_arrived_at'] = None
+        r['target'] = p['name']
+
+    def _route_end(self, state, reason=''):
+        """回るのを終える。着いた・行けない・やめたのどれでも、止めて手動にもどす。"""
+        with self._lock:
+            r = self._route
+            if r is None or r['state'] != 'running':
+                return
+            r['state'], r['reason'] = state, reason
+            r['target'] = None
+        if self.nav_goal_pub is not None and state != 'done':
+            self.nav_goal_pub.publish(String(data=json.dumps(
+                {'action': 'cancel', 'x': 0.0, 'y': 0.0, 'yaw_deg': 0.0})))
+        self.neutralize()
+        self.request_drive_mode('manual')
+        self.get_logger().info(f'緑の点を回る: {state} {reason}')
+
+    def _route_tick(self):
+        r = self._route
+        if r is None or r['state'] != 'running':
+            return
+        now = time.monotonic()
+        dm = self._drive_mode_state() or {}
+        if now - r['_sent'] > 3.0 and dm.get('mode') != 'auto':
+            why = dm.get('guard') or dm.get('reason') or '自動を抜けた'
+            self._route_end('stopped', str(why))
+            return
+        if r['_arrived_at'] is not None:
+            if now - r['_arrived_at'] >= ROUTE_PAUSE_S:
+                self._route_send()
+            return
+        auto = self._autonomy_state() or {}
+        nav = auto.get('nav') or {}
+        p = r['stops'][r['index']]
+        g = nav.get('goal') or {}
+        waited = now - r['_sent']
+        mine = (abs((g.get('x') or 0) - p['x']) < 0.02 and abs((g.get('y') or 0) - p['y']) < 0.02
+                and auto.get('alive') and (nav.get('age_s') or 0) < waited + 0.5)
+        state = nav.get('state') if mine else None
+        if state == 'succeeded':
+            r['arrived'].append(p['name'])
+            r['index'] += 1
+            if r['index'] >= len(r['stops']):
+                self._route_end('done')
+            else:
+                r['_arrived_at'] = now
+            return
+        if state == 'canceled':
+            self._route_end('stopped', nav.get('reason') or 'やめた')
+            return
+        if state in ROUTE_FAIL:
+            self._route_end('failed', f'{p["name"]}に行けない（{nav.get("reason") or nav.get("label") or state}）')
+            return
+        if state is None and waited > ROUTE_START_WAIT_S:
+            self._route_end('failed', 'Nav2 が受け付けない')
+            return
+        if waited > ROUTE_LEG_TIMEOUT_S:
+            self._route_end('failed', f'{p["name"]}まで {ROUTE_LEG_TIMEOUT_S / 60:.0f} 分たっても着かない')
 
     def request_nav(self, req: NavRequest):
         """地図の行き先を autonomy_node へ送る。go のときは運転モードを自動にする。"""
@@ -1582,6 +1827,7 @@ class DashboardNode(Node):
                 'autonomy': self._autonomy_state(),
                 'cliff': self._cliff_state(),
                 'slam': self._slam_state(),
+                'route': self._route_state(),
                 'jetson_host': self._jetson_host_state(),
                 'mypc_host': self._mypc_host_state(),
                 'joy': {
@@ -1761,6 +2007,18 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/nav', dependencies=[Depends(require_token)])
     def nav(req: NavRequest):
         return node.request_nav(req)
+
+    @app.get('/api/places')
+    def places():
+        return node.places()
+
+    @app.post('/api/places', dependencies=[Depends(require_token)])
+    def edit_place(req: PlaceRequest):
+        return node.edit_place(req)
+
+    @app.post('/api/route', dependencies=[Depends(require_token)])
+    def route(req: RouteRequest):
+        return node.request_route(req)
 
     @app.post('/api/cliff_marks', dependencies=[Depends(require_token)])
     def cliff_marks(req: CliffMarkRequest):

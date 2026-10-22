@@ -27,6 +27,7 @@ overview:
     - {state: done, text: IMU で向きを保ってまっすぐ走る（heading_hold）}
     - {state: done, text: スタックちゃんに話して走る（「前に 1 メートル進んで」など）}
     - {state: done, text: Level 2 自律走行（Nav2 による地図ベースのナビゲーション。床で試走して、まだ行っていない所を回る探索に使っている）}
+    - {state: done, text: 'Level 2: 地図の緑の点（名前つきの場所）を順に回る（「台所、玄関の順で移動して」。行けない点があればそこで止まる。床ではまだ試していない）'}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
     - {name: ROS 2 Jazzy (ros-base), role: ミドルウェア}
@@ -739,7 +740,7 @@ autonomy:
 api:
   rest:
     - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
-    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam / jetson_host / joy）, auth: false}
+    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam（places つき） / route / jetson_host / joy）, auth: false}
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーと Motor HAT の 3V3 / GND（各 6 本）の配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: POST, path: /api/imu/mag_calibrate, desc: 磁気の補正を始める（30 秒のあいだ床で 1〜2 回まわす。imu_node の /imu/mag_calibrate）, auth: true}
@@ -757,6 +758,9 @@ api:
     - {method: POST, path: /api/slam/maps/load, desc: 選んだ地図を、保存したときの車の位置から始めるように読みこむ（止まっているときだけ）, auth: true}
     - {method: POST, path: /api/slam/maps/rename, desc: 保存した地図の名前を変える（/delete で消す）, auth: true}
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
+    - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
+    - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
+    - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。行けない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route', auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
@@ -794,6 +798,7 @@ status:
   next:
     - 360° の見張りを床で確かめる（出力 15 %。前後・左右・ななめ・回転で 0.25 m の所で止まるか、物から離れる向きには動けるか）
     - スタックちゃんの声で走るのを床で確かめる（「前に 50 センチ進んで」「右に 90 度回って」「止まって」）
+    - 緑の点を順に回るのを床で確かめる（点 2 つ。「台所、玄関の順で移動して」「止まって」、行けない点で止まるか）
     - SLAM の地図を部屋 1 周で作って、壁が二重にならないか確かめる
     - 実機で自動モードの旋回方向・速度・しきい値を調整
     - 前後の落下防止センサー（VL53L1X）で、段差の前で止まるかを床で確かめる（台の端に向けて「出力」15 % でゆっくり）

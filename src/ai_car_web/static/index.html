@@ -693,6 +693,7 @@
           <tr><td class="k">「撮影して」</td><td class="v wrap">5 秒数えて撮る</td></tr>
           <tr><td class="k">「前に 1 メートル進んで」</td><td class="v wrap" title="前・後ろ・右・左（右・左は横に寄る）。メートル・センチ・秒で量を言える（2 m・10 秒まで）。言わないと 50 cm。速さはダッシュボードの「出力」まで。自動走行中は動かない">声で走る</td></tr>
           <tr><td class="k">「右に 90 度回って」</td><td class="v wrap" title="度・一回転・半回転・回れ右。言わないと 90 度。回った角度は IMU で見る">声で回る</td></tr>
+          <tr><td class="k">「台所、玄関の順で移動して」</td><td class="v wrap" title="地図の緑の点を順に Nav2 で回る。「台所に行って」は 1 か所。「ここを台所として覚えて」で今の車の所に点を置く">緑の点を回る</td></tr>
           <tr><td class="k">「止まって」</td><td class="v wrap" title="走っているあいだは、呼びかけなしで止まる">すぐ止まる</td></tr>
         </table>
       </div>
@@ -724,11 +725,15 @@
       <tr><td class="k">保存</td><td class="v"><button id="sl_save" disabled>地図を保存</button> <button id="sl_clear" disabled>地図をクリア</button> <span id="sl_saved"></span></td></tr>
       <tr><td class="k">使っている地図</td><td class="v"><button id="sl_pick">地図をえらぶ</button> <span id="sl_loaded">-</span></td></tr>
       <tr><td class="k">段差の印</td><td class="v"><label><input type="checkbox" id="cm_edit"> 地図のクリックで置く（赤い点をクリックで消す）</label> <span id="cm_msg"></span></td></tr>
+      <tr><td class="k">緑の点（場所）</td><td class="v"><label><input type="checkbox" id="pl_edit"> 地図のクリックで置く（緑の点をクリックで消す）</label> <button id="pl_here">今の車の所に置く</button> <span id="pl_msg"></span></td></tr>
+      <tr><td class="k">点の一覧</td><td class="v wrap" id="pl_list">-</td></tr>
+      <tr><td class="k">順に回る</td><td class="v"><input id="rt_names" placeholder="例: 台所、玄関" size="18"> <button id="rt_go">順に回る</button> <button id="rt_cancel" disabled>やめる</button></td></tr>
+      <tr><td class="k">回るようす</td><td class="v wrap" id="rt_state">-</td></tr>
       <tr><td class="k">行き先 x / y [m]</td><td class="v" id="nv_goal">-</td></tr>
       <tr><td class="k">道 / 残り [m]</td><td class="v" id="nv_state">-</td></tr>
       <tr><td class="k">行き先へ</td><td class="v"><button id="nv_go" disabled>ここへ行く</button> <button id="nv_cancel" disabled>やめる</button> <span id="nv_msg"></span></td></tr>
     </table>
-    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。「地図をクリア」で地図を消して、今いる所から作り直す（保存した地図は消えない）。「地図を保存」は名前（例: アパート）を付けて、地図の絵・slam_toolbox の地図データ・段差の印（赤丸）・そのときの車の位置と向き・カメラの写真を残す（同じ名前は上書き）。起動したら「地図をえらぶ」で部屋の地図を選ぶ。絵のオレンジの矢印の所・向き（20 cm・20° 以内）に車を置いてから「この地図で始める」を押すと、その位置から始めるように読みこむ。選ばなければ、今いる所から新しい地図を作る。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。</div>
+    <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。「地図をクリア」で地図を消して、今いる所から作り直す（保存した地図は消えない）。「地図を保存」は名前（例: アパート）を付けて、地図の絵・slam_toolbox の地図データ・段差の印（赤丸）・そのときの車の位置と向き・カメラの写真を残す（同じ名前は上書き）。起動したら「地図をえらぶ」で部屋の地図を選ぶ。絵のオレンジの矢印の所・向き（20 cm・20° 以内）に車を置いてから「この地図で始める」を押すと、その位置から始めるように読みこむ。選ばなければ、今いる所から新しい地図を作る。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。<br>緑の点は名前つきの場所（例: 台所）。チェックを入れて地図をクリックするか、「今の車の所に置く」で置き、名前を入れる（同じ名前は動かす）。点は地図ごとに保存する（保存した地図を使っていればすぐ、新しい地図なら「地図を保存」のとき）。一覧の名前を押すと「順に回る」の欄に足す。「順に回る」で Nav2 が書いた順に向かい、点に着くたびに 2 秒止まって次へ行く。最後に着いたら止まって手動にもどる。行けない点があれば、そこで止まって手動にもどる。スタックちゃんに「ここを台所として覚えて」「台所、玄関の順で移動して」と話しても同じ。</div>
   </div>
 
 
@@ -1895,6 +1900,7 @@ function renderSlam(sl) {
     slamRev = m.rev;
     slamImg.src = `/api/slam/map.png?rev=${m.rev}`;
   }
+  renderPlaces();
   drawSlam();
 }
 function drawSlam() {
@@ -1932,6 +1938,7 @@ function drawSlam() {
       ctx.fill();
     });
   }
+  drawPlaces(ctx, (sl.places || []), toPx, Math.max(5, 0.08 / m.resolution * s), latestTelemetry.route);
   const g = (live && nav.goal) || navPick;
   if (g) {
     const [gx, gy] = toPx(g.x, g.y);
@@ -1957,6 +1964,94 @@ function drawSlam() {
   ctx.fill();
 }
 let navPick = null;
+// 緑の点（名前つきの場所）。回っている途中は、次に行く点を太い輪で囲む
+function drawPlaces(ctx, places, toPx, r, route) {
+  const target = route && route.state === 'running' ? route.target : null;
+  ctx.font = 'bold 13px sans-serif';
+  places.forEach(p => {
+    const [u, v] = toPx(p.x, p.y);
+    ctx.fillStyle = '#3ecf6a';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(u, v, r, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+    if (p.name === target) {
+      ctx.strokeStyle = '#3ecf6a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(u, v, r + 5, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+    const w = ctx.measureText(p.name).width;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(u + r + 2, v - 9, w + 6, 17);
+    ctx.fillStyle = '#7dff9e';
+    ctx.fillText(p.name, u + r + 5, v + 4);
+  });
+}
+const ROUTE_WORDS = {running: '回っている', done: '全部着いた', failed: '行けなくて止まった', stopped: 'やめた'};
+function routeText(rt) {
+  if (!rt) return '';
+  const arrived = rt.arrived && rt.arrived.length ? ` / 着いた ${rt.arrived.join('、')}` : '';
+  const next = rt.state === 'running' && rt.target ? ` / 次 ${rt.target}` : '';
+  return `${ROUTE_WORDS[rt.state] || rt.state}${next}${arrived}${rt.reason ? `（${rt.reason}）` : ''}`;
+}
+let placesKey = '';
+function renderPlaces() {
+  const sl = latestTelemetry.slam;
+  const places = (sl && sl.places) || [];
+  const key = places.map(p => p.name).join('\n');
+  if (key !== placesKey) {
+    placesKey = key;
+    const box = document.getElementById('pl_list');
+    box.innerHTML = places.length ? '' : 'まだありません';
+    places.forEach(p => {
+      const b = document.createElement('button');
+      b.textContent = p.name;
+      b.title = `x ${fmt(p.x)} / y ${fmt(p.y)}。押すと「順に回る」の欄に足す`;
+      b.addEventListener('click', () => {
+        const el = document.getElementById('rt_names');
+        el.value = el.value.trim() ? `${el.value.trim()}、${p.name}` : p.name;
+      });
+      box.appendChild(b);
+      box.appendChild(document.createTextNode(' '));
+    });
+  }
+  const rt = latestTelemetry.route;
+  const running = !!rt && rt.state === 'running';
+  document.getElementById('rt_state').textContent = routeText(rt) || '-';
+  document.getElementById('rt_go').disabled = running || !places.length;
+  document.getElementById('rt_cancel').disabled = !running;
+  document.getElementById('pl_here').disabled = !(sl && sl.pose);
+}
+function placePost(body) {
+  const msg = document.getElementById('pl_msg');
+  return apiPost('/api/places', body).then(r => r && r.json()).then(j => {
+    msg.textContent = !j ? '' : j.ok === false ? (j.error || '失敗しました')
+      : `${body.action === 'remove' ? '消しました' : '置きました'}${j.saved ? '' : '（「地図を保存」で残る）'}`;
+  }).catch(() => { msg.textContent = '失敗しました'; });
+}
+function placeName(def) {
+  const name = prompt('場所の名前（例: 台所、玄関）。同じ名前の点は、ここに動かします。', def || '');
+  return name && name.trim() ? name.trim() : null;
+}
+document.getElementById('pl_here').addEventListener('click', () => {
+  const name = placeName();
+  if (name) placePost({action: 'add', name, here: true});
+});
+document.getElementById('rt_go').addEventListener('click', () => {
+  const names = document.getElementById('rt_names').value.split(/[、,，\s]+/).filter(t => t);
+  const el = document.getElementById('rt_state');
+  if (!names.length) { el.textContent = '回る順に名前を書いてください'; return; }
+  apiPost('/api/route', {action: 'go', names}).then(r => r && r.json()).then(j => {
+    if (j && j.ok === false) el.textContent = j.error || '失敗しました';
+  }).catch(() => {});
+});
+document.getElementById('rt_cancel').addEventListener('click', () => {
+  apiPost('/api/route', {action: 'cancel'}).catch(() => {});
+});
 // 道（緑の線）と行き先（×）は、さがしている・向かっているあいだだけ出す（着いた・やめた・行けなかったら消す）
 function navLive(nav) {
   return !!nav && ['planning', 'planned', 'sending', 'active'].includes(nav.state);
@@ -1979,6 +2074,17 @@ document.getElementById('slam_map').addEventListener('click', (ev) => {
   const {m, s, ox, oy} = slamView;
   const x = m.origin_x + (u - ox) / s * m.resolution;
   const y = m.origin_y + (m.height - (v - oy) / s) * m.resolution;
+  if (document.getElementById('pl_edit').checked) {
+    const places = (latestTelemetry.slam && latestTelemetry.slam.places) || [];
+    const near = places.find(p => Math.hypot(p.x - x, p.y - y) < 0.3);
+    if (near) {
+      if (confirm(`緑の点「${near.name}」を消しますか？`)) placePost({action: 'remove', name: near.name});
+    } else {
+      const name = placeName();
+      if (name) placePost({action: 'add', name, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100});
+    }
+    return;
+  }
   if (document.getElementById('cm_edit').checked) {
     const marks = (latestTelemetry.autonomy && latestTelemetry.autonomy.cliff_marks) || [];
     const near = marks.some(([mx, my]) => Math.hypot(mx - x, my - y) < 0.3);
@@ -2041,7 +2147,7 @@ function renderMapsList(current) {
   mapsList.forEach(m => {
     const b = document.createElement('button');
     b.className = mapsSel && m.id === mapsSel.id ? 'sel' : '';
-    b.innerHTML = `<b></b>${m.id === current ? ' <span class="badge ok">使用中</span>' : ''}<span class="sub">${mapsDate(m.stamp)} 保存・段差の印 ${m.cliff_marks.length}</span>`;
+    b.innerHTML = `<b></b>${m.id === current ? ' <span class="badge ok">使用中</span>' : ''}<span class="sub">${mapsDate(m.stamp)} 保存・段差の印 ${m.cliff_marks.length}・緑の点 ${(m.places || []).length}</span>`;
     b.querySelector('b').textContent = m.name;
     b.addEventListener('click', () => { mapsSel = m; renderMapsList(current); });
     box.appendChild(b);
@@ -2056,6 +2162,7 @@ function renderMapsList(current) {
   info.innerHTML = '';
   [`車を置く所: x ${fmt(p.x)} m / y ${fmt(p.y)} m`, `車の向き: ${mapsYawWord(p.yaw_deg)}（オレンジの矢印の先が車の前）`,
     `段差の印（赤丸）: ${m.cliff_marks.length} か所`,
+    (m.places || []).length ? `緑の点（場所）: ${m.places.map(p => p.name).join('、')}` : '緑の点（場所）: なし',
     m.photo ? '上の写真は、保存したときに車の前のカメラで見えたもの。同じ景色になるように置く。' : '',
     '車を置いたら「この地図で始める」を押す（20 cm・20° 以内）。'].filter(t => t).forEach(t => {
     const d = document.createElement('div'); d.textContent = t; info.appendChild(d);
@@ -2090,6 +2197,7 @@ function drawMapsPreview() {
     ctx.arc(u, v, Math.max(5, 0.08 / m.resolution * s), 0, 2 * Math.PI);
     ctx.fill();
   });
+  drawPlaces(ctx, sel.places || [], toPx, Math.max(6, 0.08 / m.resolution * s), null);
   const p = sel.pose;
   if (!p) return;
   const [px, py] = toPx(p.x, p.y);
