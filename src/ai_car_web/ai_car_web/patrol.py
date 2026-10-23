@@ -179,7 +179,8 @@ def frontier_goal(grid, start, clear_m=0.3, min_cells=5, min_dist_m=0.5, bad=(),
     res = grid['resolution']
     free = (cells >= 0) & (cells <= FREE_MAX)
     r = max(1, int(math.ceil(clear_m / res)))
-    ok = free & ~_dilate(~free, r)
+    # 作り始めの地図は LiDAR の線のあいだが「見ていない」ので、はなれるのは壁だけにする（Nav2 も allow_unknown）
+    ok = free & ~_dilate(cells > FREE_MAX, r)
     if not ok.any():
         return None
     col, row = _to_cell(grid, *start)
@@ -188,7 +189,7 @@ def frontier_goal(grid, start, clear_m=0.3, min_cells=5, min_dist_m=0.5, bad=(),
     if math.hypot(rows[i] - row, cols[i] - col) * res > 0.6:
         return None
     dist = _bfs(ok, rows[i], cols[i])
-    edge = (dist >= 0) & _dilate(cells < 0, r + 1)
+    edge = (dist >= 0) & _dilate(cells < 0, 1)
     left = set(zip(*np.nonzero(edge)))
     best = None
     while left:
