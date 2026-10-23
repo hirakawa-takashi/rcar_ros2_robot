@@ -935,7 +935,7 @@ class AutonomyNode(Node):
         if mode != 'auto':
             return None
         if self._nav['state'] in ('sending', 'active'):
-            if self._unstick is None:
+            if self._unstick is None and self._escape is None:
                 self._set_behavior('nav')
             with self._lock:
                 fresh = now - self._nav_cmd_stamp <= self.nav_cmd_timeout
@@ -1452,7 +1452,7 @@ class AutonomyNode(Node):
                 'tilt_deg': (round(math.degrees(max(abs(_wrap(self._tilt[0] - self._tilt_base[0])),
                                                     abs(self._tilt[1] - self._tilt_base[1]))), 1)
                              if self._tilt is not None and self._tilt_base is not None else None),
-                'unstick': ({'phase': self._unstick['phase'], 'count': len(self._unstick_times)}
+                'unstick': ({'phase': (self._unstick['phases'] or [None])[0], 'count': len(self._unstick_times)}
                             if self._unstick else None),
                 'cliff_turned_deg': (round(math.degrees(self._escape.get('turned', 0.0)), 1)
                                      if self._escape else None),
