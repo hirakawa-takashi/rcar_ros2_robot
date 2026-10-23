@@ -474,9 +474,12 @@ nodes:
     subscribes: [/cmd_vel, /imu/data]
     params:
       - {name: max_linear_speed, ref: motor_driver_node.max_linear_speed, unit: m/s, desc: この速さの指令で出力 100 %}
-      - {name: max_angular_speed, ref: motor_driver_node.max_angular_speed, unit: rad/s, desc: この旋回の指令で出力 100 %}
+      - {name: max_angular_speed, ref: motor_driver_node.max_angular_speed, unit: rad/s, desc: 出力 100 % で回る速さ（その場旋回で測った傾き）}
       - {name: max_duty, ref: motor_driver_node.max_duty, unit: '', desc: 出力 100 % のときの PWM（0〜1）}
       - {name: timeout, ref: motor_driver_node.timeout, unit: s, desc: /cmd_vel がこの秒数届かないと止める}
+      - {name: accel_limit, ref: motor_driver_node.accel_limit, unit: 1/s, desc: 4 輪の出力を上げるとき 1 秒に変えてよい量（加速）}
+      - {name: decel_limit, ref: motor_driver_node.decel_limit, unit: 1/s, desc: 4 輪の出力を下げるとき 1 秒に変えてよい量（減速）}
+      - {name: rotate_min_duty, ref: motor_driver_node.rotate_min_duty, unit: '', desc: その場で回るとき足す出力（これより弱いと回り出さない）}
       - {name: heading_hold, ref: motor_driver_node.heading_hold, unit: '', desc: 旋回の指令が 0 で動くあいだ、IMU の向きを動き始めの向きに保つ}
       - {name: heading_kp, ref: motor_driver_node.heading_kp, unit: (rad/s)/rad, desc: 向きのずれに対する旋回の強さ}
       - {name: heading_max_correction, ref: motor_driver_node.heading_max_correction, unit: rad/s, desc: 向きを保つために足す旋回の上限}

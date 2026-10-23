@@ -6,6 +6,9 @@
 motor_hat.yaml。/cmd_vel が timeout 秒届かないと全モーターを止める。
 旋回の指令が 0 で前後・左右に動くあいだは、IMU（/imu/data）の向きを動き始めの向きに
 保つように旋回を足す（heading_hold）。IMU が届かないときは足さない。
+4 輪の出力は、上げるときは accel_limit、下げるときは decel_limit [出力/秒] より速く変えない
+（動き始めと止まるときをなめらかにする）。/cmd_vel が途絶えたときは、すぐ止める。
+その場で回るときは、モーターが回り出さない弱い出力の分（rotate_min_duty）を足す。
 I2C は /dev/i2c-N を直接使う（smbus2 などの追加ライブラリなし）。
 """
 
@@ -82,6 +85,17 @@ def _wrap(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
+def ramp_toward(current: float, target: float, dt: float, accel: float, decel: float) -> float:
+    """current から target へ dt 秒で近づけた値。0 から遠ざかるときは accel、0 へ近づくときは decel [1/秒]。
+    向きが変わるときは、先に 0 まで decel で下げる。"""
+    if current * target < 0.0:
+        return math.copysign(max(0.0, abs(current) - decel * dt), current) if abs(current) > decel * dt else 0.0
+    step = (accel if abs(target) > abs(current) else decel) * dt
+    if abs(target - current) <= step:
+        return target
+    return current + math.copysign(step, target - current)
+
+
 def heading_correction(target: float, yaw: float, yaw_rate: float,
                        kp: float, kd: float, limit: float, deadband: float = 0.0) -> float:
     """向き target [rad] にもどす旋回 [rad/s]（左回り +）を返す。ずれが deadband [rad] 以下は 0。"""
@@ -113,19 +127,25 @@ class MotorDriverNode(Node):
         self.declare_parameter('motor_hat_config', '')
         # dashboard_node の max_linear_speed / max_angular_speed と同じ値で出力 100 %
         self.declare_parameter('max_linear_speed', 0.3)
-        self.declare_parameter('max_angular_speed', 1.0)
+        # 出力 100 % で回る速さ [rad/s]（その場旋回で測った、出力と回る速さの比例の傾き）
+        self.declare_parameter('max_angular_speed', 10.8)
         # 出力 100 % のときのデューティ（0〜1）
         self.declare_parameter('max_duty', 1.0)
         # /cmd_vel がこの秒数届かないと止める
         self.declare_parameter('timeout', 0.5)
+        # 4 輪の出力（0〜1）を 1 秒に変えてよい量。上げる（加速）・下げる（減速）
+        self.declare_parameter('accel_limit', 0.5)
+        self.declare_parameter('decel_limit', 1.5)
+        # その場で回るとき足す出力（これより弱いとモーターが回り出さない）
+        self.declare_parameter('rotate_min_duty', 0.03)
         # 旋回の指令が 0 で動くあいだ、IMU の向きを保つ
         self.declare_parameter('heading_hold', True)
         self.declare_parameter('imu_topic', '/imu/data')
         # 向きのずれ 1 rad あたりの旋回 [rad/s]・回る速さを打ち消す強さ・足す旋回の上限 [rad/s]
         # 実行中に ros2 param set で変えられる
-        self.declare_parameter('heading_kp', 0.25)
-        self.declare_parameter('heading_kd', 0.05)
-        self.declare_parameter('heading_max_correction', 0.05)
+        self.declare_parameter('heading_kp', 2.7)
+        self.declare_parameter('heading_kd', 0.54)
+        self.declare_parameter('heading_max_correction', 0.54)
         # このずれ [deg] までは直さない（IMU のゆれで左右に振らないように）
         self.declare_parameter('heading_deadband_deg', 1.0)
         # IMU がこの秒数届かないと向きを保たない
@@ -148,6 +168,9 @@ class MotorDriverNode(Node):
         self.max_angular = float(self.get_parameter('max_angular_speed').value)
         self.max_duty = max(0.0, min(1.0, float(self.get_parameter('max_duty').value)))
         self.timeout = float(self.get_parameter('timeout').value)
+        self.accel_limit = float(self.get_parameter('accel_limit').value)
+        self.decel_limit = float(self.get_parameter('decel_limit').value)
+        self.rotate_min_duty = float(self.get_parameter('rotate_min_duty').value)
         self.heading_hold = bool(self.get_parameter('heading_hold').value)
         self.heading_kp = float(self.get_parameter('heading_kp').value)
         self.heading_kd = float(self.get_parameter('heading_kd').value)
@@ -166,6 +189,8 @@ class MotorDriverNode(Node):
         self._hold_target = None
         self._correction = 0.0
         self._written = {}
+        self._out = {}
+        self._out_time = None
         self._connect()
 
         self.status_pub = self.create_publisher(
@@ -183,12 +208,15 @@ class MotorDriverNode(Node):
             + ', '.join(f'{m["label"]}{"（逆）" if m["reversed"] else ""}' for m in self.motors))
 
     def _on_set_parameters(self, params):
-        """heading_hold の強さを実行中に変えられるようにする。"""
+        """heading_hold の強さ・加減速・回り出しの出力を実行中に変えられるようにする。"""
         attrs = {
             'heading_kp': lambda v: setattr(self, 'heading_kp', float(v)),
             'heading_kd': lambda v: setattr(self, 'heading_kd', float(v)),
             'heading_max_correction': lambda v: setattr(self, 'heading_limit', float(v)),
             'heading_deadband_deg': lambda v: setattr(self, 'heading_deadband', math.radians(float(v))),
+            'accel_limit': lambda v: setattr(self, 'accel_limit', float(v)),
+            'decel_limit': lambda v: setattr(self, 'decel_limit', float(v)),
+            'rotate_min_duty': lambda v: setattr(self, 'rotate_min_duty', float(v)),
         }
         for p in params:
             if p.name in attrs:
@@ -243,11 +271,27 @@ class MotorDriverNode(Node):
             return {m['wheel']: 0.0 for m in self.motors}
         vx, vy, wz = self._twist
         self._correction = self._update_heading(vx, vy, wz)
+        w = (wz + self._correction) / self.max_angular if self.max_angular > 0 else 0.0
+        if abs(vx) <= 1e-3 and abs(vy) <= 1e-3 and abs(w) > 1e-4:
+            w += math.copysign(self.rotate_min_duty, w)
         cmd = mecanum(
             vx / self.max_linear if self.max_linear > 0 else 0.0,
             vy / self.max_linear if self.max_linear > 0 else 0.0,
-            (wz + self._correction) / self.max_angular if self.max_angular > 0 else 0.0)
+            w)
         return {m['wheel']: cmd.get(m['wheel'], 0.0) for m in self.motors}
+
+    def _ramp(self, targets: dict) -> dict:
+        """今の出力から targets へ、accel_limit / decel_limit をこえないように近づけた出力を返す。"""
+        now = time.monotonic()
+        dt = 0.0 if self._out_time is None else min(0.2, now - self._out_time)
+        self._out_time = now
+        if time.monotonic() - self._cmd_time > self.timeout:
+            self._out = {k: 0.0 for k in targets}
+            return dict(self._out)
+        for k, target in targets.items():
+            self._out[k] = ramp_toward(self._out.get(k, 0.0), target, dt,
+                                       self.accel_limit, self.decel_limit)
+        return dict(self._out)
 
     def _drive(self, motor: dict, value: float):
         if motor['reversed']:
@@ -270,7 +314,7 @@ class MotorDriverNode(Node):
         self._connect()
         if not self.pca:
             return
-        targets = self._targets()
+        targets = self._ramp(self._targets())
         try:
             for m in self.motors:
                 self._drive(m, targets[m['wheel']])
@@ -282,7 +326,7 @@ class MotorDriverNode(Node):
             self._next_open = time.monotonic() + 1.0
 
     def _publish_status(self):
-        targets = self._targets()
+        targets = {m['wheel']: self._out.get(m['wheel'], 0.0) for m in self.motors}
         holding = self._hold_target is not None
         msg = String()
         msg.data = json.dumps({

@@ -19,7 +19,7 @@ dashboard_node:
     # LiDAR で右 4°・0.47 m に見えたことから求めた値（2026/10 実機で測定）。perception / autonomy も同じ値にする
     scan_angle_offset_deg: -1.7
     max_linear_speed: 0.3
-    max_angular_speed: 1.0
+    max_angular_speed: 4.0   # 出力 15 % で 0.6 rad/s（1 秒に約 34°）。本当の回る速さ（motor_driver_node で合わせる）
     cmd_timeout: 0.7
     # 「出力」の初期値（%）。手動（Web・ゲームパッド）は max_* × 出力、自動も drive_mode_node でこれ以下にする
     output_percent: 15.0
@@ -84,7 +84,7 @@ drive_mode_node:
     drive_output_topic: "/drive_output"
     default_output: 0.15     # 「出力」が届くまでの値
     max_linear_speed: 0.3    # dashboard_node と同じ値
-    max_angular_speed: 1.0
+    max_angular_speed: 4.0   # dashboard_node と同じ値
 
 motor_driver_node:
   ros__parameters:
@@ -93,16 +93,23 @@ motor_driver_node:
     status_topic: "/motor_status"
     motor_hat_config: ""     # 空なら share/ai_car_web/config/motor_hat.yaml
     max_linear_speed: 0.3    # dashboard_node と同じ値。この速さで出力 100 %
-    max_angular_speed: 1.0
+    # 出力 100 % で回る速さ [rad/s]。その場旋回で出力 6〜15 % → 0.34〜1.31 rad/s（IMU）、傾き 10.8（2026/10/24 測定）
+    # 1.0 のときは、指令の約 9 倍の速さで回って、回りすぎ・がくがくした
+    max_angular_speed: 10.8
     max_duty: 1.0            # 出力 100 % のときの PWM（0〜1）
-    timeout: 0.5             # /cmd_vel がこの秒数届かないと止める
+    timeout: 0.5             # /cmd_vel がこの秒数届かないと止める（すぐ止める）
+    # 4 輪の出力（0〜1）を 1 秒に変えてよい量。出力 15 % まで、上げるのは 0.3 秒、下げるのは 0.1 秒
+    accel_limit: 0.5
+    decel_limit: 1.5
+    # その場で回るとき足す出力。出力 4 % では回らなかった（6 % から回る。比例の線は 2.9 % で 0）
+    rotate_min_duty: 0.03
     # 旋回の指令が 0 で前後・左右に動くあいだ、IMU の向きを動き始めの向きに保つ（まっすぐ進む）
     heading_hold: true
     imu_topic: "/imu/data"
-    heading_kp: 0.25         # 向きのずれ 1 rad（約 57°）あたりの旋回 [rad/s]。5° ずれると約 0.02 rad/s
-    # 旋回の指令 0.15 で実際は約 1.3 rad/s 回る（約 9 倍）ので、強さは小さくしてある
-    heading_kd: 0.05         # 回る速さを打ち消す強さ（ゆれ止め）
-    heading_max_correction: 0.05  # 足す旋回の上限 [rad/s]
+    # 強さは max_angular_speed 1.0 のときの 0.25 / 0.05 / 0.05 と同じ出力になる値（× 10.8）
+    heading_kp: 2.7          # 向きのずれ 1 rad（約 57°）あたりの旋回 [rad/s]。5° ずれると約 0.24 rad/s
+    heading_kd: 0.54         # 回る速さを打ち消す強さ（ゆれ止め）
+    heading_max_correction: 0.54  # 足す旋回の上限 [rad/s]
     heading_deadband_deg: 1.0  # このずれ [deg] までは直さない
     # heading_* は実行中に ros2 param set /motor_driver_node で変えられる
     imu_timeout: 0.5         # IMU がこの秒数届かないと向きを保たない
