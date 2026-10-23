@@ -311,7 +311,7 @@ PRIMARY_TIMEOUT = 3.0
 PRIMARY_HANDBACK_CHECKS = 3
 STANDBY_ONLY = 'ミニコンが止まっているあいだは、パソコンで話します。'
 FACE_TOOL = 'self.robot.set_face_color'
-FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00, 'patrol': 0xFF8000}
+FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00, 'patrol': 0xFF8000, 'mapping': 0x0080FF}
 # パトロール: 「パトロールして」で地図の全部を回る。見ているあいだ首を左右にふる。PATROL_TELL_EVERY か所ごとに話す
 PATROL = re.compile(r'(?:パトロール|ぱとろーる|見回り|みまわり|巡回|じゅんかい)(?:を)?'
                     r'(?:して|しに行って|してきて|に行って|開始|スタート|お願い|おねがい|はじめて|始めて)?' + PLACE_TAIL)
@@ -877,6 +877,48 @@ def patrol_banner(rt):
     done = len(rt.get('arrived') or []) + len(rt.get('skipped') or [])
     an = len(rt.get('anomalies') or [])
     return f"パトロール中 {min(done + 1, n)}/{n}" + (f' 異常 {an}' if an else '')
+
+
+def explore_words(rt, prev):
+    """地図作りのようす（prev は前に見た route、はじめは None）から、まだ言っていない言葉を作る。"""
+    state = rt.get('state')
+    stops = rt.get('stops') or []
+    skipped = rt.get('skipped') or []
+    p = prev or {}
+    out = []
+    if prev is None and state == 'running' and rt.get('phase') in ('north', 'wait'):
+        out.append('地図作りを始めるよ。止まって北をはかるね。')
+    out += [f'{n}は行けなかったから、とばすよ。' for n in skipped[len(p.get('skipped') or []):]]
+    if state == 'running':
+        if len(stops) > len(p.get('stops') or []):
+            name = stops[-1].get('name') or ''
+            out.append('見終わったから、スタートにもどるよ。' if name == 'スタート' else f'{name}へ行くよ。')
+        return out
+    seen = sum(1 for n in rt.get('arrived') or [] if n != 'スタート')
+    reason = (rt.get('reason') or '').split('（')[0]
+    if state == 'stopped':
+        return out + ['地図作りをやめたよ。']
+    if state == 'failed':
+        return out + [f"{reason or '動けなかった'}から、地図作りをやめたよ。"]
+    out.append('地図作り終わり。' if state == 'done' else '15 分たったから、地図作りを終わるね。')
+    if state == 'done' and reason:
+        out.append(f'{reason}。')
+    out.append(f'{seen} か所見たよ。' + (f'行けなかった所が {len(skipped)} か所あったよ。' if skipped else ''))
+    out.append('ダッシュボードの「地図を保存」で、名前を付けてね。')
+    return out
+
+
+def explore_banner(rt):
+    """スタックちゃんの画面のふきだしに出す字（例: 地図作り中 はし 3へ 見た 2）。"""
+    if rt.get('phase') == 'north':
+        return '地図作り中 北をはかっています'
+    if rt.get('phase') == 'wait':
+        return '地図作り中 地図を待っています'
+    seen = sum(1 for n in rt.get('arrived') or [] if n != 'スタート')
+    skipped = len(rt.get('skipped') or [])
+    target = rt.get('target') or ''
+    where = 'スタートへもどる' if target == 'スタート' else f'{target}へ'
+    return f'地図作り中 {where} 見た {seen}' + (f' とばした {skipped}' if skipped else '')
 
 
 def find_command(text):
@@ -1813,6 +1855,7 @@ class Session:
         self.keep_task = None
         self.bright_tool = False
         self.patrolling = False
+        self.mapping = False
         self.bright = None
         self.dozing = False
         self.doze_at = 0.0
@@ -2054,7 +2097,7 @@ class Session:
         await self.say(words)
 
     async def patrol_follow(self):
-        """ダッシュボードから始めたパトロールも、声で始めたときと同じに画面へ「パトロール中」を出す。"""
+        """ダッシュボードから始めたパトロールも、声で始めたときと同じに画面へ「パトロール中」を出す。地図作りも見る。"""
         url = self.args.car_url
         while True:
             await asyncio.sleep(CAR_TALK_POLL)
@@ -2069,6 +2112,11 @@ class Session:
                 stop = self.drive_stop = threading.Event()
                 stop.follow = True  # スタックちゃんが切れても、車のパトロールは止めない（「止まって」では止める）
                 self.drive_task = asyncio.create_task(self.patrol(rt['id'], stop))
+            elif rt.get('kind') == 'explore' and rt.get('state') == 'running' and rt.get('id'):
+                log('地図作り（ダッシュボードから）')
+                stop = self.drive_stop = threading.Event()
+                stop.follow = True  # スタックちゃんが切れても、車の地図作りは止めない（「止まって」では止める）
+                self.drive_task = asyncio.create_task(self.explore(rt['id'], stop))
 
     async def car_talk(self):
         """自動運転＆ミニコン＆ローカルのあいだ、AI-CAR の動きをしゃべる（会話のじゃまはしない）。"""
@@ -2077,7 +2125,7 @@ class Session:
         said = 0.0
         while True:
             await asyncio.sleep(CAR_TALK_POLL)
-            if not self.args.car_talk or not car_talk_on():
+            if not self.args.car_talk or not car_talk_on() or self.mapping:
                 prev_mode = prev_b = None
                 continue
             try:
@@ -2500,6 +2548,58 @@ class Session:
                 await sending
                 head.cancel()
                 self.head = [0, 0]
+            except Exception:  # noqa: BLE001
+                pass
+            if self.drive_stop is stop:
+                self.drive_task = self.drive_stop = None
+
+    async def explore(self, route_id, stop):
+        """地図作りのあいだ、顔を青にして、ふきだしに「地図作り中」を出し、行く所・とばした所・もどる・終わりを話す。"""
+        url, prev, errors = self.args.car_url, None, 0
+        banner, banner_at, lidar_told = '', 0.0, False
+        self.patrolling = self.mapping = True
+        await self.set_face('mapping')
+        try:
+            while True:
+                await asyncio.sleep(FIND_PERIOD)
+                if stop.is_set():
+                    await asyncio.to_thread(car_api, url, '/api/slam/mapping', {'action': 'cancel'})
+                    return
+                try:
+                    rt = (await asyncio.to_thread(car_api, url, '/api/status')).get('route') or {}
+                    errors = 0
+                except Exception as e:  # noqa: BLE001 - 3 回続けてだめならやめる（車の地図作りは続く）
+                    errors += 1
+                    if errors >= 3:
+                        log(f'地図作りのエラー: {e}')
+                        await self.say('ようすがわからなくなったよ。', wake=False)
+                        return
+                    continue
+                if rt.get('id') != route_id:
+                    return
+                said = False
+                if rt.get('lidar_warn') and not lidar_told:
+                    await self.say('LiDAR が見えにくいよ。レンズをふいてね。', wake=False)
+                    lidar_told = said = True
+                for words in explore_words(rt, prev):
+                    await self.say(words, wake=False)
+                    said = True
+                prev = rt
+                if rt.get('state') != 'running':
+                    log(f"地図作り: {rt.get('state')} {rt.get('reason') or ''}")
+                    return
+                text = explore_banner(rt)
+                if not self.busy() and (said or text != banner or time.monotonic() - banner_at >= PATROL_BANNER_EVERY):
+                    await self.send(type='tts', state='sentence_start', text=text)
+                    banner, banner_at = text, time.monotonic()
+        except ConnectionClosed:
+            pass
+        except Exception as e:  # noqa: BLE001
+            log(f'地図作りのエラー: {e}')
+        finally:
+            self.patrolling = self.mapping = False
+            try:
+                await self.set_face(STATUS['mode'])
             except Exception:  # noqa: BLE001
                 pass
             if self.drive_stop is stop:
