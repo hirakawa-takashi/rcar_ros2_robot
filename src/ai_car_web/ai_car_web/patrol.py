@@ -66,17 +66,36 @@ def reachable_cells(grid, start, clear_m):
         seen = grow
 
 
-def coverage_points(grid, start, spacing_m=1.5, clear_m=0.35, min_cells=8):
-    """地図を spacing_m の升に分け、升ごとに 1 つ、車が行ける所でいちばん升のまん中に近い所を「見る所」にする。"""
+def coverage_points(grid, start, spacing_m=1.5, clear_m=0.35, min_cells=8, avoid=(), avoid_m=0.6,
+                    prefer_m=(0.6, 0.5, 0.4)):
+    """地図を spacing_m の升に分け、升ごとに 1 つ、車が行ける所を「見る所」にする。
+
+    升の中で、壁・不明から prefer_m の大きいほうからはなれていられる所をえらび、その中で升のまん中に近い所。
+    avoid（段差の印など (x, y)）から avoid_m より近い所には置かない。"""
     reach = reachable_cells(grid, start, clear_m)
-    step = max(1, int(round(spacing_m / grid['resolution'])))
     h, w = reach.shape
+    if avoid:
+        cols, rows = np.meshgrid(np.arange(w), np.arange(h))
+        res, yaw = grid['resolution'], grid.get('origin_yaw') or 0.0
+        c, sn = math.cos(yaw), math.sin(yaw)
+        lx, ly = (cols + 0.5) * res, (rows + 0.5) * res
+        wx, wy = grid['origin_x'] + c * lx - sn * ly, grid['origin_y'] + sn * lx + c * ly
+        for ax, ay in avoid:
+            reach &= (wx - ax) ** 2 + (wy - ay) ** 2 >= avoid_m ** 2
+    cells = _cells(grid)
+    wall = ~((cells >= 0) & (cells <= FREE_MAX))
+    roomy = [reach & ~_dilate(wall, int(math.ceil(m / grid['resolution']))) for m in prefer_m if m > clear_m]
+    step = max(1, int(round(spacing_m / grid['resolution'])))
     out = []
     for r0 in range(0, h, step):
         for c0 in range(0, w, step):
             block = reach[r0:r0 + step, c0:c0 + step]
             if block.sum() < min_cells:
                 continue
+            for m in roomy:
+                if m[r0:r0 + step, c0:c0 + step].any():
+                    block = m[r0:r0 + step, c0:c0 + step]
+                    break
             rows, cols = np.nonzero(block)
             cr, cc = (block.shape[0] - 1) / 2, (block.shape[1] - 1) / 2
             i = int(np.argmin((rows - cr) ** 2 + (cols - cc) ** 2))
