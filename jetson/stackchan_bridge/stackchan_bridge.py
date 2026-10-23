@@ -321,6 +321,8 @@ PATROL_BANNER_EVERY = 10.0  # 画面のふきだし「パトロール中」を�
 PATROL_HEAD = ({'yaw': -40, 'pitch': 10, 'speed': 150}, {'yaw': 40, 'pitch': 10, 'speed': 150})
 # 自動運転の実況: ダッシュボードを CAR_TALK_POLL 秒ごとに見て、動きが変わったら話す。同じ動きが続くと CAR_TALK_EVERY 秒ごとに様子を話す
 CAR_TALK_POLL = 1.0
+DRIVE_BANNER_HOLD = 5.0   # 手動運転の車が、この秒数止まっていたら、ふきだしを「止まっています」にする
+DRIVE_STOPPED = '止まっています'
 CAR_TALK_EVERY = 6.0
 SEARCH_TOOL = 'self.web.search'
 SEARCH_DESC = ('Search the internet for up-to-date information: news, weather, prices, who currently holds a '
@@ -907,6 +909,22 @@ def explore_words(rt, prev):
     out.append(f'{seen} か所見たよ。' + (f'行けなかった所が {len(skipped)} か所あったよ。' if skipped else ''))
     out.append('ダッシュボードの「地図を保存」で、名前を付けてね。')
     return out
+
+
+def drive_banner(d):
+    """パトロール・地図作りのほかの運転のときに、スタックちゃんの画面のふきだしに出す字。運転していなければ None。"""
+    dm = d.get('drive_mode') or {}
+    rt = d.get('route') or {}
+    if rt.get('state') == 'running' and rt.get('kind') not in ('patrol', 'explore'):
+        names, i = rt.get('names') or [], rt.get('index') or 0
+        return f'{names[i]}へ移動中' if 0 <= i < len(names) else '移動中'
+    if dm.get('mode') == 'auto':
+        return '自動運転中'
+    v = dm.get('cmd_vel') or {}
+    moving = any(abs(v.get(k) or 0.0) > 0.01 for k in ('linear_x', 'linear_y', 'angular_z'))
+    if dm.get('mode') == 'manual' and (moving or (dm.get('inputs') or {}).get('manual_alive')):
+        return '手動運転中'
+    return None
 
 
 def explore_banner(rt):
@@ -2112,14 +2130,17 @@ class Session:
     async def patrol_follow(self):
         """ダッシュボードから始めたパトロールも、声で始めたときと同じに画面へ「パトロール中」を出す。地図作りも見る。"""
         url = self.args.car_url
+        banner, banner_at, moved_at = None, 0.0, 0.0
         while True:
             await asyncio.sleep(CAR_TALK_POLL)
             if self.patrolling or self.drive_task:
+                banner = None
                 continue
             try:
-                rt = json.loads(await asyncio.to_thread(_get, f'{url}/api/status', 2)).get('route') or {}
+                d = json.loads(await asyncio.to_thread(_get, f'{url}/api/status', 2))
             except Exception:  # noqa: BLE001 - ラズパイが止まっていても会話は続ける
                 continue
+            rt = d.get('route') or {}
             if rt.get('kind') == 'patrol' and rt.get('state') == 'running' and rt.get('id'):
                 log(f"パトロール（ダッシュボードから）: 見る所 {sum(1 for q in rt.get('stops') or [] if not q.get('home'))} か所")
                 stop = self.drive_stop = threading.Event()
@@ -2130,6 +2151,23 @@ class Session:
                 stop = self.drive_stop = threading.Event()
                 stop.follow = True  # スタックちゃんが切れても、車の地図作りは止めない（「止まって」では止める）
                 self.drive_task = asyncio.create_task(self.explore(rt['id'], stop))
+            else:
+                banner, banner_at, moved_at = await self.drive_follow(d, banner, banner_at, moved_at)
+
+    async def drive_follow(self, d, banner, banner_at, moved_at):
+        """手動運転・自動運転・緑の点へ移動のあいだ、画面のふきだしに出す（声は出さない）。"""
+        text = drive_banner(d)
+        now = time.monotonic()
+        if text:
+            moved_at = now
+            if not self.busy() and (text != banner or now - banner_at >= PATROL_BANNER_EVERY):
+                # 声なしの sentence_start は、画面のふきだしの字だけを変える（つぎに話すまで残る）
+                await self.send(type='tts', state='sentence_start', text=text)
+                banner, banner_at = text, now
+        elif banner and now - moved_at >= DRIVE_BANNER_HOLD and not self.busy():
+            await self.send(type='tts', state='sentence_start', text=DRIVE_STOPPED)
+            banner = None
+        return banner, banner_at, moved_at
 
     async def car_talk(self):
         """自動運転＆ミニコン＆ローカルのあいだ、AI-CAR の動きをしゃべる（会話のじゃまはしない）。"""
