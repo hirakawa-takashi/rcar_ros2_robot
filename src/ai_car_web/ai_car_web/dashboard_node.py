@@ -1602,8 +1602,11 @@ class DashboardNode(Node):
             goal = frontier_goal(grid, (pose['x'], pose['y']), MAP_CLEAR_M, bad=r['_bad'])
         if goal is None:
             home = r['_home']
-            if first or math.hypot(pose['x'] - home['x'], pose['y'] - home['y']) < 0.3:
-                self._route_end('done', '' if not first else 'まだ見ていない所がない')
+            if first:
+                self._route_end('failed', '行ける「はし」が見つからない（車のまわりがせまい？）')
+                return
+            if math.hypot(pose['x'] - home['x'], pose['y'] - home['y']) < 0.3:
+                self._route_end('done', '')
                 return
             r['_returning'] = True
             stop = dict(home)
