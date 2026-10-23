@@ -2217,7 +2217,7 @@ document.getElementById('slam_map').addEventListener('click', (ev) => {
   }
   if (document.getElementById('cm_edit').checked) {
     const marks = (latestTelemetry.autonomy && latestTelemetry.autonomy.cliff_marks) || [];
-    const near = marks.some(([mx, my]) => Math.hypot(mx - x, my - y) < 0.3);
+    const near = marks.some(([mx, my]) => Math.hypot(mx - x, my - y) < 0.1);
     apiPost('/api/cliff_marks', {action: near ? 'remove' : 'add', x, y}).then(r => r && r.json()).then(j => {
       document.getElementById('cm_msg').textContent = j && j.ok === false ? (j.error || '') : (near ? '消しました' : '置きました');
     }).catch(() => {});

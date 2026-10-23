@@ -553,11 +553,11 @@ class AutonomyNode(Node):
         except (TypeError, ValueError, KeyError, json.JSONDecodeError):
             return
         if action == 'add':
-            if any(math.hypot(x - mx, y - my) < 0.15 for mx, my in self._cliff_marks):
+            if any(math.hypot(x - mx, y - my) < 0.05 for mx, my in self._cliff_marks):
                 return
             self._cliff_marks = (self._cliff_marks + [(x, y)])[-50:]
         elif action == 'remove':
-            self._cliff_marks = [(mx, my) for mx, my in self._cliff_marks if math.hypot(x - mx, y - my) >= 0.3]
+            self._cliff_marks = [(mx, my) for mx, my in self._cliff_marks if math.hypot(x - mx, y - my) >= 0.1]
         else:
             return
         self._save_marks()
