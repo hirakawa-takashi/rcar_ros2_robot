@@ -1026,7 +1026,7 @@ function setLoadBar(bar, label, percent, digits = 0) {
 }
 
 // ラズパイの 5V の不足は LiDAR などが急に止まる原因になるので、いちばん上に出す。
-// 起動から 2 分は見ない（起動はむりをする）。数えるのは 3 秒以上つづいた不足だけ（system_monitor_node）。
+// 起動から 2 分と、車が止まっているときは見ない。数えるのは走っているときの 3 秒以上つづいた不足だけ（system_monitor_node）。
 function renderPowerAlert(p) {
   const el = document.getElementById('power_alert');
   const uv = p && p.under_voltage;
@@ -1054,11 +1054,15 @@ function renderPowerAlert(p) {
 }
 
 // 電源・温度の制限は電源断や遅れに直結するため CPU カードに明示する。
-// 5V の不足は under_voltage（起動 2 分は見ない・3 秒以上だけ）で見る。get_throttled の低電圧・スロットリングの印は、1 秒の不足や起動時でも立つので使わない。
+// 5V の不足は under_voltage（起動 2 分と止まっているときは見ない・3 秒以上だけ）で見る。get_throttled の低電圧・スロットリングの印は、1 秒の不足や起動時でも立つので使わない。
 function renderThrottled(t, uv) {
   const state = document.getElementById('pwr_state');
   if (uv && uv.booting) {
     state.innerHTML = '<span class="badge">起動中</span>';
+    return;
+  }
+  if (uv && uv.driving === false && !(uv.recent_10min > 0)) {
+    state.innerHTML = '<span class="badge" title="5V の不足は、車が走っているときだけ数えます">止まっているので見ていません</span>';
     return;
   }
   if (!t && !uv) {

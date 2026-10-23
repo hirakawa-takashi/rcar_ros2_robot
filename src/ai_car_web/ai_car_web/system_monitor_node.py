@@ -17,6 +17,7 @@ import subprocess
 import threading
 import time
 
+from geometry_msgs.msg import Twist
 import psutil
 import rclpy
 from rclpy.node import Node
@@ -49,6 +50,7 @@ _UV_RECENT_S = 600.0
 _UV_BOOT_GRACE_S = 120.0
 # この回数（1 秒ごと = 約 3 秒）つづけて足りないときだけ、電圧低下として数える
 _UV_HOLD_SAMPLES = 3
+_UV_DRIVE_TAIL_S = 3.0   # 車輪の指令が止まってからも、この秒数は「走っている」とみる
 
 
 def _hailo_pci_sysfs():
@@ -250,6 +252,7 @@ class SystemMonitorNode(Node):
         self.declare_parameter('enable_pmic', True)
         self.declare_parameter('enable_hailo', True)
         self.declare_parameter('update_check_interval', 3600.0)
+        self.declare_parameter('cmd_vel_topic', '/cmd_vel')
 
         rate = float(self.get_parameter('publish_rate').value)
         self.enable_pmic = bool(self.get_parameter('enable_pmic').value)
@@ -272,6 +275,8 @@ class SystemMonitorNode(Node):
         self._upgrade_stamp = 0.0
         self._uv_alarm = _rpi_volt_alarm()
         self._uv_start = time.monotonic()
+        self._drive_at = None
+        self.create_subscription(Twist, self.get_parameter('cmd_vel_topic').value, self._cmd_vel_cb, 10)
         self._uv_low = 0
         self._uv_now = False
         self._uv_count = 0
@@ -398,8 +403,13 @@ class SystemMonitorNode(Node):
             'supply': self._supply,
         }
 
+    def _cmd_vel_cb(self, msg):
+        if abs(msg.linear.x) > 0.01 or abs(msg.linear.y) > 0.01 or abs(msg.angular.z) > 0.05:
+            self._drive_at = time.monotonic()
+
     def _under_voltage(self, throttled):
-        """5V の不足。起動から 2 分は見ない。1 秒ごとの「今足りない」が 3 回つづいたときだけ数える。
+        """5V の不足。車が走っているとき（/cmd_vel が動く指令）だけ見る。起動から 2 分は見ない。
+        1 秒ごとの「今足りない」が 3 回つづいたときだけ数える。
 
         get_throttled の「起動後にあった」印と hwmon の in0_lcrit_alarm は一度立つと消えない（起動時のむりで立つ）ので、使わない。
         """
@@ -414,7 +424,8 @@ class SystemMonitorNode(Node):
         else:
             low = _read_text(self._uv_alarm) == '1'
         booting = up < _UV_BOOT_GRACE_S
-        self._uv_low = 0 if booting or not low else self._uv_low + 1
+        driving = self._drive_at is not None and time.monotonic() - self._drive_at <= _UV_DRIVE_TAIL_S
+        self._uv_low = 0 if booting or not driving or not low else self._uv_low + 1
         now = self._uv_low >= _UV_HOLD_SAMPLES
         if now and not self._uv_now:
             self._uv_count += 1
@@ -428,6 +439,7 @@ class SystemMonitorNode(Node):
             'now': now,
             'booting': booting,
             'boot_left_s': max(0, int(_UV_BOOT_GRACE_S - up + 0.999)),
+            'driving': driving,
             'count': self._uv_count,
             'recent_10min': len(self._uv_events),
             'last': self._uv_last,

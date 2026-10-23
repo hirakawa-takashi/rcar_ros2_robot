@@ -713,7 +713,7 @@ def car_status(url):
         f'起動から {up // 3600} 時間 {up % 3600 // 60} 分',
         f"ラズパイの電源: 5V が {_num(pw.get('input_volt'), '{:.2f}')} V、{_num(pw.get('total_w'), '{:.1f}')} W、"
         ('電圧低下は、起動したばかりなので、まだ数えていない' if uv.get('booting') else
-         f"電圧低下（3 秒以上）は直近 10 分で {uv.get('recent_10min') or 0} 回" + ('（今、電圧が足りない）' if uv.get('now') else '')),
+         f"電圧低下（走っているときの 3 秒以上）は直近 10 分で {uv.get('recent_10min') or 0} 回" + ('（今、電圧が足りない）' if uv.get('now') else '')),
         f"AI HAT+: 温度 {_num((s.get('hailo') or {}).get('temperature_c'))} 度",
         f"ラズパイの更新: {_num((s.get('updates') or {}).get('updates_pending'))} 件",
         'ゲームパッド: ' + ('つながっている' if (d.get('joy') or {}).get('connected') else 'つながっていない'),
