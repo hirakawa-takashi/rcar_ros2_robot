@@ -1025,12 +1025,18 @@ function setLoadBar(bar, label, percent, digits = 0) {
   label.textContent = `${fmt(percent, digits)} %`;
 }
 
-// ラズパイの 5V の不足は LiDAR などが急に止まる原因になるので、いちばん上に出す
+// ラズパイの 5V の不足は LiDAR などが急に止まる原因になるので、いちばん上に出す。
+// 起動から 2 分は見ない（起動はむりをする）。数えるのは 3 秒以上つづいた不足だけ（system_monitor_node）。
 function renderPowerAlert(p) {
   const el = document.getElementById('power_alert');
   const uv = p && p.under_voltage;
-  const occurred = !!(p && p.throttled && p.throttled.under_voltage_occurred);
-  if (!uv || !(uv.now || uv.count > 0 || occurred)) {
+  if (uv && uv.booting) {
+    el.className = 'badge';
+    el.textContent = `起動中（電源のチェックは あと ${uv.boot_left_s || 0} 秒から）`;
+    el.style.display = '';
+    return;
+  }
+  if (!uv || !(uv.now || uv.recent_10min > 0)) {
     el.style.display = 'none';
     return;
   }
@@ -1042,36 +1048,32 @@ function renderPowerAlert(p) {
   }
   const t = uv.last ? new Date(uv.last * 1000) : null;
   const last = t ? `、最後 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
-  const total = uv.count > 0 ? `起動後 ${uv.count} 回${last}` : '起動後にあり';
-  const recent = uv.recent_10min || 0;
-  if (recent > 0) {
-    el.className = 'badge warn';
-    el.textContent = `ラズパイの 5V が足りなくなりました（直近 10 分 ${recent} 回、${total}）。電源・ケーブルの力不足です`;
-  } else {
-    el.className = 'badge';
-    el.textContent = `ラズパイの 5V の不足: 直近 10 分は 0 回（${total}）`;
-  }
+  el.className = 'badge warn';
+  el.textContent = `ラズパイの 5V が足りなくなりました（3 秒以上、直近 10 分 ${uv.recent_10min} 回${last}）。電源・ケーブルの力不足です`;
   el.style.display = '';
 }
 
-// 低電圧・スロットリングは電源断に直結するため CPU カードに明示する
-function renderThrottled(t) {
+// 電源・温度の制限は電源断や遅れに直結するため CPU カードに明示する。
+// 5V の不足は under_voltage（起動 2 分は見ない・3 秒以上だけ）で見る。get_throttled の低電圧・スロットリングの印は、1 秒の不足や起動時でも立つので使わない。
+function renderThrottled(t, uv) {
   const state = document.getElementById('pwr_state');
-  if (!t) {
+  if (uv && uv.booting) {
+    state.innerHTML = '<span class="badge">起動中</span>';
+    return;
+  }
+  if (!t && !uv) {
     state.innerHTML = '<span class="badge">不明</span>';
     return;
   }
   const labels = [];
-  if (t.under_voltage_now) labels.push('低電圧');
-  if (t.throttled_now) labels.push('スロットリング');
-  if (t.arm_freq_capped_now) labels.push('クロック制限');
-  if (t.soft_temp_limit_now) labels.push('温度制限');
-  const past = t.under_voltage_occurred || t.throttled_occurred ||
-    t.arm_freq_capped_occurred || t.soft_temp_limit_occurred;
-
+  if (uv && uv.now) labels.push('低電圧');
+  if (t && t.arm_freq_capped_now) labels.push('クロック制限');
+  if (t && t.soft_temp_limit_now) labels.push('温度制限');
+  const hot = t && (t.arm_freq_capped_occurred || t.soft_temp_limit_occurred);
   state.innerHTML = labels.length
     ? `<span class="badge crit">${labels.join(' / ')}</span>`
-    : past ? '<span class="badge warn">起動後に低電圧発生</span>'
+    : uv && uv.recent_10min > 0 ? `<span class="badge warn">直近 10 分に低電圧 ${uv.recent_10min} 回</span>`
+    : hot ? '<span class="badge warn">起動後に温度制限あり</span>'
     : '<span class="badge ok">正常</span>';
 }
 
@@ -1200,7 +1202,7 @@ function renderSystem(s) {
   document.getElementById('pwr_supply').innerHTML = sup && sup.max_a != null
     ? `<span class="badge ${sup.max_a >= 5 ? 'ok' : 'warn'}">${fmt(sup.max_a, 1)}</span> PD ${sup.pd ? 'あり' : 'なし'}`
     : '-';
-  renderThrottled(p && p.throttled);
+  renderThrottled(p && p.throttled, p && p.under_voltage);
   renderPowerAlert(p);
 
   const h = s.hailo || {};

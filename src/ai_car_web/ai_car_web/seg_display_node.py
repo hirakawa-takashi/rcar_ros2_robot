@@ -277,8 +277,7 @@ class SegDisplayNode(Node):
             return 'Err '
 
         power = self._system.get('power') or {}
-        throttled = power.get('throttled') or {}
-        if throttled.get('under_voltage_now', False):
+        if (power.get('under_voltage') or {}).get('now', False):
             return 'LoU '
 
         obstacle_fresh = (
