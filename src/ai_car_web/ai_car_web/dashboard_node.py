@@ -1101,11 +1101,11 @@ class DashboardNode(Node):
             grid = self._map_grid
         if grid is None:
             return {'ok': False, 'reason': '地図がまだ届いていない（use_slam:=true）'}
-        name = os.path.join(self.map_save_dir, time.strftime('map_%Y%m%d_%H%M%S'))
+        files = os.path.join(self.map_save_dir, time.strftime('map_%Y%m%d_%H%M%S'))
         pose = self._map_pose_now()
         try:
             os.makedirs(self.map_save_dir, exist_ok=True)
-            write_map_files(name, grid)
+            write_map_files(files, grid)
             ok, reason = True, ''
         except OSError as exc:
             ok, reason = False, f'保存に失敗（{exc}）'
@@ -1115,7 +1115,7 @@ class DashboardNode(Node):
                 graph = self._save_slam_graph(pose, name)
             except OSError as exc:
                 graph = {'ok': False, 'reason': f'地図データの保存に失敗（{exc}）'}
-        saved = {'ok': ok, 'name': name, 'stamp': round(time.time(), 1), 'reason': reason, 'graph': graph}
+        saved = {'ok': ok, 'name': files, 'stamp': round(time.time(), 1), 'reason': reason, 'graph': graph}
         with self._lock:
             self._map_saved = saved
         return saved
