@@ -1952,6 +1952,7 @@ class Session:
 
     async def keepalive(self):
         """会話モードが 30 秒だまったら「じゃあ、またね。」で呼びかけ待ちにもどし、その 30 秒後に居眠りする。
+        パトロール・地図作り中は「またね」も居眠りもしない（だまって呼びかけ待ちにもどる）。
         60 秒ごとに 1 回送ってスタックちゃんの 120 秒の時間切れを防ぎ、画面の明るさを映像に合わせる。"""
         last = bright_last = time.monotonic()
         battery_last = last - BATTERY_EVERY + 30.0
@@ -1960,12 +1961,17 @@ class Session:
             try:
                 if self.awake and self.asleep() and not self.busy():
                     self.awake = False
-                    log(f'{self.args.awake_seconds:.0f} 秒話さなかったので、呼びかけ待ちにもどります')
-                    await self.say(BYE_REPLY, wake=False)
+                    working = self.patrolling or self.mapping
+                    log(f'{self.args.awake_seconds:.0f} 秒話さなかったので、呼びかけ待ちにもどります'
+                        + ('（パトロール・地図作り中なので「またね」は言わない）' if working else ''))
+                    if not working:
+                        await self.say(BYE_REPLY, wake=False)
                     await self.close_cloud()
                     set_status(state=self.listen_state())
-                    if self.args.doze_seconds > 0:
+                    if self.args.doze_seconds > 0 and not working:
                         self.doze_at = time.time() + self.args.doze_seconds
+                if self.doze_at and (self.patrolling or self.mapping):
+                    self.doze_at = 0.0
                 if self.doze_at and time.time() >= self.doze_at and self.asleep() and not self.busy():
                     self.doze_at = 0.0
                     await self.doze()
