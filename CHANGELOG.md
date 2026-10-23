@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.23.1] - 2026-10-22
+
+### Fixed
+- ダッシュボードが開かない（v1.22.0 から）: `renderPlaces()` で `const key` を 2 回書いていて、ページの JS 全体が `SyntaxError: Identifier 'key' has already been declared` で動かなかった。パトロールの方を `pk` にした
+
 ## [1.23.0] - 2026-10-22
 
 ### Added
