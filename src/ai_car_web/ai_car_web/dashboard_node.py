@@ -282,6 +282,10 @@ PATROL_LOOKS = 4          # 1 か所で 90° ずつ 4 回見る
 PATROL_KEEP = 10          # 残すパトロールの結果の数
 PATROL_ID_RE = re.compile(r'\d{8}-\d{6}')
 PERSON_LABELS = {'人'}
+# パトロールで止まって見たとき、AI HAT+（YOLO）が見つけた物を覚える。同じ物は PATROL_FOUND_SAME_M 以内なら 1 つ
+PATROL_FOUND_SCORE = 0.5
+PATROL_FOUND_SAME_M = 1.5
+PATROL_FOUND_MAX = 40
 LIDAR_OFFSET = (0.043, 0.008)  # base_footprint から見た LiDAR の位置 [前, 左] m
 
 
@@ -1896,7 +1900,7 @@ class DashboardNode(Node):
             loaded = self._map_loaded
             self._route = {'state': 'running', 'kind': 'patrol', 'pid': pid, 'stops': stops,
                            'names': [q['name'] for q in stops], 'index': 0, 'arrived': [], 'skipped': [],
-                           'anomalies': [], 'reason': '', 'retries': 0, 'stamp': round(time.time(), 1),
+                           'anomalies': [], 'found': [], 'reason': '', 'retries': 0, 'stamp': round(time.time(), 1),
                            'map': loaded.get('name') if loaded and loaded.get('ok') else '',
                            'id': int(time.time() * 1000), '_sent': None, '_arrived_at': None,
                            '_start': time.monotonic(), '_ref': grid, '_shots': [], '_objs': [],
@@ -1942,13 +1946,14 @@ class DashboardNode(Node):
             hfov = math.radians(float(obstacle.get('camera_hfov_deg') or 102.0))
             cam_x = float(obstacle.get('camera_offset_x_m') or 0.0)
             for d in obstacle.get('detections') or []:
-                if d.get('label') not in PERSON_LABELS:
-                    continue
                 a = (0.5 - float(d.get('center_x', 0.5))) * hfov
                 dist = d.get('distance')
                 lx, ly = (cam_x + dist * math.cos(a), dist * math.sin(a)) if dist else (0.0, 0.0)
                 x = pose['x'] + math.cos(yaw) * lx - math.sin(yaw) * ly
                 y = pose['y'] + math.sin(yaw) * lx + math.cos(yaw) * ly
+                if d.get('label') not in PERSON_LABELS:
+                    self._patrol_found(r, d, x, y, shot['photo'])
+                    continue
                 if any(o['kind'] == 'person' and math.hypot(o['x'] - x, o['y'] - y) < 1.0 for o in r['anomalies']):
                     continue
                 text = f'人がいる（{dist:.1f} m 先）' if dist else '人がいる'
@@ -1962,6 +1967,18 @@ class DashboardNode(Node):
                     r['_objs'].append(dict(o, looks=1))
                 else:
                     old['looks'] += 1
+
+    def _patrol_found(self, r, d, x, y, photo):
+        """AI HAT+ が見つけた物（人のほか）を覚える。同じ名前の物が近くにあれば、足さない。"""
+        label = d.get('label')
+        if not label or float(d.get('score') or 0.0) < PATROL_FOUND_SCORE or len(r['found']) >= PATROL_FOUND_MAX:
+            return
+        if any(f['label'] == label and math.hypot(f['x'] - x, f['y'] - y) < PATROL_FOUND_SAME_M for f in r['found']):
+            return
+        dist = d.get('distance')
+        r['found'].append({'label': label, 'x': round(x, 2), 'y': round(y, 2), 'photo': photo,
+                           'where': self._patrol_where(x, y), 'distance': round(dist, 1) if dist else None})
+        self.get_logger().info(f'パトロール: {label} を見つけた x {x:.2f} y {y:.2f}')
 
     def _patrol_photo_for(self, r, x, y):
         """(x, y) の方を向いて、いちばん近くでとった写真の番号。"""

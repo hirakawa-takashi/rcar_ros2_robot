@@ -871,6 +871,42 @@ def patrol_words(rt, seen, told):
                if an else '異常はなかったよ。')
     if rt.get('skipped'):
         out.append(f"行けなかった所が {len(rt['skipped'])} か所あったよ。")
+    labels = list(dict.fromkeys(f['label'] for f in rt.get('found') or []))
+    if labels:
+        out.append(f"見つけた物は、{'、'.join(labels[:8])}{'など' if len(labels) > 8 else ''}。")
+    return out
+
+
+PATROL_MOVE_WORDS = {
+    'stuck_back': 'うしろへ下がって、抜け出すよ。',
+    'stuck_side': '横にずれて、抜け出すよ。',
+    'stuck_turn': '反対へ回って、抜け出すよ。',
+    'cliff_back': '段差があるから、下がるよ。',
+    'cliff_stuck': '前も後ろも段差で、動けないよ。',
+    'tilted': '車がかたむいたから、止まるよ。',
+}
+
+
+def patrol_action_words(rt, prev, b, prev_b):
+    """パトロールの自分の動き（行く所・着いた・とばした・抜け出し）と、AI HAT+ で見つけた物の言葉。prev は前に見た route。"""
+    p = prev or {}
+    out = [f'{n}は行けなかったから、とばすよ。' for n in (rt.get('skipped') or [])[len(p.get('skipped') or []):]]
+    found = (rt.get('found') or [])[len(p.get('found') or []):]
+    for where in dict.fromkeys(f['where'] for f in found):
+        labels = list(dict.fromkeys(f['label'] for f in found if f['where'] == where))
+        out.append(f"{where}で、{'と'.join(labels[:4])}を見つけたよ。")
+    if rt.get('state') != 'running':
+        return out
+    names, i = rt.get('names') or [], rt.get('index') or 0
+    name = names[i] if 0 <= i < len(names) else ''
+    stops = rt.get('stops') or []
+    home = 0 <= i < len(stops) and stops[i].get('home')
+    if name and (prev is None or i != p.get('index')):
+        out.append(f'{name}へもどるよ。' if home else f'{name}へ行くよ。')
+    elif name and rt.get('look') == 0 and p.get('look') is None and not home:
+        out.append(f'{name}に着いたよ。まわりを見るね。')
+    if b != prev_b and b in PATROL_MOVE_WORDS:
+        out.append(PATROL_MOVE_WORDS[b])
     return out
 
 
@@ -2176,7 +2212,7 @@ class Session:
         said = 0.0
         while True:
             await asyncio.sleep(CAR_TALK_POLL)
-            if not self.args.car_talk or not car_talk_on() or self.mapping:
+            if not self.args.car_talk or not car_talk_on() or self.mapping or self.patrolling:
                 prev_mode = prev_b = None
                 continue
             try:
@@ -2558,7 +2594,7 @@ class Session:
     async def patrol(self, route_id, stop):
         """顔をオレンジにして、見ているあいだ首を左右にふる。異常・5 か所ごと・終わりを話す。"""
         url, seen, told, errors, sweep, head_at = self.args.car_url, 0, 0, 0, 0, 0.0
-        banner, banner_at, lidar_told = '', 0.0, False
+        banner, banner_at, lidar_told, prev, prev_b = '', 0.0, False, None, None
         self.patrolling = True
         await self.set_face('patrol')
         try:
@@ -2568,7 +2604,9 @@ class Session:
                     await asyncio.to_thread(car_api, url, '/api/patrol', {'action': 'cancel'})
                     return
                 try:
-                    rt = (await asyncio.to_thread(car_api, url, '/api/status')).get('route') or {}
+                    d = await asyncio.to_thread(car_api, url, '/api/status')
+                    rt = d.get('route') or {}
+                    b = (d.get('autonomy') or {}).get('behavior')
                     errors = 0
                 except Exception as e:  # noqa: BLE001 - 3 回続けてだめなら止める
                     errors += 1
@@ -2583,9 +2621,10 @@ class Session:
                 if rt.get('lidar_warn') and not lidar_told:
                     await self.say('LiDAR が見えにくいよ。レンズをふいてね。')
                     lidar_told = said = True
-                for words in patrol_words(rt, seen, told):
+                for words in patrol_action_words(rt, prev, b, prev_b) + patrol_words(rt, seen, told):
                     await self.say(words)
                     said = True
+                prev, prev_b = rt, b
                 seen = len(rt.get('anomalies') or [])
                 told = len(rt.get('arrived') or []) + len(rt.get('skipped') or [])
                 if rt.get('state') != 'running':
