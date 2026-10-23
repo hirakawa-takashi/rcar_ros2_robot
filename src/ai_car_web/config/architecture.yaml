@@ -31,6 +31,7 @@ overview:
     - {state: done, text: 'Level 3: パトロール（「パトロールして」。地図の全部を 1.5 m ごとの見る所と緑の点で回り、4 方向を見て、人（YOLO）・床の物（LiDAR と地図）・新しい段差を報告する。行けない所はとばす。15 分まで。床ではまだ試していない）'}
     - {state: done, text: 'Level 3: 地図作り（「新しい地図を作る」で、北をはかってから、まだ見ていない所を自分で回って地図を作る。地図は北を上に出す。床ではまだ試していない）'}
     - {state: done, text: 'LiDAR のよごれチェック（3 秒はかって、返る点が 65% より少ないか 2.5 m より遠くが見えないと、地図作り・パトロール・探してを始めず「LiDAR のレンズをふいてください」と知らせる。走っているあいだ 30 秒続けて悪いときも知らせる）'}
+    - {state: done, text: 'ホームポジション（「ここをホームにして」で今の位置と向きを地図ごとに覚え、「ホームにもどって」で Nav2 でもどる。パトロールの最後もホームへ。床ではまだ試していない）'}
     - {state: todo, text: 'Level 3: パトロールで、ふだんの写真とくらべて、いつもとちがう所を見つける（B）'}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
@@ -766,10 +767,11 @@ api:
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
     - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
+    - {method: POST, path: /api/home, desc: 'ホームポジション {action: set|go|cancel|clear}。set は今の車の位置と向きを、使っている地図の <id>.json の home に書く。go は /nav_goal でホームの向きまでもどる（まわり道 3 回まで。ほかを回っていればやめる）。ようすは /api/status の route（kind: home）、ホームは slam.home', auth: true}
     - {method: GET, path: /api/patrol, desc: '前のパトロールの結果（新しい順 10 回） {reports: [{pid, state, arrived, skipped, anomalies: [{kind: person|object|cliff, x, y, where, text, photo}], duration_s}]}', auth: false}
     - {method: GET, path: /api/patrol/plan, desc: 'パトロールで回る所と順番だけ（走らない） {stops, line_m}', auth: false}
     - {method: GET, path: '/api/patrol/<pid>/<n>.jpg', desc: 'パトロールでとった写真', auth: false}
-    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。最後にスタートへもどる（見ない）。15 分まで。LiDAR がよごれていると始めない。ようすは /api/status の route（kind: patrol）', auth: true}
+    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。最後にホーム（なければスタート）へもどる（見ない）。15 分まで。LiDAR がよごれていると始めない。ようすは /api/status の route（kind: patrol）', auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}

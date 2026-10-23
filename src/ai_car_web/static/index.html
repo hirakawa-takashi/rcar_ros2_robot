@@ -728,6 +728,7 @@
       <tr><td class="k">段差の印</td><td class="v"><label><input type="checkbox" id="cm_edit"> 地図のクリックで置く（赤い点をクリックで消す）</label> <span id="cm_msg"></span></td></tr>
       <tr><td class="k">緑の点（場所）</td><td class="v"><label><input type="checkbox" id="pl_edit"> 地図のクリックで置く（緑の点をクリックで消す）</label> <button id="pl_here">今の車の所に置く</button> <span id="pl_msg"></span></td></tr>
       <tr><td class="k">点の一覧</td><td class="v wrap" id="pl_list">-</td></tr>
+      <tr><td class="k">ホーム</td><td class="v wrap"><button id="hm_set">ここをホームにする</button> <button id="hm_go" disabled>ホームへもどる</button> <button id="hm_clear" disabled>ホームを消す</button> <span id="hm_state">-</span> <span id="hm_msg"></span></td></tr>
       <tr><td class="k">順に回る</td><td class="v"><input id="rt_names" placeholder="例: 台所、玄関" size="18"> <button id="rt_go">順に回る</button> <button id="rt_cancel" disabled>やめる</button></td></tr>
       <tr><td class="k">回るようす</td><td class="v wrap" id="rt_state">-</td></tr>
       <tr><td class="k">地図作り</td><td class="v wrap"><button id="mp_cancel" disabled>やめる</button> <button id="mp_n_m" title="北の向きを 1° 直す（スマホのコンパスに合わせる）">北 −1°</button> <button id="mp_n_p" title="北の向きを 1° 直す（スマホのコンパスに合わせる）">北 ＋1°</button> <span id="mp_msg"></span></td></tr>
@@ -2013,6 +2014,7 @@ function drawSlam() {
     });
   }
   drawPlaces(ctx, (sl.places || []), toPx, Math.max(5, 0.08 / m.resolution * s), latestTelemetry.route);
+  if (sl.home) drawHome(ctx, sl.home, toPx, Math.max(6, 0.1 / m.resolution * s));
   drawPatrol(ctx, toPx, Math.max(5, 0.08 / m.resolution * s));
   const g = (live && nav.goal) || navPick;
   if (g) {
@@ -2066,6 +2068,24 @@ function drawPlaces(ctx, places, toPx, r, route) {
     ctx.fillText(p.name, u + r + 5, v + 4);
   });
 }
+// ホームポジション（オレンジの丸に H）
+function drawHome(ctx, h, toPx, r) {
+  const [u, v] = toPx(h.x, h.y);
+  ctx.fillStyle = '#ff9f1a';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(u, v, r, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#000';
+  ctx.font = `bold ${Math.round(r * 1.3)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('H', u, v + 1);
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+}
 const ROUTE_WORDS = {running: '回っている', done: '全部着いた', failed: '行けなくて止まった', stopped: 'やめた', timeout: '15 分たって終わった'};
 let ptPlan = null, ptKey = '';
 // パトロールの「見る所」（青い点。見終わった所はうすく）と、見つけた異常（黄色の四角）
@@ -2103,7 +2123,8 @@ function routeText(rt) {
   if (!rt) return '';
   const arrived = rt.arrived && rt.arrived.length ? ` / 着いた ${rt.arrived.join('、')}` : '';
   const next = rt.state === 'running' && rt.target ? ` / 次 ${rt.target}${rt.retries ? `（まわり道 ${rt.retries} 回目）` : ''}` : '';
-  return `${ROUTE_WORDS[rt.state] || rt.state}${next}${arrived}${rt.reason ? `（${rt.reason}）` : ''}`;
+  const word = rt.kind === 'home' && rt.state === 'done' ? 'ホームに着いた' : (ROUTE_WORDS[rt.state] || rt.state);
+  return `${word}${next}${arrived}${rt.reason ? `（${rt.reason}）` : ''}`;
 }
 let placesKey = '';
 function renderPlaces() {
@@ -2139,7 +2160,26 @@ function renderPlaces() {
   if (pk !== ptKey) { ptKey = pk; loadPatrolReports(); }
   if (pRun) document.getElementById('pt_msg').textContent = `${pt.index + 1} / ${pt.stops.length} か所目（${pt.target || ''}）・異常 ${pt.anomalies.length}`;
   document.getElementById('pl_here').disabled = !(sl && sl.pose);
+  const hm = sl && sl.home;
+  document.getElementById('hm_set').disabled = !(sl && sl.pose);
+  document.getElementById('hm_go').disabled = !hm;
+  document.getElementById('hm_clear').disabled = !hm || running;
+  document.getElementById('hm_state').textContent = hm ? `x ${fmt(hm.x)} / y ${fmt(hm.y)} / 向き ${fmt(hm.yaw_deg, 0)}°` : 'まだありません';
 }
+function homePost(body, done) {
+  const msg = document.getElementById('hm_msg');
+  return apiPost('/api/home', body).then(r => r && r.json()).then(j => {
+    msg.textContent = !j ? '' : j.ok === false ? (j.error || '失敗しました') : done + (body.action !== 'go' && !j.saved ? '（「地図を保存」で残る）' : '');
+  }).catch(() => { msg.textContent = '失敗しました'; });
+}
+document.getElementById('hm_set').addEventListener('click', () => {
+  if (latestTelemetry.slam && latestTelemetry.slam.home && !confirm('今のホームを、今の車の位置と向きに動かしますか？')) return;
+  homePost({action: 'set'}, 'ホームにしました');
+});
+document.getElementById('hm_go').addEventListener('click', () => homePost({action: 'go'}, 'ホームへもどります'));
+document.getElementById('hm_clear').addEventListener('click', () => {
+  if (confirm('ホームを消しますか？')) homePost({action: 'clear'}, 'ホームを消しました');
+});
 function placePost(body) {
   const msg = document.getElementById('pl_msg');
   return apiPost('/api/places', body).then(r => r && r.json()).then(j => {
