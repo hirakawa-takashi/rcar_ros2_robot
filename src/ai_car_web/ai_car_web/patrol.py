@@ -170,10 +170,11 @@ def _bfs(ok, row, col):
     return dist
 
 
-def frontier_goal(grid, start, clear_m=0.3, min_cells=5, min_dist_m=0.5, bad=(), bad_m=0.6):
+def frontier_goal(grid, start, clear_m=0.3, min_cells=5, min_dist_m=0.5, bad=(), bad_m=0.6, block=(), block_m=0.5):
     """地図の「はし」（車が行ける所で、まだ見ていない所のすぐ手前）のかたまりのうち、道のりがいちばん近い所。
 
     {'x', 'y', 'path_m', 'cells'} か、もうなければ None。bad の (x, y) から bad_m 以内はえらばない。
+    block の (x, y)（段差の印）から block_m 以内は通れないとみる（段差の向こうへの道もなくなる）。
     """
     cells = _cells(grid)
     res = grid['resolution']
@@ -181,6 +182,11 @@ def frontier_goal(grid, start, clear_m=0.3, min_cells=5, min_dist_m=0.5, bad=(),
     r = max(1, int(math.ceil(clear_m / res)))
     # 作り始めの地図は LiDAR の線のあいだが「見ていない」ので、はなれるのは壁だけにする（Nav2 も allow_unknown）
     ok = free & ~_dilate(cells > FREE_MAX, r)
+    if block:
+        ys, xs = np.mgrid[0:cells.shape[0], 0:cells.shape[1]]
+        for bx, by in block:
+            bc, br = _to_cell(grid, bx, by)
+            ok &= (ys - br) ** 2 + (xs - bc) ** 2 > (block_m / res) ** 2
     if not ok.any():
         return None
     col, row = _to_cell(grid, *start)

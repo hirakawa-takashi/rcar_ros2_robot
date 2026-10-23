@@ -255,6 +255,7 @@ MAP_DWELL_S = 2.0        # はしに着いたら止まって北をはかり、�
 MAP_LIMIT_S = 900.0      # 15 分でやめる（のこり 1 分でスタートにもどりはじめる）
 MAP_MAX_GOALS = 40
 MAP_CLEAR_M = 0.20       # 「はし」をえらぶとき壁からはなす [m]。0.30 だと 70 cm のドア口を通れない（車の幅 33 cm）
+MAP_CLIFF_M = 0.5        # 段差の印から、この半径の中は「はし」をえらぶ道に入れない [m]
 MAP_SPEED_PERCENT = 10.0  # 地図作りのあいだの「出力」の上限
 PATROL_LIMIT_S = 900.0    # 15 分でやめる
 PATROL_LEG_TIMEOUT_S = 120.0  # 1 か所にこの秒数で着かなければ、とばして次へ
@@ -1447,8 +1448,15 @@ class DashboardNode(Node):
         auto = self._autonomy_state() or {}
         nav = auto.get('nav') or {}
         p = r['stops'][r['index']]
-        g, sent = nav.get('goal') or {}, r.get('_goal') or {}
         waited = now - r['_sent']
+        if explore and not r.get('_returning'):
+            # 段差センサーが反応した。段差の向こうは LiDAR では床に見えるので、この「はし」はやめてほかへ
+            cliffs = len(auto.get('cliff_marks') or [])
+            if cliffs > r.get('_cliffs', 0) or (str(auto.get('behavior') or '').startswith('cliff') and waited > 3.0):
+                r['_cliffs'] = cliffs
+                self._route_fail(f'{p["name"]}の前に段差', now)
+                return
+        g, sent = nav.get('goal') or {}, r.get('_goal') or {}
         mine = (abs((g.get('x') or 0) - sent.get('x', 0)) < 0.02 and abs((g.get('y') or 0) - sent.get('y', 0)) < 0.02
                 and abs(_wrap_deg((g.get('yaw_deg') or 0) - sent.get('yaw_deg', 0))) < 1.0
                 and auto.get('alive') and (nav.get('age_s') or 0) < waited + 0.5)
@@ -1599,7 +1607,10 @@ class DashboardNode(Node):
             r['_home'] = {'name': 'スタート', 'x': round(pose['x'], 2), 'y': round(pose['y'], 2)}
         goal = None
         if len(r['stops']) < MAP_MAX_GOALS and now - r['_start'] < MAP_LIMIT_S - 60.0:
-            goal = frontier_goal(grid, (pose['x'], pose['y']), MAP_CLEAR_M, bad=r['_bad'])
+            marks = [tuple(m[:2]) for m in (self._autonomy_state() or {}).get('cliff_marks') or []]
+            r['_cliffs'] = len(marks)
+            goal = frontier_goal(grid, (pose['x'], pose['y']), MAP_CLEAR_M, bad=r['_bad'] + marks,
+                                 block=marks, block_m=MAP_CLIFF_M)
         if goal is None:
             home = r['_home']
             if first:
