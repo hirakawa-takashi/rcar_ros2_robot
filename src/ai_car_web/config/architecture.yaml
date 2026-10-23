@@ -744,7 +744,7 @@ autonomy:
 api:
   rest:
     - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
-    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam（places つき） / route / jetson_host / joy / lidar（よごれチェック: ratio・far_m・ok・bad_s））, auth: false}
+    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam（places つき） / route / jetson_host / joy / lidar（よごれチェック。ratio・far_m・ok・bad_s））, auth: false}
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーと Motor HAT の 3V3 / GND（各 6 本）の配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: POST, path: /api/imu/mag_calibrate, desc: 磁気の補正を始める（30 秒のあいだ床で 1〜2 回まわす。imu_node の /imu/mag_calibrate）, auth: true}
