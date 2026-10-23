@@ -407,8 +407,8 @@ BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend
 PC_VOICE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pc_voice.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
-# 聞きまちがい（ゲットにして・ヘッドにして・ロータルにして）も受けつける。「ゲットして」などと分けるため「に/へ」がいる
-TO_NET = re.compile(r'(?:(?:インターネット|ネット|クラウド|net)' + _SWITCH + r'|(?:ゲット|ヘッド|ネッド)[にへ]' + _SWITCH + ')', re.I)
+# 聞きまちがい（ゲット・ヘッド・レッド・ベッドにして、ロータルにして）も受けつける。「ゲットして」などと分けるため「に/へ」がいる
+TO_NET = re.compile(r'(?:(?:インターネット|ネット|クラウド|net)' + _SWITCH + r'|(?:ゲット|ヘッド|ネッド|レッド|ベッド|メット|ネッツ)[にへ]' + _SWITCH + ')', re.I)
 TO_LOCAL = re.compile(r'(?:(?:ローカル|local)' + _SWITCH + r'|(?:ロータル|ロカール|ローカン)[にへ]' + _SWITCH + ')', re.I)
 # 家の AI（ローカル）の聞き取り・返事をする所。ネット / ローカルとは別に切りかえる
 TO_MINI = re.compile(r'(?:ミニコン|ミニ・?コン|ジェットソン|jetson)' + _SWITCH, re.I)
