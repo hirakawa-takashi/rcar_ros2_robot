@@ -769,7 +769,7 @@ api:
     - {method: GET, path: /api/patrol, desc: '前のパトロールの結果（新しい順 10 回） {reports: [{pid, state, arrived, skipped, anomalies: [{kind: person|object|cliff, x, y, where, text, photo}], duration_s}]}', auth: false}
     - {method: GET, path: /api/patrol/plan, desc: 'パトロールで回る所と順番だけ（走らない） {stops, line_m}', auth: false}
     - {method: GET, path: '/api/patrol/<pid>/<n>.jpg', desc: 'パトロールでとった写真', auth: false}
-    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。15 分まで。LiDAR がよごれていると始めない。ようすは /api/status の route（kind: patrol）', auth: true}
+    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。最後にスタートへもどる（見ない）。15 分まで。LiDAR がよごれていると始めない。ようすは /api/status の route（kind: patrol）', auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}

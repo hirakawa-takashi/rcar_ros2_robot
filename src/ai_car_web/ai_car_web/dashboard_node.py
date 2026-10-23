@@ -246,7 +246,7 @@ ROUTE_RETRY_WAIT_S = 2.0  # 向かいなおす前に止まって待つ（LiDAR �
 # Nav2（ComputePathToPose）の「道がない」エラー。行き先が地図の外・ふさがっている・道がない。まわり道もない
 NAV_NO_DETOUR = {204, 206, 208}
 PATROL_SPACING_M = 1.5    # 地図をこの升に分けて、升ごとに 1 つ「見る所」を置く
-PATROL_CLEAR_M = 0.35     # 壁・不明からこれより近い所には置かない（Nav2 の inflation 0.30 m より外）
+PATROL_CLEAR_M = 0.25     # 壁・不明からこれより近い所には置かない。0.35 m では幅 70 cm のドア口・1 m の通路を通れず、となりの部屋に置かなかった
 PATROL_MAX = 25           # 見る所（緑の点をふくむ）の上限。多ければ升を大きくする
 PATROL_NEAR_GREEN_M = 0.75  # 緑の点にこれより近い「見る所」は置かない（緑の点で見る）
 MAP_NORTH_S = 10.0       # 地図作りの始めに、止まったまま北をはかる秒数
@@ -1526,7 +1526,7 @@ class DashboardNode(Node):
                 else:
                     r['_dwell_at'] = now
                 return
-            if patrol:
+            if patrol and not p.get('home'):
                 if r.get('look') is None:
                     r['look'], r['_look_yaw0'] = 0, sent.get('yaw_deg', 0.0)
                 r['_dwell_at'] = now
@@ -1776,9 +1776,11 @@ class DashboardNode(Node):
         auto = self._autonomy_state() or {}
         if not auto.get('alive') or not (auto.get('nav') or {}).get('available'):
             return {'ok': False, 'error': 'Nav2 が動いていません'}
-        stops, grid, _, err = self._patrol_stops()
+        stops, grid, pose, err = self._patrol_stops()
         if err:
             return {'ok': False, 'error': err}
+        if math.hypot(stops[-1]['x'] - pose['x'], stops[-1]['y'] - pose['y']) > 0.3:
+            stops.append({'x': round(pose['x'], 2), 'y': round(pose['y'], 2), 'name': 'スタート', 'home': True})
         pid = time.strftime('%Y%m%d-%H%M%S')
         os.makedirs(os.path.join(self.patrol_dir, pid), exist_ok=True)
         with self._lock:

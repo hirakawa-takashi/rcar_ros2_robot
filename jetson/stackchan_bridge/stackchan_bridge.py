@@ -2043,7 +2043,7 @@ class Session:
             except Exception:  # noqa: BLE001 - ラズパイが止まっていても会話は続ける
                 continue
             if rt.get('kind') == 'patrol' and rt.get('state') == 'running' and rt.get('id'):
-                log(f"パトロール（ダッシュボードから）: 見る所 {len(rt.get('stops') or [])} か所")
+                log(f"パトロール（ダッシュボードから）: 見る所 {sum(1 for q in rt.get('stops') or [] if not q.get('home'))} か所")
                 stop = self.drive_stop = threading.Event()
                 stop.follow = True  # スタックちゃんが切れても、車のパトロールは止めない（「止まって」では止める）
                 self.drive_task = asyncio.create_task(self.patrol(rt['id'], stop))
@@ -2385,7 +2385,8 @@ class Session:
         if not res.get('ok'):
             await self.say(f"パトロールできなかったよ。{res.get('error') or ''}")
             return
-        await self.say(f"パトロールするね。見る所は {len(res['route']['stops'])} か所。")
+        n = sum(1 for q in res['route']['stops'] if not q.get('home'))
+        await self.say(f"パトロールするね。見る所は {n} か所。")
         stop = self.drive_stop = threading.Event()
         self.drive_task = asyncio.create_task(self.patrol(res['route']['id'], stop))
 
