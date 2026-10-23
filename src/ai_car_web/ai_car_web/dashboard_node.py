@@ -1467,6 +1467,7 @@ class DashboardNode(Node):
         if state == 'succeeded':
             if explore:
                 r['arrived'].append(p['name'])
+                r['_seen'].append((p['x'], p['y']))
                 if r.get('_returning'):
                     self._route_end('done')
                 else:
@@ -1590,7 +1591,7 @@ class DashboardNode(Node):
                            'index': 0, 'arrived': [], 'skipped': [], 'reason': '', 'retries': 0,
                            'stamp': round(time.time(), 1), 'map': '', 'id': int(time.time() * 1000),
                            '_sent': None, '_arrived_at': None, '_start': time.monotonic(), '_bad': [],
-                           '_soft': [], '_again': False, '_home': None, '_out0': out0}
+                           '_soft': [], '_again': False, '_seen': [], '_home': None, '_out0': out0}
         self.set_drive_output(min(out0 * 100.0, MAP_SPEED_PERCENT))
         self.get_logger().info('地図作り: 北をはかってから、まだ見ていない所を回る')
         return {'ok': True, 'route': self._route_state()}
@@ -1612,12 +1613,13 @@ class DashboardNode(Node):
         if len(r['stops']) < MAP_MAX_GOALS and now - r['_start'] < MAP_LIMIT_S - 60.0:
             marks = [tuple(m[:2]) for m in (self._autonomy_state() or {}).get('cliff_marks') or []]
             r['_cliffs'] = len(marks)
-            goal = self._frontier(grid, pose, r['_bad'] + r['_soft'] + marks, marks)
+            # 着いた所に見えない所が残っても（物のかげ）、もうそこへは行かない
+            goal = self._frontier(grid, pose, r['_bad'] + r['_soft'] + r['_seen'] + marks, marks)
             if goal is None and r['_soft'] and not r['_again']:
                 # ほかに「はし」がない。とばした所（ハンガーラックの横のドア口など）へ、もう一度だけ行ってみる
                 self.get_logger().info(f'地図作り: とばした「はし」{len(r["_soft"])} か所へ、もう一度行ってみる')
                 r['_again'], r['_soft'] = True, []
-                goal = self._frontier(grid, pose, r['_bad'] + marks, marks)
+                goal = self._frontier(grid, pose, r['_bad'] + r['_seen'] + marks, marks)
         if goal is None:
             home = r['_home']
             if first:
@@ -1642,10 +1644,14 @@ class DashboardNode(Node):
                 self._route_end('failed', res.get('error') or '自動にできない')
 
     def _frontier(self, grid, pose, bad, marks):
-        """今の車の所から「はし」をえらぶ。車がせまい所（物の横）にいて道が出せないときは、スタートからえらぶ。"""
+        """今の車の所から「はし」をえらぶ。車がせまい所（物の横）にいて道が出せないときは、スタートからえらぶ。
+
+        スタートからえらぶときも、今の車のすぐ近く（さっき見えなかった所）はえらばない。
+        """
         home = self._route['_home']
-        for start in ((pose['x'], pose['y']), (home['x'], home['y'])):
-            goal = frontier_goal(grid, start, MAP_CLEAR_M, bad=bad, block=marks, block_m=MAP_CLIFF_M)
+        here = (pose['x'], pose['y'])
+        for start, near in ((here, []), ((home['x'], home['y']), [here])):
+            goal = frontier_goal(grid, start, MAP_CLEAR_M, bad=bad + near, block=marks, block_m=MAP_CLIFF_M)
             if goal is not None:
                 return goal
         return None
