@@ -401,6 +401,7 @@ def power_bits(value, names, index=False):
     return f'{"・".join(found) or "なし"}（0x{value:02X}）'
 
 
+MODE_SWITCH_TIMEOUT = 40.0  # ダッシュボードの「ネット」でつなぐのを待つ秒
 BATTERY_EVERY = 300.0  # 電池の量（%）を記録する間かく（秒）
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
 BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend.txt')
@@ -1683,6 +1684,18 @@ class OtaHandler(BaseHTTPRequestHandler):
             set_backend(want)
             with STATUS_LOCK:
                 self._send_json({'ok': True, 'backend': STATUS['backend']})
+        elif path == '/mode':
+            want = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('to', [''])[0]
+            if want not in ('net', 'local'):
+                return self._send_error(400, 'to は net か local')
+            if SESSIONS and LOOP:
+                asyncio.run_coroutine_threadsafe(SESSIONS[0].switch_mode(want), LOOP).result(MODE_SWITCH_TIMEOUT)
+            elif STATUS['mode'] != want:
+                save_mode(want)
+                log(f'ダッシュボードで {want} にしました（スタックちゃんはつながっていない）')
+            if STATUS['mode'] != want:
+                return self._send_error(502, 'ネットにつながりませんでした（ローカルのまま）')
+            self._send_json({'ok': True, 'mode': STATUS['mode']})
         elif path == '/pc_voice':
             try:
                 speaker = int(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('speaker', [''])[0])
@@ -2212,6 +2225,19 @@ class Session:
         finally:
             self.switching = False
             set_status(state=self.listen_state())
+
+    async def switch_mode(self, want):
+        """ダッシュボードの「ローカル」「ネット」ボタン。声の「ネットにして」「ローカルにして」と同じにする。"""
+        if want == 'net':
+            if STATUS['mode'] != 'net':
+                await self.to_net()
+        elif self.cloud:
+            await self.to_local(self.cloud)
+        elif STATUS['mode'] == 'net':
+            save_mode('local')
+            await self.set_face('local')
+            log('ローカルにもどりました')
+            await self.say('ローカルにもどりました。')
 
     async def close_cloud(self):
         """呼びかけ待ちのあいだはネットの会話を閉じておく（ネットは 1 分ほどだまると自分で「じゃあな」と言って切る）。"""

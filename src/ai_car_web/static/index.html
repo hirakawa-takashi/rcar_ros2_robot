@@ -510,6 +510,7 @@
   <div class="card wide">
     <h2><span id="jt_title">ミニコン（Orin Nano Super） — AI 担当</span> <span class="badge" id="jt_state">-</span>
       <span class="aiswitch nw"><button id="ai_be_jetson" title="聞き取り（whisper small）と返事（qwen2.5:3b）をミニコン（Jetson）でする。「ミニコンにして」でも切りかわる">ミニコン</button> <button id="ai_be_pc" title="聞き取り（whisper large-v3）と返事（qwen2.5:14b）をパソコン（WSL・RTX 4080 SUPER）でする。つながらないあいだはミニコン。「パソコンにして」でも切りかわる">パソコン</button></span>
+      <span class="aiswitch nw"><button id="ai_md_local" title="スタックちゃんの会話を家の AI（ローカル）でする。「ローカルにして」でも切りかわる">ローカル</button> <button id="ai_md_net" title="スタックちゃんの会話をネットの XiaoZhi でする（顔が緑）。パソコンのときは、パソコンの AI で話して新しいことだけネットで調べる。「ネットにして」でも切りかわる">ネット</button></span>
       <span id="ai_be_msg"></span></h2>
     <div class="osline" id="jt_os">-</div>
     <div class="jcols">
@@ -1549,6 +1550,7 @@ function stackTime(t) {
 }
 
 let backendBusy = false;
+let modeBusy = false;
 
 function renderBackend(r) {
   const b = r && r.backend;
@@ -1557,6 +1559,11 @@ function renderBackend(r) {
     const btn = document.getElementById(`ai_be_${k}`);
     btn.disabled = !b || backendBusy;
     btn.classList.toggle('active', !!b && b.want === k);
+  });
+  ['local', 'net'].forEach(k => {
+    const btn = document.getElementById(`ai_md_${k}`);
+    btn.disabled = !r || modeBusy;
+    btn.classList.toggle('active', !!r && (r.mode === 'net') === (k === 'net'));
   });
   const msg = document.getElementById('ai_be_msg');
   msg.innerHTML = b && b.want === 'pc' && b.active !== 'pc'
@@ -1626,6 +1633,14 @@ function renderVoiceBtns(pc) {
   apiPost(`/api/stackchan/backend?to=${k}`).then(r => r && r.json().then(j => [r, j])).then(res => {
     if (res && !res[0].ok) alert(res[1].detail || '切り替えられませんでした');
   }).finally(() => { backendBusy = false; pollStackchan(); });
+}));
+
+['local', 'net'].forEach(k => document.getElementById(`ai_md_${k}`).addEventListener('click', () => {
+  modeBusy = true;
+  renderBackend(aiStack);
+  apiPost(`/api/stackchan/mode?to=${k}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+    if (res && !res[0].ok) alert(res[1].detail || '切り替えられませんでした');
+  }).finally(() => { modeBusy = false; pollStackchan(); });
 }));
 
 function renderStackchan(r, err) {
