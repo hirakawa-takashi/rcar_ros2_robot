@@ -45,6 +45,10 @@ _DT_POWER = '/proc/device-tree/chosen/power'
 
 # 電圧低下の回数を数える最近の範囲 [秒]
 _UV_RECENT_S = 600.0
+# ラズパイの起動・このノードの起動（= ダッシュボードの再起動）から、電源を見ないあいだ [秒]（起動はむりをするので）
+_UV_BOOT_GRACE_S = 120.0
+# この回数（1 秒ごと = 約 3 秒）つづけて足りないときだけ、電圧低下として数える
+_UV_HOLD_SAMPLES = 3
 
 
 def _hailo_pci_sysfs():
@@ -267,6 +271,8 @@ class SystemMonitorNode(Node):
         self._upgrade = {'upgrade_running': None, 'upgrade_result': ''}
         self._upgrade_stamp = 0.0
         self._uv_alarm = _rpi_volt_alarm()
+        self._uv_start = time.monotonic()
+        self._uv_low = 0
         self._uv_now = False
         self._uv_count = 0
         self._uv_last = None
@@ -393,10 +399,23 @@ class SystemMonitorNode(Node):
         }
 
     def _under_voltage(self, throttled):
-        """今の電圧低下と、このノードが起動してから・最近 10 分の電圧低下の回数、最後に見た時刻。"""
-        now = (_read_text(self._uv_alarm) == '1'
-               or bool(throttled and throttled.get('under_voltage_now')))
+        """5V の不足。起動から 2 分は見ない。1 秒ごとの「今足りない」が 3 回つづいたときだけ数える。
+
+        get_throttled の「起動後にあった」印と hwmon の in0_lcrit_alarm は一度立つと消えない（起動時のむりで立つ）ので、使わない。
+        """
         t = time.time()
+        up = time.monotonic() - self._uv_start
+        try:
+            up = min(up, time.clock_gettime(time.CLOCK_BOOTTIME))
+        except (AttributeError, OSError):
+            pass
+        if throttled is not None:
+            low = bool(throttled.get('under_voltage_now'))
+        else:
+            low = _read_text(self._uv_alarm) == '1'
+        booting = up < _UV_BOOT_GRACE_S
+        self._uv_low = 0 if booting or not low else self._uv_low + 1
+        now = self._uv_low >= _UV_HOLD_SAMPLES
         if now and not self._uv_now:
             self._uv_count += 1
             self._uv_events.append(t)
@@ -407,6 +426,8 @@ class SystemMonitorNode(Node):
             self._uv_events.popleft()
         return {
             'now': now,
+            'booting': booting,
+            'boot_left_s': max(0, int(_UV_BOOT_GRACE_S - up + 0.999)),
             'count': self._uv_count,
             'recent_10min': len(self._uv_events),
             'last': self._uv_last,
