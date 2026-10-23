@@ -2523,7 +2523,7 @@ function renderCliff(c) {
   for (const side of ['front', 'rear']) {
     const s = alive && c.sensors ? c.sensors[side] : null;
     const cell = document.getElementById(side === 'front' ? 'c_front' : 'c_rear');
-    const [scls, stext] = s ? (CLIFF_BADGE[s.level] || ['', s.level]) : ['', ''];
+    const [scls, stext] = s ? (s.bump ? ['crit', '盛り上がり'] : (CLIFF_BADGE[s.level] || ['', s.level])) : ['', ''];
     cell.innerHTML = s && s.height_cm != null
       ? `${fmt(s.height_cm * 10, 0)} <span class="badge ${scls}">${esc(stext)}</span>`
       : (s && s.level !== 'unwired' ? `- <span class="badge ${scls}">${esc(stext)}</span>` : '-');
@@ -2531,7 +2531,8 @@ function renderCliff(c) {
       (s.distance_m != null ? ` 測った距離 ${fmt(s.distance_m * 1000, 0)} mm（床 ${fmt(s.floor_distance_m * 1000, 0)} mm）` : '') : '';
   }
   document.getElementById('c_th').textContent = alive && c.cliff_height_cm != null
-    ? `${fmt(-c.cliff_height_cm * 10, 0)} 以下で段差（床 0）` : '-';
+    ? `${fmt(-c.cliff_height_cm * 10, 0)} 以下` +
+      (c.bump_height_cm > 0 ? `・+${fmt(c.bump_height_cm * 10, 0)} 以上` : '') + 'で段差（床 0）' : '-';
 }
 
 function renderJoy(j) {
