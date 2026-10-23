@@ -276,6 +276,13 @@ PLACE_ADD = re.compile(r'(?:ここ|この場所|このばしょ|今の場所|今
 PLACE_ROUTE = re.compile(r'(.{1,40}?)の?(?:順番|順|じゅんばん|じゅん)(?:で|に)(?:移動|いどう|回って|まわって|行って|いって|走って|はしって)'
                          r'(?:して)?' + PLACE_TAIL)
 PLACE_GO = re.compile(r'(.{1,15}?)(?:に|へ|まで)(?:移動して|いどうして|行って|いって|向かって|むかって)' + PLACE_TAIL)
+# ホームポジション。「ここをホームにして」「ホームにもどって」
+HOME_WORD = r'(?:ホームポジション|ホーム|ほーむ|HP|hp|エイチピー)'
+HOME_SET = re.compile(r'(?:ここ|この場所|このばしょ|今の場所|今いる所|今いるところ)(?:を|お|は|が)' + HOME_WORD +
+                      r'(?:に|と|として)?(?:して|設定して|せっていして|登録して|とうろくして|覚えて|おぼえて|決めて|きめて)'
+                      + PLACE_TAIL)
+HOME_GO = re.compile(HOME_WORD + r'(?:に|へ|まで)?(?:戻って|もどって|帰って|かえって|行って|いって|移動して|いどうして|'
+                     r'向かって|むかって|戻れ|もどれ|帰れ|かえれ|戻る|もどる|帰る|かえる)' + PLACE_TAIL)
 PLACE_SPLIT = re.compile(r'(?:それから|そして|次に|つぎに|から|と|、|,|，|\s)+')
 FIND_PERIOD = 0.5
 DRIVE_LIMITS = {'m': 2.0, 'deg': 720.0, 's': 10.0}
@@ -894,6 +901,18 @@ def place_key(name):
     return ''.join(chr(ord(c) - 0x60) if 'ァ' <= c <= 'ヶ' else c for c in t).lower()
 
 
+def home_command(text):
+    """「ここをホームにして」→ 'set'、「ホームにもどって」→ 'go'。ほかは None。"""
+    t = re.sub(r'[\s。.!！?？「」、]', '', text or '')
+    if not t or len(t) > 30:
+        return None
+    if HOME_SET.fullmatch(t):
+        return 'set'
+    if HOME_GO.fullmatch(t):
+        return 'go'
+    return None
+
+
 def place_command(text):
     """聞き取りから緑の点の命令を作る。{'kind': 'place_add', 'name'} か {'kind': 'route', 'text', 'order'}。"""
     t = re.sub(r'[\s。.!！?？「」]', '', text or '')
@@ -937,11 +956,14 @@ def split_places(text, known):
 
 def route_words(rt, said, retries=0):
     """回るようすから、まだ言っていない「着いた」「まわり道」と、終わったときの 1 文を作る。"""
-    out = [f'{n}に着いたよ。' for n in (rt.get('arrived') or [])[said:]]
+    home = rt.get('kind') == 'home'
+    out = [] if home else [f'{n}に着いたよ。' for n in (rt.get('arrived') or [])[said:]]
     if rt.get('state') == 'running' and (rt.get('retries') or 0) > retries:
         out.append('ふさがっているから、まわり道をさがすね。')
     state = rt.get('state')
-    if state == 'done':
+    if state == 'done' and home:
+        out.append('ホームに着いたよ。')
+    elif state == 'done':
         out.append('全部回ったから、止まるね。')
     elif state == 'failed':
         out.append(f"{(rt.get('reason') or '行けない所があった').split('（')[0]}から、止まったよ。")
@@ -2368,6 +2390,31 @@ class Session:
         self.drive_task = asyncio.create_task(self.route(res['route']['id'], stop))
         return True
 
+    async def start_home(self, action):
+        """「ここをホームにして」（set）・「ホームにもどって」（go）。もどるあいだは「止まって」で止まる。"""
+        url = self.args.car_url
+        if action == 'go':
+            if self.drive_stop:
+                self.drive_stop.set()
+            if self.drive_task:
+                await self.drive_task
+        try:
+            res = await asyncio.to_thread(car_api, url, '/api/home', {'action': action})
+        except Exception as e:  # noqa: BLE001
+            log(f'ホームのエラー: {e}')
+            await self.say('AI-CAR につながらないよ。')
+            return
+        log(f"ホーム: {action} → {res.get('ok')} {res.get('error') or ''}")
+        if not res.get('ok'):
+            await self.say(f"{'ホームにできなかった' if action == 'set' else '動けなかった'}よ。{res.get('error') or ''}")
+            return
+        if action == 'set':
+            await self.say('ここをホームにしたよ。')
+            return
+        await self.say('ホームにもどるね。')
+        stop = self.drive_stop = threading.Event()
+        self.drive_task = asyncio.create_task(self.route(res['route']['id'], stop))
+
     async def start_patrol(self):
         """「パトロールして」。地図の全部の「見る所」と緑の点を回る。「止まって」で止まる。"""
         url = self.args.car_url
@@ -2713,6 +2760,11 @@ class Session:
             if is_patrol(self.wake.sub('', text) if self.wake else text):
                 await self.send(type='stt', text=text)
                 await self.start_patrol()
+                return
+            home = home_command(self.wake.sub('', text) if self.wake else text)
+            if home:
+                await self.send(type='stt', text=text)
+                await self.start_home(home)
                 return
             place = place_command(self.wake.sub('', text) if self.wake else text)
             if place and await self.start_place(place):

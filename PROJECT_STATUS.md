@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.24.2（2026-10-23）
+- バージョン: 1.25.0（2026-10-23）
 - 更新日: 2026/10/17
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin
@@ -24,6 +24,7 @@
   - RViz2設定（`rviz/ai_car.rviz`）: RobotModel / TF / LaserScan
 - ai_car_web
   - `dashboard_node`: FastAPI サーバー（別スレッド）+ rclpy ノード
+  - ホームポジション（v1.25.0）: `POST /api/home {action: set|go|cancel|clear}`。ダッシュボードの「ここをホームにする」かスタックちゃんに「ここをホームにして」で、今の車の位置と向きを地図ごとの `<id>.json` の `home` に保存する。「ホームへもどる」「ホームにもどって」で Nav2 でもどり、ふさがっていればまわり道（3 回まで）。パトロールの最後は、ホームがあればホームへもどる。床ではまだ試していない
   - パトロール（v1.22.0、Level 3）: `POST /api/patrol`。`patrol.py` が地図の通れる所に 1.5 m ごとの見る所を置き、緑の点といっしょに短い順に並べる。見る所ごとに 90° ずつ 4 回見て、人（YOLO）・地図になかった床の物（LiDAR）・新しい段差を `~/patrols/<日時>/report.json` と写真に残す。行けない所はとばす、15 分まで。床ではまだ試していない
   - 「プロジェクト説明」ボタンと 9 タブの全画面モーダルを追加（「3D プリント」タブは STL ダウンロード・三面図・立体図・ドラッグで回せる 3D 表示・印刷設定・組み立て手順）。`architecture.yaml` と `/api/architecture` から構成を表示し、`dashboard.yaml` の実値（秘密値はマスク）と実機の生存ノード / Topic を反映
   - Publish: `/cmd_vel_manual`（geometry_msgs/Twist、手動指令。`/cmd_vel` は `drive_mode_node` が発行）、`/drive_mode_request`、`~/status`

@@ -115,6 +115,12 @@ class MappingRequest(BaseModel):
     deg: float = 0.0
 
 
+class HomeRequest(BaseModel):
+    """ホームポジション。set は今の車の位置と向きをホームにする、go はホームへもどる、cancel はやめる、clear は消す。"""
+
+    action: str = 'go'
+
+
 class PatrolRequest(BaseModel):
     """地図の全部の「見る所」と緑の点を回って、異常（人・床の物・新しい段差）を見る（go）。cancel はやめて止まる。"""
 
@@ -295,6 +301,15 @@ def clean_places(items):
         if name and math.isfinite(x) and math.isfinite(y) and all(place_key(o['name']) != place_key(name) for o in out):
             out.append({'name': name, 'x': x, 'y': y})
     return out[:PLACE_MAX]
+
+
+def clean_home(it):
+    """保存したホームを {x, y, yaw_deg} にそろえる（おかしければ None）。"""
+    try:
+        x, y, yaw = round(float(it['x']), 2), round(float(it['y']), 2), round(float(it['yaw_deg']), 1)
+    except (KeyError, TypeError, ValueError):
+        return None
+    return {'x': x, 'y': y, 'yaw_deg': yaw} if all(map(math.isfinite, (x, y, yaw))) else None
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
@@ -652,6 +667,7 @@ class DashboardNode(Node):
         self._slam_load_pending = self.slam_load_on_start and self.slam_deserialize_client is not None
         self._marks_to_restore, self._marks_tries = [], 0
         self._places = []
+        self._home = None
         self._route = None
         self._north = None
         self._north_samples = []
@@ -835,6 +851,7 @@ class DashboardNode(Node):
             'saved': self._map_saved,
             'loaded': self._map_loaded,
             'places': self._places,
+            'home': self._home,
             'north': self._north,
         }
 
@@ -883,7 +900,8 @@ class DashboardNode(Node):
             maps.append({'id': map_id, 'name': info.get('name') or map_id,
                          'stamp': info.get('stamp'), 'pose': info.get('pose'),
                          'cliff_marks': info.get('cliff_marks') or [], 'map': info.get('map'),
-                         'places': clean_places(info.get('places')), 'north': info.get('north'),
+                         'places': clean_places(info.get('places')), 'home': clean_home(info.get('home')),
+                         'north': info.get('north'),
                          'png': os.path.exists(base + '.png'), 'photo': os.path.exists(base + '.jpg')})
         maps.sort(key=lambda m: m['stamp'] or 0, reverse=True)
         with self._lock:
@@ -935,11 +953,12 @@ class DashboardNode(Node):
             frame = self._frame if self._frame is not None and now - self._frame_stamp < 3.0 else None
             loaded = self._map_loaded
             places = list(self._places)
+            home = self._home
             north = self._north
         name = (name or '').strip()[:30] or (loaded.get('name') if loaded and loaded.get('ok') else '') \
             or time.strftime('地図 %m/%d %H:%M')
         meta.pop('rev', None)
-        info = {'name': name, 'pose': pose, 'cliff_marks': marks, 'places': places, 'north': north,
+        info = {'name': name, 'pose': pose, 'cliff_marks': marks, 'places': places, 'home': home, 'north': north,
                 'stamp': round(time.time(), 1), 'map': meta}
         if png:
             with open(base + '.png', 'wb') as f:
@@ -972,6 +991,7 @@ class DashboardNode(Node):
         name = info.get('name') or map_id
         marks = info.get('cliff_marks') or []
         places = clean_places(info.get('places'))
+        home = clean_home(info.get('home'))
 
         def done(future):
             ok = future.result() is not None
@@ -983,6 +1003,7 @@ class DashboardNode(Node):
             with self._lock:
                 if ok:
                     self._places = places
+                    self._home = home
                     self._north = info.get('north')
                     self._north_samples = []
                 self._map_loaded = {'ok': ok, 'id': map_id, 'name': name, 'pose': pose, 'marks': len(marks),
@@ -1151,6 +1172,7 @@ class DashboardNode(Node):
             self._map_loaded = {'ok': True, 'id': None, 'name': '', 'new': True, 'pose': None, 'marks': 0,
                                 'stamp': round(time.time(), 1), 'reason': ''}
             self._places = []
+            self._home = None
             self._route = None
             self._north = None
         self._north_samples = []
@@ -1264,6 +1286,7 @@ class DashboardNode(Node):
         info.pop('id', None)
         info['places'] = places
         with self._lock:
+            info['home'] = self._home
             info['north'] = self._north
         with open(base + '.json.tmp', 'w', encoding='utf-8') as f:
             json.dump(info, f, ensure_ascii=False)
@@ -1325,6 +1348,53 @@ class DashboardNode(Node):
             return {'places': [dict(p) for p in self._places],
                     'map': loaded.get('name') if loaded and loaded.get('ok') else ''}
 
+    def request_home(self, req: HomeRequest):
+        """ホームポジションを決める（set）・消す（clear）・もどる（go）・やめる（cancel）。地図ごとに保存する。"""
+        if req.action == 'set':
+            pose = self._map_pose_now()
+            if pose is None:
+                return {'ok': False, 'error': '地図の上の車の位置がまだ分かりません'}
+            home = clean_home(pose)
+            with self._lock:
+                self._home = home
+            self.get_logger().info(f'ホーム: {home}')
+            return {'ok': True, 'home': home, 'saved': self._save_places()}
+        if req.action == 'clear':
+            with self._lock:
+                self._home = None
+            return {'ok': True, 'home': None, 'saved': self._save_places()}
+        if req.action == 'cancel':
+            r = self._route
+            if r is not None and r['state'] == 'running' and r.get('kind') == 'home':
+                self._route_end('stopped', 'やめる指示')
+            return {'ok': True}
+        if req.action != 'go':
+            return {'ok': False, 'error': f'不明な指示: {req.action}'}
+        if self.nav_goal_pub is None:
+            return {'ok': False, 'error': '地図の行き先が無効です'}
+        with self._lock:
+            home = dict(self._home) if self._home else None
+        if home is None:
+            return {'ok': False, 'error': 'ホームがまだ決まっていません（「ここをホームにする」）'}
+        auto = self._autonomy_state() or {}
+        if not auto.get('alive') or not (auto.get('nav') or {}).get('available'):
+            return {'ok': False, 'error': 'Nav2 が動いていません'}
+        r = self._route
+        if r is not None and r['state'] == 'running':
+            self._route_end('stopped', 'ホームへもどる指示')
+        stop = dict(home, name='ホーム', home=True)
+        with self._lock:
+            self._route = {'state': 'running', 'kind': 'home', 'stops': [stop], 'names': ['ホーム'],
+                           'index': 0, 'arrived': [], 'reason': '', 'retries': 0, 'stamp': round(time.time(), 1),
+                           'id': int(time.time() * 1000), '_sent': None, '_arrived_at': None}
+        self.get_logger().info(f'ホームへもどる: {home}')
+        self._route_send()
+        res = self.request_drive_mode('auto')
+        if not res.get('ok'):
+            self._route_end('failed', res.get('error') or '自動にできない')
+            return {'ok': False, 'error': res.get('error') or '自動にできない'}
+        return {'ok': True, 'route': self._route_state()}
+
     def _route_state(self):
         r = self._route
         if r is None:
@@ -1376,6 +1446,8 @@ class DashboardNode(Node):
         """今の点へ go を送る。yaw を渡せば、その向き（パトロールで同じ所で向きを変える）。"""
         r = self._route
         p = r['stops'][r['index']]
+        if yaw is None and p.get('yaw_deg') is not None:
+            yaw = p['yaw_deg']
         if yaw is None:
             # 着いたときの向きは、次の点の方（最後の点は来た向き）。点ごとにその場で回りなおさない
             nxt = r['stops'][r['index'] + 1] if r['index'] + 1 < len(r['stops']) else None
@@ -1779,7 +1851,11 @@ class DashboardNode(Node):
         stops, grid, pose, err = self._patrol_stops()
         if err:
             return {'ok': False, 'error': err}
-        if math.hypot(stops[-1]['x'] - pose['x'], stops[-1]['y'] - pose['y']) > 0.3:
+        with self._lock:
+            home = dict(self._home) if self._home else None
+        if home:
+            stops.append(dict(home, name='ホーム', home=True))
+        elif math.hypot(stops[-1]['x'] - pose['x'], stops[-1]['y'] - pose['y']) > 0.3:
             stops.append({'x': round(pose['x'], 2), 'y': round(pose['y'], 2), 'name': 'スタート', 'home': True})
         pid = time.strftime('%Y%m%d-%H%M%S')
         os.makedirs(os.path.join(self.patrol_dir, pid), exist_ok=True)
@@ -2605,6 +2681,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/route', dependencies=[Depends(require_token)])
     def route(req: RouteRequest):
         return node.request_route(req)
+
+    @app.post('/api/home', dependencies=[Depends(require_token)])
+    def home(req: HomeRequest):
+        return node.request_home(req)
 
     @app.get('/api/patrol')
     def patrol_reports():
