@@ -261,6 +261,7 @@ LIDAR_WARN_S = 30.0      # 走っているあいだ、この秒数続けて悪�
 MAP_CLEAR_M = 0.20       # 「はし」をえらぶとき壁からはなす [m]。0.30 だと 70 cm のドア口を通れない（車の幅 33 cm）
 MAP_CLIFF_M = 0.5        # 段差の印から、この半径の中は「はし」をえらぶ道に入れない [m]
 MAP_SPEED_PERCENT = 10.0  # 地図作りのあいだの「出力」の上限
+MAP_HOME_SPEED_PERCENT = 20.0  # 地図作りの最後に、スタートへもどるときの「出力」
 PATROL_LIMIT_S = 900.0    # 15 分でやめる
 PATROL_LEG_TIMEOUT_S = 120.0  # 1 か所にこの秒数で着かなければ、とばして次へ
 PATROL_DWELL_S = 1.5      # 向きを変えたあと止まって待ってから写真・検出を見る（ぶれ・検出のおくれ）
@@ -1683,6 +1684,8 @@ class DashboardNode(Node):
             if math.hypot(pose['x'] - home['x'], pose['y'] - home['y']) < 0.3:
                 self._route_end('done', '')
                 return
+            if not r.get('_returning'):
+                self.set_drive_output(MAP_HOME_SPEED_PERCENT)
             r['_returning'] = True
             stop = dict(home)
         else:

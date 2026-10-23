@@ -762,7 +762,7 @@ api:
     - {method: POST, path: /api/slam/maps/load, desc: 選んだ地図を、保存したときの車の位置から始めるように読みこむ（止まっているときだけ）, auth: true}
     - {method: POST, path: /api/slam/maps/rename, desc: 保存した地図の名前を変える（/delete で消す）, auth: true}
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
-    - {method: POST, path: /api/slam/mapping, desc: '地図作り {action: go|cancel|north, deg}。go は地図を消し、10 秒止まって北をはかってから、まだ見ていない所のはしを Nav2 で回り、最後にスタートにもどる（出力 10%、15 分まで）。LiDAR がよごれていると、地図を消さずに始めない。north は北の向きを deg 度直す', auth: true}
+    - {method: POST, path: /api/slam/mapping, desc: '地図作り {action: go|cancel|north, deg}。go は地図を消し、10 秒止まって北をはかってから、まだ見ていない所のはしを Nav2 で回り、最後にスタートにもどる（出力 10%、もどるときは 20%、15 分まで）。LiDAR がよごれていると、地図を消さずに始めない。north は北の向きを deg 度直す', auth: true}
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
     - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
