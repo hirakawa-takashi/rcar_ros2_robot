@@ -303,6 +303,10 @@ sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemc
   その文を Ollama の system に足す（3 秒でつながらなければ「ダッシュボードにつながりません」と伝える）。ネットは使わない
 - ネットのとき: MCP の道具 `self.car.status` を XiaoZhi に見せ、XiaoZhi が呼んだら bridge が同じ文を返す
 
+## 運転中のふきだし
+
+- パトロール・地図作りのほかに、ラズパイの `/api/status` を 1 秒ごとに見て、画面のふきだしに「手動運転中」（手動で動かしているあいだ）・「自動運転中」・「〇〇へ移動中」（緑の点・ホーム）を出す（`drive_banner()`、声は出さない。10 秒ごとに出しなおす）。手動で 5 秒止まると「止まっています」。
+
 ## ネットとローカルの切り替え
 
 - ダッシュボードのミニコンのカードの「ローカル」「ネット」ボタン → `POST /api/stackchan/mode?to=local|net`（ラズパイ）→ `POST /mode?to=…`（この bridge）。声の「ネットにして」「ローカルにして」と同じ（`Session.switch_mode()`）。スタックちゃんがつながっていないときは `mode.txt` だけ変える。ネットにつながらなければ 502 でローカルのまま
