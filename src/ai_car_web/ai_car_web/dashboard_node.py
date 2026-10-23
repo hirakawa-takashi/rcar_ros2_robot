@@ -258,6 +258,9 @@ NAV_NO_DETOUR = {204, 206, 208}
 PATROL_SPACING_M = 1.5    # 地図をこの升に分けて、升ごとに 1 つ「見る所」を置く
 PATROL_CLEAR_M = 0.25     # 壁・不明からこれより近い所には置かない。0.35 m では幅 70 cm のドア口・1 m の通路を通れず、となりの部屋に置かなかった
 PATROL_MAX = 25           # 見る所（緑の点をふくむ）の上限。多ければ升を大きくする
+PATROL_CLIFF_M = 0.6       # 段差の印（赤い点）にこれより近い「見る所」は置かない（14 cm の所に置いて、つまった）
+HOME_YAW_TOL_DEG = 15.0     # ホームに着いて、向きがこれよりずれていたら、その場で回って合わせなおす
+HOME_ALIGN_TRIES = 2
 PATROL_NEAR_GREEN_M = 0.75  # 緑の点にこれより近い「見る所」は置かない（緑の点で見る）
 MAP_NORTH_S = 10.0       # 地図作りの始めに、止まったまま北をはかる秒数
 MAP_WAIT_S = 20.0        # そのあと地図と車の位置が来るまで待つ秒数
@@ -1505,6 +1508,19 @@ class DashboardNode(Node):
         else:
             r['_arrived_at'] = now
 
+    def _home_misaligned(self, p, r):
+        """ホームに着いたのに、向きが HOME_YAW_TOL_DEG よりずれている。その場で回るように、もう一度送る。"""
+        pose = self._map_pose_now()
+        if pose is None or p.get('yaw_deg') is None or r.get('_aligned', 0) >= HOME_ALIGN_TRIES:
+            return False
+        off = _wrap_deg(pose['yaw_deg'] - p['yaw_deg'])
+        if abs(off) <= HOME_YAW_TOL_DEG:
+            return False
+        r['_aligned'] = r.get('_aligned', 0) + 1
+        self.get_logger().info(f'ホーム: 向きが {off:.0f}° ずれているので、回って合わせなおす（{r["_aligned"]} 回目）')
+        self._route_send()
+        return True
+
     def _route_fail(self, reason, now, again=True):
         """今の点に行けない。順に回るときは止まる。パトロールは、とばして次へ。
 
@@ -1613,6 +1629,8 @@ class DashboardNode(Node):
                     r['look'], r['_look_yaw0'] = 0, sent.get('yaw_deg', 0.0)
                 r['_dwell_at'] = now
                 return
+            if p.get('home') and self._home_misaligned(p, r):
+                return
             self._route_next(now)
             return
         if state == 'canceled':
@@ -1624,6 +1642,10 @@ class DashboardNode(Node):
         if patrol and r.get('look') is not None and state in ROUTE_FAIL:
             # その場で向きを変えられなかった（壁が近いなど）。のこりの向きは見ないで次へ
             self._route_next(now)
+            return
+        if state == 'aborted' and nav.get('stuck'):
+            # 車輪が回らず、抜け出しを 3 回ためしてもだめだった。まわり道をさがしても同じなので、とばす
+            self._route_fail(f'{p["name"]}に行けない（{nav.get("reason") or "動けない"}）', now)
             return
         if state == 'aborted':
             m = re.search(r'エラー (\d+)', nav.get('reason') or '')
@@ -1812,9 +1834,10 @@ class DashboardNode(Node):
         if pose is None:
             return None, None, None, '地図の上の車の位置がまだ分かりません'
         start = (pose['x'], pose['y'])
+        marks = [tuple(m[:2]) for m in (self._autonomy_state() or {}).get('cliff_marks') or []]
         spacing = PATROL_SPACING_M
         while True:
-            pts = [q for q in coverage_points(grid, start, spacing, PATROL_CLEAR_M)
+            pts = [q for q in coverage_points(grid, start, spacing, PATROL_CLEAR_M, avoid=marks, avoid_m=PATROL_CLIFF_M)
                    if all(math.hypot(q['x'] - g['x'], q['y'] - g['y']) >= PATROL_NEAR_GREEN_M for g in greens)]
             if len(pts) + len(greens) <= PATROL_MAX or spacing > 5.0:
                 break

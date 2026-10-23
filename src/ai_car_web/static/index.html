@@ -2189,13 +2189,12 @@ function homePost(body, done) {
     msg.textContent = !j ? '' : j.ok === false ? (j.error || '失敗しました') : done + (body.action !== 'go' && !j.saved ? '（「地図を保存」で残る）' : '');
   }).catch(() => { msg.textContent = '失敗しました'; });
 }
-// 地図にばってん（×）があればその所（向きは車から × へ向かう向き）、なければ今の車の位置と向きをホームにする
+// 地図にばってん（×）があればその所、なければ今の車の位置をホームにする。向きはどちらも今の車の向き
 document.getElementById('hm_set').addEventListener('click', () => {
   const pick = navPick;
   if (latestTelemetry.slam && latestTelemetry.slam.home
       && !confirm(pick ? '今のホームを、× の所に動かしますか？' : '今のホームを、今の車の位置と向きに動かしますか？')) return;
-  const p = latestTelemetry.slam && latestTelemetry.slam.pose;
-  const body = pick ? {action: 'set', ...pick, ...(p ? {yaw_deg: navYaw(pick)} : {})} : {action: 'set'};
+  const body = pick ? {action: 'set', x: pick.x, y: pick.y} : {action: 'set'};
   homePost(body, pick ? '× の所をホームにしました' : 'ホームにしました').then(() => {
     if (!pick || navPick !== pick) return;
     navPick = null;
