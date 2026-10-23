@@ -2161,7 +2161,9 @@ function renderPlaces() {
   if (pRun) document.getElementById('pt_msg').textContent = `${pt.index + 1} / ${pt.stops.length} か所目（${pt.target || ''}）・異常 ${pt.anomalies.length}`;
   document.getElementById('pl_here').disabled = !(sl && sl.pose);
   const hm = sl && sl.home;
-  document.getElementById('hm_set').disabled = !(sl && sl.pose);
+  const hmSet = document.getElementById('hm_set');
+  hmSet.disabled = !(sl && (sl.pose || navPick));
+  hmSet.textContent = navPick ? '× の所をホームにする' : 'ここをホームにする';
   document.getElementById('hm_go').disabled = !hm;
   document.getElementById('hm_clear').disabled = !hm || running;
   document.getElementById('hm_state').textContent = hm ? `x ${fmt(hm.x)} / y ${fmt(hm.y)} / 向き ${fmt(hm.yaw_deg, 0)}°` : 'まだありません';
@@ -2172,9 +2174,20 @@ function homePost(body, done) {
     msg.textContent = !j ? '' : j.ok === false ? (j.error || '失敗しました') : done + (body.action !== 'go' && !j.saved ? '（「地図を保存」で残る）' : '');
   }).catch(() => { msg.textContent = '失敗しました'; });
 }
+// 地図にばってん（×）があればその所（向きは車から × へ向かう向き）、なければ今の車の位置と向きをホームにする
 document.getElementById('hm_set').addEventListener('click', () => {
-  if (latestTelemetry.slam && latestTelemetry.slam.home && !confirm('今のホームを、今の車の位置と向きに動かしますか？')) return;
-  homePost({action: 'set'}, 'ホームにしました');
+  const pick = navPick;
+  if (latestTelemetry.slam && latestTelemetry.slam.home
+      && !confirm(pick ? '今のホームを、× の所に動かしますか？' : '今のホームを、今の車の位置と向きに動かしますか？')) return;
+  const p = latestTelemetry.slam && latestTelemetry.slam.pose;
+  const body = pick ? {action: 'set', ...pick, ...(p ? {yaw_deg: navYaw(pick)} : {})} : {action: 'set'};
+  homePost(body, pick ? '× の所をホームにしました' : 'ホームにしました').then(() => {
+    if (!pick || navPick !== pick) return;
+    navPick = null;
+    const nav = latestTelemetry.autonomy && latestTelemetry.autonomy.nav;
+    if (nav && ['planning', 'planned'].includes(nav.state)) navPost({action: 'cancel'});
+    drawSlam();
+  });
 });
 document.getElementById('hm_go').addEventListener('click', () => homePost({action: 'go'}, 'ホームへもどります'));
 document.getElementById('hm_clear').addEventListener('click', () => {
