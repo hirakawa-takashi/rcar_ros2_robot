@@ -2031,6 +2031,23 @@ class Session:
         set_status(greet={'at': time.time(), 'names': names})
         await self.say(words)
 
+    async def patrol_follow(self):
+        """ダッシュボードから始めたパトロールも、声で始めたときと同じに画面へ「パトロール中」を出す。"""
+        url = self.args.car_url
+        while True:
+            await asyncio.sleep(CAR_TALK_POLL)
+            if self.patrolling or self.drive_task:
+                continue
+            try:
+                rt = json.loads(await asyncio.to_thread(_get, f'{url}/api/status', 2)).get('route') or {}
+            except Exception:  # noqa: BLE001 - ラズパイが止まっていても会話は続ける
+                continue
+            if rt.get('kind') == 'patrol' and rt.get('state') == 'running' and rt.get('id'):
+                log(f"パトロール（ダッシュボードから）: 見る所 {sum(1 for q in rt.get('stops') or [] if not q.get('home'))} か所")
+                stop = self.drive_stop = threading.Event()
+                stop.follow = True  # スタックちゃんが切れても、車のパトロールは止めない（「止まって」では止める）
+                self.drive_task = asyncio.create_task(self.patrol(rt['id'], stop))
+
     async def car_talk(self):
         """自動運転＆ミニコン＆ローカルのあいだ、AI-CAR の動きをしゃべる（会話のじゃまはしない）。"""
         url = self.args.car_url
@@ -2368,7 +2385,8 @@ class Session:
         if not res.get('ok'):
             await self.say(f"パトロールできなかったよ。{res.get('error') or ''}")
             return
-        await self.say(f"パトロールするね。見る所は {len(res['route']['stops'])} か所。")
+        n = sum(1 for q in res['route']['stops'] if not q.get('home'))
+        await self.say(f"パトロールするね。見る所は {n} か所。")
         stop = self.drive_stop = threading.Event()
         self.drive_task = asyncio.create_task(self.patrol(res['route']['id'], stop))
 
@@ -2819,6 +2837,7 @@ async def handler(ws, args):
     s = Session(ws, args)
     SESSIONS.append(s)
     talk = asyncio.create_task(s.car_talk())
+    follow = asyncio.create_task(s.patrol_follow())
     try:
         async for msg in ws:
             if isinstance(msg, bytes):
@@ -2836,7 +2855,10 @@ async def handler(ws, args):
     finally:
         s.cancel.set()
         talk.cancel()
-        if s.drive_stop:
+        follow.cancel()
+        if s.drive_stop and getattr(s.drive_stop, 'follow', False):
+            s.drive_task.cancel()
+        elif s.drive_stop:
             s.drive_stop.set()
         if s.keep_task:
             s.keep_task.cancel()

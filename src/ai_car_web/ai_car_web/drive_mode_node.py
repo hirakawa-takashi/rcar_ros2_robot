@@ -341,9 +341,13 @@ class DriveModeNode(Node):
             lin = self.max_linear * self._output
             ang = self.max_angular * self._output
             manual = self._mode == 'manual'
-        out.linear.x = max(-lin, min(lin, msg.linear.x))
-        out.linear.y = max(-lin, min(lin, msg.linear.y))
-        out.angular.z = max(-ang, min(ang, msg.angular.z))
+        # 前後・左右・回る速さを同じ割合で落とす（曲がりぐあいを変えない）。前後だけを落とすと、
+        # 「出力」10 % の地図作りで Nav2 の道より 5 倍きつく曲がり、せまい通路で尻を振った
+        k = min([1.0] + [lim / abs(v) for v, lim in ((msg.linear.x, lin), (msg.linear.y, lin), (msg.angular.z, ang))
+                         if abs(v) > lim])
+        out.linear.x = msg.linear.x * k
+        out.linear.y = msg.linear.y * k
+        out.angular.z = msg.angular.z * k
         guard = self._move_guard(out, manual) if self.obstacle_guard else None
         if self.cliff_guard and out.linear.x != 0.0:
             block_forward, block_backward = self._cliff_block()

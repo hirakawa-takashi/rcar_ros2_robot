@@ -762,14 +762,14 @@ api:
     - {method: POST, path: /api/slam/maps/load, desc: 選んだ地図を、保存したときの車の位置から始めるように読みこむ（止まっているときだけ）, auth: true}
     - {method: POST, path: /api/slam/maps/rename, desc: 保存した地図の名前を変える（/delete で消す）, auth: true}
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
-    - {method: POST, path: /api/slam/mapping, desc: '地図作り {action: go|cancel|north, deg}。go は地図を消し、10 秒止まって北をはかってから、まだ見ていない所のはしを Nav2 で回り、最後にスタートにもどる（出力 10%、15 分まで）。LiDAR がよごれていると、地図を消さずに始めない。north は北の向きを deg 度直す', auth: true}
+    - {method: POST, path: /api/slam/mapping, desc: '地図作り {action: go|cancel|north, deg}。go は地図を消し、10 秒止まって北をはかってから、まだ見ていない所のはしを Nav2 で回り、最後にスタートにもどる（出力 10%、もどるときは 20%、15 分まで）。LiDAR がよごれていると、地図を消さずに始めない。north は北の向きを deg 度直す', auth: true}
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
     - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
     - {method: GET, path: /api/patrol, desc: '前のパトロールの結果（新しい順 10 回） {reports: [{pid, state, arrived, skipped, anomalies: [{kind: person|object|cliff, x, y, where, text, photo}], duration_s}]}', auth: false}
     - {method: GET, path: /api/patrol/plan, desc: 'パトロールで回る所と順番だけ（走らない） {stops, line_m}', auth: false}
     - {method: GET, path: '/api/patrol/<pid>/<n>.jpg', desc: 'パトロールでとった写真', auth: false}
-    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。15 分まで。LiDAR がよごれていると始めない。ようすは /api/status の route（kind: patrol）', auth: true}
+    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。最後にスタートへもどる（見ない）。15 分まで。LiDAR がよごれていると始めない。ようすは /api/status の route（kind: patrol）', auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
