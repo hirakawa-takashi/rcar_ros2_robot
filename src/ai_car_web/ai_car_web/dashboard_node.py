@@ -116,9 +116,12 @@ class MappingRequest(BaseModel):
 
 
 class HomeRequest(BaseModel):
-    """ホームポジション。set は今の車の位置と向きをホームにする、go はホームへもどる、cancel はやめる、clear は消す。"""
+    """ホームポジション。set は今の車の位置と向き（x, y があればその所）をホームにする、go はホームへもどる、cancel はやめる、clear は消す。"""
 
     action: str = 'go'
+    x: float | None = None
+    y: float | None = None
+    yaw_deg: float | None = None
 
 
 class PatrolRequest(BaseModel):
@@ -1352,9 +1355,15 @@ class DashboardNode(Node):
         """ホームポジションを決める（set）・消す（clear）・もどる（go）・やめる（cancel）。地図ごとに保存する。"""
         if req.action == 'set':
             pose = self._map_pose_now()
+            if req.x is not None and req.y is not None:
+                # 地図のばってん（×）の所。向きは指定がなければ今の車の向き
+                yaw = req.yaw_deg if req.yaw_deg is not None else (pose or {}).get('yaw_deg', 0.0)
+                pose = {'x': req.x, 'y': req.y, 'yaw_deg': yaw}
             if pose is None:
                 return {'ok': False, 'error': '地図の上の車の位置がまだ分かりません'}
             home = clean_home(pose)
+            if home is None:
+                return {'ok': False, 'error': 'ホームの位置がおかしい'}
             with self._lock:
                 self._home = home
             self.get_logger().info(f'ホーム: {home}')

@@ -767,7 +767,7 @@ api:
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
     - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
-    - {method: POST, path: /api/home, desc: 'ホームポジション {action: set|go|cancel|clear}。set は今の車の位置と向きを、使っている地図の <id>.json の home に書く。go は /nav_goal でホームの向きまでもどる（まわり道 3 回まで。ほかを回っていればやめる）。ようすは /api/status の route（kind: home）、ホームは slam.home', auth: true}
+    - {method: POST, path: /api/home, desc: 'ホームポジション {action: set|go|cancel|clear}。set は今の車の位置と向き（x, y があればその所、yaw_deg がなければ今の車の向き）を、使っている地図の <id>.json の home に書く。go は /nav_goal でホームの向きまでもどる（まわり道 3 回まで。ほかを回っていればやめる）。ようすは /api/status の route（kind: home）、ホームは slam.home', auth: true}
     - {method: GET, path: /api/patrol, desc: '前のパトロールの結果（新しい順 10 回） {reports: [{pid, state, arrived, skipped, anomalies: [{kind: person|object|cliff, x, y, where, text, photo}], duration_s}]}', auth: false}
     - {method: GET, path: /api/patrol/plan, desc: 'パトロールで回る所と順番だけ（走らない） {stops, line_m}', auth: false}
     - {method: GET, path: '/api/patrol/<pid>/<n>.jpg', desc: 'パトロールでとった写真', auth: false}
