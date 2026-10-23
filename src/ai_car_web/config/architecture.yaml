@@ -30,6 +30,7 @@ overview:
     - {state: done, text: 'Level 2: 地図の緑の点（名前つきの場所）を順に回る（「台所、玄関の順で移動して」。いちばん短い道で、ふさがったらまわり道を 3 回までさがす。道がなければそこで止まる。床ではまだ試していない）'}
     - {state: done, text: 'Level 3: パトロール（「パトロールして」。地図の全部を 1.5 m ごとの見る所と緑の点で回り、4 方向を見て、人（YOLO）・床の物（LiDAR と地図）・新しい段差を報告する。行けない所はとばす。15 分まで。床ではまだ試していない）'}
     - {state: done, text: 'Level 3: 地図作り（「新しい地図を作る」で、北をはかってから、まだ見ていない所を自分で回って地図を作る。地図は北を上に出す。床ではまだ試していない）'}
+    - {state: done, text: 'LiDAR のよごれチェック（3 秒はかって、返る点が 65% より少ないか 2.5 m より遠くが見えないと、地図作り・パトロール・探してを始めず「LiDAR のレンズをふいてください」と知らせる。走っているあいだ 30 秒続けて悪いときも知らせる）'}
     - {state: todo, text: 'Level 3: パトロールで、ふだんの写真とくらべて、いつもとちがう所を見つける（B）'}
   stack:
     - {name: Raspberry Pi 5 8GB, role: メインボード（Ubuntu 24.04）}
@@ -743,7 +744,7 @@ autonomy:
 api:
   rest:
     - {method: GET, path: /, desc: ダッシュボード HTML, auth: false}
-    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam（places つき） / route / jetson_host / joy）, auth: false}
+    - {method: GET, path: /api/status, desc: テレメトリ一式（cmd_vel / scan / imu / system / obstacle / camera / drive_mode / autonomy / cliff / slam（places つき） / route / jetson_host / joy / lidar（よごれチェック。ratio・far_m・ok・bad_s））, auth: false}
     - {method: GET, path: /api/gpio, desc: 40 ピンヘッダーと Motor HAT の 3V3 / GND（各 6 本）の配線表, auth: false}
     - {method: GET, path: /api/motor_hat, desc: Motor HAT M1〜M4 割り付けとエンコーダーピン, auth: false}
     - {method: POST, path: /api/imu/mag_calibrate, desc: 磁気の補正を始める（30 秒のあいだ床で 1〜2 回まわす。imu_node の /imu/mag_calibrate）, auth: true}
@@ -761,14 +762,14 @@ api:
     - {method: POST, path: /api/slam/maps/load, desc: 選んだ地図を、保存したときの車の位置から始めるように読みこむ（止まっているときだけ）, auth: true}
     - {method: POST, path: /api/slam/maps/rename, desc: 保存した地図の名前を変える（/delete で消す）, auth: true}
     - {method: POST, path: /api/slam/clear, desc: SLAM の地図を消して今いる所から作り直す（slam_toolbox の reset。行き先もやめる）, auth: true}
-    - {method: POST, path: /api/slam/mapping, desc: '地図作り {action: go|cancel|north, deg}。go は地図を消し、10 秒止まって北をはかってから、まだ見ていない所のはしを Nav2 で回り、最後にスタートにもどる（出力 10%、15 分まで）。north は北の向きを deg 度直す', auth: true}
+    - {method: POST, path: /api/slam/mapping, desc: '地図作り {action: go|cancel|north, deg}。go は地図を消し、10 秒止まって北をはかってから、まだ見ていない所のはしを Nav2 で回り、最後にスタートにもどる（出力 10%、15 分まで）。LiDAR がよごれていると、地図を消さずに始めない。north は北の向きを deg 度直す', auth: true}
     - {method: GET, path: /api/places, desc: '今の地図の緑の点（名前つきの場所） {places: [{name, x, y}], map}', auth: false}
     - {method: POST, path: /api/places, desc: '緑の点 {action: add|remove|rename, name, x, y, here, new_name}。add で here なら今の車の所。保存した地図を使っていれば、その <id>.json の places に書く', auth: true}
     - {method: POST, path: /api/route, desc: '緑の点を順に回る {action: go|cancel, names}。点ごとに /nav_goal に go を流し、着いたら次へ。進めなくなったら道を考えなおしてまわり道（3 回まで）。道がない点・停止・手動でそこで止まって手動にもどる。ようすは /api/status の route（retries）', auth: true}
     - {method: GET, path: /api/patrol, desc: '前のパトロールの結果（新しい順 10 回） {reports: [{pid, state, arrived, skipped, anomalies: [{kind: person|object|cliff, x, y, where, text, photo}], duration_s}]}', auth: false}
     - {method: GET, path: /api/patrol/plan, desc: 'パトロールで回る所と順番だけ（走らない） {stops, line_m}', auth: false}
     - {method: GET, path: '/api/patrol/<pid>/<n>.jpg', desc: 'パトロールでとった写真', auth: false}
-    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。15 分まで。ようすは /api/status の route（kind: patrol）', auth: true}
+    - {method: POST, path: /api/patrol, desc: 'パトロール {action: go|cancel}。見る所ごとに /nav_goal に go、着いたら 90° ずつ 4 回向きを変えて見る。行けない所はとばす。15 分まで。LiDAR がよごれていると始めない。ようすは /api/status の route（kind: patrol）', auth: true}
     - {method: POST, path: /api/nav, desc: '地図の行き先 {action: plan|go|cancel, x, y, yaw_deg}。plan は道だけ（動かない）、go は運転モードを自動にして向かう', auth: true}
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
@@ -799,6 +800,7 @@ status:
     - 電源は PD なし（バッテリー PD 12V → DROK 5.2V → USB-A → ラズパイ）。ラズパイは 3 A の電源と見ている（usb_max_current_enable=1 で USB に 1.6 A まで）。Camera Module 3 Wide にしてからは電圧低下 0 回だが、余裕は少ない
     - 落下防止センサー（VL53L1X ×2）は前後とも配線済み（0x30 / 0x31 で距離が読める）。段差の前で本当に止まるかは、床でまだ確かめていない
     - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある
+    - LiDAR のレンズがよごれると、遠くが見えなくなる（2026-10-23、どの方向も 1.4〜1.8 m まで。1 m の通路が 36 cm に見えた。ふくと 3.8 m にもどった）。よごれチェックのしきい値（65%・2.5 m）は、2 回の数字から決めた仮の値
     - /odom の横移動は寸法からの計算値（前後は 1.8 m、旋回は 1.5 回転で床合わせ済み）
     - IMU（BNO055）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で地球の約 3 倍あり、向きは目安だけ
     - カメラと LiDAR の外部キャリブレーション未実施（同軸・同方向前提）

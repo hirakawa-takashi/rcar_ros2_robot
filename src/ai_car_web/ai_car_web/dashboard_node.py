@@ -254,6 +254,10 @@ MAP_WAIT_S = 20.0        # そのあと地図と車の位置が来るまで待�
 MAP_DWELL_S = 2.0        # はしに着いたら止まって北をはかり、次をえらぶ
 MAP_LIMIT_S = 900.0      # 15 分でやめる（のこり 1 分でスタートにもどりはじめる）
 MAP_MAX_GOALS = 40
+LIDAR_WINDOW_S = 3.0     # LiDAR のよごれチェック: この秒数のスキャンで見る
+LIDAR_MIN_RATIO = 0.65   # 返る点がこれより少ない（家の中ならほぼ全部返る）か、
+LIDAR_FAR_M = 2.5        # これより遠くが 1 点も見えないと「レンズがよごれている」とみる（よごれ 1.4〜1.8 m・きれい 3.8 m）
+LIDAR_WARN_S = 30.0      # 走っているあいだ、この秒数続けて悪いと知らせる（止めはしない）
 MAP_CLEAR_M = 0.20       # 「はし」をえらぶとき壁からはなす [m]。0.30 だと 70 cm のドア口を通れない（車の幅 33 cm）
 MAP_CLIFF_M = 0.5        # 段差の印から、この半径の中は「はし」をえらぶ道に入れない [m]
 MAP_SPEED_PERCENT = 10.0  # 地図作りのあいだの「出力」の上限
@@ -606,6 +610,8 @@ class DashboardNode(Node):
         self._last_cmd_time = 0.0
         self._cmd_active = False
         self._scan = None
+        self._lidar_hist = deque()
+        self._lidar_bad_since = None
         self._imu = None
         self._imu_tilt = (0.0, 0.0)
         self._mag = None
@@ -686,6 +692,40 @@ class DashboardNode(Node):
                 'front': self._front_distance(msg, self.scan_angle_offset),
                 'points': points,
             }
+            now = time.monotonic()
+            self._lidar_hist.append((now, len(ranges) / max(1, len(msg.ranges)), max(ranges, default=0.0)))
+            while self._lidar_hist and now - self._lidar_hist[0][0] > LIDAR_WINDOW_S:
+                self._lidar_hist.popleft()
+            h = self._lidar_health_locked(now)
+            if h['ok']:
+                self._lidar_bad_since = None
+            elif self._lidar_bad_since is None:
+                self._lidar_bad_since = now
+
+    def _lidar_health_locked(self, now=None):
+        """LiDAR の見え方（よごれチェック）。返る点の割合 [%] と、いちばん遠い点 [m]。_lock の中で呼ぶ。"""
+        now = time.monotonic() if now is None else now
+        hist = [h for h in self._lidar_hist if now - h[0] <= LIDAR_WINDOW_S]
+        if not hist:
+            return None
+        ratio = sum(h[1] for h in hist) / len(hist)
+        far = max(h[2] for h in hist)
+        bad = self._lidar_bad_since
+        return {'ratio': round(ratio * 100), 'far_m': round(far, 2),
+                'ok': ratio >= LIDAR_MIN_RATIO and far >= LIDAR_FAR_M,
+                'bad_s': round(now - bad, 1) if bad is not None else 0.0,
+                'min_ratio': round(LIDAR_MIN_RATIO * 100), 'far_need_m': LIDAR_FAR_M}
+
+    def _lidar_error(self):
+        """走り出す前のチェック。よければ ''。"""
+        with self._lock:
+            h = self._lidar_health_locked()
+        if h is None:
+            return 'LiDAR のデータが来ていません'
+        if h['ok']:
+            return ''
+        return (f"LiDAR が遠くまで見えません（返る点 {h['ratio']}%・いちばん遠い点 {h['far_m']} m）。"
+                'LiDAR のレンズ（回る所の 2 つの小さな窓）をふいてください')
 
     def _imu_cb(self, msg: Imu):
         q = msg.orientation
@@ -1405,11 +1445,23 @@ class DashboardNode(Node):
         self.get_logger().info(f'パトロール: とばす {reason}')
         self._route_advance(now)
 
+    def _lidar_watch(self, r):
+        """走っているあいだ LiDAR が LIDAR_WARN_S 秒続けて悪いと、route の lidar_warn に出す（止めはしない）。"""
+        with self._lock:
+            h = self._lidar_health_locked()
+        if h is not None and h['bad_s'] >= LIDAR_WARN_S:
+            if not r.get('lidar_warn'):
+                r['lidar_warn'] = f"LiDAR が見えにくい（{h['ratio']}%・{h['far_m']} m）。レンズをふいてください"
+                self.get_logger().warn(r['lidar_warn'])
+        elif h is not None and h['ok']:
+            r['lidar_warn'] = ''
+
     def _route_tick(self):
         r = self._route
         if r is None or r['state'] != 'running':
             return
         now = time.monotonic()
+        self._lidar_watch(r)
         patrol = r.get('kind') == 'patrol'
         explore = r.get('kind') == 'explore'
         if explore and r.get('phase') in ('north', 'wait'):
@@ -1579,6 +1631,9 @@ class DashboardNode(Node):
         r = self._route
         if r is not None and r['state'] == 'running':
             return {'ok': False, 'error': 'いま回っています。先にやめてください'}
+        err = self._lidar_error()
+        if err:
+            return {'ok': False, 'error': err}
         auto = self._autonomy_state() or {}
         if not auto.get('alive') or not (auto.get('nav') or {}).get('available'):
             return {'ok': False, 'error': 'Nav2 が動いていません'}
@@ -1712,6 +1767,9 @@ class DashboardNode(Node):
         r = self._route
         if r is not None and r['state'] == 'running':
             return {'ok': False, 'error': 'いま回っています。先にやめてください'}
+        err = self._lidar_error()
+        if err:
+            return {'ok': False, 'error': err}
         auto = self._autonomy_state() or {}
         if not auto.get('alive') or not (auto.get('nav') or {}).get('available'):
             return {'ok': False, 'error': 'Nav2 が動いていません'}
@@ -2338,6 +2396,7 @@ class DashboardNode(Node):
                     'angular_z': round(self._last_cmd.angular.z, 3),
                 },
                 'scan': self._scan,
+                'lidar': self._lidar_health_locked(),
                 'imu': self._imu,
                 'mag': self._mag,
                 'mag_status': self._mag_status_state(),

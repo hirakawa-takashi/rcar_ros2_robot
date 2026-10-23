@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.23.6（2026-10-23）
+- バージョン: 1.24.0（2026-10-23）
 - 更新日: 2026/10/17
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin
@@ -35,7 +35,7 @@
   - `imu_node`: GY-BNO055（I2C バス1、アドレス0x29）を読み取り、`/imu/data`（sensor_msgs/Imu）を20Hzでpublish。パラメータは `i2c_bus` / `i2c_address` / `frame_id` / `imu_topic` / `publish_rate` / `axis_map_config` / `axis_map_sign`（BNO055 の軸の割り当て。USB スイッチの受けの上の台では基板が x 左・y 後ろなので `0x21` / `0x04` で imu_link にそろえる）・`operation_mode`（既定 `0x07` AMG。3 つのセンサーの生の値を読み、向きは imu_node がジャイロ＋加速度の Mahony フィルターで計算する（`filter_gain`、yaw は起動時からの相対）。磁気は `/imu/mag`（sensor_msgs/MagneticField）に出し、ダッシュボードの IMU のカードに x / y / z・強さ・向きを出す。`0x08` IMU は磁気が止まる。車の上は磁気の乱れが大きく NDOF では補正が進まない）。補正が 3 になったら補正値を `calibration_file`（`~/.ros/bno055_calibration.json`）に保存し、次につないだとき書きもどす
   - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
-  - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は 3 m で固定、3 m より遠い点は描かない）として描画。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
+  - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は 3 m で固定、3 m より遠い点は描かない）として描画。「見え方」の行に、3 秒の平均で返る点の割合といちばん遠い点（例: 79%・3.8 m）を出す。65% より少ないか 2.5 m より遠くが 1 点も見えないと、赤で「レンズをふいて」（v1.24.0 のよごれチェック）。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
   - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`。`lidar_watchdog_node` が `/scan` の 3 秒途絶で rplidar を止め、respawn で起動し直させる（USB が抜けてつながり直すと、rplidar は `/scan` を出さなくなるため）。2 回続けて戻らなければ LiDAR の USB をつなぎ直す（電池の電圧低下の後に CP2102 が返事をしなくなったとき用）。4 回で USB の電気を 3 秒切って入れ直し（`ai-car-usb-power-cycle`、uhubctl、ゲームパッドも数秒切れる）、7 回でラズパイを再起動する（この起動で `/scan` が来ていて、起動から 30 分たっているときだけ）
   - カメラノード: `dashboard.launch.py` の `use_camera` で Camera Module 3 Wide の `camera_ros`（libcamera）を起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
   - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像の AI（AI HAT+ の YOLO `yolov8m.hef`、10 回/秒）で、検出枠を履歴3中2回で確認して物体名（テレビ・ボトルなど）を補助情報として付ける（表示だけ。速さには使わない）。結果は `/obstacle_status`（JSON, 5Hz）
@@ -92,6 +92,7 @@
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 - 落下防止センサー（VL53L1X ×2）は前後とも配線済み（0x30 / 0x31 で距離が読める）。段差の前で本当に止まるかは、床でまだ確かめていない
 - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある
+- LiDAR のレンズがよごれると、遠くが見えなくなる（2026-10-23、どの方向も 1.4〜1.8 m まで。1 m の通路が地図で 36 cm に見えた。レンズをふくと、返る点 約 450 → 569 / 720・3.8 m にもどった）。v1.24.0 から、地図作り・パトロール・「探して」の前に `dashboard_node` がよごれチェックをする。しきい値（65%・2.5 m）は 2 回の数字から決めた仮の値
 - IMU（BNO055、AMG モード）の加速度の補正は 0 のまま（ジャイロ 3）。傾きのずれは 1〜2°。磁気は LiDAR の下で 110〜156 µT（地球の約 3 倍）あり、磁気の向きは目安だけ
 - Jetson のケースの OLED（I2C）は、ときどき書きこみがタイムアウトする（2026/10/17 は 24 時間で 31 回）。画面が 1 回更新されないだけで、ほかのサービスには影響しない
 - Motor HAT（Adafruit DC & Stepper Motor HAT）の出力故障（2026/09/25）は、同型品（Adafruit 2348）への交換で解決した（2026/10/12、下の「テスト結果」）

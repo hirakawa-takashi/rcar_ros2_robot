@@ -986,6 +986,11 @@ def search_car(url, finder, name, stop):
     if not res.get('ok'):
         return f'{name}は、まだ覚えていないよ。' if name else 'まだ何も覚えていないよ。先に「覚えて」と言ってね。'
     try:
+        lidar = (car_api(url, '/api/status') or {}).get('lidar')
+        if lidar and not lidar.get('ok'):
+            finder_api(finder, '/search/stop', {})
+            log(f'物さがし: LiDAR が見えにくい {lidar}')
+            return 'LiDAR が遠くまで見えないから、探せないよ。LiDAR のレンズをふいてね。'
         if not (car_api(url, '/api/drive_mode', {'mode': 'auto'}) or {}).get('ok'):
             finder_api(finder, '/search/stop', {})
             return '自動走行にできなかったよ。'
@@ -2376,7 +2381,7 @@ class Session:
     async def patrol(self, route_id, stop):
         """顔をオレンジにして、見ているあいだ首を左右にふる。異常・5 か所ごと・終わりを話す。"""
         url, seen, told, errors, sweep, head_at = self.args.car_url, 0, 0, 0, 0, 0.0
-        banner, banner_at = '', 0.0
+        banner, banner_at, lidar_told = '', 0.0, False
         self.patrolling = True
         await self.set_face('patrol')
         try:
@@ -2398,6 +2403,9 @@ class Session:
                 if rt.get('id') != route_id:
                     return
                 said = False
+                if rt.get('lidar_warn') and not lidar_told:
+                    await self.say('LiDAR が見えにくいよ。レンズをふいてね。')
+                    lidar_told = said = True
                 for words in patrol_words(rt, seen, told):
                     await self.say(words)
                     said = True

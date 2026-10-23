@@ -472,6 +472,7 @@
       <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
       <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
       <tr><td class="k">最小 / 最大 [m]</td><td class="v" id="s_range">-</td></tr>
+      <tr><td class="k" title="3 秒の平均で、返る点の割合といちばん遠い点。65% より少ないか 2.5 m より遠くが見えないと、レンズのよごれとみて地図作り・パトロールを始めない">見え方</td><td class="v" id="s_health">-</td></tr>
       <tr><td class="k">表示範囲 [m]</td><td class="v" id="s_scale">-</td></tr>
     </table>
   </div>
@@ -1821,6 +1822,10 @@ function renderAll(d) {
   document.getElementById('s_front').textContent = s ? fmt(s.front) : '-';
   document.getElementById('s_range').textContent =
     s ? `${fmt(s.range_min)} / ${fmt(s.range_max)}` : '-';
+  const lh = s ? d.lidar : null;
+  const lhEl = document.getElementById('s_health');
+  lhEl.textContent = lh ? `${lh.ratio}%・${fmt(lh.far_m, 1)} m${lh.ok ? '' : '（レンズをふいて）'}` : '-';
+  lhEl.style.color = lh && !lh.ok ? '#e04b4b' : '';
   const danger = (obs && obs.danger_distance) || 0.3;
   const frontHalf = (((obs && obs.front_angle_deg) || 60) / 2) * Math.PI / 180;
   const ap = (d.autonomy && d.autonomy.params) || {};
@@ -1965,7 +1970,7 @@ function renderMapping(sl) {
     t = run ? (MAP_PHASE[rt.phase] || `${rt.target || ''}へ（着いた ${rt.arrived.length}・行けない ${rt.skipped.length}）`)
       : `${ROUTE_WORDS[rt.state] || rt.state}${rt.reason ? `（${rt.reason}）` : ''}。「地図を保存」で名前を付ける`;
   }
-  document.getElementById('mp_msg').textContent = [t, nt].filter(Boolean).join(' / ');
+  document.getElementById('mp_msg').textContent = [run && rt.lidar_warn, t, nt].filter(Boolean).join(' / ');
 }
 document.getElementById('mp_cancel').addEventListener('click', () => { apiPost('/api/slam/mapping', {action: 'cancel'}); });
 [['mp_n_m', -1], ['mp_n_p', 1]].forEach(([id, deg]) => document.getElementById(id).addEventListener('click', () => {
