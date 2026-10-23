@@ -305,6 +305,8 @@ sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemc
 
 ## ネットとローカルの切り替え
 
+- ダッシュボードのミニコンのカードの「ローカル」「ネット」ボタン → `POST /api/stackchan/mode?to=local|net`（ラズパイ）→ `POST /mode?to=…`（この bridge）。声の「ネットにして」「ローカルにして」と同じ（`Session.switch_mode()`）。スタックちゃんがつながっていないときは `mode.txt` だけ変える。ネットにつながらなければ 502 でローカルのまま
+
 スタックちゃんはいつも Jetson につなぎ、ネットのときは bridge がネットの XiaoZhi へ中継します（ファームウェアの行き先は変えない）。
 
 ```

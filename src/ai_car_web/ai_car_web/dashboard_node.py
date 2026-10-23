@@ -242,6 +242,7 @@ PI_REBOOT_DELAY = 10.0
 STACKCHAN_BRIDGE_PORT = 8003
 STACKCHAN_TIMEOUT = 2.0
 STACKCHAN_PHOTO_TIMEOUT = 20.0
+STACKCHAN_MODE_TIMEOUT = 45.0  # 「ネット」にするとき、ネットの XiaoZhi につなぐのを待つ秒
 # 名前を付けて保存した地図の id（ファイル名の元）
 SLAM_ID_RE = re.compile(r'slam_\d{8}_\d{6}')
 PLACE_MAX = 30           # 地図 1 つの緑の点（名前つきの場所）の数
@@ -2785,6 +2786,12 @@ def create_app(node: DashboardNode) -> FastAPI:
         if to not in ('jetson', 'pc'):
             raise HTTPException(status_code=400, detail='to は jetson か pc')
         return node.stackchan_json(f'/backend?to={to}', 'POST')
+
+    @app.post('/api/stackchan/mode', dependencies=[Depends(require_token)])
+    def stackchan_mode(to: str):
+        if to not in ('local', 'net'):
+            raise HTTPException(status_code=400, detail='to は local か net')
+        return node.stackchan_json(f'/mode?to={to}', 'POST', STACKCHAN_MODE_TIMEOUT)
 
     @app.post('/api/stackchan/pc_voice', dependencies=[Depends(require_token)])
     def stackchan_pc_voice(speaker: int):
