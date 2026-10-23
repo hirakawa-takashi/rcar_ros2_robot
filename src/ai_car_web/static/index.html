@@ -2130,8 +2130,8 @@ function renderPlaces() {
   const pRun = !!pt && pt.state === 'running';
   document.getElementById('pt_go').disabled = running;
   document.getElementById('pt_cancel').disabled = !pRun;
-  const key = pt ? `${pt.id}/${pt.state}` : '-';
-  if (key !== ptKey) { ptKey = key; loadPatrolReports(); }
+  const pk = pt ? `${pt.id}/${pt.state}` : '-';
+  if (pk !== ptKey) { ptKey = pk; loadPatrolReports(); }
   if (pRun) document.getElementById('pt_msg').textContent = `${pt.index + 1} / ${pt.stops.length} か所目（${pt.target || ''}）・異常 ${pt.anomalies.length}`;
   document.getElementById('pl_here').disabled = !(sl && sl.pose);
 }
