@@ -4,8 +4,8 @@
 センサーは真下から進行方向へ tilt_deg（45°）傾けて床を測る。測った距離を
 センサーごとの平らな床の距離（{front,rear}_floor_distance_m）とくらべて、床を 0 cm と
 した高さ height_cm = (床の距離 - 測った距離) × cos(tilt) に直す。床より
-cliff_height_cm 以上低い（または床が見えない）状態が confirm_count 回続くと
-「段差」と判定し、/cliff_status（std_msgs/String の JSON）で配信する。
+cliff_height_cm 以上低い（または床が見えない）か、bump_height_cm 以上高い（盛り上がり）
+状態が confirm_count 回続くと「段差」と判定し、/cliff_status（std_msgs/String の JSON）で配信する。
 
 VL53L1X の初期アドレス 0x29 は BNO055 と同じなので、XSHUT を GPIO で
 1 台ずつ上げ、起動直後に 0x30 / 0x31 などへ変更してから測定する。
@@ -203,6 +203,7 @@ class CliffNode(Node):
         self.declare_parameter('front_floor_distance_m', 0.087)
         self.declare_parameter('rear_floor_distance_m', 0.082)
         self.declare_parameter('cliff_height_cm', 2.0)
+        self.declare_parameter('bump_height_cm', 2.0)
         self.declare_parameter('invalid_is_cliff', True)
         self.declare_parameter('confirm_count', 2)
         self.declare_parameter('stale_timeout', 0.5)
@@ -223,6 +224,7 @@ class CliffNode(Node):
         self.floor_distance = {
             s: float(self.get_parameter(f'{s}_floor_distance_m').value) for s in SENSORS}
         self.cliff_height_cm = float(self.get_parameter('cliff_height_cm').value)
+        self.bump_height_cm = float(self.get_parameter('bump_height_cm').value)
         self.invalid_is_cliff = bool(self.get_parameter('invalid_is_cliff').value)
         self.confirm_count = max(1, int(self.get_parameter('confirm_count').value))
         self.stale_timeout = float(self.get_parameter('stale_timeout').value)
@@ -337,8 +339,10 @@ class CliffNode(Node):
     def _update(self, side: str, valid: bool, distance: float):
         st = self._state[side]
         height_cm = (self.floor_distance[side] - distance) * self.cos_tilt * 100.0
-        over = (height_cm <= -self.cliff_height_cm) if valid else self.invalid_is_cliff
+        bump = valid and self.bump_height_cm > 0 and height_cm >= self.bump_height_cm
+        over = (height_cm <= -self.cliff_height_cm or bump) if valid else self.invalid_is_cliff
         st['over_count'] = st['over_count'] + 1 if over else 0
+        st['bump'] = bump
         st['valid'] = valid
         st['distance_m'] = round(distance, 3) if valid else None
         st['height_cm'] = round(height_cm, 1) if valid else None
@@ -372,6 +376,7 @@ class CliffNode(Node):
                 'height_cm': st['height_cm'] if level in ('floor', 'cliff') else None,
                 'floor_distance_m': self.floor_distance[side],
                 'valid': st['valid'] if level in ('floor', 'cliff') else False,
+                'bump': level == 'cliff' and bool(st.get('bump')),
             }
         cliff = [s for s in SENSORS if sensors[s]['level'] == 'cliff']
         if not self.wired:
@@ -380,7 +385,8 @@ class CliffNode(Node):
             level, reason = 'unknown', self._error or '接続待ち'
         elif cliff:
             level = 'cliff'
-            reason = '・'.join(LABELS[s] for s in cliff) + 'に段差'
+            reason = '・'.join(
+                LABELS[s] + ('に盛り上がり' if sensors[s]['bump'] else 'に段差') for s in cliff)
         else:
             level, reason = 'floor', '床あり'
             unwired = [LABELS[s] for s in SENSORS if s not in self.active]
@@ -396,6 +402,7 @@ class CliffNode(Node):
             'block_backward': sensors['rear']['level'] == 'cliff',
             'tilt_deg': self.tilt_deg,
             'cliff_height_cm': self.cliff_height_cm,
+            'bump_height_cm': self.bump_height_cm,
             'sensors': sensors,
         }
 

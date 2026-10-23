@@ -338,6 +338,7 @@ cliff_node:
     front_floor_distance_m: 0.087  # 前の平らな床までの距離（2026/10/17、付け直したあと 20 秒の実測 0.082〜0.091・中央 0.087）
     rear_floor_distance_m: 0.082   # 後の平らな床までの距離（同 0.077〜0.087・中央 0.082）
     cliff_height_cm: 2.0         # 床よりこれ以上低ければ段差（-2.0 cm 以下）
+    bump_height_cm: 2.0          # 床よりこれ以上高い（盛り上がり）も段差（+2.0 cm 以上、0 で見ない）。低いしきいは通る
     invalid_is_cliff: true   # 床が見えない（測定無効）も段差とみなす
     confirm_count: 2         # 連続でこの回数超えたら段差
     stale_timeout: 0.5       # 測定値がこの秒数来なければ再接続
