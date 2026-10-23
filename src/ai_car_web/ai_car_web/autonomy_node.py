@@ -8,6 +8,7 @@
 向きを変えずに横へずれて（linear.y）まん中を通る。減速に入ったら空いている側を 1 回だけ決め、
 近づくほど強くその側へ曲がる（止まってから回る前に、向きを変えはじめる）。
 動く指令を出しているのに stuck_sec 秒、LiDAR の距離も向き（/odom の yaw）も変わらなければ
+（その場で回る指令のときは、向きだけで見る）
 「動けない」とみて、下がる → 横にずれる → 反対へ回る、で抜け出す（unstick_max 回まで）。
 /nav_goal（JSON: {"action": "plan" | "go" | "cancel", "x", "y", "yaw_deg"}、map 座標）で行き先を受けると、
 plan は Nav2 の compute_path_to_pose で道だけを考え（車は動かない）、go は navigate_to_pose で行き先へ向かう（Level 2）。
@@ -1244,6 +1245,7 @@ class AutonomyNode(Node):
     def _watch_progress(self, now, cmd: Twist):
         """動く指令なのに距離も向きも変わらないあいだが stuck_sec 秒（Nav2 なら nav_stuck_sec 秒）つづいたら、抜け出しを始める。"""
         moving = (abs(cmd.linear.x) > 0.01 or abs(cmd.linear.y) > 0.01 or abs(cmd.angular.z) > 0.05)
+        rotate_only = abs(cmd.linear.x) <= 0.01 and abs(cmd.linear.y) <= 0.01
         with self._lock:
             s = self._sectors
             pose = self._pose if now - self._pose_stamp <= self.odom_timeout else None
@@ -1257,8 +1259,10 @@ class AutonomyNode(Node):
         yaw = pose[2] if pose else None
         ref = self._progress
         if ref is None or ref.get('nav') != nav:
-            self._progress = {'since': now, 'snap': snap, 'yaw': yaw, 'pose': pose, 'nav': nav}
+            self._progress = {'since': now, 'snap': snap, 'yaw': yaw, 'pose': pose, 'nav': nav,
+                              'rotate_only': rotate_only}
             return
+        ref['rotate_only'] = ref.get('rotate_only', True) and rotate_only
         if now - ref['since'] < (self.nav_stuck_sec if nav else self.stuck_sec):
             return
         if nav:
@@ -1268,7 +1272,11 @@ class AutonomyNode(Node):
             moved = max([abs(snap[k] - ref['snap'][k]) for k in keys
                          if snap[k] is not None and ref['snap'][k] is not None] or [float('inf')])
         turned = abs(_wrap(yaw - ref['yaw'])) if yaw is not None and ref['yaw'] is not None else 0.0
-        self._progress = {'since': now, 'snap': snap, 'yaw': yaw, 'pose': pose, 'nav': nav}
+        if ref['rotate_only'] and yaw is not None and ref['yaw'] is not None:
+            # その場で回るだけのときは、向き（IMU）だけで見る。車輪が空回りすると、車輪で数えた位置は動いてしまう
+            moved = 0.0
+        self._progress = {'since': now, 'snap': snap, 'yaw': yaw, 'pose': pose, 'nav': nav,
+                          'rotate_only': rotate_only}
         if moved >= self.stuck_move or turned >= self.stuck_turn:
             return
         # 抜け出しのあと unstick_window 秒、動けないことがなければ数えなおす（10 秒おきに動けないときも数がたまるように）
