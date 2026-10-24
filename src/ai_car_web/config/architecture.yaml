@@ -184,6 +184,7 @@ hardware:
           - はんだ付けのあと、DROK・Motor HAT にはつながずに、テスターで VBUS と CC1・CC2・GND がつながっていない（ピーと鳴らない）ことを確かめる
           - 次に、PD トリガーケーブルの先をテスターで測り、スイッチ ON で約 12V、OFF で 0V になれば合格。そのあと DROK → ラズパイ、Motor HAT の順につなぐ
           - いまの LOYELEY スイッチ 2 個は外す。電池 2 個分で、スイッチ 2 個・基板 4 枚・C-C ケーブル 2 本
+          - 基板 4 枚とスイッチ 2 個は、3D プリントの「CC スイッチの箱」（cc_holder）に瞬間接着剤で留める。USB-C の口は Pi の側、ボタンはカバーの右の壁の切り欠きに出る
 
 print3d:
   dir: hardware/3d/battery_lidar_mount
@@ -270,21 +271,32 @@ print3d:
         - 右側面の充電口（72 × 33 mm）から、カバーを付けたままバッテリーの USB-C に差せる
         - 前面にカメラの切り欠き（Camera Module 3 Wide の下。幅 40 mm で、壁の下の端から 40.4 mm まで（レンズの中心は 28.1 mm）。その上は壁）、後ろの壁の下に線の出口の切り欠き（24 × 10 mm）、Pi の上に六角の通気口、左の壁に Pi 5 の電源ボタンを押す穴（18 × 11 mm）、上面に「AI-CAR」の文字
         - LiDAR の右隣に、上のバッテリーの残量表示の窓（17 × 16 mm。ほぼ真上から見る）
-        - 右の壁の Pi の横に、USB スイッチ 2 個のボタンとランプの窓（29 × 16 mm が上下 2 つ）。カバーを付けたまま指で押せる
+        - 右の壁の Pi の横に、CC スイッチ 2 個のボタンの切り欠き（幅 9.6 mm、下の端から高さ 30.3 mm まで。Y 59〜68.6 と 76.2〜85.8 mm）。下が開いているので、カバーを真上から被せられ、スイッチの白い箱の面はカバーの外の面とそろう。上に「Pi」「M」の文字
         - 手で触る縁（外側の角と稜線、壁の下端、充電口のふち）は 1 mm の面取り
-      mount: 工具不要。フックの後ろは、左が天板の後ろの端から 54 mm（電源ボタンの穴をよける）、右が 72 mm（USB スイッチの窓をよける）。前は左右とも前の端から 30 mm。右前のフック（充電口の下）は固定の爪なので、右側を先に斜めに入れて掛け、左側を押し下げると左の 2 個と右後ろのフックが外へたわんで天板の端の裏に掛かる。外すときは左の指かけを外へ引いて左側から持ち上げる
-    - id: sw_holder
-      label: USB スイッチの受け
-      file: sw_holder.stl
+      mount: 工具不要。フックの後ろは、左が天板の後ろの端から 54 mm（電源ボタンの穴をよける）、右が 44 mm（CC スイッチの切り欠きをよける）。前は左右とも前の端から 30 mm。右前のフック（充電口の下）は固定の爪なので、右側を先に斜めに入れて掛け、左側を押し下げると左の 2 個と右後ろのフックが外へたわんで天板の端の裏に掛かる。外すときは左の指かけを外へ引いて左側から持ち上げる
+    - id: cc_holder
+      label: CC スイッチの箱 + IMU の台
+      file: cc_holder.stl
       qty: 1
       color: '#e07b00'
       material: PLA / PETG
-      orient: 背中を下（STL の向きのまま）。サポート不要
+      orient: 床を下（STL の向きのまま）。サポート不要
       holds:
-        - LOYELEY の USB-C スイッチ（47.2 × 17.4 × 13.5 mm）×2 を、Pi の右に横にねかせて上下 2 段。受けはできるだけ後ろへ寄せ、カバーの後ろの壁とのあいだを 15 mm 空けて線を曲げる所にした（前にバッテリーの USB の線を通す）。下がバッテリー → DROK（ラズパイ）、上がバッテリー → Motor HAT（モーター）
-        - ボタンはカバーの右の壁の窓から押せる（ボタンの先は壁の内側から 1 mm 手前）
-        - 前後の端の壁に、線を通す幅 8 mm の切り欠き。床の下は天板から 9 mm 空けて、右の端に沿う線を通す
-      mount: 天板の右側の 2 穴（X 145 / Y 90 mm はラズパイ台の腕の上で、前へ伸ばした腕で届く。X 143 / Y 11 mm は後ろのバンパーの腕の上）に、長い M4（前は 7.3 mm、後ろは 3.3 mm 長く）で共締め
+        - PENGLIN の USB-C 基板（21.8 × 12.6 × 1.5 mm、実測）4 枚を立てて、10.5 mm おきに前後にならべる。後ろから Pi の A（電池から）・B（PD トリガーへ）、モーターの A・B。上から差しこみ、下の辺は床のみぞ、後ろの辺は壁のみぞに入る。USB-C の口は Pi の側（-X）
+        - 6 ピンのロック付きスイッチ（白い箱 5.8 × 5.8 × 5.2 mm、実測）2 個を、前の面の受けに入れる。ボタンはカバーの右の壁の切り欠きから出る（後ろが Pi、前がモーター）
+        - 基板とスイッチは瞬間接着剤で留める。プラグを差す力はみぞの前の土手、抜く力は後ろの壁で受ける。上が開いているので、上からはんだ付けできる
+        - 後ろの柱の上に IMU の台（今までと同じ位置・形）
+      mount: 天板の右側の 2 穴（X 145 / Y 90 mm と X 143 / Y 11 mm）に、今の長い M4 で共締め。床の下に筒（cc_spacer、前 6 mm・後ろ 2 mm）を入れる
+    - id: cc_spacer
+      label: CC スイッチの箱の下の筒
+      file: cc_spacer.stl
+      qty: 1
+      color: '#e07b00'
+      material: PLA / PETG
+      orient: STL の向きのまま（高さ 6 mm と 2 mm の 2 個）。サポート不要
+      holds:
+        - 外径 9 mm・内径 4.6 mm。6 mm の方はラズパイ台の腕（X 145 / Y 90 mm）、2 mm の方は後ろのバンパーの腕（X 143 / Y 11 mm）の上に置き、M4 を通す
+      mount: CC スイッチの箱の床の下
     - id: test_stand
       label: 試験台（車輪を浮かせる台）
       file: test_stand.stl
@@ -322,7 +334,7 @@ print3d:
         - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
-        - {part: sw_holder, rotate_y: 90, translate: [134.9, 0, 0]}
+        - {part: cc_holder, translate: [0, 0, 9]}
         - {part: wheels}
         - {part: motors}
         - {part: holders}
@@ -336,7 +348,7 @@ print3d:
         - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
-        - {part: sw_holder, rotate_y: 90, translate: [134.9, 0, 0]}
+        - {part: cc_holder, translate: [0, 0, 9]}
         - {part: wheels}
         - {part: motors}
         - {part: holders}
@@ -351,7 +363,7 @@ print3d:
         - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
         - {part: bumper, flip_z: true, translate: [0, 0, 7]}
         - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
-        - {part: sw_holder, rotate_y: 90, translate: [134.9, 0, 0]}
+        - {part: cc_holder, translate: [0, 0, 9]}
         - {part: wheels}
         - {part: motors}
         - {part: holders}
@@ -389,8 +401,9 @@ print3d:
   gallery:
     - {file: assembly.png, label: 組み立てイメージ}
     - {file: cover_assembly.png, label: 上面カバーを付けた状態}
-    - {file: cover_right.png, label: カバーの右側面（充電口と USB スイッチの窓）}
-    - {file: usb_switch.png, label: USB スイッチ 2 個の受け（Pi の右、カバーなし）}
+    - {file: cover_right.png, label: カバーの右側面（CC スイッチの切り欠き）}
+    - {file: cc_switch.png, label: CC スイッチの箱（右うしろから、カバーなし）}
+    - {file: cc_switch_back.png, label: CC スイッチの箱の USB-C の口（Pi の側から。灰色は差したプラグ）}
     - {file: cover_rear.png, label: カバーの後ろ（通気口と下の線の出口）}
     - {file: cover_hook.png, label: カバーのフック（天板の端の裏に掛かる）}
     - {file: battery_display.png, label: バッテリーの残量表示の窓（右後ろ上から）}
