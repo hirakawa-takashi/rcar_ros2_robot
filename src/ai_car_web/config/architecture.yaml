@@ -480,6 +480,9 @@ nodes:
       - {name: accel_limit, ref: motor_driver_node.accel_limit, unit: 1/s, desc: 4 輪の出力を上げるとき 1 秒に変えてよい量（加速）}
       - {name: decel_limit, ref: motor_driver_node.decel_limit, unit: 1/s, desc: 4 輪の出力を下げるとき 1 秒に変えてよい量（減速）}
       - {name: rotate_min_duty, ref: motor_driver_node.rotate_min_duty, unit: '', desc: その場で回るとき足す出力（これより弱いと回り出さない）}
+      - {name: rotate_boost_max, ref: motor_driver_node.rotate_boost_max, unit: '', desc: その場で回れない（IMU で遅い）とき足す出力の上限（1 秒に rotate_boost_rate ずつ上げる）}
+      - {name: rotate_boost_rate, ref: motor_driver_node.rotate_boost_rate, unit: 1/s, desc: 回れないとき足す出力を 1 秒に上げる量}
+      - {name: rotate_boost_ratio, ref: motor_driver_node.rotate_boost_ratio, unit: '', desc: IMU の回る速さが指令のこの倍より遅いと「回れない」}
       - {name: heading_hold, ref: motor_driver_node.heading_hold, unit: '', desc: 旋回の指令が 0 で動くあいだ、IMU の向きを動き始めの向きに保つ}
       - {name: heading_kp, ref: motor_driver_node.heading_kp, unit: (rad/s)/rad, desc: 向きのずれに対する旋回の強さ}
       - {name: heading_max_correction, ref: motor_driver_node.heading_max_correction, unit: rad/s, desc: 向きを保つために足す旋回の上限}

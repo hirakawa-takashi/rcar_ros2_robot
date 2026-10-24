@@ -103,6 +103,11 @@ motor_driver_node:
     decel_limit: 1.5
     # その場で回るとき足す出力。出力 4 % では回らなかった（6 % から回る。比例の線は 2.9 % で 0）
     rotate_min_duty: 0.03
+    # その場で回る指令なのに IMU で指令の 0.3 倍より遅い（じゅうたんで回れない）あいだ、足す出力を 1 秒に 0.1 ずつ 0.3 まで上げる。
+    # 回れたら下げる（指令より速ければ 1 秒に 1.0、0.3 倍〜1 倍なら 0.2）
+    rotate_boost_rate: 0.1
+    rotate_boost_max: 0.3
+    rotate_boost_ratio: 0.3
     # 旋回の指令が 0 で前後・左右に動くあいだ、IMU の向きを動き始めの向きに保つ（まっすぐ進む）
     heading_hold: true
     imu_topic: "/imu/data"

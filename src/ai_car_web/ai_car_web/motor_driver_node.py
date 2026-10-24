@@ -138,6 +138,11 @@ class MotorDriverNode(Node):
         self.declare_parameter('decel_limit', 1.5)
         # その場で回るとき足す出力（これより弱いとモーターが回り出さない）
         self.declare_parameter('rotate_min_duty', 0.03)
+        # その場で回る指令なのに IMU で回る速さが指令の rotate_boost_ratio 倍より遅いあいだ、
+        # 足す出力を 1 秒に rotate_boost_rate ずつ、rotate_boost_max まで上げる（じゅうたんなど）
+        self.declare_parameter('rotate_boost_rate', 0.1)
+        self.declare_parameter('rotate_boost_max', 0.3)
+        self.declare_parameter('rotate_boost_ratio', 0.3)
         # 旋回の指令が 0 で動くあいだ、IMU の向きを保つ
         self.declare_parameter('heading_hold', True)
         self.declare_parameter('imu_topic', '/imu/data')
@@ -171,6 +176,9 @@ class MotorDriverNode(Node):
         self.accel_limit = float(self.get_parameter('accel_limit').value)
         self.decel_limit = float(self.get_parameter('decel_limit').value)
         self.rotate_min_duty = float(self.get_parameter('rotate_min_duty').value)
+        self.boost_rate = float(self.get_parameter('rotate_boost_rate').value)
+        self.boost_max = float(self.get_parameter('rotate_boost_max').value)
+        self.boost_ratio = float(self.get_parameter('rotate_boost_ratio').value)
         self.heading_hold = bool(self.get_parameter('heading_hold').value)
         self.heading_kp = float(self.get_parameter('heading_kp').value)
         self.heading_kd = float(self.get_parameter('heading_kd').value)
@@ -188,6 +196,8 @@ class MotorDriverNode(Node):
         self._imu_time = 0.0
         self._hold_target = None
         self._correction = 0.0
+        self._boost = 0.0
+        self._boost_time = None
         self._written = {}
         self._out = {}
         self._out_time = None
@@ -264,16 +274,36 @@ class MotorDriverNode(Node):
                                   self.heading_kp, self.heading_kd, self.heading_limit,
                                   self.heading_deadband)
 
+    def _update_boost(self, rotate_only: bool, wz: float):
+        """その場で回れないとき（IMU の速さが遅い）に足す出力 _boost を上げ、回れたら下げる。"""
+        now = time.monotonic()
+        dt = 0.0 if self._boost_time is None else min(0.2, now - self._boost_time)
+        self._boost_time = now
+        imu_ok = self._yaw is not None and now - self._imu_time <= self.imu_timeout
+        if not (rotate_only and imu_ok and abs(wz) > 1e-3):
+            self._boost = 0.0
+            return
+        rate = self._yaw_rate * math.copysign(1.0, wz)
+        if rate >= abs(wz):
+            self._boost = max(0.0, self._boost - 1.0 * dt)
+        elif rate >= self.boost_ratio * abs(wz):
+            self._boost = max(0.0, self._boost - 0.2 * dt)
+        else:
+            self._boost = min(self.boost_max, self._boost + self.boost_rate * dt)
+
     def _targets(self) -> dict:
         if time.monotonic() - self._cmd_time > self.timeout:
             self._hold_target = None
             self._correction = 0.0
+            self._boost = 0.0
             return {m['wheel']: 0.0 for m in self.motors}
         vx, vy, wz = self._twist
         self._correction = self._update_heading(vx, vy, wz)
         w = (wz + self._correction) / self.max_angular if self.max_angular > 0 else 0.0
-        if abs(vx) <= 1e-3 and abs(vy) <= 1e-3 and abs(w) > 1e-4:
-            w += math.copysign(self.rotate_min_duty, w)
+        rotate_only = abs(vx) <= 1e-3 and abs(vy) <= 1e-3 and abs(w) > 1e-4
+        self._update_boost(rotate_only, wz)
+        if rotate_only:
+            w += math.copysign(self.rotate_min_duty + self._boost, w)
         cmd = mecanum(
             vx / self.max_linear if self.max_linear > 0 else 0.0,
             vy / self.max_linear if self.max_linear > 0 else 0.0,
@@ -340,6 +370,7 @@ class MotorDriverNode(Node):
                 if holding else None,
                 'correction': round(self._correction, 3),
             },
+            'rotate_boost': round(self._boost, 3),
         }, ensure_ascii=False)
         self.status_pub.publish(msg)
 
