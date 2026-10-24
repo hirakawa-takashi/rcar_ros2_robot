@@ -8,9 +8,10 @@
 //       openscad -D 'part="cam_mount"' -o cam_mount.stl battery_lidar_mount.scad（カメラの板。裏を下にした向き）
 //       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
 //       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
-//       openscad -D 'part="sw_holder"' -o sw_holder.stl battery_lidar_mount.scad（USB スイッチ 2 個の受け、背中を下にした向き）
+//       openscad -D 'part="cc_holder"' -o cc_holder.stl battery_lidar_mount.scad（CC スイッチの箱と IMU の台、床を下にした向き）
+//       openscad -D 'part="cc_spacer"' -o cc_spacer.stl battery_lidar_mount.scad（CC スイッチの箱の下に入れる筒 2 個）
 
-part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "sw_holder" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "cc_holder" | "cc_spacer" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
 
@@ -521,7 +522,7 @@ module pi_base() {
     }
 }
 
-// USB スイッチの受けの上に立てる IMU の台（受けといっしょに印刷）。基板はピンを下にして -X 側（ピンヘッダーの側）から横に差しこみ、
+// CC スイッチの箱の後ろの柱の上に立てる IMU の台（箱といっしょに印刷）。基板はピンを下にして -X 側（ピンヘッダーの側）から横に差しこみ、
 // +X 側の縁をつめの下に入れる。ピンヘッダーとジャンパー線の差しこみは -X 側へ開けた溝に下がる
 module imu_mast() {
     ix = imu_board[0] + 0.6;
@@ -752,18 +753,18 @@ cov_skirt_z = 11;         // 前後の壁の下端。バンパー上面（7 mm�
 cov_ch = 6;               // 上面の角の面取り
 cov_edge = 1;             // 手で触る縁（外側の角、下端、充電口）の面取り
 cov_rear = [38.4, 18];    // 後ろの斜面: 後ろの壁の上端の高さ、斜面が上面に届く Y（外側）
-cov_hook_y = [[54, plate_l - 30], [72, plate_l - 30]];  // フックの位置（[左, 右]。左の後ろは Pi の電源ボタンの穴をよけて天板の後ろの端から 54 mm、右の後ろは USB スイッチの窓をよけて 72 mm、前は前の端から 30 mm）
+cov_hook_y = [[54, plate_l - 30], [44, plate_l - 30]];  // フックの位置（[左, 右]。左の後ろは Pi の電源ボタンの穴をよけて天板の後ろの端から 54 mm、右の後ろは CC スイッチの切り欠きをよけて 44 mm、前は前の端から 30 mm）
 cov_hook_w = 12;
 cov_hook_root = 28;       // フックの付け根の高さ（ここから下がたわむ）
 cov_hook_lip = 2;         // 天板の裏にかかる深さ
 // 天板の上面に載せる受け（[左, 右]）。フックの両隣と中央
-cov_stop_y = [[42, 66, 100, 158, 182], [60, 84, 100, 158, 182]];
+cov_stop_y = [[42, 66, 100, 158, 182], [30, 92, 100, 158, 182]];  // 右は CC スイッチの切り欠き（Y 59〜86）をよける
 cov_cam_cut = [20, 40.4, 3];         // 前の壁のカメラの切り欠き: レンズの中心から左右の幅、上の端の高さ（画角の上の線より上）、角の丸み
 cov_rear_cut = [66, 90, 21, 3];       // 後ろの壁の下の切り欠き: X0, X1, 上の端の高さ, 角の丸み
 cov_chg = [113, 185, 5, 38];         // 右側面の充電口（Y0, Y1, Z0, Z1）: バッテリーのポート側の端
 cov_vent = [9, 79, 28, 72];          // Pi の上の六角の通気口の範囲
 
-// ---- USB スイッチ（LOYELEY USB-C、ケーブルの途中の箱）2 個の受け。Pi の右、カバーの右の壁の内側に横にねかせて上下 2 段 ----
+// ---- IMU の台の位置（もとの USB スイッチ（LOYELEY）の受けの寸法から決まる。受けは CC スイッチの箱に置きかえた）----
 sw_body = [47.2, 17.4, 13.5];  // 箱の長さ（Y）・幅（Z）・厚さ（X）（実測）
 sw_btn = [13, 3];              // ボタンの太さ・出っぱり（実測。箱の長さの真ん中と仮定）
 sw_clr = 0.3;
@@ -782,8 +783,46 @@ sw_zc = [for (i = [0, 1]) sw_floor[1] + i * (sw_pocket + sw_wall) + sw_pocket / 
 sw_top = sw_floor[1] + 2 * sw_pocket + 2 * sw_wall;
 sw_holes = [[pi_mount_holes[3], pi_base_t], [pi_mount_holes[1], flange_t + bump_t]];  // 共締めする天板の穴（台の腕の上、後ろのバンパーの腕の上）
 sw_cb = [8.5, 3.2];            // M4 のネジ頭の座ぐり（太さ・深さ）
-sw_win = [sw_y0 + sw_body[0] / 2 - 11.6, sw_y0 + sw_body[0] / 2 + 17.4, 16];  // カバーの窓の Y の範囲（ランプの側を前へ長く）と高さ
-sw_win_r = 4;
+
+// ---- CC スイッチの箱（USB スイッチの受けの代わり）----
+// PENGLIN の USB-C 基板 4 枚を立てて Y にならべ、USB-C の口は -X（Pi の側）へ、6 ピンのロック付きスイッチ 2 個のボタンは +X（カバーの右の壁の切り欠き）へ出す。
+// 基板とスイッチは瞬間接着剤で留める。プラグを差す力はみぞの前の土手、抜く力は後ろの壁で受ける。
+// 箱のローカル座標: x = 幅（組み立てでは +Y）、y = 奥行き（0 が前の面 = 天板の右の端、+ が -X）、z = 高さ
+cc_pb = [1.5, 12.6, 21.8];   // 基板の厚さ・長さ（USB-C の口から反対の端まで）・幅（立てた高さ）（実測）
+cc_sh = [3.4, 7.4, 9.0];     // USB-C の金具の厚さ・長さ・幅（仮）
+cc_sh_out = 1.0;             // 金具が基板の端から出る長さ（仮）
+cc_sw = [5.8, 5.2, 5.8];     // スイッチの白い箱の幅・奥行き（ボタンの向き）・高さ（実測）
+cc_btn = [3.0, 2.0];         // ボタンの太さ・出っぱり（仮）
+cc_legs = [4.0, 3.5, 5.0];   // スイッチの足の範囲の幅・長さ・高さ（仮）
+cc_wall = 1.6;
+cc_bwall = 2.0;              // 後ろの壁（USB-C の口の側）
+cc_floor_t = 2.4;
+cc_gdep = 1.2;               // 床のみぞの深さ
+cc_clr = 0.3;
+cc_pitch = 10.5;             // 基板の間隔（プラグ 6.5 mm のあいだに 4 mm）
+cc_m = 6;                    // 箱の外側から端の基板まで
+cc_n = 4;
+cc_W = 2 * cc_m + cc_pitch * (cc_n - 1);
+cc_fwd = cov_clr + cov_t;    // スイッチの受けを箱の前の面から出す長さ（白い箱の面がカバーの外の面とそろう）
+cc_lip = 1.2;                // スイッチの受けのまわりと後ろの縁
+cc_pk = cc_sw[1] + cc_clr + cc_lip;
+cc_gap = 8;                  // スイッチの足と基板のあいだ（線をはんだ付けする所）
+cc_yb0 = -cc_fwd + cc_pk + cc_legs[1] + cc_gap;  // 基板の前の端
+cc_yb1 = cc_yb0 + cc_pb[1];
+cc_D = cc_yb1 + cc_bwall - cc_sh_out;            // 基板の端は後ろの壁に 1 mm 入り、金具の面が壁の外の面とそろう
+cc_zb0 = cc_floor_t - cc_gdep;
+cc_H = cc_zb0 + cc_pb[2] + 1;
+cc_zc = cc_zb0 + cc_pb[2] / 2;                   // USB-C とスイッチの中心の高さ（ローカル）
+cc_bx = [for (i = [0 : cc_n - 1]) cc_m + cc_pitch * i];  // 基板（後ろから Pi の A・B、モーターの A・B）
+cc_swx = [cc_m + cc_pitch / 2, 28.5];            // スイッチ（Pi、モーター）。モーターは前の M4 の座ぐりをよけて少し後ろ
+cc_x1 = plate_w;             // 箱の前の面（カバーの壁の内側から 0.3 mm）
+cc_y0 = 52.5;                // 箱の後ろの端（IMU の台の前）
+cc_z0 = sw_floor[1];         // 箱の底（床の上面）
+cc_sw_y = [for (x = cc_swx) cc_y0 + x];
+cc_sw_z = cc_z0 + cc_zc;
+cc_pk_top = cc_sw_z + cc_sw[2] / 2 + cc_clr + cc_lip;  // スイッチの受けの上の端
+cc_slot = cc_sw[0] + 2 * (cc_clr + cc_lip) + 0.8;      // カバーの切り欠きの幅
+cc_spacer = [9, 4.6];        // 天板の穴の上に入れる筒の外径・内径
 
 cov_ox0 = -cov_clr - cov_t;
 cov_ox1 = plate_w + cov_clr + cov_t;
@@ -897,11 +936,11 @@ module cover() {
             y = cov_vent[2] + j * 5.2;
             if (x <= cov_vent[1] && y <= cov_vent[3]) translate([x, y, cov_top - 1]) cylinder(r = 2.4, h = cov_t + 2, $fn = 6);
         }
-        // USB スイッチのボタンとランプの窓（右の壁、2 段）
-        for (z = sw_zc) {
-            translate([plate_w - 1, 0, 0]) rotate([0, 90, 0]) linear_extrude(cov_t + cov_clr + 2) sw_win_2d(z);
-            hull() for (d = [[cov_ox1 - cov_edge, 0], [cov_ox1 + 0.01, cov_edge + 0.01]])
-                translate([d[0], 0, 0]) rotate([0, 90, 0]) linear_extrude(0.01) offset(delta = d[1]) sw_win_2d(z);
+        // CC スイッチのボタンの切り欠き（右の壁。下の端から開いているので、カバーを真上から被せられる）と文字
+        for (i = [0, 1]) {
+            translate([plate_w - 1, cc_sw_y[i] - cc_slot / 2, -plate_t - 5]) cube([cov_t + cov_clr + 3, cc_slot, cc_pk_top + 0.6 + plate_t + 5]);
+            translate([cov_ox1 - 0.6, cc_sw_y[i], cc_pk_top + 4.5]) rotate([90, 0, 90]) linear_extrude(1)
+                text(i == 0 ? "Pi" : "M", size = 4, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
         }
         // Pi の電源ボタン（左の壁）
         let (y0 = pi_cy - pi_board[1] / 2 + pi_btn_y[0], y1 = pi_cy - pi_board[1] / 2 + pi_btn_y[1],
@@ -922,46 +961,78 @@ module cover_wall_cut(y0, y1, x0, x1, z1, r) {
     }
 }
 
-// rotate([0, 90, 0]) で X に向ける 2D の窓（-Z が 2D の X）
-module sw_win_2d(z) {
-    translate([-z - sw_win[2] / 2, sw_win[0]]) offset(r = sw_win_r) offset(delta = -sw_win_r) square([sw_win[2], sw_win[1] - sw_win[0]]);
-}
-
-module sw_holder() {
-    xb = sw_x0 - sw_clr - sw_wall;
-    y0 = sw_y0 - sw_clr - sw_end;
-    y1 = sw_y0 + sw_body[0] + sw_clr + sw_end;
+// CC スイッチの箱（ローカル座標）
+module cc_box() {
     difference() {
         union() {
-            // 背中
-            translate([xb, y0, sw_floor[0]]) cube([sw_wall, y1 - y0, sw_top - sw_floor[0]]);
-            // 床（ネジ頭の分厚い）・中の棚・上の棚
-            translate([xb, y0, sw_floor[0]]) cube([sw_shelf_x1 - xb, y1 - y0, sw_floor[1] - sw_floor[0]]);
-            for (i = [1, 2]) translate([xb, y0, sw_floor[1] + i * sw_pocket + (i - 1) * sw_wall]) cube([sw_shelf_x1 - xb, y1 - y0, sw_wall]);
-            // 前後の端の壁
-            for (y = [y0, y1 - sw_end]) translate([xb, y, sw_floor[0]]) cube([sw_shelf_x1 - xb, sw_end, sw_top - sw_floor[0]]);
-            // 受けの外の穴まで伸ばす腕（床と同じ高さ）
-            for (h = sw_holes) let(ya = min(h[0][1] - 5.5, y0), yb = max(h[0][1] + 5.5, y1))
-                translate([xb, ya, sw_floor[0]]) cube([h[0][0] + 5.5 - xb, yb - ya, sw_floor[1] - sw_floor[0]]);
-            // 天板の穴の上の足（背中の面まで伸ばして、背中を下にして印刷できるようにする）
-            for (h = sw_holes) translate([xb, h[0][1] - 5.5, h[1]]) cube([h[0][0] + 5.5 - xb, 11, sw_floor[0] - h[1] + 0.01]);
+            cube([cc_W, cc_D, cc_floor_t]);
+            for (x = [0, cc_W - cc_wall]) translate([x, 0, 0]) cube([cc_wall, cc_D, cc_H]);
+            translate([0, cc_D - cc_bwall, 0]) cube([cc_W, cc_bwall, cc_H]);
+            cube([cc_W, cc_wall, cc_H]);
+            // スイッチの受け（前へ出して、下は床の下面まで伸ばす）
+            for (x = cc_swx) translate([x - cc_sw[0] / 2 - cc_clr - cc_lip, -cc_fwd, -(cc_z0 - sw_floor[0])])
+                cube([cc_sw[0] + 2 * (cc_clr + cc_lip), cc_pk, cc_pk_top - sw_floor[0]]);
+            // 基板の下の辺のみぞの両側の土手（前の端はプラグを差す力を受ける壁）
+            for (x = cc_bx) translate([x - cc_pb[0] / 2 - cc_clr - 1.2, cc_yb0 - 1.2, 0])
+                cube([cc_pb[0] + 2 * cc_clr + 2.4, cc_D - cc_yb0 + 1.2, cc_floor_t + 1.5]);
         }
-        // 線の出口（カバーの側へ開いた切り欠き）
-        for (z = sw_zc, y = [y0 - 1, y1 - sw_end - 1]) translate([sw_x0 + sw_body[2] / 2 - sw_slot / 2, y, z - sw_slot / 2]) cube([20, sw_end + 2, sw_slot]);
-        // M4 の通し穴と座ぐり
+        for (x = cc_bx) {
+            // 床と後ろの壁のみぞ
+            translate([x - cc_pb[0] / 2 - cc_clr, cc_yb0, cc_zb0]) cube([cc_pb[0] + 2 * cc_clr, cc_pb[1] + cc_clr, cc_H]);
+            // USB-C の金具の切れこみ（上が開いていて、基板を上から差しこむ）
+            translate([x - (cc_sh[0] + 0.8) / 2, cc_D - cc_bwall - 1, cc_zc - cc_sh[2] / 2 - cc_clr]) cube([cc_sh[0] + 0.8, cc_bwall + 2, cc_H]);
+        }
+        for (x = cc_swx) {
+            translate([x - cc_sw[0] / 2 - cc_clr, -cc_fwd - 1, cc_zc - cc_sw[2] / 2 - cc_clr]) cube([cc_sw[0] + 2 * cc_clr, cc_sw[1] + cc_clr + 1, cc_sw[2] + 2 * cc_clr]);
+            translate([x - cc_legs[0] / 2 - 0.3, -cc_fwd + cc_sw[1], cc_zc - cc_legs[2] / 2 - 0.3]) cube([cc_legs[0] + 0.6, cc_lip + cc_clr + 1, cc_legs[2] + 0.6]);
+        }
+        for (i = [0 : cc_n - 1]) translate([cc_bx[i], cc_D - 0.6, 3.6]) rotate([90, 0, 180]) linear_extrude(1)
+            text(i % 2 == 0 ? "IN" : "OUT", size = 2.2, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+    }
+}
+
+// CC スイッチの箱 + 床 + IMU の台（1 個で印刷）。床は天板から 9〜13.5 mm で、下を線が通る。天板の右の 2 穴で共締め
+module cc_holder() {
+    hx0 = sw_x0 - sw_clr - sw_wall;
+    hx1 = imu_c[0] + (imu_board[0] + 0.6) / 2 + imu_wall;
+    hy0 = imu_c[1] - (imu_board[1] + 0.6) / 2 - imu_wall;
+    ry0 = sw_holes[1][0][1] - 5.5;
+    difference() {
+        union() {
+            translate([cc_x1 - cc_D, cc_y0, sw_floor[0]]) cube([cc_D, cc_W, sw_floor[1] - sw_floor[0]]);
+            translate([hx0, ry0, sw_floor[0]]) cube([hx1 - hx0, cc_y0 - ry0 + 0.01, sw_floor[1] - sw_floor[0]]);
+            translate([cc_x1, cc_y0, cc_z0]) rotate([0, 0, 90]) cc_box();
+            // IMU の台の柱（床から、もとの受けの上の端まで）
+            translate([hx0, hy0, sw_floor[1] - 0.01]) cube([hx1 - hx0, cc_y0 - hy0 + 0.01, sw_top - sw_floor[1] + 0.02]);
+        }
+        // M4 の通し穴と座ぐり（座ぐりの上は、ドライバーを通すため上まで抜く）
         for (h = sw_holes) translate([h[0][0], h[0][1], 0]) {
-            translate([0, 0, h[1] - 1]) cylinder(d = mount_hole_d, h = sw_floor[1]);
-            translate([0, 0, sw_floor[1] - sw_cb[1]]) cylinder(d = sw_cb[0], h = sw_cb[1] + 1);
+            translate([0, 0, sw_floor[0] - 1]) cylinder(d = mount_hole_d, h = sw_floor[1]);
+            translate([0, 0, sw_floor[1] - sw_cb[1]]) cylinder(d = sw_cb[0], h = cc_H + 5);
         }
     }
     imu_mast();
 }
 
-module sw_ghost() {
-    for (z = sw_zc) {
-        color("black") translate([sw_x0, sw_y0, z - sw_body[1] / 2]) cube([sw_body[2], sw_body[0], sw_body[1]]);
-        color("dimgray") translate([sw_x1, sw_y0 + sw_body[0] / 2, z]) rotate([0, 90, 0]) cylinder(d = sw_btn[0], h = sw_btn[1]);
-        color("blue") translate([sw_x1, sw_y0 + sw_body[0] / 2 + 15, z]) rotate([0, 90, 0]) cylinder(d = 2, h = 0.3);
+// 床の下と天板の穴のあいだに入れる筒（前はラズパイ台の腕の上 6 mm、後ろはバンパーの腕の上 2 mm）
+module cc_spacer_at(i) {
+    difference() {
+        cylinder(d = cc_spacer[0], h = sw_floor[0] - sw_holes[i][1]);
+        translate([0, 0, -1]) cylinder(d = cc_spacer[1], h = 20);
+    }
+}
+
+module cc_ghost(plugs = true) {
+    translate([cc_x1, cc_y0, cc_z0]) rotate([0, 0, 90]) {
+        for (i = [0 : cc_n - 1]) {
+            color(i < 2 ? "red" : "orangered") translate([cc_bx[i] - cc_pb[0] / 2, cc_yb0, cc_zb0]) cube(cc_pb);
+            color("silver") translate([cc_bx[i] - cc_sh[0] / 2, cc_yb1 + cc_sh_out - cc_sh[1], cc_zc - cc_sh[2] / 2]) cube(cc_sh);
+            if (plugs) color("dimgray") translate([cc_bx[i] - 3.25, cc_D + 0.5, cc_zc - 6.25]) cube([6.5, 20, 12.5]);  // 差したプラグ（厚さ 6.5 mm、実測）
+        }
+        for (x = cc_swx) {
+            color("white") translate([x - cc_sw[0] / 2, -cc_fwd, cc_zc - cc_sw[2] / 2]) cube(cc_sw);
+            color("lightgray") translate([x - cc_btn[0] / 2, -cc_fwd - cc_btn[1], cc_zc - cc_btn[0] / 2]) cube([cc_btn[0], cc_btn[1], cc_btn[0]]);
+        }
     }
 }
 
@@ -973,7 +1044,8 @@ else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]
 else if (part == "cover") translate([0, cov_oy0 + cov_oy1, cov_oz]) rotate([180, 0, 0]) cover();
 else if (part == "cover_asm") cover();
 else if (part == "none") {}   // ほかの .scad から include して部品どうしの重なりを調べるとき
-else if (part == "sw_holder") translate([0, 0, -(sw_x0 - sw_clr - sw_wall)]) rotate([0, -90, 0]) sw_holder();
+else if (part == "cc_holder") translate([0, 0, -sw_floor[0]]) cc_holder();
+else if (part == "cc_spacer") for (i = [0, 1]) translate([i * 14, 0, 0]) cc_spacer_at(i);
 else {
     plate();
     color("royalblue") box();
@@ -988,8 +1060,9 @@ else {
     if (show_cables) cable_ghost();
     color("dimgray") both_bumpers();
     tof_ghost();
-    color("darkorange") sw_holder();
-    sw_ghost();
+    color("darkorange") cc_holder();
+    color("darkorange") for (i = [0, 1]) translate([sw_holes[i][0][0], sw_holes[i][0][1], sw_holes[i][1]]) cc_spacer_at(i);
+    cc_ghost();
     if (show_cover) color("#3c4452") cover();
 }
 

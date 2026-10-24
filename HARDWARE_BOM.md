@@ -21,7 +21,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 | 10 | **バッテリー（CIO SMARTCOBY Pro SLIM 35W）** ×2 | 10000mAh、USB-C PD（12V 出力）。3D プリントの箱に 2 個重ねて収納 | USB-C PD 12V → DROK 降圧コンバーター / Motor HAT |
 | 10a | **DROK 降圧コンバーター**（B09JKHD3SH） | DC 9〜36V → 5.2V / 5A、USB-A 出力。基板 63×27 mm | 12V 入力（DC ジャック / 端子）→ USB-A → Pi 5 USB-C |
 | 10b | **落下防止センサー（Dovhmoh VL53L1X）** ×2 | ToF 測距、3〜5V。前後バンパーに真下から進行方向へ 45° 傾けて取付。I²C 初期アドレス 0x29（BNO055 と重なるため、`cliff_node` が XSHUT を 1 台ずつ上げて前 0x30 / 後 0x31 に変更）。**配線済み**（後ろ・前とも 2026/10/17。付け直したあと（同じ日）、床の上で前 0.087 m・後ろ 0.082 m（20 秒の中央）を読める。平らな床の目安は 0.095 m）。配線色は VIN 白・GND 黄（エンコーダーの電源と同じ）・SCL 灰・SDA 青・XSHUT 緑、GPIO1 はつながない。VIN・GND は前後とも Motor HAT (3V3 power / Ground)、XSHUT は前 pin 11 / 後 pin 13、SDA / SCL は pin 3 / 5 を共有 | I²C バス 1 ＋ XSHUT GPIO17 / GPIO27 |
-| 10c | **USB スイッチ（LOYELEY、USB-C、ON/OFF ランプ付き、28 cm）** ×2 | 箱 47.2 × 17.4 × 13.5 mm、ボタン Ø13・高さ 3 mm。下が DROK（ラズパイ）、上が Motor HAT（モーター）の電源の線につける。Pi の右に横 2 段（`hardware/3d` の `sw_holder.stl`）、カバーの右の壁の窓から押す | バッテリー USB-C → スイッチ → DROK / Motor HAT |
+| 10c | **USB スイッチ（LOYELEY、USB-C、ON/OFF ランプ付き、28 cm）** ×2 | 箱 47.2 × 17.4 × 13.5 mm、ボタン Ø13・高さ 3 mm。下が DROK（ラズパイ）、上が Motor HAT（モーター）の電源の線につける。Pi の右に横 2 段、カバーの右の壁の窓から押す。CC スイッチの回路に置きかえる予定で、`hardware/3d` の受けは `cc_holder.stl`（CC スイッチの箱）に変えた | バッテリー USB-C → スイッチ → DROK / Motor HAT |
 | 11 | **配線ケーブル一式** | 接続用 | — |
 | 12 | **シャーシ（ロボット車体）** | 機械構造。カバー・バッテリー箱・センサーの台などは 3D プリント（`hardware/3d/`） | — |
 
