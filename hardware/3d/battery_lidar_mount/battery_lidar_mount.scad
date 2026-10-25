@@ -789,7 +789,8 @@ sw_cb = [8.5, 3.2];            // M4 のネジ頭の座ぐり（太さ・深さ�
 // 基板とスイッチは瞬間接着剤で留める。プラグを差す力はみぞの前の土手、抜く力は後ろの壁で受ける。
 // 箱のローカル座標: x = 幅（組み立てでは +Y）、y = 奥行き（0 が前の面 = 天板の右の端、+ が -X）、z = 高さ
 cc_pb = [1.5, 12.6, 21.8];   // 基板の厚さ・長さ（USB-C の口から反対の端まで）・幅（立てた高さ）（実測）
-cc_sh = [3.4, 7.4, 9.0];     // USB-C の金具の厚さ・長さ・幅（仮）
+cc_sh = [3.2, 7.4, 9.0];     // USB-C の金具の厚さ（実測）・長さ・幅（仮）
+cc_sh_dx = cc_pb[0] / 2 + cc_sh[0] / 2;  // 金具は基板の片側（ローカル +x = 車の前）の面にのる（実測）。金具の中心の基板の中心からのずれ
 cc_sh_out = 1.0;             // 金具が基板の端から出る長さ（仮）
 cc_sw = [5.8, 5.2, 5.8];     // スイッチの白い箱の幅・奥行き（ボタンの向き）・高さ（実測）
 cc_btn = [3.0, 2.0];         // ボタンの太さ・出っぱり（仮）
@@ -823,6 +824,8 @@ cc_sw_z = cc_z0 + cc_zc;
 cc_pk_top = cc_sw_z + cc_sw[2] / 2 + cc_clr + cc_lip;  // スイッチの受けの上の端
 cc_slot = cc_sw[0] + 2 * (cc_clr + cc_lip) + 0.8;      // カバーの切り欠きの幅
 cc_spacer = [9, 4.6];        // 天板の穴の上に入れる筒の外径・内径
+cc_plug = [7.3, 13.2];       // 後ろの壁のプラグの穴（幅・高さ）。プラグの太い所が壁に当たらず、金具が奥まで入る
+cc_imu_wire = 8;             // IMU の線のみぞを、もとの受けの上の端から下へ伸ばす長さ
 
 cov_ox0 = -cov_clr - cov_t;
 cov_ox1 = plate_w + cov_clr + cov_t;
@@ -980,7 +983,9 @@ module cc_box() {
             // 床と後ろの壁のみぞ
             translate([x - cc_pb[0] / 2 - cc_clr, cc_yb0, cc_zb0]) cube([cc_pb[0] + 2 * cc_clr, cc_pb[1] + cc_clr, cc_H]);
             // USB-C の金具の切れこみ（上が開いていて、基板を上から差しこむ）
-            translate([x - (cc_sh[0] + 0.8) / 2, cc_D - cc_bwall - 1, cc_zc - cc_sh[2] / 2 - cc_clr]) cube([cc_sh[0] + 0.8, cc_bwall + 2, cc_H]);
+            translate([x + cc_sh_dx - (cc_sh[0] + 0.8) / 2, cc_D - cc_bwall - 1, cc_zc - cc_sh[2] / 2 - cc_clr]) cube([cc_sh[0] + 0.8, cc_bwall + 2, cc_H]);
+            // プラグの穴（壁の厚さ全部）
+            translate([x + cc_sh_dx - cc_plug[0] / 2, cc_D - cc_bwall - 0.01, cc_zc - cc_plug[1] / 2]) cube([cc_plug[0], cc_bwall + 1, cc_plug[1]]);
         }
         for (x = cc_swx) {
             translate([x - cc_sw[0] / 2 - cc_clr, -cc_fwd - 1, cc_zc - cc_sw[2] / 2 - cc_clr]) cube([cc_sw[0] + 2 * cc_clr, cc_sw[1] + cc_clr + 1, cc_sw[2] + 2 * cc_clr]);
@@ -1005,6 +1010,9 @@ module cc_holder() {
             // IMU の台の柱（床から、もとの受けの上の端まで）
             translate([hx0, hy0, sw_floor[1] - 0.01]) cube([hx1 - hx0, cc_y0 - hy0 + 0.01, sw_top - sw_floor[1] + 0.02]);
         }
+        // IMU の線のみぞを下へ伸ばす（-X の側へ開いている）
+        translate([hx0 - 1, imu_c[1] - (imu_board[1] + 0.6) / 2, sw_top - cc_imu_wire])
+            cube([imu_c[0] - imu_board[0] / 2 + imu_hdr + 0.6 - hx0 + 1, imu_board[1] + 0.6, cc_imu_wire + 0.2]);
         // M4 の通し穴と座ぐり（座ぐりの上は、ドライバーを通すため上まで抜く）
         for (h = sw_holes) translate([h[0][0], h[0][1], 0]) {
             translate([0, 0, sw_floor[0] - 1]) cylinder(d = mount_hole_d, h = sw_floor[1]);
@@ -1026,8 +1034,8 @@ module cc_ghost(plugs = true) {
     translate([cc_x1, cc_y0, cc_z0]) rotate([0, 0, 90]) {
         for (i = [0 : cc_n - 1]) {
             color(i < 2 ? "red" : "orangered") translate([cc_bx[i] - cc_pb[0] / 2, cc_yb0, cc_zb0]) cube(cc_pb);
-            color("silver") translate([cc_bx[i] - cc_sh[0] / 2, cc_yb1 + cc_sh_out - cc_sh[1], cc_zc - cc_sh[2] / 2]) cube(cc_sh);
-            if (plugs) color("dimgray") translate([cc_bx[i] - 3.25, cc_D + 0.5, cc_zc - 6.25]) cube([6.5, 20, 12.5]);  // 差したプラグ（厚さ 6.5 mm、実測）
+            color("silver") translate([cc_bx[i] + cc_sh_dx - cc_sh[0] / 2, cc_yb1 + cc_sh_out - cc_sh[1], cc_zc - cc_sh[2] / 2]) cube(cc_sh);
+            if (plugs) color("dimgray") translate([cc_bx[i] + cc_sh_dx - 3.25, cc_D + 0.5, cc_zc - 6.25]) cube([6.5, 20, 12.5]);  // 差したプラグ（厚さ 6.5 mm、実測）
         }
         for (x = cc_swx) {
             color("white") translate([x - cc_sw[0] / 2, -cc_fwd, cc_zc - cc_sw[2] / 2]) cube(cc_sw);
