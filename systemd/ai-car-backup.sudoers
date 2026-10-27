@@ -1,0 +1,3 @@
+# AI-CAR バックアップ：ダッシュボードからrootで快照を作る（NOPASSWD）
+super ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block ai-car-backup.service
+super ALL=(root) NOPASSWD: /usr/local/sbin/ai-car-restore ai-car-*
