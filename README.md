@@ -316,4 +316,5 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 - **復元（稼働Pi・R2）**：`sudo /usr/local/sbin/ai-car-restore <快照名>`（sha256照合→dashboard停止→Tier A rsync上書き→Tier B units/udev/config.txt再導入→dashboard再起動）。colcon buildは自動実行しない（必要時 `colcon build --symlink-install`）。
 - **新規SD復元（R3）**：Ubuntu 24.04 インストール→`git clone`→`sudo systemd/install_service.sh`→このREADMEのlibcamera/hailortビルド手順→`ai-car-restore` でデータ復元→Tailscale再登録→受入＝8080起動・status全ノードalive・maps個数一致。
 - **開発フック**：PRマージ前に必ず快照を作る（strata側で自動化）。`install_service.sh` のsudo導入はユーザーのパスワードで1回だけ必要。
+- **Jetson用（v1.30.2）**：`scripts/ai-jetson-backup.sh`（Piと同一設計）。Tier A＝`/home/jetson`のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット・sudoers内容記録・`extlinux.conf`・netplan・aptマニフェスト・tailscale・crontab。Jetson側 `~/jetson-backups/` 輪転7、PCミラー照合。sudoersは440でjetsonが読めないため内容記録を同梱。復元（R3相当）は新規Jetson时READMEの各サービス導入手順＋快照展開。
 - **注意**：同一SSD内の快照は削除・暴走からの回復用。SSD故障はPCミラーが救う（PC側 `Strata/Workspace/ai-car-backups/` にsha256照合済みミラー）。

@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.30.2] - 2026-10-28
+
+### Added
+- Jetson用バックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同一設計）：Tier A＝`/home/jetson`のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット（service/timer）、sudoers内容記録、`extlinux.conf`、netplan、aptマニフェスト、tailscale、crontab。zstd、Jetson側 `~/jetson-backups/` 輪転7、manifest（L4T・os/kernel・tar sha256）。T1実測成功（快照3.41GB、sha256一致、Windows PCミラー照合）。
+- sudoersは440でjetsonが読めないため、内容記録 `sudoers-content.md` を快照に同梱（新規設定時はvisudo検証＋440導入し記録へ反映）。
+
 ## [1.30.1] - 2026-10-28
 
 ### Changed
