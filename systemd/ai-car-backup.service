@@ -1,0 +1,10 @@
+[Unit]
+Description=AI-CAR backup snapshot (runs scripts/ai-car-backup.sh as root)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ai-car-backup
+Environment=SUDO_HOME=/home/super
+Nice=19
+IOSchedulingClass=idle

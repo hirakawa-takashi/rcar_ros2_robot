@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-10-28
+
+### Added
+- バックアップ快照 `scripts/ai-car-backup.sh`：Tier A（homeデータ＝AI-CAR_ws（build/install/log除く）＋home直下のテストファイル・log・calib・patrols・.config/aicar）、Tier B（systemdユニット・udev rule・config.txt/cmdline.txt・aptマニフェスト・tailscale・crontab）、manifest.json（version・git SHA・os/kernel・tar sha256）。zstd圧縮、SSD内 `~/ai-car-backups/` に保存、Pi側輪転7個。super手動実行とrootサービス両対応。
+- 毎日04:00のタイマー `ai-car-backup.timer`（Persistent）とrootサービス `ai-car-backup.service`。ダッシュボードから `sudo systemctl start --no-block ai-car-backup.service`（sudoersホワイトリスト）。
+- 復元スクリプト `scripts/ai-car-restore.sh`（R2：稼働Pi全体復元）。sha256照合→dashboard停止→Tier A rsync上書き→Tier B（units/udev/config.txt、config.txtは復元前コピーを残す）→dashboard再起動。sudoersで `sudo /usr/local/sbin/ai-car-restore ai-car-*` ホワイトリスト。
+- README に「バックアップと復元」節を追加。`install_service.sh` にバックアップ一式の導入を追加（sudo 1回）。
+
 ## [1.29.9] - 2026-10-25
 
 ### Fixed
