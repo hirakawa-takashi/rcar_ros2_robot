@@ -35,6 +35,7 @@ AI エージェント（Devin など）がこのリポジトリで作業する�
 ## Jetson への反映
 
 - `scripts/ai-jetson-backup.sh` を変えたら、scp で `/home/jetson/ai-jetson-backup.sh` へ置く（crontab が毎日 04:00 にこのパスを実行）。SSH先は `jetson@192.168.11.23`（Pi の公開鍵が Jetson の authorized_keys に導入済み。Pi からも SSH できる）。
+  - Windows ミラー由来のファイルは CRLF なので、scp 後に Jetson 側で `tr -d '\r' < file > /tmp/x && mv /tmp/x file` で CR を除去し、`bash -n` で構文確認してから使う（CRLF のままだと bash が動かない）。
 - Jetson スナップショット（`~/jetson-backups`）と Pi スナップショット（`~/ai-car-backups`）は**2系統分離管理**。PCミラーも `ai-car-backups` と `jetson-backups` の2フォルダに分離する。
 
 ## 承認を求めない

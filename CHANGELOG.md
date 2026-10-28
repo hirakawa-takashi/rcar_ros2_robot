@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.31.1] - 2026-10-28
+
+### Fixed
+- Windowsミラー→Jetson scpでCRLFが混ざりbashが動かなかった問題（実測で検出）。AGENTS.md「Jetson への反映」に CR除去（`tr -d '\r'`）+ `bash -n` 構文確認の手順を追加。Jetson側の `~/ai-jetson-backup.sh` を修正し、テストスナップショットで検証。
+- Jetsonスナップショット一覧で、旧manifest（`jetson_version` なし）の版表示を L4T 文字列の REVISION から出すフォールバック追加。
+
 ## [1.31.0] - 2026-10-28
 
 ### Added
