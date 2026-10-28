@@ -747,7 +747,7 @@
     <table>
       <tr><td class="k">最新のスナップショット</td><td class="v wrap" id="bk_latest">-</td></tr>
       <tr><td class="k">スナップショットを作る</td><td class="v"><button id="bk_make">スナップショットを作る</button> <span id="bk_msg"></span></td></tr>
-      <tr><td class="k">スナップショットの一覧（新しい順・7個まで）</td><td class="v wrap" id="bk_list">-</td></tr>
+      <tr><td class="k">スナップショットの一覧（新しい順・30個まで）</td><td class="v wrap" id="bk_list">-</td></tr>
     </table>
     <div class="note">毎日 04:00 に自動で作る（SSD内 `ai-car-backups`、古い物は自動で消える）。スナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`。</div>
   </div>
@@ -4228,12 +4228,12 @@ setInterval(() => {
 }, 1000);
 
 function renderBackup(j) {
-  const items = j.items || [];
-  document.getElementById('bk_list').innerHTML = items.map(it =>
-    `${it.name}　${(it.bytes / 1e6).toFixed(0)} MB　sha256 ${it.sha256}`).join('<br>') || '（まだスナップショットがありません）';
+  const items = (j.items || []).slice(0, 30);
+  const row = it => `<div style="margin:4px 0"><b>${it.created.slice(5, 10)} ${it.created.slice(11, 16)}</b>　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB　sha ${it.sha256}<br><span style="color:#7a8fa6">${it.name}</span></div>`;
+  document.getElementById('bk_list').innerHTML = items.map(row).join('') || '（まだスナップショットがありません）';
   const latest = items[0];
-  document.getElementById('bk_latest').textContent = latest
-    ? `${latest.name}（${latest.created}、v${latest.version}、git ${latest.git_sha}、${(latest.bytes / 1e6).toFixed(0)} MB）` : 'なし';
+  document.getElementById('bk_latest').innerHTML = latest
+    ? `<b>${latest.created.slice(0, 10)} ${latest.created.slice(11, 16)}</b>　v${latest.version}・git ${latest.git_sha}　${(latest.bytes / 1e6).toFixed(0)} MB<br><span style="color:#7a8fa6">${latest.name}</span>` : 'なし';
   const st = document.getElementById('bk_state');
   st.textContent = j.sudo_ok ? '自動毎日 04:00' : 'sudoers未導入';
   st.className = 'badge ' + (j.sudo_ok ? 'ok' : 'warn');

@@ -9,7 +9,7 @@ HOME_DIR="${SUDO_HOME:-$HOME}"
 [ "$HOME_DIR" = "/root" ] && HOME_DIR=/home/super
 WS="$HOME_DIR/AI-CAR_ws"
 OUT="$HOME_DIR/ai-car-backups"
-KEEP="${AI_CAR_BACKUP_KEEP:-7}"
+KEEP="${AI_CAR_BACKUP_KEEP:-30}"
 mkdir -p "$OUT"
 VERSION=$(grep -m1 -oE '<version>[^<]+' "$WS/src/ai_car_web/package.xml" | sed 's/<version>//')
 SHA=$(git -c safe.directory="$WS" -C "$WS" rev-parse --short HEAD)
