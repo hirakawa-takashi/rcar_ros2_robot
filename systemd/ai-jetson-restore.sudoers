@@ -1,0 +1,2 @@
+# AI-CAR Jetson 復元：ダッシュボード（ラズパイ経由SSH）からrootで復元スクリプトを走らせる（NOPASSWD）
+jetson ALL=(root) NOPASSWD: /usr/local/bin/ai-jetson-restore

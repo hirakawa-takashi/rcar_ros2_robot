@@ -34,9 +34,10 @@ AI エージェント（Devin など）がこのリポジトリで作業する�
 
 ## Jetson への反映
 
-- `scripts/ai-jetson-backup.sh` を変えたら、scp で `/home/jetson/ai-jetson-backup.sh` へ置く（crontab が毎日 04:00 にこのパスを実行）。SSH先は `jetson@192.168.11.23`（Pi の公開鍵が Jetson の authorized_keys に導入済み。Pi からも SSH できる）。
+- バックアップのタイミング：定時（timer・crontab）は禁止。PiバックアップはPRマージ前（開発フック、strata側で自動化）に作り、Piのバージョンアップ反映後JetsonバックアップもSSHで作る。PCミラーへsha256照合コピー（Pi＝`ai-car-backups`、Jetson＝`jetson-backups`）。
+- `scripts/ai-jetson-backup.sh` を変えたら scp で `/home/jetson/ai-jetson-backup.sh` へ、`scripts/ai-jetson-restore.sh` を変えたら scp で `/home/jetson/ai-jetson-restore.sh` へ置く。root側 `/usr/local/bin/ai-jetson-restore` とJetson sudoersはユーザーが1回導入（`sudo install -m 755 ~/ai-jetson-restore.sh /usr/local/bin/ai-jetson-restore`、`sudo visudo -cf ~/ai-jetson-restore.sudoers && sudo install -m 440 ~/ai-jetson-restore.sudoers /etc/sudoers.d/ai-jetson-restore`）。SSH先は `jetson@192.168.11.23`（Pi の公開鍵が Jetson の authorized_keys に導入済み。Pi からも SSH できる）。
   - Windows ミラー由来のファイルは CRLF なので、scp 後に Jetson 側で `tr -d '\r' < file > /tmp/x && mv /tmp/x file` で CR を除去し、`bash -n` で構文確認してから使う（CRLF のままだと bash が動かない）。
-- Jetson スナップショット（`~/jetson-backups`）と Pi スナップショット（`~/ai-car-backups`）は**2系統分離管理**。PCミラーも `ai-car-backups` と `jetson-backups` の2フォルダに分離する。
+- Jetson バックアップ（`~/jetson-backups`）と Pi バックアップ（`~/ai-car-backups`）は**2系統分離管理**。PCミラーも `ai-car-backups` と `jetson-backups` の2フォルダに分離する。
 
 ## 承認を求めない
 

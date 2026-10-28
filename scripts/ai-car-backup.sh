@@ -1,5 +1,5 @@
 #!/bin/bash
-# AI-CAR バックアップスナップショット（v1.0 仕様）
+# AI-CAR バックアップバックアップ（v1.0 仕様）
 # Tier A: homeデータ（AI-CAR_ws[build/install/log除く]、patrols、calib、poselog、設定、home直下のテストファイル）
 # Tier B: root不要で読める系設定（systemdユニット、udev、config.txt、aptマニフェスト、tailscale、crontab）
 #  sudoersの中身はリポジトリ systemd/*.sudoers が正（ファイル自体は440でsuperが読めない）

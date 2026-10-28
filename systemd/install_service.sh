@@ -27,15 +27,16 @@ sudo apt-get install -y uhubctl
 sudo install -m 755 "$DIR/ai-car-usb-power-cycle.sh" /usr/local/sbin/ai-car-usb-power-cycle
 sudo visudo -cf "$DIR/ai-car-usb-power.sudoers"
 sudo install -m 440 "$DIR/ai-car-usb-power.sudoers" /etc/sudoers.d/ai-car-usb-power
-# バックアップスナップショット（ai-car-backup.sh）と復元（ai-car-restore.sh）をrootに導入する
+# バックアップバックアップ（ai-car-backup.sh）と復元（ai-car-restore.sh）をrootに導入する
 sudo install -m 755 "$DIR/../scripts/ai-car-backup.sh" /usr/local/sbin/ai-car-backup
 sudo install -m 644 "$DIR/ai-car-backup.service" /etc/systemd/system/ai-car-backup.service
-sudo install -m 644 "$DIR/ai-car-backup.timer" /etc/systemd/system/ai-car-backup.timer
 sudo visudo -cf "$DIR/ai-car-backup.sudoers"
 sudo install -m 440 "$DIR/ai-car-backup.sudoers" /etc/sudoers.d/ai-car-backup
 sudo install -m 755 "$DIR/../scripts/ai-car-restore.sh" /usr/local/sbin/ai-car-restore
 sudo systemctl daemon-reload
-sudo systemctl enable --now ai-car-backup.timer
+# 定時バックアップ廃止：古いtimerを無効化してユニットファイルを消す
+sudo systemctl disable --now ai-car-backup.timer 2>/dev/null || true
+sudo rm -f /etc/systemd/system/ai-car-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now ai-car-dashboard.service
 systemctl status ai-car-dashboard.service --no-pager
