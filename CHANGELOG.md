@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.30.4] - 2026-10-28
+
+### Fixed
+- root実行（timer・ダッシュボード発動）で `git: detected dubious ownership` により快照作成が失敗していた（exit 128）。`scripts/ai-car-backup.sh` の git 呼び出しを `git -c safe.directory="$WS"` に修正。ダッシュボードPOST→rootサービス発動（sudoersホワイトリスト）自体は成功確認済み（`{"ok":true}`）。root側のスクリプト（`/usr/local/sbin/ai-car-backup`）更新には `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` の再実行（1回）。
+
+## [1.30.3] - 2026-10-28
+
 ### Changed
 - `systemd/ai-car-backup.sudoers`：`systemctl restart ai-car-dashboard.service` をホワイトリスト追加。これによりデプロイ（Python変更時のダッシュボード再起動）がユーザーのパスワードなしで完結する（`install_service.sh` の sudo 実行がホワイトリスト導入の1回きり）。
 
