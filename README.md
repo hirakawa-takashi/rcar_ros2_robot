@@ -309,7 +309,7 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 
 ## バックアップと復元（v1.30.0）
 
-スナップショット（バックアップ）は Pi の SSD 内 `~/ai-car-backups/` に保存する（輪転7個）＋ Windows PC へミラー。1スナップショット = `ai-car-<日時>-v<version>-<gitsha>.tar.zst` ＋ `manifest.json`（tar の sha256 含む）。
+スナップショット（バックアップ）は Pi の SSD 内 `~/ai-car-backups/` に保存する（輪転30個）＋ Windows PC へミラー。1スナップショット = `ai-car-<日時>-v<version>-<gitsha>.tar.zst` ＋ `manifest.json`（tar の sha256 含む）。
 
 - **作る**：`bash scripts/ai-car-backup.sh`（superで可）。毎日04:00に `ai-car-backup.timer` がrootで自動実行。ダッシュボードの「バックアップ」カードからスナップショットを作成（`sudo -n systemctl start --no-block ai-car-backup.service`、sudoersホワイトリスト）。
 - **中身**：Tier A＝home一式（`AI-CAR_ws`（build/install/log/ai-car-backups除く）、calib、patrols、poselog・rotlog・heading_log、home直下のテストファイル、`.config/aicar`）、Tier B＝`/etc/systemd/system/ai-car-*`・udev rule・`/boot/firmware/config.txt`+`cmdline.txt`・aptマニフェスト・`tailscale status --json`・crontab。sudoers の中身はリポジトリの `systemd/*.sudoers` が正。
