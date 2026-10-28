@@ -1,11 +1,14 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.31.4（2026-10-28）
+- バージョン: 1.31.5（2026-10-28）
 - 更新日: 2026/10/28
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
 - 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（スナップショット491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
+- 2026-10-28（v1.30.2、PR #326）: Jetsonバックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同設計、輪転7）。T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
+- 2026-10-28（v1.30.3、PR #327）: ダッシュボード「バックアップ」カード（`GET/POST /api/backup`、`sudo -n` 発動、最新＋作成ボタン＋一覧7個）。sudoersにダッシュボード再起動を追加（デプロイがパスワードなしで完結）。
+- 2026-10-28（v1.30.4、PR #328）: root実行での `git: detected dubious ownership`（exit 128）修正（`git -c safe.directory`）。ユーザーの `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` 再実行（パスワード1回）でrootスクリプトに反映。
 - 2026-10-28（v1.30.5、PR #329）: 「快照」（中国語表記）を日本語「スナップショット」に統一。ダッシュボードカード・backup/restoreスクリプト・sudoers・install_service.sh・README・CHANGELOG・PROJECT_STATUS。機能変更なし（カードの表示語のみ変化）。
 - 2026-10-28（v1.30.6、PR #330）: スナップショット輪転 Pi側7個→30個（SSD空き95GBでスナップショット30個≈15GB）。カード一覧を読みやすい表示に改良（日付・時刻・version・サイズ・sha12字＋スナップショット名）。Jetson側輪転は7のまま（3.41GB×30はディスクに過大、要容量確認）。
 - 2026-10-28（v1.30.7、PR #331）: スナップショット一覧をドロップダウン選択方式に変更（30個表示の縦空間削減）。選んだスナップショットの詳細＋復元コマンドを下部表示。ユーザーの `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` 再実行によりroot側スクリプトの輪転30個（KEEP=30）反映を確認。v1.30.6節の「快照」を「スナップショット」に統一。
@@ -14,6 +17,7 @@
 - 2026-10-28（v1.31.2、PR #334）: Jetson一覧の旧manifest版表示を `v36.4.7` 表記に修正（REVISIONに36.接頭辞）。Jetson NVMe空き723GB確認（30個≈102GB収まる）。Pi→Jetson SSHで2スナップショット・新specスナップショット `jetson-20261028_171243-v36.4.7` 確認、PCミラー照合一致。
 - 2026-10-28（v1.31.3、PR #335）: バックアップカードのラベル2系統明示化（ラズパイスナップショットを作る/選ぶ、バッジ「ラズパイ 自動毎日 04:00」「Jetson 自動毎日 04:00」、題名注記）。
 - 2026-10-28（v1.31.4、PR #336）: 文書一致確認（プロジェクト資料＝開発日記）。READMEバックアップ節を2系統化の現状へ書き換え、PROJECT_STATUS実装済み機能にバックアップカード項目追加。PR #324–#335 の記録とCHANGELOG・README・AGENTS.mdの照合実施。
+- 2026-10-28（v1.31.5、PR #337）: 開発日記一致確認。CHANGELOGの「[1.30.3」節重複を1節に統合、PROJECT_STATUS履歴に #326・#327・#328 項目追加。PR #324〜#336 とCHANGELOG・PROJECT_STATUS・READMEの対応が揃ったことを確認。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでスナップショット作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
 
 ## システム構成

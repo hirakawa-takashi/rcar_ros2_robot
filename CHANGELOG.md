@@ -50,6 +50,12 @@
 ### Changed
 - 「快照」（中国語表記）を日本語「スナップショット」に統一（ダッシュボードカード・backup/restoreスクリプト・sudoers・install_service.sh・README・CHANGELOG・PROJECT_STATUS）。機能変更なし。
 
+## [1.31.5] - 2026-10-28
+
+### Fixed
+- CHANGELOGの「[1.30.3」節重複（PR #327のダッシュボードカード＝Added とsudoers再起動ホワイトリスト＝Changed が別節2つ）を1節に統合。
+- PROJECT_STATUSの履歴にPR #326・#327・#328（v1.30.2〜v1.30.4）の項目追加（開発日記CHANGELOGとの対応統一。PR #324〜#336の対応確認済み）。
+
 ## [1.30.4] - 2026-10-28
 
 ### Fixed
@@ -57,13 +63,11 @@
 
 ## [1.30.3] - 2026-10-28
 
+### Added
+- ダッシュボード「バックアップ」カード：`GET /api/backup`（スナップショット一覧＝manifest読取＋sudoersホワイトリスト確認）、`POST /api/backup`（`sudo -n systemctl start --no-block ai-car-backup.service`、走行中は制限なし＝走行禁止対象外）。カードに最新のスナップショット・作成ボタン（sudoers未導入時はボタン無効＋理由）・一覧（新しい順7個）を表示。毎日04:00自動はそのまま。（PR #327）
+
 ### Changed
 - `systemd/ai-car-backup.sudoers`：`systemctl restart ai-car-dashboard.service` をホワイトリスト追加。これによりデプロイ（Python変更時のダッシュボード再起動）がユーザーのパスワードなしで完結する（`install_service.sh` の sudo 実行がホワイトリスト導入の1回きり）。
-
-## [1.30.3] - 2026-10-28
-
-### Added
-- ダッシュボード「バックアップ」カード：`GET /api/backup`（スナップショット一覧＝manifest読取＋sudoersホワイトリスト確認）、`POST /api/backup`（`sudo -n systemctl start --no-block ai-car-backup.service`、走行中は制限なし＝走行禁止対象外）。カードに最新のスナップショット・作成ボタン（sudoers未導入時はボタン無効＋理由）・一覧（新しい順7個）を表示。毎日04:00自動はそのまま。
 
 ## [1.30.2] - 2026-10-28
 
