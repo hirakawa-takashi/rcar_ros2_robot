@@ -12,8 +12,8 @@ OUT="$HOME_DIR/ai-car-backups"
 KEEP="${AI_CAR_BACKUP_KEEP:-7}"
 mkdir -p "$OUT"
 VERSION=$(grep -m1 -oE '<version>[^<]+' "$WS/src/ai_car_web/package.xml" | sed 's/<version>//')
-SHA=$(git -C "$WS" rev-parse --short HEAD)
-BRANCH=$(git -C "$WS" rev-parse --abbrev-ref HEAD)
+SHA=$(git -c safe.directory="$WS" -C "$WS" rev-parse --short HEAD)
+BRANCH=$(git -c safe.directory="$WS" -C "$WS" rev-parse --abbrev-ref HEAD)
 TS=$(date '+%Y%m%d_%H%M%S')
 NAME="ai-car-${TS}-v${VERSION}-${SHA}"
 TAR="$OUT/$NAME.tar.zst"
