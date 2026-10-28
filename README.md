@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.31.7（2026-10-29。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.31.8（2026-10-29。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -314,12 +314,12 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 - **ラズパイ系統**：Pi SSD 内 `~/ai-car-backups/`（輪転30個、`AI_CAR_BACKUP_KEEP`）。命名 `ai-car-<日時>-v<version>-<gitsha>`。
 - **Jetson系統**：Jetson NVMe 内 `~/jetson-backups/`（輪転30個、`JETSON_BACKUP_KEEP`。空き723GBで30個≈102GB収まる）。命名 `jetson-<日時>-v<L4T版>`（REVISION動的抽出）、manifest に `jetson_version`。
 - **作る（ラズパイ）**：毎日04:00に `ai-car-backup.timer` がrootで自動実行。手動作成はSSHで `bash scripts/ai-car-backup.sh`（superで可、私に依頼）。ダッシュボードカードの作成ボタンと `POST /api/backup` は削除しました（v1.31.7。カードは表示＋復元コマンド表示）。
-- **作る（Jetson）**：Jetson の crontab が毎日04:00に `/home/jetson/ai-jetson-backup.sh` を実行。ダッシュボードカードの「Jetsonスナップショットを作る」で作成（ラズパイ経由SSHで発動、約10分）。
+- **作る（Jetson）**：Jetson の crontab が毎日04:00に `/home/jetson/ai-jetson-backup.sh` を実行。手動作成はSSHで `bash ~/ai-jetson-backup.sh`（私に依頼）。ダッシュボードカードの作成ボタンと `POST /api/jetson_backup` は削除しました（v1.31.8。カードは表示のみ）。
 - **中身（ラズパイ）**：Tier A＝home一式（`AI-CAR_ws`（build/install/log/ai-car-backups除く）、calib、patrols、poselog・rotlog・heading_log、home直下のテストファイル、`.config/aicar`）、Tier B＝`/etc/systemd/system/ai-car-*`・udev rule・`/boot/firmware/config.txt`+`cmdline.txt`・aptマニフェスト・`tailscale status --json`・crontab。sudoers の中身はリポジトリの `systemd/*.sudoers` が正。
 - **中身（Jetson）**：Tier A＝`/home/jetson` のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット・sudoers内容記録・`extlinux.conf`・netplan・aptマニフェスト・tailscale・crontab。sudoersは440でjetsonが読めないため内容記録を同梱。
 - **復元（稼働Pi・R2）**：`sudo /usr/local/sbin/ai-car-restore <スナップショット名>`（sha256照合→dashboard停止→Tier A rsync上書き→Tier B units/udev/config.txt再導入→dashboard再起動）。colcon buildは自動実行しない（必要時 `colcon build --symlink-install`）。
 - **復元（Jetson）**：私（strata）に依頼する。SSHでJetsonに入り、スナップショットを解いて Tier A（home）と Tier B（設定）を戻す。
 - **Jetson反映**：スクリプトを変えたら scp で `/home/jetson/ai-jetson-backup.sh` へ置き、Jetson側で CR除去（`tr -d '\r'`）＋ `bash -n` 構文確認（Windowsミラー由来はCRLFでbashが動かない）。
-- **ダッシュボードカード**：「バックアップ（ラズパイ と Jetson の2系統）」。ラズパイ系統＝ドロップダウン（新しい順・30個まで）＋選んだスナップショットの詳細（復元コマンド表示）（作成ボタンは削除）。Jetson系統＝作成ボタン（ラズパイ経由SSH発動、約10分）＋ドロップダウン＋詳細。状態バッジ（ラズパイ 自動毎日 04:00／Jetson 自動毎日 04:00）。
+- **ダッシュボードカード**：「バックアップ（ラズパイ と Jetson の2系統）」。両系統とも表示のみ（作成ボタンはv1.31.7–v1.31.8で削除）。ラズパイ系統＝ドロップダウン（新しい順・30個まで）＋選んだスナップショットの詳細（復元コマンド表示）。Jetson系統＝ドロップダウン＋詳細。状態バッジ（ラズパイ 自動毎日 04:00／Jetson 自動毎日 04:00）。
 - **開発フック**：PRマージ前に必ずスナップショットを作る（ラズパイ、strata側で自動化）。Jetsonスクリプト変更時は反映後にテストスナップショットも作る。`install_service.sh` のsudo導入はユーザーのパスワードで1回だけ必要。
 - **注意**：同一ディスク内のスナップショットは削除・暴走からの回復用。ディスク故障はPCミラーが救う（ラズパイ系統 `ai-car-backups`、Jetson系統 `jetson-backups` にsha256照合済みミラー）。

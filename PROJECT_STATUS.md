@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.31.7（2026-10-29）
+- バージョン: 1.31.8（2026-10-29）
 - 更新日: 2026/10/28
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -20,6 +20,7 @@
 - 2026-10-28（v1.31.5、PR #337）: 開発日記一致確認。CHANGELOGの「[1.30.3」節重複を1節に統合、PROJECT_STATUS履歴に #326・#327・#328 項目追加。PR #324〜#336 とCHANGELOG・PROJECT_STATUS・READMEの対応が揃ったことを確認。
 - 2026-10-28（v1.31.6、PR #338）: CHANGELOG節順修正（[1.31.5]を途中→先頭へ）。節 [1.30.0]〜[1.31.6]が新しい順・重複なしで揃い、PROJECT_STATUS履歴PR #324〜#337と対応一致。
 - 2026-10-29（v1.31.7、PR #339）: ユーザー指示でダッシュボードのラズパイ側スナップショット作成を削除（作成ボタン `bk_make`＋`POST /api/backup`）。作成はtimer毎日04:00＋SSH手動。Jetson作成ボタンは維持。README・PROJECT_STATUS反映。朝の自動実行確認（Pi timer 04:00成功・Jetson crontab 04:00成功、Pi17個・Jetson3個）。
+- 2026-10-29（v1.31.8、PR #340）: ユーザー指示でバックアップカードのJetson側スナップショット作成も削除（作成ボタン `jb_make`＋`POST /api/jetson_backup`）。カードは2系統とも表示のみ（ドロップダウン＋詳細＋状態バッジ）。作成はJetson crontab毎日04:00＋SSH手動。Piフックスナップショット（3d16697・sha 390f3e10099f）作成・PCミラーへコピー、Jetson朝スナップショットミラー照合済み。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでスナップショット作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
 
 ## システム構成
@@ -43,7 +44,7 @@
   - ホームポジション（v1.25.0）: `POST /api/home {action: set|go|cancel|clear}`。ダッシュボードの「ここをホームにする」かスタックちゃんに「ここをホームにして」で、今の車の位置と向き（地図にばってん × を付けてから押すと、その所。v1.25.1）を地図ごとの `<id>.json` の `home` に保存する。「ホームへもどる」「ホームにもどって」で Nav2 でもどり、ふさがっていればまわり道（3 回まで）。パトロールの最後は、ホームがあればホームへもどる。床ではまだ試していない
   - パトロール（v1.22.0、Level 3）: `POST /api/patrol`。`patrol.py` が地図の通れる所に 1.5 m ごとの見る所を置き、緑の点といっしょに短い順に並べる。見る所ごとに 90° ずつ 4 回見て、人（YOLO）・地図になかった床の物（LiDAR）・新しい段差を `~/patrols/<日時>/report.json` と写真に残す。行けない所はとばす、15 分まで。床ではまだ試していない
   - 「プロジェクト説明」ボタンと 9 タブの全画面モーダルを追加（「3D プリント」タブは STL ダウンロード・三面図・立体図・ドラッグで回せる 3D 表示・印刷設定・組み立て手順）。`architecture.yaml` と `/api/architecture` から構成を表示し、`dashboard.yaml` の実値（秘密値はマスク）と実機の生存ノード / Topic を反映
-  - バックアップカード（v1.30.0–v1.31.7、2系統分離管理）：「バックアップ（ラズパイ と Jetson の2系統）」。ラズパイ系統＝root timer自動毎日04:00＋SSH手動スクリプト、輪転30個、ドロップダウン（新しい順30個）＋選んだ詳細（復元コマンド表示）、`GET /api/backup`（カード作成ボタンと`POST /api/backup`はv1.31.7で削除）。Jetson系統＝Jetson crontab毎日04:00＋カード作成ボタン（ラズパイ経由SSH発動、約10分、`GET/POST /api/jetson_backup`）、輪転30個、命名 `jetson-<日時>-v<L4T版>`。PCミラー2フォルダ（`ai-car-backups`／`jetson-backups`、sha256照合）
+  - バックアップカード（v1.30.0–v1.31.8、2系統分離管理・表示のみ）：「バックアップ（ラズパイ と Jetson の2系統）」。ラズパイ系統＝root timer自動毎日04:00＋SSH手動スクリプト、輪転30個、ドロップダウン（新しい順30個）＋選んだ詳細（復元コマンド表示）、`GET /api/backup`（カード作成ボタンと`POST /api/backup`はv1.31.7で削除）。Jetson系統＝Jetson crontab毎日04:00＋SSH手動、輪転30個、命名 `jetson-<日時>-v<L4T版>`、ドロップダウン＋詳細、`GET /api/jetson_backup`（カード作成ボタンと`POST /api/jetson_backup`はv1.31.8で削除）。PCミラー2フォルダ（`ai-car-backups`／`jetson-backups`、sha256照合）
   - Publish: `/cmd_vel_manual`（geometry_msgs/Twist、手動指令。`/cmd_vel` は `drive_mode_node` が発行）、`/drive_mode_request`、`~/status`
   - `drive_mode_node`（運転モード管理）: `/cmd_vel_manual`（Web + ゲームパッド）と `/cmd_vel_auto`（自律走行）のどちらか一方だけを `/cmd_vel` に中継する。モードは manual / auto / stop（起動時 manual）。状態は `/drive_mode`（JSON, transient local, 5Hz）、切替要求は `/drive_mode_request`（JSON `{mode: manual|auto|stop|toggle, source}`）。安全機構: 自動へ入る条件（`/obstacle_status` が新鮮で stop / unknown でない・ゲームパッド接続中・スティック中立・`/cmd_vel_auto` 生存）を満たさないと拒否（`last_reject` に理由）、自動指令が `auto_timeout` 0.5 秒途絶／ゲームパッド切断／障害物判定途絶で STOP、自動中に手動指令を検出すると手動へ復帰（`manual_override`）、モード遷移時はゼロ速度を publish、最終段で LiDAR の 360° を使い、動く向き（前後左右・ななめ）の車体の端から 0.25 m（`move_stop_gap`）以内に物があればその向きの動きを、その向きに回ると車体の箱に点が入る（1° ずつ回して `turn_center_m` のまわりに確かめる、回れる角度が 5° `turn_stop_deg` より小さい）ならその向きの回転だけを 0 にする。ななめの向きが止まっても、前後・横の片方が空いていればその分だけ動く。手動は 0.7 m（`move_slow_gap`）以内で半分の速さ。LiDAR データなし（unknown）・判定の途絶中は前後左右の動きを 0 にする（`obstacle_guard`、手動・ゲームパッド・声・自動のどれも。止めた理由は `/drive_mode` の `guard`）。すき間は `perception_node` が車体の箱 `body_box_m`（LiDAR の中心から 後ろ 0.176・前 0.090・右 0.135・左 0.190 m。左は LiDAR の左 17 cm の箱まで）を 5° ごとの向きへ動かして求め、`/obstacle_status` の `move` に出す。launch 引数 `use_drive_mode`
   - `autonomy_node`（Level 1 自律走行・LiDAR 反応型）: `/scan` を前 / 左 / 右 / 後セクターに分けて最短距離を求め、前進（0.15 m/s）→ 0.8 m 以内で減速（0.08 m/s、空いている側へ緩く曲がる）→ 0.35 m 以内で空いている側へその場旋回（0.6 rad/s、前方 0.9 m 以上空くまで）→ 前進を繰り返す。前後左右とも 0.25 m 以内なら後退。前の落下防止センサーが段差なら、`/odom` で 0.10 m 下がり、空いている側へ 120° 回って走行を続ける（前後とも段差なら止まる）。LiDAR が 1 秒以上途絶えると停止。`/cmd_vel_auto` に 10Hz で常時 publish（AUTO 以外はゼロ速度で待機）、状態は `/autonomy_status`（JSON: behavior / sectors / cmd）。地図・自己位置は使わない。launch 引数 `use_autonomy`
