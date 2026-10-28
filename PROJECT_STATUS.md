@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.31.1（2026-10-28）
+- バージョン: 1.31.2（2026-10-28）
 - 更新日: 2026/10/28
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -11,6 +11,7 @@
 - 2026-10-28（v1.30.7、PR #331）: スナップショット一覧をドロップダウン選択方式に変更（30個表示の縦空間削減）。選んだスナップショットの詳細＋復元コマンドを下部表示。ユーザーの `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` 再実行によりroot側スクリプトの輪転30個（KEEP=30）反映を確認。v1.30.6節の「快照」を「スナップショット」に統一。
 - 2026-10-28（v1.31.0、PR #332）: JetsonバックアップをPi同一仕様に（輪転30個、動的L4T版名、manifest `jetson_version`。Jetson NVMe空き726GBで30個≈102GB収まる）。ダッシュボードのバックアップカードをPi/Jetsonの2系統分離管理（Jetson作成ボタン・ドロップダウン・詳細・状態バッジ、Pi経由SSH `jetson@192.168.11.23`）。PCミラー2フォルダ分離（`ai-car-backups`/`jetson-backups`）。AGENTS.mdに「Jetson への反映」「承認を求めない」（ユーザー指示作業の一斉・継続承認要求禁止）節追加。
 - 2026-10-28（v1.31.1、PR #333）: Windows→Jetson scpのCRLF問題修正（AGENTS.mdにCR除去+bash -n手順、実測で検出・修正）。旧manifestのL4T REVISIONフォールバックでJetson一覧の版表示を維持。
+- 2026-10-28（v1.31.2、PR #334）: Jetson一覧の旧manifest版表示を `v36.4.7` 表記に修正（REVISIONに36.接頭辞）。Jetson NVMe空き723GB確認（30個≈102GB収まる）。Pi→Jetson SSHで2スナップショット・新specスナップショット `jetson-20261028_171243-v36.4.7` 確認、PCミラー照合一致。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでスナップショット作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
 
 ## システム構成
