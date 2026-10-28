@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.31.8] - 2026-10-29
+
+### Removed
+- ダッシュボードのバックアップカードからJetson系統のスナップショット作成も削除（作成ボタン `jb_make`＋`POST /api/jetson_backup`、ユーザー指示）。これでカードは2系統とも表示のみ（ドロップダウン・詳細・状態バッジ）。Jetson作成＝crontab毎日04:00＋SSH手動（`bash ~/ai-jetson-backup.sh`）。カード説明文・README・PROJECT_STATUSに反映。
+
 ## [1.31.7] - 2026-10-29
 
 ### Removed

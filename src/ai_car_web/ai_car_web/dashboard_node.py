@@ -2851,15 +2851,6 @@ def create_app(node: DashboardNode) -> FastAPI:
         items.sort(key=lambda x: x['name'], reverse=True)
         return {'items': items, 'cron_ok': cron_ok, 'ssh_ok': True}
 
-    @app.post('/api/jetson_backup', dependencies=[Depends(require_token)])
-    def jetson_backup_start():
-        r = subprocess.run(JETSON_SSH + ["nohup bash ~/ai-jetson-backup.sh >> ~/jetson-backups/cron.log 2>&1 &"],
-                           capture_output=True, text=True, timeout=25, check=False)
-        if r.returncode != 0:
-            raise HTTPException(status_code=503,
-                                detail=(r.stderr or r.stdout).strip()[:200] or 'Jetson SSH疎通できません')
-        return {'ok': True, 'note': '約10分かかる。一覧が更新されれば完了'}
-
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():
         return node.stackchan_json('/status')
