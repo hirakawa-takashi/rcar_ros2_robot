@@ -324,6 +324,7 @@ def clean_home(it):
 REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
+BACKUP_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-backup.service']
 
 
 def _can_sudo(cmd):
@@ -2802,6 +2803,34 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/imu/mag_calibrate', dependencies=[Depends(require_token)])
     def imu_mag_calibrate():
         return node.start_mag_calibration()
+
+    @app.get('/api/backup')
+    def backup_list():
+        d = os.path.expanduser('~/ai-car-backups')
+        items = []
+        try:
+            names = [n for n in os.listdir(d) if n.endswith('.manifest.json')]
+        except OSError:
+            names = []
+        for n in sorted(names, reverse=True):
+            try:
+                with open(os.path.join(d, n), encoding='utf-8') as f:
+                    m = json.load(f)
+            except (OSError, ValueError):
+                continue
+            items.append({'name': m.get('name', n[:-13]), 'created': m.get('created', ''),
+                          'version': m.get('pi_version', ''), 'git_sha': m.get('git_sha', ''),
+                          'bytes': int(m.get('tar_bytes', 0)), 'sha256': m.get('tar_sha256', '')[:12]})
+        return {'items': items, 'sudo_ok': _can_sudo(BACKUP_CMD), 'dir': d}
+
+    @app.post('/api/backup', dependencies=[Depends(require_token)])
+    def backup_start():
+        if not _can_sudo(BACKUP_CMD):
+            raise HTTPException(status_code=503, detail='ai-car-backup.sudoers が導入されていません（sudo bash systemd/install_service.sh を1回実行）')
+        r = subprocess.run(BACKUP_CMD, capture_output=True, text=True, timeout=30, check=False)
+        if r.returncode != 0:
+            raise HTTPException(status_code=500, detail=(r.stderr or r.stdout).strip()[:200] or 'バックアップを始められませんでした')
+        return {'ok': True, 'note': '約3分かかる。一覧が更新されれば完了'}
 
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():

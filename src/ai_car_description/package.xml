@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>ai_car_description</name>
-  <version>1.30.2</version>
+  <version>1.30.3</version>
   <description>AI-CAR メカナム4輪ロボットのURDF/Xacroモデルと表示用Launch</description>
   <maintainer email="hirakawa3.tennis.gogo@gmail.com">super</maintainer>
   <license>MIT</license>

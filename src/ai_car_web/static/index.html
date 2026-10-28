@@ -742,6 +742,16 @@
     <div class="note">slam_toolbox。車輪のオドメトリ（/odom）と LiDAR のスキャンの照合で位置を出し、0.1 m か約 6° 動くたびに地図に足す（止まっているあいだの自己位置は最後に動いたときの値）。ゆっくり動かして地図を作る。「地図をクリア」で地図を消して、今いる所から作り直す（保存した地図は消えない）。「地図を保存」は名前（例: アパート）を付けて、地図の絵・slam_toolbox の地図データ・段差の印（赤丸）・そのときの車の位置と向き・カメラの写真を残す（同じ名前は上書き）。起動したら「地図をえらぶ」で部屋の地図を選ぶ。絵のオレンジの矢印の所・向き（20 cm・20° 以内）に車を置いてから「この地図で始める」を押すと、その位置から始めるように読みこむ。選ばなければ、今いる所から新しい地図を作る。<br>地図をクリックすると、Nav2 がそこまでの道（緑の線）を考える（車は動かない）。「ここへ行く」で運転モードを自動にして向かい、着いたら止まって待つ。向かっているあいだも 360° の見張り・段差の止めは効く。「やめる」・停止・手動でやめる。<br>緑の点は名前つきの場所（例: 台所）。チェックを入れて地図をクリックするか、「今の車の所に置く」で置き、名前を入れる（同じ名前は動かす）。点は地図ごとに保存する（保存した地図を使っていればすぐ、新しい地図なら「地図を保存」のとき）。一覧の名前を押すと「順に回る」の欄に足す。「順に回る」で Nav2 が書いた順に向かい、点に着くたびに 2 秒止まって次へ行く。最後に着いたら止まって手動にもどる。Nav2 はいつも、地図の上でいちばん短い道（壁から少しはなれる）を考える。とちゅうでふさがって進めなくなったら、2 秒止まって、今いる所から道を考えなおして向かう（まわり道、1 つの点で 3 回まで）。まわり道もない（Nav2 が「道がない」と言う）か、3 回でも着かなければ、そこで止まって手動にもどる。スタックちゃんに「ここを台所として覚えて」「台所、玄関の順で移動して」と話しても同じ。</div>
   </div>
 
+  <div class="card wide">
+    <h2>バックアップ <span class="badge" id="bk_state">-</span></h2>
+    <table>
+      <tr><td class="k">最新の快照</td><td class="v wrap" id="bk_latest">-</td></tr>
+      <tr><td class="k">快照を作る</td><td class="v"><button id="bk_make">快照を作る</button> <span id="bk_msg"></span></td></tr>
+      <tr><td class="k">快照の一覧（新しい順・7個まで）</td><td class="v wrap" id="bk_list">-</td></tr>
+    </table>
+    <div class="note">毎日 04:00 に自動で作る（SSD内 `ai-car-backups`、古い物は自動で消える）。快照には車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内の快照は削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore 快照名`。</div>
+  </div>
+
 
 </div>
 
@@ -4216,6 +4226,38 @@ setInterval(() => {
     connect();
   }
 }, 1000);
+
+function renderBackup(j) {
+  const items = j.items || [];
+  document.getElementById('bk_list').innerHTML = items.map(it =>
+    `${it.name}　${(it.bytes / 1e6).toFixed(0)} MB　sha256 ${it.sha256}`).join('<br>') || '（まだ快照がありません）';
+  const latest = items[0];
+  document.getElementById('bk_latest').textContent = latest
+    ? `${latest.name}（${latest.created}、v${latest.version}、git ${latest.git_sha}、${(latest.bytes / 1e6).toFixed(0)} MB）` : 'なし';
+  const st = document.getElementById('bk_state');
+  st.textContent = j.sudo_ok ? '自動毎日 04:00' : 'sudoers未導入';
+  st.className = 'badge ' + (j.sudo_ok ? 'ok' : 'warn');
+  const btn = document.getElementById('bk_make');
+  btn.disabled = !j.sudo_ok;
+  btn.title = j.sudo_ok ? '' : 'sudo bash systemd/install_service.sh を1回実行（sudoersホワイトリスト導入）';
+}
+function loadBackup() {
+  fetch('/api/backup').then(r => r.json()).then(renderBackup).catch(() => {});
+}
+document.getElementById('bk_make').addEventListener('click', () => {
+  document.getElementById('bk_msg').textContent = '作成中…（約3分）';
+  apiPost('/api/backup', {}).then(r => {
+    if (!r) return;
+    if (r.status === 200) {
+      setTimeout(() => { document.getElementById('bk_msg').textContent = '完了確認…'; loadBackup(); }, 210000);
+      setTimeout(loadBackup, 20000);
+    } else {
+      r.json().then(j => { document.getElementById('bk_msg').textContent = j.detail || '作成できません'; })
+        .catch(() => { document.getElementById('bk_msg').textContent = '作成できません'; });
+    }
+  });
+});
+loadBackup();
 
 connect();
 </script>
