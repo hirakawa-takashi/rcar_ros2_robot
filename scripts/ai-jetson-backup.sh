@@ -1,16 +1,19 @@
 #!/bin/bash
-# Jetson バックアップスナップショット（AI-CAR Pi仕様 v1.30.2 と同一設計、Jetson用適応）
+# Jetson バックアップスナップショット（AI-CAR Pi仕様と同一設計、Jetson用適応）
+# 輪転30個・命名 jetson-日付_時刻-vL4T版・manifest同梱（Pi仕様と同一）。
 # Tier A: /home/jetsonのサービスコード群・データ・モデルキャッシュ（再生可能な .cache は除外可）
 # Tier B: jetson-*ユニット、sudoers内容記録、extlinux.conf、netplan、aptマニフェスト、tailscale、crontab
 # sudoersファイル自体は440でjetsonが読めないため、内容記録（sudoers-content.md）を同梱する。
 set -euo pipefail
 HOME_DIR=/home/jetson
 OUT="$HOME_DIR/jetson-backups"
-KEEP="${JETSON_BACKUP_KEEP:-7}"
+KEEP="${JETSON_BACKUP_KEEP:-30}"  # Pi仕様と同一の輪転30（Jetson NVMe空き726GB、3.41GB×30≈102GBで収まる）
 mkdir -p "$OUT"
 L4T=$(head -1 /etc/nv_tegra_release 2>/dev/null | tr -d '\n')
+VER=$(sed -n 's/.*REVISION: \([0-9.]*\).*/36.\1/p' <<<"$L4T")
+[ -z "$VER" ] && VER=$(dpkg-query -W -f='${Version}' nvidia-l4t-core 2>/dev/null | cut -d- -f1)
 TS=$(date '+%Y%m%d_%H%M%S')
-NAME="jetson-${TS}-L4T36.4.7"
+NAME="jetson-${TS}-v${VER}"
 TAR="$OUT/$NAME.tar.zst"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -56,6 +59,7 @@ cat > "$OUT/$NAME.manifest.json" <<EOF
 {
   "name": "$NAME",
   "created": "$(date -Is)",
+  "jetson_version": "$VER",
   "l4t": "$L4T",
   "os": "$(grep PRETTY_NAME /etc/os-release | cut -d'"' -f2)",
   "kernel": "$(uname -r)",

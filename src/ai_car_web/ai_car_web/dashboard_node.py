@@ -2832,6 +2832,40 @@ def create_app(node: DashboardNode) -> FastAPI:
             raise HTTPException(status_code=500, detail=(r.stderr or r.stdout).strip()[:200] or 'バックアップを始められませんでした')
         return {'ok': True, 'note': '約3分かかる。一覧が更新されれば完了'}
 
+    JETSON_SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
+                  '-o', 'ConnectTimeout=8', 'jetson@192.168.11.23']
+
+    @app.get('/api/jetson_backup')
+    def jetson_backup_list():
+        remote = ("crontab -l 2>/dev/null | grep -c jetson-backup; "
+                  "for f in ~/jetson-backups/jetson-*.manifest.json; do tr -d '\\n' < \"$f\"; echo; done")
+        r = subprocess.run(JETSON_SSH + [remote], capture_output=True, text=True, timeout=40, check=False)
+        if r.returncode != 0:
+            return {'items': [], 'cron_ok': False, 'ssh_ok': False,
+                    'note': 'Jetson SSH疎通できません（Jetsonが電源OFFかネットワーク外）'}
+        lines = r.stdout.strip().splitlines()
+        cron_ok = bool(lines and lines[0].strip().isdigit() and int(lines[0]) >= 1)
+        items = []
+        for line in lines[1:]:
+            try:
+                m = json.loads(line)
+            except ValueError:
+                continue
+            items.append({'name': m.get('name', ''), 'created': m.get('created', ''),
+                          'version': m.get('jetson_version', ''), 'git_sha': '',
+                          'bytes': int(m.get('tar_bytes', 0)), 'sha256': m.get('tar_sha256', '')[:12]})
+        items.sort(key=lambda x: x['name'], reverse=True)
+        return {'items': items, 'cron_ok': cron_ok, 'ssh_ok': True}
+
+    @app.post('/api/jetson_backup', dependencies=[Depends(require_token)])
+    def jetson_backup_start():
+        r = subprocess.run(JETSON_SSH + ["nohup bash ~/ai-jetson-backup.sh >> ~/jetson-backups/cron.log 2>&1 &"],
+                           capture_output=True, text=True, timeout=25, check=False)
+        if r.returncode != 0:
+            raise HTTPException(status_code=503,
+                                detail=(r.stderr or r.stdout).strip()[:200] or 'Jetson SSH疎通できません')
+        return {'ok': True, 'note': '約10分かかる。一覧が更新されれば完了'}
+
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():
         return node.stackchan_json('/status')

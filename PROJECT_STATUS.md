@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.30.7（2026-10-28）
+- バージョン: 1.31.0（2026-10-28）
 - 更新日: 2026/10/28
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -9,6 +9,7 @@
 - 2026-10-28（v1.30.5、PR #329）: 「快照」（中国語表記）を日本語「スナップショット」に統一。ダッシュボードカード・backup/restoreスクリプト・sudoers・install_service.sh・README・CHANGELOG・PROJECT_STATUS。機能変更なし（カードの表示語のみ変化）。
 - 2026-10-28（v1.30.6、PR #330）: スナップショット輪転 Pi側7個→30個（SSD空き95GBでスナップショット30個≈15GB）。カード一覧を読みやすい表示に改良（日付・時刻・version・サイズ・sha12字＋スナップショット名）。Jetson側輪転は7のまま（3.41GB×30はディスクに過大、要容量確認）。
 - 2026-10-28（v1.30.7、PR #331）: スナップショット一覧をドロップダウン選択方式に変更（30個表示の縦空間削減）。選んだスナップショットの詳細＋復元コマンドを下部表示。ユーザーの `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` 再実行によりroot側スクリプトの輪転30個（KEEP=30）反映を確認。v1.30.6節の「快照」を「スナップショット」に統一。
+- 2026-10-28（v1.31.0、PR #332）: JetsonバックアップをPi同一仕様に（輪転30個、動的L4T版名、manifest `jetson_version`。Jetson NVMe空き726GBで30個≈102GB収まる）。ダッシュボードのバックアップカードをPi/Jetsonの2系統分離管理（Jetson作成ボタン・ドロップダウン・詳細・状態バッジ、Pi経由SSH `jetson@192.168.11.23`）。PCミラー2フォルダ分離（`ai-car-backups`/`jetson-backups`）。AGENTS.mdに「Jetson への反映」「承認を求めない」（ユーザー指示作業の一斉・継続承認要求禁止）節追加。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでスナップショット作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
 
 ## システム構成

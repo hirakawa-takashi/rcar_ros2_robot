@@ -291,7 +291,7 @@
   #jt_voice_btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .voicebtns .k { color: #9fb0c7; font-family: system-ui, sans-serif; font-size: 14px; }
   .voicebtns select { padding: 3px 6px; font-size: 13px; max-width: 100%; }
-  #bk_list { padding: 3px 6px; font-size: 13px; width: 100%; background: #101418;
+  #bk_list, #jb_list { padding: 3px 6px; font-size: 13px; width: 100%; background: #101418;
             color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .voicebtns select:disabled { opacity: .4; }
   .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
@@ -750,8 +750,11 @@
       <tr><td class="k">スナップショットを作る</td><td class="v"><button id="bk_make">スナップショットを作る</button> <span id="bk_msg"></span></td></tr>
       <tr><td class="k">スナップショットを選ぶ（新しい順・30個まで）</td><td class="v"><select id="bk_list"><option>読み込み中…</option></select></td></tr>
       <tr><td class="k">選んだスナップショット</td><td class="v wrap" id="bk_detail">-</td></tr>
+      <tr><td class="k">Jetson スナップショット</td><td class="v"><button id="jb_make">Jetsonスナップショットを作る</button> <span id="jb_msg"></span> <span class="badge" id="jb_state">-</span></td></tr>
+      <tr><td class="k">Jetsonスナップショットを選ぶ（新しい順・30個まで）</td><td class="v"><select id="jb_list"><option>読み込み中…</option></select></td></tr>
+      <tr><td class="k">選んだJetsonスナップショット</td><td class="v wrap" id="jb_detail">-</td></tr>
     </table>
-    <div class="note">毎日 04:00 に自動で作る（SSD内 `ai-car-backups`、古い物は自動で消える）。スナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`。スナップショットはドロップダウンで選ぶ（選んだ物の詳細と復元コマンドが下に出る）。</div>
+    <div class="note">毎日 04:00 に自動で作る（SSD内 `ai-car-backups`、古い物は自動で消える）。スナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`。スナップショットはドロップダウンで選ぶ（選んだ物の詳細と復元コマンドが下に出る）。<br>Jetsonスナップショット＝スタックちゃんのプログラム・AIモデル・ミニコン設定（L4T版名）。Pi とは別系統で Jetson の SSD に保管し、毎日 04:00 の crontab で自動（30個輪転）。「Jetsonスナップショットを作る」は Pi 経由のSSHで発動（約10分）。「選んだJetsonスナップショット」には Jetson のスナップショットだけが出ます。WindowsのPCにもコピーして照合（PCのフォルダ `jetson-backups`）。Jetsonの復元は私に依頼するとSSHでスナップショットを解いて戻します。</div>
   </div>
 
 
@@ -4266,6 +4269,46 @@ document.getElementById('bk_make').addEventListener('click', () => {
   });
 });
 loadBackup();
+
+function renderJetson(j) {
+  const items = (j.items || []).slice(0, 30);
+  const sel = document.getElementById('jb_list');
+  sel.innerHTML = items.map(it =>
+    `<option value="${it.name}">${it.created.slice(5, 10)} ${it.created.slice(11, 16)}　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
+    || '<option value="">（Jetsonスナップショットがありません）</option>';
+  const showDetail = it => {
+    document.getElementById('jb_detail').innerHTML = it
+      ? `<b>${it.created.slice(0, 10)} ${it.created.slice(11, 16)}</b>　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB　sha ${it.sha256}<br><span style="color:#7a8fa6">${it.name}</span>`
+      : (j.note || '（Jetsonスナップショットがありません）');
+  };
+  sel.onchange = () => showDetail(items.find(i => i.name === sel.value));
+  showDetail(items[0]);
+  const ok = j.ssh_ok && j.cron_ok;
+  const st = document.getElementById('jb_state');
+  st.textContent = ok ? '自動毎日 04:00' : (j.cron_ok ? 'SSH不通' : 'crontab未導入');
+  st.className = 'badge ' + (ok ? 'ok' : 'warn');
+  const btn = document.getElementById('jb_make');
+  btn.disabled = !ok;
+  btn.title = ok ? '' : (j.note || 'Jetson SSH疎通できません');
+}
+function loadJetsonBackup() {
+  fetch('/api/jetson_backup').then(r => r.json()).then(renderJetson).catch(() => {});
+}
+document.getElementById('jb_make').addEventListener('click', () => {
+  document.getElementById('jb_msg').textContent = '作成中…（約10分）';
+  apiPost('/api/jetson_backup', {}).then(r => {
+    if (!r) return;
+    if (r.status === 200) {
+      setTimeout(loadJetsonBackup, 20000);
+      setTimeout(() => { document.getElementById('jb_msg').textContent = '完了確認…'; loadJetsonBackup(); }, 200000);
+      setTimeout(() => { document.getElementById('jb_msg').textContent = '完了確認…'; loadJetsonBackup(); }, 620000);
+    } else {
+      r.json().then(j => { document.getElementById('jb_msg').textContent = j.detail || '作成できません'; })
+        .catch(() => { document.getElementById('jb_msg').textContent = '作成できません'; });
+    }
+  });
+});
+loadJetsonBackup();
 
 connect();
 </script>
