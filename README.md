@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.31.3（2026-10-28。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.31.4（2026-10-28。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -307,14 +307,19 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 | `power_saving` | - | Wi-Fi の省電力を切る |
 | `voice_chat` | - | Bluetooth のスピーカー＆マイクで話す（試し） |
 
-## バックアップと復元（v1.30.0）
+## バックアップと復元（2系統：ラズパイ と Jetson、v1.31.3）
 
-スナップショット（バックアップ）は Pi の SSD 内 `~/ai-car-backups/` に保存する（輪転30個）＋ Windows PC へミラー。1スナップショット = `ai-car-<日時>-v<version>-<gitsha>.tar.zst` ＋ `manifest.json`（tar の sha256 含む）。
+ラズパイ と Jetson は別系統でバックアップする。スナップショット＝zstd tar＋`manifest.json`（tar の sha256 含む）で、それぞれの機械のディスクに保存し、Windows PC へミラーする（PC `Strata/Workspace/ai-car-backups` ＝ラズパイ系統、`jetson-backups` ＝Jetson系統、sha256照合済み）。
 
-- **作る**：`bash scripts/ai-car-backup.sh`（superで可）。毎日04:00に `ai-car-backup.timer` がrootで自動実行。ダッシュボードの「バックアップ」カードからスナップショットを作成（`sudo -n systemctl start --no-block ai-car-backup.service`、sudoersホワイトリスト）。
-- **中身**：Tier A＝home一式（`AI-CAR_ws`（build/install/log/ai-car-backups除く）、calib、patrols、poselog・rotlog・heading_log、home直下のテストファイル、`.config/aicar`）、Tier B＝`/etc/systemd/system/ai-car-*`・udev rule・`/boot/firmware/config.txt`+`cmdline.txt`・aptマニフェスト・`tailscale status --json`・crontab。sudoers の中身はリポジトリの `systemd/*.sudoers` が正。
+- **ラズパイ系統**：Pi SSD 内 `~/ai-car-backups/`（輪転30個、`AI_CAR_BACKUP_KEEP`）。命名 `ai-car-<日時>-v<version>-<gitsha>`。
+- **Jetson系統**：Jetson NVMe 内 `~/jetson-backups/`（輪転30個、`JETSON_BACKUP_KEEP`。空き723GBで30個≈102GB収まる）。命名 `jetson-<日時>-v<L4T版>`（REVISION動的抽出）、manifest に `jetson_version`。
+- **作る（ラズパイ）**：`bash scripts/ai-car-backup.sh`（superで可）。毎日04:00に `ai-car-backup.timer` がrootで自動実行。ダッシュボードカードの「ラズパイ スナップショット」から作成（`sudo -n systemctl start --no-block ai-car-backup.service`、sudoersホワイトリスト）。
+- **作る（Jetson）**：Jetson の crontab が毎日04:00に `/home/jetson/ai-jetson-backup.sh` を実行。ダッシュボードカードの「Jetsonスナップショットを作る」で作成（ラズパイ経由SSHで発動、約10分）。
+- **中身（ラズパイ）**：Tier A＝home一式（`AI-CAR_ws`（build/install/log/ai-car-backups除く）、calib、patrols、poselog・rotlog・heading_log、home直下のテストファイル、`.config/aicar`）、Tier B＝`/etc/systemd/system/ai-car-*`・udev rule・`/boot/firmware/config.txt`+`cmdline.txt`・aptマニフェスト・`tailscale status --json`・crontab。sudoers の中身はリポジトリの `systemd/*.sudoers` が正。
+- **中身（Jetson）**：Tier A＝`/home/jetson` のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット・sudoers内容記録・`extlinux.conf`・netplan・aptマニフェスト・tailscale・crontab。sudoersは440でjetsonが読めないため内容記録を同梱。
 - **復元（稼働Pi・R2）**：`sudo /usr/local/sbin/ai-car-restore <スナップショット名>`（sha256照合→dashboard停止→Tier A rsync上書き→Tier B units/udev/config.txt再導入→dashboard再起動）。colcon buildは自動実行しない（必要時 `colcon build --symlink-install`）。
-- **新規SD復元（R3）**：Ubuntu 24.04 インストール→`git clone`→`sudo systemd/install_service.sh`→このREADMEのlibcamera/hailortビルド手順→`ai-car-restore` でデータ復元→Tailscale再登録→受入＝8080起動・status全ノードalive・maps個数一致。
-- **開発フック**：PRマージ前に必ずスナップショットを作る（strata側で自動化）。`install_service.sh` のsudo導入はユーザーのパスワードで1回だけ必要。
-- **Jetson用（v1.30.2）**：`scripts/ai-jetson-backup.sh`（Piと同一設計）。Tier A＝`/home/jetson`のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット・sudoers内容記録・`extlinux.conf`・netplan・aptマニフェスト・tailscale・crontab。Jetson側 `~/jetson-backups/` 輪転7、PCミラー照合。sudoersは440でjetsonが読めないため内容記録を同梱。復元（R3相当）は新規Jetson时READMEの各サービス導入手順＋スナップショット展開。
-- **注意**：同一SSD内のスナップショットは削除・暴走からの回復用。SSD故障はPCミラーが救う（PC側 `Strata/Workspace/ai-car-backups/` にsha256照合済みミラー）。
+- **復元（Jetson）**：私（strata）に依頼する。SSHでJetsonに入り、スナップショットを解いて Tier A（home）と Tier B（設定）を戻す。
+- **Jetson反映**：スクリプトを変えたら scp で `/home/jetson/ai-jetson-backup.sh` へ置き、Jetson側で CR除去（`tr -d '\r'`）＋ `bash -n` 構文確認（Windowsミラー由来はCRLFでbashが動かない）。
+- **ダッシュボードカード**：「バックアップ（ラズパイ と Jetson の2系統）」。各系統に作成ボタン＋ドロップダウン（新しい順・30個まで）＋選んだスナップショットの詳細（ラズパイは復元コマンドも表示）。状態バッジ（ラズパイ 自動毎日 04:00／Jetson 自動毎日 04:00）。
+- **開発フック**：PRマージ前に必ずスナップショットを作る（ラズパイ、strata側で自動化）。Jetsonスクリプト変更時は反映後にテストスナップショットも作る。`install_service.sh` のsudo導入はユーザーのパスワードで1回だけ必要。
+- **注意**：同一ディスク内のスナップショットは削除・暴走からの回復用。ディスク故障はPCミラーが救う（ラズパイ系統 `ai-car-backups`、Jetson系統 `jetson-backups` にsha256照合済みミラー）。
