@@ -747,14 +747,13 @@
   <div class="card wide">
     <h2>バックアップ <span class="badge" id="bk_state">-</span> <span style="font-weight:400;color:#7a8fa6">（ラズパイ と Jetson の2系統）</span></h2>
     <table>
-      <tr><td class="k">ラズパイ スナップショット</td><td class="v"><button id="bk_make">ラズパイスナップショットを作る</button> <span id="bk_msg"></span></td></tr>
       <tr><td class="k">ラズパイスナップショットを選ぶ（新しい順・30個まで）</td><td class="v"><select id="bk_list"><option>読み込み中…</option></select></td></tr>
       <tr><td class="k">選んだラズパイスナップショット</td><td class="v wrap" id="bk_detail">-</td></tr>
       <tr><td class="k">Jetson スナップショット</td><td class="v"><button id="jb_make">Jetsonスナップショットを作る</button> <span id="jb_msg"></span> <span class="badge" id="jb_state">-</span></td></tr>
       <tr><td class="k">Jetsonスナップショットを選ぶ（新しい順・30個まで）</td><td class="v"><select id="jb_list"><option>読み込み中…</option></select></td></tr>
       <tr><td class="k">選んだJetsonスナップショット</td><td class="v wrap" id="jb_detail">-</td></tr>
     </table>
-    <div class="note">ラズパイのバックアップは毎日 04:00 に自動で作る（Pi SSD内 `ai-car-backups`、古い物は自動で消える）。ラズパイスナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`。スナップショットはドロップダウンで選ぶ（選んだ物の詳細と復元コマンドが下に出る）。<br>Jetsonスナップショット＝スタックちゃんのプログラム・AIモデル・ミニコン設定（L4T版名）。ラズパイ とは別系統で Jetson の SSD に保管し、毎日 04:00 の crontab で自動（30個輪転）。「Jetsonスナップショットを作る」は ラズパイ 経由のSSHで発動（約10分）。「選んだJetsonスナップショット」には Jetson のスナップショットだけが出ます。WindowsのPCにもコピーして照合（PCのフォルダ `jetson-backups`）。Jetsonの復元は私に依頼するとSSHでスナップショットを解いて戻します。</div>
+    <div class="note">ラズパイのバックアップは毎日 04:00 に自動で作る（Pi SSD内 `ai-car-backups`、古い物は自動で消える）。手動作成はSSHで `bash ~/AI-CAR_ws/scripts/ai-car-backup.sh`（私に依頼）。カードの作成ボタンは削除しました。ラズパイスナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`（選んだスナップショットに復元コマンドがそのまま出ます）。<br>Jetsonスナップショット＝スタックちゃんのプログラム・AIモデル・ミニコン設定（L4T版名）。ラズパイ とは別系統で Jetson の SSD に保管し、毎日 04:00 の crontab で自動（30個輪転）。「Jetsonスナップショットを作る」は ラズパイ 経由のSSHで発動（約10分）。WindowsのPCにもコピーして照合（PCのフォルダ `jetson-backups`）。Jetsonの復元は私に依頼するとSSHでスナップショットを解いて戻します。</div>
   </div>
 
 
@@ -4248,26 +4247,10 @@ function renderBackup(j) {
   const st = document.getElementById('bk_state');
   st.textContent = j.sudo_ok ? 'ラズパイ 自動毎日 04:00' : 'ラズパイ sudoers未導入';
   st.className = 'badge ' + (j.sudo_ok ? 'ok' : 'warn');
-  const btn = document.getElementById('bk_make');
-  btn.disabled = !j.sudo_ok;
-  btn.title = j.sudo_ok ? '' : 'sudo bash systemd/install_service.sh を1回実行（sudoersホワイトリスト導入）';
 }
 function loadBackup() {
   fetch('/api/backup').then(r => r.json()).then(renderBackup).catch(() => {});
 }
-document.getElementById('bk_make').addEventListener('click', () => {
-  document.getElementById('bk_msg').textContent = '作成中…（約3分）';
-  apiPost('/api/backup', {}).then(r => {
-    if (!r) return;
-    if (r.status === 200) {
-      setTimeout(() => { document.getElementById('bk_msg').textContent = '完了確認…'; loadBackup(); }, 210000);
-      setTimeout(loadBackup, 20000);
-    } else {
-      r.json().then(j => { document.getElementById('bk_msg').textContent = j.detail || '作成できません'; })
-        .catch(() => { document.getElementById('bk_msg').textContent = '作成できません'; });
-    }
-  });
-});
 loadBackup();
 
 function renderJetson(j) {
