@@ -1,5 +1,5 @@
 #!/bin/bash
-# Jetson バックアップスナップショット（AI-CAR Pi仕様と同一設計、Jetson用適応）
+# Jetson バックアップバックアップ（AI-CAR Pi仕様と同一設計、Jetson用適応）
 # 輪転30個・命名 jetson-日付_時刻-vL4T版・manifest同梱（Pi仕様と同一）。
 # Tier A: /home/jetsonのサービスコード群・データ・モデルキャッシュ（再生可能な .cache は除外可）
 # Tier B: jetson-*ユニット、sudoers内容記録、extlinux.conf、netplan、aptマニフェスト、tailscale、crontab

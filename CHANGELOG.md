@@ -4,23 +4,32 @@
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-10-29
+
+### Added
+- Jetson復元ボタン＋`POST /api/jetson_restore`（ユーザー指示）。ダッシュボード（Pi）からPi経由SSHでJetsonの `sudo -n /usr/local/bin/ai-jetson-restore <名前>` を発動。Jetson sudoersホワイトリスト `systemd/ai-jetson-restore.sudoers`（`jetson ALL=(root) NOPASSWD: /usr/local/bin/ai-jetson-restore`）をJetson側で1回導入（ユーザーパスワード必要）。新スクリプト `scripts/ai-jetson-restore.sh`（sha256照合→Tier A上書き復元→Tier B jetson-*ユニット・extlinux.conf・netplan再導入（復元前コピー残す）→jetson-*・ollama再起動。netplan applyはSSH切断リスクのため手動）。
+- 語の統一：「スナップショット」→「バックアップ」（ダッシュボードカード・README・PROJECT_STATUS・CHANGELOG・AGENTS.md・backup/restoreスクリプト・sudoers・install_service.sh）。ユーザー指示。語の移り方は 快照→スナップショット（v1.30.5）→バックアップ（v1.32.0）。
+
+### Removed
+- 定時バックアップ：Pi `ai-car-backup.timer`（リポジトリから除去、install_service.shはtimer導入をやめ古いtimerをdisable+rm）、Jetson crontabの毎日04:00行（実機で削除）。作成タイミングはバージョンアップ時：PiはPRマージ前の開発フック、JetsonはPi deploy時にPi経由SSH＋手動SSH依頼。
+
 ## [1.31.9] - 2026-10-29
 
 ### Added
-- バックアップカードのラズパイ系統に「選んだスナップショットを復元」ボタン＋`POST /api/restore`（ユーザー指示の復元仕様変更）。ダッシュボードはスナップショット名を正規表現検証し、sudoersホワイトリスト（`sudo -n /usr/local/sbin/ai-car-restore ai-car-*`）で復元を発動。`scripts/ai-car-restore.sh` にcgroup escape追加（ダッシュボードから発動時、dashboard停止で復元プロセスが殺されない。root側 `/usr/local/sbin/ai-car-restore` への反映は `sudo bash systemd/install_service.sh` 再実行1回）。
+- バックアップカードのラズパイ系統に「選んだバックアップを復元」ボタン＋`POST /api/restore`（ユーザー指示の復元仕様変更）。ダッシュボードはバックアップ名を正規表現検証し、sudoersホワイトリスト（`sudo -n /usr/local/sbin/ai-car-restore ai-car-*`）で復元を発動。`scripts/ai-car-restore.sh` にcgroup escape追加（ダッシュボードから発動時、dashboard停止で復元プロセスが殺されない。root側 `/usr/local/sbin/ai-car-restore` への反映は `sudo bash systemd/install_service.sh` 再実行1回）。
 
 ### Removed
-- カードの「選んだスナップショット」詳細表示行（ラズパイ・Jetson両方）。ラズパイ＝ドロップダウン＋復元ボタン、Jetson＝ドロップダウンのみ（復元は私に依頼）。
+- カードの「選んだバックアップ」詳細表示行（ラズパイ・Jetson両方）。ラズパイ＝ドロップダウン＋復元ボタン、Jetson＝ドロップダウンのみ（復元は私に依頼）。
 
 ## [1.31.8] - 2026-10-29
 
 ### Removed
-- ダッシュボードのバックアップカードからJetson系統のスナップショット作成も削除（作成ボタン `jb_make`＋`POST /api/jetson_backup`、ユーザー指示）。これでカードは2系統とも表示のみ（ドロップダウン・詳細・状態バッジ）。Jetson作成＝crontab毎日04:00＋SSH手動（`bash ~/ai-jetson-backup.sh`）。カード説明文・README・PROJECT_STATUSに反映。
+- ダッシュボードのバックアップカードからJetson系統のバックアップ作成も削除（作成ボタン `jb_make`＋`POST /api/jetson_backup`、ユーザー指示）。これでカードは2系統とも表示のみ（ドロップダウン・詳細・状態バッジ）。Jetson作成＝crontab毎日04:00＋SSH手動（`bash ~/ai-jetson-backup.sh`）。カード説明文・README・PROJECT_STATUSに反映。
 
 ## [1.31.7] - 2026-10-29
 
 ### Removed
-- ダッシュボードのバックアップカードからラズパイ系統のスナップショット作成を削除（作成ボタン `bk_make`＋`POST /api/backup`、ユーザー指示）。ラズパイ作成＝毎日04:00のtimer＋SSH手動（`bash scripts/ai-car-backup.sh`）。Jetson系統の作成ボタン（ラズパイ経由SSH発動）は維持。カード説明文・README・PROJECT_STATUSに反映。
+- ダッシュボードのバックアップカードからラズパイ系統のバックアップ作成を削除（作成ボタン `bk_make`＋`POST /api/backup`、ユーザー指示）。ラズパイ作成＝毎日04:00のtimer＋SSH手動（`bash scripts/ai-car-backup.sh`）。Jetson系統の作成ボタン（ラズパイ経由SSH発動）は維持。カード説明文・README・PROJECT_STATUSに反映。
 
 ## [1.31.6] - 2026-10-28
 
@@ -41,18 +50,18 @@
 ## [1.31.3] - 2026-10-28
 
 ### Changed
-- バックアップカードのラベルを2系統明示化：ラズパイ側を「ラズパイスナップショットを作る/選ぶ/選んだラズパイスナップショット」、状態バッジを「ラズパイ 自動毎日 04:00」「Jetson 自動毎日 04:00」等に変更。題名に「（ラズパイ と Jetson の2系統）」注記。説明文もラズパイ表記へ統一。
+- バックアップカードのラベルを2系統明示化：ラズパイ側を「ラズパイバックアップを作る/選ぶ/選んだラズパイバックアップ」、状態バッジを「ラズパイ 自動毎日 04:00」「Jetson 自動毎日 04:00」等に変更。題名に「（ラズパイ と Jetson の2系統）」注記。説明文もラズパイ表記へ統一。
 
 ## [1.31.2] - 2026-10-28
 
 ### Fixed
-- Jetsonスナップショット一覧の旧manifest版表示で `v4.7` と出ていたのを `v36.4.7` に（REVISION に `36.` 接頭辞）。
+- Jetsonバックアップ一覧の旧manifest版表示で `v4.7` と出ていたのを `v36.4.7` に（REVISION に `36.` 接頭辞）。
 
 ## [1.31.1] - 2026-10-28
 
 ### Fixed
-- Windowsミラー→Jetson scpでCRLFが混ざりbashが動かなかった問題（実測で検出）。AGENTS.md「Jetson への反映」に CR除去（`tr -d '\r'`）+ `bash -n` 構文確認の手順を追加。Jetson側の `~/ai-jetson-backup.sh` を修正し、テストスナップショットで検証。
-- Jetsonスナップショット一覧で、旧manifest（`jetson_version` なし）の版表示を L4T 文字列の REVISION から出すフォールバック追加。
+- Windowsミラー→Jetson scpでCRLFが混ざりbashが動かなかった問題（実測で検出）。AGENTS.md「Jetson への反映」に CR除去（`tr -d '\r'`）+ `bash -n` 構文確認の手順を追加。Jetson側の `~/ai-jetson-backup.sh` を修正し、テストバックアップで検証。
+- Jetsonバックアップ一覧で、旧manifest（`jetson_version` なし）の版表示を L4T 文字列の REVISION から出すフォールバック追加。
 
 ## [1.31.0] - 2026-10-28
 
@@ -67,27 +76,27 @@
 ## [1.30.7] - 2026-10-28
 
 ### Changed
-- バックアップカードのスナップショット一覧をドロップダウン選択に変更（30個表示時の縦空間削減）。選んだスナップショットの詳細（日付・時刻・version・git SHA・サイズ・sha256・名前・復元コマンド）を下部に1項目表示。あわせて CHANGELOG・PROJECT_STATUS の v1.30.6 節に残っていた「快照」を「スナップショット」に統一。
+- バックアップカードのバックアップ一覧をドロップダウン選択に変更（30個表示時の縦空間削減）。選んだバックアップの詳細（日付・時刻・version・git SHA・サイズ・sha256・名前・復元コマンド）を下部に1項目表示。あわせて CHANGELOG・PROJECT_STATUS の v1.30.6 節に残っていた「快照」を「バックアップ」に統一。
 
 ## [1.30.6] - 2026-10-28
 
 ### Changed
-- スナップショット輪転を Pi 側 7個→30個（`AI_CAR_BACKUP_KEEP` 既定30。Pi SSD空き95GBでスナップショット30個≈15GB）。ダッシュボードカードの一覧表示を読みやすい形に改良（日付・時刻・version・サイズ・sha12字の行＋スナップショット名を下段。30個まで表示）。Jetson側輪転はディスク規模を考慮し7のまま。
+- バックアップ輪転を Pi 側 7個→30個（`AI_CAR_BACKUP_KEEP` 既定30。Pi SSD空き95GBでバックアップ30個≈15GB）。ダッシュボードカードの一覧表示を読みやすい形に改良（日付・時刻・version・サイズ・sha12字の行＋バックアップ名を下段。30個まで表示）。Jetson側輪転はディスク規模を考慮し7のまま。
 
 ## [1.30.5] - 2026-10-28
 
 ### Changed
-- 「快照」（中国語表記）を日本語「スナップショット」に統一（ダッシュボードカード・backup/restoreスクリプト・sudoers・install_service.sh・README・CHANGELOG・PROJECT_STATUS）。機能変更なし。
+- 「快照」（中国語表記）を日本語「スナップショット」に統一（ダッシュボードカード・backup/restoreスクリプト・sudoers・install_service.sh・README・CHANGELOG・PROJECT_STATUS）。機能変更なし。（語はv1.32.0で「バックアップ」へ再統一）
 
 ## [1.30.4] - 2026-10-28
 
 ### Fixed
-- root実行（timer・ダッシュボード発動）で `git: detected dubious ownership` によりスナップショット作成が失敗していた（exit 128）。`scripts/ai-car-backup.sh` の git 呼び出しを `git -c safe.directory="$WS"` に修正。ダッシュボードPOST→rootサービス発動（sudoersホワイトリスト）自体は成功確認済み（`{"ok":true}`）。root側のスクリプト（`/usr/local/sbin/ai-car-backup`）更新には `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` の再実行（1回）。
+- root実行（timer・ダッシュボード発動）で `git: detected dubious ownership` によりバックアップ作成が失敗していた（exit 128）。`scripts/ai-car-backup.sh` の git 呼び出しを `git -c safe.directory="$WS"` に修正。ダッシュボードPOST→rootサービス発動（sudoersホワイトリスト）自体は成功確認済み（`{"ok":true}`）。root側のスクリプト（`/usr/local/sbin/ai-car-backup`）更新には `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` の再実行（1回）。
 
 ## [1.30.3] - 2026-10-28
 
 ### Added
-- ダッシュボード「バックアップ」カード：`GET /api/backup`（スナップショット一覧＝manifest読取＋sudoersホワイトリスト確認）、`POST /api/backup`（`sudo -n systemctl start --no-block ai-car-backup.service`、走行中は制限なし＝走行禁止対象外）。カードに最新のスナップショット・作成ボタン（sudoers未導入時はボタン無効＋理由）・一覧（新しい順7個）を表示。毎日04:00自動はそのまま。（PR #327）
+- ダッシュボード「バックアップ」カード：`GET /api/backup`（バックアップ一覧＝manifest読取＋sudoersホワイトリスト確認）、`POST /api/backup`（`sudo -n systemctl start --no-block ai-car-backup.service`、走行中は制限なし＝走行禁止対象外）。カードに最新のバックアップ・作成ボタン（sudoers未導入時はボタン無効＋理由）・一覧（新しい順7個）を表示。毎日04:00自動はそのまま。（PR #327）
 
 ### Changed
 - `systemd/ai-car-backup.sudoers`：`systemctl restart ai-car-dashboard.service` をホワイトリスト追加。これによりデプロイ（Python変更時のダッシュボード再起動）がユーザーのパスワードなしで完結する（`install_service.sh` の sudo 実行がホワイトリスト導入の1回きり）。
@@ -95,8 +104,8 @@
 ## [1.30.2] - 2026-10-28
 
 ### Added
-- Jetson用バックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同一設計）：Tier A＝`/home/jetson`のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット（service/timer）、sudoers内容記録、`extlinux.conf`、netplan、aptマニフェスト、tailscale、crontab。zstd、Jetson側 `~/jetson-backups/` 輪転7、manifest（L4T・os/kernel・tar sha256）。T1実測成功（スナップショット3.41GB、sha256一致、Windows PCミラー照合）。
-- sudoersは440でjetsonが読めないため、内容記録 `sudoers-content.md` をスナップショットに同梱（新規設定時はvisudo検証＋440導入し記録へ反映）。
+- Jetson用バックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同一設計）：Tier A＝`/home/jetson`のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット（service/timer）、sudoers内容記録、`extlinux.conf`、netplan、aptマニフェスト、tailscale、crontab。zstd、Jetson側 `~/jetson-backups/` 輪転7、manifest（L4T・os/kernel・tar sha256）。T1実測成功（バックアップ3.41GB、sha256一致、Windows PCミラー照合）。
+- sudoersは440でjetsonが読めないため、内容記録 `sudoers-content.md` をバックアップに同梱（新規設定時はvisudo検証＋440導入し記録へ反映）。
 
 ## [1.30.1] - 2026-10-28
 
@@ -107,7 +116,7 @@
 ## [1.30.0] - 2026-10-28
 
 ### Added
-- バックアップスナップショット `scripts/ai-car-backup.sh`：Tier A（homeデータ＝AI-CAR_ws（build/install/log除く）＋home直下のテストファイル・log・calib・patrols・.config/aicar）、Tier B（systemdユニット・udev rule・config.txt/cmdline.txt・aptマニフェスト・tailscale・crontab）、manifest.json（version・git SHA・os/kernel・tar sha256）。zstd圧縮、SSD内 `~/ai-car-backups/` に保存、Pi側輪転7個。super手動実行とrootサービス両対応。
+- バックアップバックアップ `scripts/ai-car-backup.sh`：Tier A（homeデータ＝AI-CAR_ws（build/install/log除く）＋home直下のテストファイル・log・calib・patrols・.config/aicar）、Tier B（systemdユニット・udev rule・config.txt/cmdline.txt・aptマニフェスト・tailscale・crontab）、manifest.json（version・git SHA・os/kernel・tar sha256）。zstd圧縮、SSD内 `~/ai-car-backups/` に保存、Pi側輪転7個。super手動実行とrootサービス両対応。
 - 毎日04:00のタイマー `ai-car-backup.timer`（Persistent）とrootサービス `ai-car-backup.service`。ダッシュボードから `sudo systemctl start --no-block ai-car-backup.service`（sudoersホワイトリスト）。
 - 復元スクリプト `scripts/ai-car-restore.sh`（R2：稼働Pi全体復元）。sha256照合→dashboard停止→Tier A rsync上書き→Tier B（units/udev/config.txt、config.txtは復元前コピーを残す）→dashboard再起動。sudoersで `sudo /usr/local/sbin/ai-car-restore ai-car-*` ホワイトリスト。
 - README に「バックアップと復元」節を追加。`install_service.sh` にバックアップ一式の導入を追加（sudo 1回）。

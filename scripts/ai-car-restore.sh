@@ -1,18 +1,18 @@
 #!/bin/bash
 # AI-CAR 復元スクリプト（v1.0 仕様 R2: 稼働Pi全体復元）
-# root で走る（sudo /usr/local/sbin/ai-car-restore <スナップショット名>）
+# root で走る（sudo /usr/local/sbin/ai-car-restore <バックアップ名>）
 set -euo pipefail
 # ダッシュボードから発動したときはダッシュボードのcgroupから抜けて、dashboard停止に殺されない
 if [ -w /sys/kernel/cgroup/procs ]; then echo $$ > /sys/kernel/cgroup/procs; fi
-NAME="${1:?スナップショット名（ai-car-YYYYMMDD_HHMMSS-vX.Y.Z-<sha>）}"
+NAME="${1:?バックアップ名（ai-car-YYYYMMDD_HHMMSS-vX.Y.Z-<sha>）}"
 OUT=/home/super/ai-car-backups
 TAR="$OUT/$NAME.tar.zst"
 MAN="$OUT/$NAME.manifest.json"
-[ -f "$TAR" ] || { echo "スナップショットが見つからない: $TAR"; exit 1; }
+[ -f "$TAR" ] || { echo "バックアップが見つからない: $TAR"; exit 1; }
 [ -f "$MAN" ] || { echo "manifestが見つからない: $MAN"; exit 1; }
 WANT=$(python3 -c "import json;print(json.load(open('$MAN'))['tar_sha256'])")
 GOT=$(sha256sum "$TAR" | cut -d' ' -f1)
-[ "$WANT" = "$GOT" ] || { echo "sha256不一致（スナップショット破損）: want=$WANT got=$GOT"; exit 2; }
+[ "$WANT" = "$GOT" ] || { echo "sha256不一致（バックアップ破損）: want=$WANT got=$GOT"; exit 2; }
 
 echo "復元開始: $NAME (version=$(python3 -c "import json;print(json.load(open('$MAN'))['pi_version'])"))"
 systemctl stop ai-car-dashboard.service || true

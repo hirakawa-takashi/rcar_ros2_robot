@@ -747,12 +747,13 @@
   <div class="card wide">
     <h2>バックアップ <span class="badge" id="bk_state">-</span> <span style="font-weight:400;color:#7a8fa6">（ラズパイ と Jetson の2系統）</span></h2>
     <table>
-      <tr><td class="k">ラズパイスナップショットを選ぶ（新しい順・30個まで）</td><td class="v"><select id="bk_list"><option>読み込み中…</option></select></td></tr>
-      <tr><td class="k">ラズパイ 復元</td><td class="v"><button id="bk_restore">選んだスナップショットを復元</button> <span id="bk_msg"></span></td></tr>
-      <tr><td class="k">Jetson スナップショット</td><td class="v"><span class="badge" id="jb_state">-</span></td></tr>
-      <tr><td class="k">Jetsonスナップショットを選ぶ（新しい順・30個まで）</td><td class="v"><select id="jb_list"><option>読み込み中…</option></select></td></tr>
+      <tr><td class="k">ラズパイバックアップを選ぶ（新しい順・30個まで）</td><td class="v"><select id="bk_list"><option>読み込み中…</option></select></td></tr>
+      <tr><td class="k">ラズパイ 復元</td><td class="v"><button id="bk_restore">選んだバックアップを復元</button> <span id="bk_msg"></span></td></tr>
+      <tr><td class="k">Jetson バックアップ</td><td class="v"><span class="badge" id="jb_state">-</span></td></tr>
+      <tr><td class="k">Jetsonバックアップを選ぶ（新しい順・30個まで）</td><td class="v"><select id="jb_list"><option>読み込み中…</option></select></td></tr>
+      <tr><td class="k">Jetson 復元</td><td class="v"><button id="jr_restore">選んだJetsonバックアップを復元</button> <span id="jr_msg"></span></td></tr>
     </table>
-    <div class="note">ラズパイのバックアップは毎日 04:00 に自動で作る（Pi SSD内 `ai-car-backups`、古い物は自動で消える）。手動作成はSSHで `bash ~/AI-CAR_ws/scripts/ai-car-backup.sh`（私に依頼）。カードの作成ボタンは削除しました。ラズパイスナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元は「選んだスナップショットを復元」ボタン（約5分・ダッシュボードが一度止まり自動再起動）。手動復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`（同じ）。<br>Jetsonスナップショット＝スタックちゃんのプログラム・AIモデル・ミニコン設定（L4T版名）。ラズパイ とは別系統で Jetson の SSD に保管し、毎日 04:00 の crontab で自動（30個輪転）。手動作成はSSHで `bash ~/ai-jetson-backup.sh`（私に依頼）。カードの作成ボタンは削除しました。WindowsのPCにもコピーして照合（PCのフォルダ `jetson-backups`）。Jetsonの復元は私に依頼するとSSHでスナップショットを解いて戻します。</div>
+    <div class="note">ラズパイのバックアップはバージョンアップ時に作る（PRマージ前、私＝strataが自動化。開発フック）。手動作成はSSHで `bash ~/AI-CAR_ws/scripts/ai-car-backup.sh`（私に依頼）。定時timer（毎日04:00）は廃止。カードの作成ボタンは削除。ラズパイバックアップには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。同一ディスク内のバックアップは削除・暴走からの回復用。復元は「選んだバックアップを復元」ボタン（約5分・ダッシュボードが一度止まり自動再起動）。手動復元はSSHで `sudo /usr/local/sbin/ai-car-restore バックアップ名`（同じ）。<br>Jetsonバックアップ＝スタックちゃんのプログラム・AIモデル・ミニコン設定（L4T版名）。ラズパイ とは別系統で Jetson の SSD に保管（30個輪転）。Piのバージョンアップ反映時にPi経由SSHで作る（私＝strata、約10分）＋手動SSH依頼。定時crontab（毎日04:00）は削除。復元は「選んだJetsonバックアップを復元」ボタン（Pi経由SSHでJetsonのrootスクリプトを発動、約10分・Jetsonのサービスが一度止まる。Jetson sudoersの初回導入にJetson側のユーザーパスワード1回必要）。WindowsのPCにもコピーして照合（PCのフォルダ `jetson-backups`）。</div>
   </div>
 
 
@@ -4235,9 +4236,9 @@ function renderBackup(j) {
   const sel = document.getElementById('bk_list');
   sel.innerHTML = items.map(it =>
     `<option value="${it.name}">${it.created.slice(5, 10)} ${it.created.slice(11, 16)}　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
-    || '<option value="">（スナップショットがありません）</option>';
+    || '<option value="">（バックアップがありません）</option>';
   const st = document.getElementById('bk_state');
-  st.textContent = j.sudo_ok ? 'ラズパイ 自動毎日 04:00' : 'ラズパイ sudoers未導入';
+  st.textContent = j.sudo_ok ? 'ラズパイ バックアップ_versionアップ' : 'ラズパイ sudoers未導入';
   st.className = 'badge ' + (j.sudo_ok ? 'ok' : 'warn');
   const btn = document.getElementById('bk_restore');
   btn.disabled = !j.sudo_ok;
@@ -4250,7 +4251,7 @@ loadBackup();
 document.getElementById('bk_restore').addEventListener('click', () => {
   const name = document.getElementById('bk_list').value;
   const msg = document.getElementById('bk_msg');
-  if (!name) { msg.textContent = 'スナップショットを選んでください'; return; }
+  if (!name) { msg.textContent = 'バックアップを選んでください'; return; }
   msg.textContent = '復元開始…';
   apiPost('/api/restore', {name}).then(r => {
     if (!r) return;
@@ -4270,16 +4271,32 @@ function renderJetson(j) {
   const sel = document.getElementById('jb_list');
   sel.innerHTML = items.map(it =>
     `<option value="${it.name}">${it.created.slice(5, 10)} ${it.created.slice(11, 16)}　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
-    || '<option value="">（Jetsonスナップショットがありません）</option>';
-  const ok = j.ssh_ok && j.cron_ok;
+    || '<option value="">（Jetsonバックアップがありません）</option>';
   const st = document.getElementById('jb_state');
-  st.textContent = ok ? 'Jetson 自動毎日 04:00' : (j.cron_ok ? 'Jetson SSH不通' : 'Jetson crontab未導入');
-  st.className = 'badge ' + (ok ? 'ok' : 'warn');
+  st.textContent = !j.ssh_ok ? 'Jetson SSH不通' : (j.restore_ok ? 'Jetson 復元sudoers OK' : 'Jetson 復元sudoers未導入');
+  st.className = 'badge ' + (j.ssh_ok ? 'ok' : 'warn');
 }
 function loadJetsonBackup() {
   fetch('/api/jetson_backup').then(r => r.json()).then(renderJetson).catch(() => {});
 }
 loadJetsonBackup();
+document.getElementById('jr_restore').addEventListener('click', () => {
+  const name = document.getElementById('jb_list').value;
+  const msg = document.getElementById('jr_msg');
+  if (!name) { msg.textContent = 'Jetsonバックアップを選んでください'; return; }
+  msg.textContent = '復元開始…';
+  apiPost('/api/jetson_restore', {name}).then(r => {
+    if (!r) return;
+    if (r.status === 200) {
+      r.json().then(j => { msg.textContent = j.note; }).catch(() => {});
+      setTimeout(loadJetsonBackup, 60000);
+      setTimeout(() => { msg.textContent = '復元完了確認…'; loadJetsonBackup(); }, 700000);
+    } else {
+      r.json().then(j => { msg.textContent = j.detail || '復元できません'; })
+        .catch(() => { msg.textContent = '復元できません'; });
+    }
+  });
+});
 
 connect();
 </script>

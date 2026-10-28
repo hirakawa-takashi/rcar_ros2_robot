@@ -131,7 +131,13 @@ class PatrolRequest(BaseModel):
 
 
 class RestoreRequest(BaseModel):
-    """バックアップカードで選んだスナップショット（ai-car-<日時>-v<version>-<gitsha>）をPiに復元する。"""
+    """バックアップカードで選んだバックアップ（ai-car-<日時>-v<version>-<gitsha>）をPiに復元する。"""
+
+    name: str
+
+
+class JetsonRestoreRequest(BaseModel):
+    """バックアップカードで選んだJetsonバックアップ（jetson-<日時>-v<L4T版>）をJetsonに復元する（Pi経由SSH）。"""
 
     name: str
 
@@ -2834,12 +2840,26 @@ def create_app(node: DashboardNode) -> FastAPI:
     def restore_start(req: RestoreRequest):
         name = req.name
         if not re.fullmatch(r'ai-car-[0-9]{8}_[0-9]{6}-v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}', name):
-            raise HTTPException(status_code=400, detail='スナップショット名が正しくありません')
+            raise HTTPException(status_code=400, detail='バックアップ名が正しくありません')
         if not _can_sudo(RESTORE_CHECK):
             raise HTTPException(status_code=503, detail='ai-car-restore のsudoersホワイトリストがありません（sudo bash systemd/install_service.sh を1回実行）')
         subprocess.Popen(['sudo', '-n', '/usr/local/sbin/ai-car-restore', name],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {'ok': True, 'note': '復元開始（sha256照合→home復元→設定再導入→ダッシュボード自動再起動）。約5分。ダッシュボードが一度止まります'}
+
+    @app.post('/api/jetson_restore', dependencies=[Depends(require_token)])
+    def jetson_restore_start(req: JetsonRestoreRequest):
+        name = req.name
+        if not re.fullmatch(r'jetson-[0-9]{8}_[0-9]{6}(-v[0-9]+\.[0-9]+\.[0-9]+|-L4T[0-9]+\.[0-9]+\.[0-9]+)', name):
+            raise HTTPException(status_code=400, detail='Jetsonバックアップ名が正しくありません')
+        chk = subprocess.run(JETSON_SSH + ['sudo -n -l 2>/dev/null | grep -c ai-jetson-restore'],
+                             capture_output=True, text=True, timeout=15, check=False)
+        if not chk.stdout.strip().isdigit() or int(chk.stdout.strip()) < 1:
+            raise HTTPException(status_code=503, detail='Jetson 復元sudoers未導入（Jetson側で1回：sudo visudo -cf ~/ai-jetson-restore.sudoers && sudo install -m 440 ~/ai-jetson-restore.sudoers /etc/sudoers.d/ai-jetson-restore）')
+        subprocess.Popen(JETSON_SSH + ["nohup sudo -n /usr/local/bin/ai-jetson-restore " + name +
+                        " >> /home/jetson/jetson-backups/restore.log 2>&1 &"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {'ok': True, 'note': 'Jetson復元開始（約10分・Jetsonのサービスが一度止まり自動復帰）'}
 
     JETSON_SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
                   '-o', 'ConnectTimeout=8', 'jetson@192.168.11.23']
@@ -2847,6 +2867,7 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.get('/api/jetson_backup')
     def jetson_backup_list():
         remote = ("crontab -l 2>/dev/null | grep -c jetson-backup; "
+                  "sudo -n -l 2>/dev/null | grep -c ai-jetson-restore; "
                   "for f in ~/jetson-backups/jetson-*.manifest.json; do tr -d '\\n' < \"$f\"; echo; done")
         r = subprocess.run(JETSON_SSH + [remote], capture_output=True, text=True, timeout=40, check=False)
         if r.returncode != 0:
@@ -2854,8 +2875,9 @@ def create_app(node: DashboardNode) -> FastAPI:
                     'note': 'Jetson SSH疎通できません（Jetsonが電源OFFかネットワーク外）'}
         lines = r.stdout.strip().splitlines()
         cron_ok = bool(lines and lines[0].strip().isdigit() and int(lines[0]) >= 1)
+        restore_ok = len(lines) > 1 and lines[1].strip().isdigit() and int(lines[1]) >= 1
         items = []
-        for line in lines[1:]:
+        for line in lines[2:]:
             try:
                 m = json.loads(line)
             except ValueError:
@@ -2867,7 +2889,7 @@ def create_app(node: DashboardNode) -> FastAPI:
                           'version': ver, 'git_sha': '',
                           'bytes': int(m.get('tar_bytes', 0)), 'sha256': m.get('tar_sha256', '')[:12]})
         items.sort(key=lambda x: x['name'], reverse=True)
-        return {'items': items, 'cron_ok': cron_ok, 'ssh_ok': True}
+        return {'items': items, 'cron_ok': cron_ok, 'restore_ok': restore_ok, 'ssh_ok': True}
 
     @app.get('/api/stackchan/status', dependencies=[Depends(require_token)])
     def stackchan_status():
