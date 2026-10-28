@@ -2626,6 +2626,9 @@ def create_app(node: DashboardNode) -> FastAPI:
         auth = request.headers.get('authorization', '')
         token = (auth[7:] if auth.lower().startswith('bearer ')
                  else request.headers.get('x-api-token', ''))
+        if not token.isascii():
+            # 非ASCIIトークンは compare_digest がTypeErrorになるため401で返す
+            raise HTTPException(status_code=401, detail='API トークンが必要です')
         if not hmac.compare_digest(token, node.api_token):
             raise HTTPException(status_code=401, detail='API トークンが必要です')
 
