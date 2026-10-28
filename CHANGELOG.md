@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-10-28
+
+### Added
+- Jetson バックアップを Pi と同一仕様に（輪転30個 `JETSON_BACKUP_KEEP` 既定30、命名 `jetson-日付_時刻-vL4T版`（REVISION動的抽出、fallback dpkg）、manifest に `jetson_version`）。Pi→Jetson SSH導入（Pi公開鍵を Jetson authorized_keys、ダッシュボードは `jetson@192.168.11.23` を accept-new）。
+- ダッシュボードのバックアップカードを Pi / Jetson の2系統分離管理化。Jetson用の作成ボタン（Pi経由SSHでcrontabスクリプト発動・約10分）、Jetsonドロップダウン（30個）、詳細表示、状態バッジ（crontab導入/SSH疎通）。API `GET/POST /api/jetson_backup`。
+- AGENTS.md に「Jetson への反映」（scp で `/home/jetson/ai-jetson-backup.sh`・2系統分離管理）と「承認を求めない」（ユーザー指示の作業での一斉・継続的承認要求禁止、単発質問のみ）節を追加。
+
+### Changed
+- PCミラーを2フォルダ分離（`ai-car-backups`＝Pi系統、`jetson-backups`＝Jetson系統）。
+
 ## [1.30.7] - 2026-10-28
 
 ### Changed

@@ -31,3 +31,13 @@ AI エージェント（Devin など）がこのリポジトリで作業する�
     ```
   - Python（ノード・ダッシュボード）を変えたときは `ai-car-dashboard.service` を再起動する。STL・画像・説明・設定だけのときは再起動しない。
   - 反映後、`systemctl is-active ai-car-dashboard.service` と、変えたファイル（STL など）が main と同じかを確かめ、結果をユーザーに報告する。
+
+## Jetson への反映
+
+- `scripts/ai-jetson-backup.sh` を変えたら、scp で `/home/jetson/ai-jetson-backup.sh` へ置く（crontab が毎日 04:00 にこのパスを実行）。SSH先は `jetson@192.168.11.23`（Pi の公開鍵が Jetson の authorized_keys に導入済み。Pi からも SSH できる）。
+- Jetson スナップショット（`~/jetson-backups`）と Pi スナップショット（`~/ai-car-backups`）は**2系統分離管理**。PCミラーも `ai-car-backups` と `jetson-backups` の2フォルダに分離する。
+
+## 承認を求めない
+
+- ユーザーから指示を受けた作業について、まとめて・継続的に承認を求めること（「〜してよいですか」の一斉・連続の確認）は**禁止**。AGENTS.md の方針（PRは自マージ、Pi・Jetson反映は聞かない）で自分で完走し、結果を報告する。
+- ユーザーの判断が必要な分岐が起きた場合だけ、その場面で単発の質問をする。質問は多くて1回にまとめる。
