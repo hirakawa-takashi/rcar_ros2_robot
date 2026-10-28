@@ -1,12 +1,13 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.30.4（2026-10-28）
+- バージョン: 1.30.5（2026-10-28）
 - 更新日: 2026/10/28
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
-- 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（快照491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
-- 残課題: root側のスクリプト更新（`/usr/local/sbin/ai-car-backup`）に `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` の再実行1回が必要（git safe.directory修正をrootへ反映）。ダッシュボードPOST→root発動は成功確認（`{"ok":true}`）、rootスクリプトのgit dubious ownershipをv1.30.4で修正。新規SD復元（R3）は予備SDがなく未実施。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（快照3.41GB、sha256一致、PCミラー照合）。
+- 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（スナップショット491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
+- 2026-10-28（v1.30.5、PR #329）: 「快照」（中国語表記）を日本語「スナップショット」に統一。ダッシュボードカード・backup/restoreスクリプト・sudoers・install_service.sh・README・CHANGELOG・PROJECT_STATUS。機能変更なし（カードの表示語のみ変化）。
+- 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでスナップショット作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
 
 ## システム構成
 - 実行環境: Raspberry Pi 5
