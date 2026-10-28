@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.31.9] - 2026-10-29
+
+### Added
+- バックアップカードのラズパイ系統に「選んだスナップショットを復元」ボタン＋`POST /api/restore`（ユーザー指示の復元仕様変更）。ダッシュボードはスナップショット名を正規表現検証し、sudoersホワイトリスト（`sudo -n /usr/local/sbin/ai-car-restore ai-car-*`）で復元を発動。`scripts/ai-car-restore.sh` にcgroup escape追加（ダッシュボードから発動時、dashboard停止で復元プロセスが殺されない。root側 `/usr/local/sbin/ai-car-restore` への反映は `sudo bash systemd/install_service.sh` 再実行1回）。
+
+### Removed
+- カードの「選んだスナップショット」詳細表示行（ラズパイ・Jetson両方）。ラズパイ＝ドロップダウン＋復元ボタン、Jetson＝ドロップダウンのみ（復元は私に依頼）。
+
 ## [1.31.8] - 2026-10-29
 
 ### Removed

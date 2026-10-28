@@ -130,6 +130,12 @@ class PatrolRequest(BaseModel):
     action: str = 'go'
 
 
+class RestoreRequest(BaseModel):
+    """バックアップカードで選んだスナップショット（ai-car-<日時>-v<version>-<gitsha>）をPiに復元する。"""
+
+    name: str
+
+
 class RouteRequest(BaseModel):
     """緑の点を names の順に Nav2 で回る（go）。cancel はやめて止まる。"""
 
@@ -325,6 +331,7 @@ REBOOT_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'reboot']
 POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
 BACKUP_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-backup.service']
+RESTORE_CHECK = ['sudo', '-n', '/usr/local/sbin/ai-car-restore', 'ai-car-*']
 
 
 def _can_sudo(cmd):
@@ -2822,6 +2829,17 @@ def create_app(node: DashboardNode) -> FastAPI:
                           'version': m.get('pi_version', ''), 'git_sha': m.get('git_sha', ''),
                           'bytes': int(m.get('tar_bytes', 0)), 'sha256': m.get('tar_sha256', '')[:12]})
         return {'items': items, 'sudo_ok': _can_sudo(BACKUP_CMD), 'dir': d}
+
+    @app.post('/api/restore', dependencies=[Depends(require_token)])
+    def restore_start(req: RestoreRequest):
+        name = req.name
+        if not re.fullmatch(r'ai-car-[0-9]{8}_[0-9]{6}-v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}', name):
+            raise HTTPException(status_code=400, detail='スナップショット名が正しくありません')
+        if not _can_sudo(RESTORE_CHECK):
+            raise HTTPException(status_code=503, detail='ai-car-restore のsudoersホワイトリストがありません（sudo bash systemd/install_service.sh を1回実行）')
+        subprocess.Popen(['sudo', '-n', '/usr/local/sbin/ai-car-restore', name],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {'ok': True, 'note': '復元開始（sha256照合→home復元→設定再導入→ダッシュボード自動再起動）。約5分。ダッシュボードが一度止まります'}
 
     JETSON_SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
                   '-o', 'ConnectTimeout=8', 'jetson@192.168.11.23']
