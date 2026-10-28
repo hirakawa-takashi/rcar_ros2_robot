@@ -1,5 +1,5 @@
 #!/bin/bash
-# Jetson バックアップ快照（AI-CAR Pi仕様 v1.30.2 と同一設計、Jetson用適応）
+# Jetson バックアップスナップショット（AI-CAR Pi仕様 v1.30.2 と同一設計、Jetson用適応）
 # Tier A: /home/jetsonのサービスコード群・データ・モデルキャッシュ（再生可能な .cache は除外可）
 # Tier B: jetson-*ユニット、sudoers内容記録、extlinux.conf、netplan、aptマニフェスト、tailscale、crontab
 # sudoersファイル自体は440でjetsonが読めないため、内容記録（sudoers-content.md）を同梱する。

@@ -27,7 +27,7 @@ sudo apt-get install -y uhubctl
 sudo install -m 755 "$DIR/ai-car-usb-power-cycle.sh" /usr/local/sbin/ai-car-usb-power-cycle
 sudo visudo -cf "$DIR/ai-car-usb-power.sudoers"
 sudo install -m 440 "$DIR/ai-car-usb-power.sudoers" /etc/sudoers.d/ai-car-usb-power
-# バックアップ快照（ai-car-backup.sh）と復元（ai-car-restore.sh）をrootに導入する
+# バックアップスナップショット（ai-car-backup.sh）と復元（ai-car-restore.sh）をrootに導入する
 sudo install -m 755 "$DIR/../scripts/ai-car-backup.sh" /usr/local/sbin/ai-car-backup
 sudo install -m 644 "$DIR/ai-car-backup.service" /etc/systemd/system/ai-car-backup.service
 sudo install -m 644 "$DIR/ai-car-backup.timer" /etc/systemd/system/ai-car-backup.timer

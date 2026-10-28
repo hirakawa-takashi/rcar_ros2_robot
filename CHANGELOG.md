@@ -4,10 +4,15 @@
 
 ## [Unreleased]
 
+## [1.30.5] - 2026-10-28
+
+### Changed
+- 「快照」（中国語表記）を日本語「スナップショット」に統一（ダッシュボードカード・backup/restoreスクリプト・sudoers・install_service.sh・README・CHANGELOG・PROJECT_STATUS）。機能変更なし。
+
 ## [1.30.4] - 2026-10-28
 
 ### Fixed
-- root実行（timer・ダッシュボード発動）で `git: detected dubious ownership` により快照作成が失敗していた（exit 128）。`scripts/ai-car-backup.sh` の git 呼び出しを `git -c safe.directory="$WS"` に修正。ダッシュボードPOST→rootサービス発動（sudoersホワイトリスト）自体は成功確認済み（`{"ok":true}`）。root側のスクリプト（`/usr/local/sbin/ai-car-backup`）更新には `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` の再実行（1回）。
+- root実行（timer・ダッシュボード発動）で `git: detected dubious ownership` によりスナップショット作成が失敗していた（exit 128）。`scripts/ai-car-backup.sh` の git 呼び出しを `git -c safe.directory="$WS"` に修正。ダッシュボードPOST→rootサービス発動（sudoersホワイトリスト）自体は成功確認済み（`{"ok":true}`）。root側のスクリプト（`/usr/local/sbin/ai-car-backup`）更新には `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` の再実行（1回）。
 
 ## [1.30.3] - 2026-10-28
 
@@ -17,13 +22,13 @@
 ## [1.30.3] - 2026-10-28
 
 ### Added
-- ダッシュボード「バックアップ」カード：`GET /api/backup`（快照一覧＝manifest読取＋sudoersホワイトリスト確認）、`POST /api/backup`（`sudo -n systemctl start --no-block ai-car-backup.service`、走行中は制限なし＝走行禁止対象外）。カードに最新の快照・作成ボタン（sudoers未導入時はボタン無効＋理由）・一覧（新しい順7個）を表示。毎日04:00自動はそのまま。
+- ダッシュボード「バックアップ」カード：`GET /api/backup`（スナップショット一覧＝manifest読取＋sudoersホワイトリスト確認）、`POST /api/backup`（`sudo -n systemctl start --no-block ai-car-backup.service`、走行中は制限なし＝走行禁止対象外）。カードに最新のスナップショット・作成ボタン（sudoers未導入時はボタン無効＋理由）・一覧（新しい順7個）を表示。毎日04:00自動はそのまま。
 
 ## [1.30.2] - 2026-10-28
 
 ### Added
-- Jetson用バックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同一設計）：Tier A＝`/home/jetson`のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット（service/timer）、sudoers内容記録、`extlinux.conf`、netplan、aptマニフェスト、tailscale、crontab。zstd、Jetson側 `~/jetson-backups/` 輪転7、manifest（L4T・os/kernel・tar sha256）。T1実測成功（快照3.41GB、sha256一致、Windows PCミラー照合）。
-- sudoersは440でjetsonが読めないため、内容記録 `sudoers-content.md` を快照に同梱（新規設定時はvisudo検証＋440導入し記録へ反映）。
+- Jetson用バックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同一設計）：Tier A＝`/home/jetson`のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット（service/timer）、sudoers内容記録、`extlinux.conf`、netplan、aptマニフェスト、tailscale、crontab。zstd、Jetson側 `~/jetson-backups/` 輪転7、manifest（L4T・os/kernel・tar sha256）。T1実測成功（スナップショット3.41GB、sha256一致、Windows PCミラー照合）。
+- sudoersは440でjetsonが読めないため、内容記録 `sudoers-content.md` をスナップショットに同梱（新規設定時はvisudo検証＋440導入し記録へ反映）。
 
 ## [1.30.1] - 2026-10-28
 
@@ -34,7 +39,7 @@
 ## [1.30.0] - 2026-10-28
 
 ### Added
-- バックアップ快照 `scripts/ai-car-backup.sh`：Tier A（homeデータ＝AI-CAR_ws（build/install/log除く）＋home直下のテストファイル・log・calib・patrols・.config/aicar）、Tier B（systemdユニット・udev rule・config.txt/cmdline.txt・aptマニフェスト・tailscale・crontab）、manifest.json（version・git SHA・os/kernel・tar sha256）。zstd圧縮、SSD内 `~/ai-car-backups/` に保存、Pi側輪転7個。super手動実行とrootサービス両対応。
+- バックアップスナップショット `scripts/ai-car-backup.sh`：Tier A（homeデータ＝AI-CAR_ws（build/install/log除く）＋home直下のテストファイル・log・calib・patrols・.config/aicar）、Tier B（systemdユニット・udev rule・config.txt/cmdline.txt・aptマニフェスト・tailscale・crontab）、manifest.json（version・git SHA・os/kernel・tar sha256）。zstd圧縮、SSD内 `~/ai-car-backups/` に保存、Pi側輪転7個。super手動実行とrootサービス両対応。
 - 毎日04:00のタイマー `ai-car-backup.timer`（Persistent）とrootサービス `ai-car-backup.service`。ダッシュボードから `sudo systemctl start --no-block ai-car-backup.service`（sudoersホワイトリスト）。
 - 復元スクリプト `scripts/ai-car-restore.sh`（R2：稼働Pi全体復元）。sha256照合→dashboard停止→Tier A rsync上書き→Tier B（units/udev/config.txt、config.txtは復元前コピーを残す）→dashboard再起動。sudoersで `sudo /usr/local/sbin/ai-car-restore ai-car-*` ホワイトリスト。
 - README に「バックアップと復元」節を追加。`install_service.sh` にバックアップ一式の導入を追加（sudo 1回）。
