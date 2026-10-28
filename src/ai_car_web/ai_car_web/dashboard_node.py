@@ -2853,7 +2853,7 @@ def create_app(node: DashboardNode) -> FastAPI:
                 continue
             ver = m.get('jetson_version', '')
             if not ver and 'REVISION: ' in m.get('l4t', ''):
-                ver = m['l4t'].split('REVISION: ')[1].split(',')[0]
+                ver = '36.' + m['l4t'].split('REVISION: ')[1].split(',')[0]
             items.append({'name': m.get('name', ''), 'created': m.get('created', ''),
                           'version': ver, 'git_sha': '',
                           'bytes': int(m.get('tar_bytes', 0)), 'sha256': m.get('tar_sha256', '')[:12]})
