@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.30.1（2026-10-28。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 1.30.3（2026-10-28。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -311,7 +311,7 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 
 快照（バックアップ）は Pi の SSD 内 `~/ai-car-backups/` に保存する（輪転7個）＋ Windows PC へミラー。1快照 = `ai-car-<日時>-v<version>-<gitsha>.tar.zst` ＋ `manifest.json`（tar の sha256 含む）。
 
-- **作る**：`bash scripts/ai-car-backup.sh`（superで可）。毎日04:00に `ai-car-backup.timer` がrootで自動実行。ダッシュボードからも `sudo systemctl start --no-block ai-car-backup.service`（sudoersホワイトリスト、PR #1導入時）。
+- **作る**：`bash scripts/ai-car-backup.sh`（superで可）。毎日04:00に `ai-car-backup.timer` がrootで自動実行。ダッシュボードの「バックアップ」カードから快照を作成（`sudo -n systemctl start --no-block ai-car-backup.service`、sudoersホワイトリスト）。
 - **中身**：Tier A＝home一式（`AI-CAR_ws`（build/install/log/ai-car-backups除く）、calib、patrols、poselog・rotlog・heading_log、home直下のテストファイル、`.config/aicar`）、Tier B＝`/etc/systemd/system/ai-car-*`・udev rule・`/boot/firmware/config.txt`+`cmdline.txt`・aptマニフェスト・`tailscale status --json`・crontab。sudoers の中身はリポジトリの `systemd/*.sudoers` が正。
 - **復元（稼働Pi・R2）**：`sudo /usr/local/sbin/ai-car-restore <快照名>`（sha256照合→dashboard停止→Tier A rsync上書き→Tier B units/udev/config.txt再導入→dashboard再起動）。colcon buildは自動実行しない（必要時 `colcon build --symlink-install`）。
 - **新規SD復元（R3）**：Ubuntu 24.04 インストール→`git clone`→`sudo systemd/install_service.sh`→このREADMEのlibcamera/hailortビルド手順→`ai-car-restore` でデータ復元→Tailscale再登録→受入＝8080起動・status全ノードalive・maps個数一致。
