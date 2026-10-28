@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.32.1] - 2026-10-29
+
+### Fixed
+- ダッシュボードのAPI認証：非ASCIIのトークンヘッダー（日本語混在）で `hmac.compare_digest` がTypeErrorを起こし500 internal server errorになっていた（POST /api/jetson_restore実測で検出）。`token.isascii()` を検証して401を返すようにした。
+
 ## [1.32.0] - 2026-10-29
 
 ### Added
