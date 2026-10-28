@@ -2823,15 +2823,6 @@ def create_app(node: DashboardNode) -> FastAPI:
                           'bytes': int(m.get('tar_bytes', 0)), 'sha256': m.get('tar_sha256', '')[:12]})
         return {'items': items, 'sudo_ok': _can_sudo(BACKUP_CMD), 'dir': d}
 
-    @app.post('/api/backup', dependencies=[Depends(require_token)])
-    def backup_start():
-        if not _can_sudo(BACKUP_CMD):
-            raise HTTPException(status_code=503, detail='ai-car-backup.sudoers が導入されていません（sudo bash systemd/install_service.sh を1回実行）')
-        r = subprocess.run(BACKUP_CMD, capture_output=True, text=True, timeout=30, check=False)
-        if r.returncode != 0:
-            raise HTTPException(status_code=500, detail=(r.stderr or r.stdout).strip()[:200] or 'バックアップを始められませんでした')
-        return {'ok': True, 'note': '約3分かかる。一覧が更新されれば完了'}
-
     JETSON_SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
                   '-o', 'ConnectTimeout=8', 'jetson@192.168.11.23']
 

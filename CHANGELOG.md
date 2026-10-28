@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.31.7] - 2026-10-29
+
+### Removed
+- ダッシュボードのバックアップカードからラズパイ系統のスナップショット作成を削除（作成ボタン `bk_make`＋`POST /api/backup`、ユーザー指示）。ラズパイ作成＝毎日04:00のtimer＋SSH手動（`bash scripts/ai-car-backup.sh`）。Jetson系統の作成ボタン（ラズパイ経由SSH発動）は維持。カード説明文・README・PROJECT_STATUSに反映。
+
 ## [1.31.6] - 2026-10-28
 
 ### Fixed
