@@ -291,6 +291,8 @@
   #jt_voice_btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .voicebtns .k { color: #9fb0c7; font-family: system-ui, sans-serif; font-size: 14px; }
   .voicebtns select { padding: 3px 6px; font-size: 13px; max-width: 100%; }
+  #bk_list { padding: 3px 6px; font-size: 13px; width: 100%; background: #101418;
+            color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .voicebtns select:disabled { opacity: .4; }
   .aiswitch button { padding: 3px 10px; font-size: 12px; letter-spacing: 0; }
   .aiswitch button.active { background: #2b5d9e; border-color: #4a90d9; }
@@ -745,11 +747,11 @@
   <div class="card wide">
     <h2>バックアップ <span class="badge" id="bk_state">-</span></h2>
     <table>
-      <tr><td class="k">最新のスナップショット</td><td class="v wrap" id="bk_latest">-</td></tr>
       <tr><td class="k">スナップショットを作る</td><td class="v"><button id="bk_make">スナップショットを作る</button> <span id="bk_msg"></span></td></tr>
-      <tr><td class="k">スナップショットの一覧（新しい順・30個まで）</td><td class="v wrap" id="bk_list">-</td></tr>
+      <tr><td class="k">スナップショットを選ぶ（新しい順・30個まで）</td><td class="v"><select id="bk_list"><option>読み込み中…</option></select></td></tr>
+      <tr><td class="k">選んだスナップショット</td><td class="v wrap" id="bk_detail">-</td></tr>
     </table>
-    <div class="note">毎日 04:00 に自動で作る（SSD内 `ai-car-backups`、古い物は自動で消える）。スナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`。</div>
+    <div class="note">毎日 04:00 に自動で作る（SSD内 `ai-car-backups`、古い物は自動で消える）。スナップショットには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。SSD内のスナップショットは削除・暴走からの回復用。復元はSSHで `sudo /usr/local/sbin/ai-car-restore スナップショット名`。スナップショットはドロップダウンで選ぶ（選んだ物の詳細と復元コマンドが下に出る）。</div>
   </div>
 
 
@@ -4229,11 +4231,17 @@ setInterval(() => {
 
 function renderBackup(j) {
   const items = (j.items || []).slice(0, 30);
-  const row = it => `<div style="margin:4px 0"><b>${it.created.slice(5, 10)} ${it.created.slice(11, 16)}</b>　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB　sha ${it.sha256}<br><span style="color:#7a8fa6">${it.name}</span></div>`;
-  document.getElementById('bk_list').innerHTML = items.map(row).join('') || '（まだスナップショットがありません）';
-  const latest = items[0];
-  document.getElementById('bk_latest').innerHTML = latest
-    ? `<b>${latest.created.slice(0, 10)} ${latest.created.slice(11, 16)}</b>　v${latest.version}・git ${latest.git_sha}　${(latest.bytes / 1e6).toFixed(0)} MB<br><span style="color:#7a8fa6">${latest.name}</span>` : 'なし';
+  const sel = document.getElementById('bk_list');
+  sel.innerHTML = items.map(it =>
+    `<option value="${it.name}">${it.created.slice(5, 10)} ${it.created.slice(11, 16)}　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
+    || '<option value="">（スナップショットがありません）</option>';
+  const showDetail = it => {
+    document.getElementById('bk_detail').innerHTML = it
+      ? `<b>${it.created.slice(0, 10)} ${it.created.slice(11, 16)}</b>　v${it.version}・git ${it.git_sha}　${(it.bytes / 1e6).toFixed(0)} MB　sha256 ${it.sha256}<br><span style="color:#7a8fa6">${it.name}</span><br><span style="color:#9fb0c7">復元: sudo /usr/local/sbin/ai-car-restore ${it.name}</span>`
+      : '（まだスナップショットがありません）';
+  };
+  sel.onchange = () => showDetail(items.find(i => i.name === sel.value));
+  showDetail(items[0]);
   const st = document.getElementById('bk_state');
   st.textContent = j.sudo_ok ? '自動毎日 04:00' : 'sudoers未導入';
   st.className = 'badge ' + (j.sudo_ok ? 'ok' : 'warn');
