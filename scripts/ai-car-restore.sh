@@ -8,6 +8,8 @@ if ! echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null; then
   echo "cgroupから抜けられない（ダッシュボード停止でこのスクリプトが殺され、復元が未完成になる）ため中断" >&2
   exit 3
 fi
+# sudo経由のSIGINT/SIGTERM/SIGHUP（Ctrl-C・ssh切断）を無視し、途中で殺されて部分復元になるのを防ぐ
+trap '' INT TERM HUP
 NAME="${1:?バックアップ名（ai-car-YYYYMMDD_HHMMSS-vX.Y.Z-<sha>）}"
 # シェル記号を混ぜた名前を拒否（コマンド注入防止。ダッシュボード側の正規表現検証に続くroot側2番目の防御）
 if [[ ! "$NAME" =~ ^ai-car-[0-9]{8}_[0-9]{6}-v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}$ ]]; then
