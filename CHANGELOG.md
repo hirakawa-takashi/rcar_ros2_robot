@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.32.4] - 2026-10-30
+
+### Fixed
+- ラズパイ復元スクリプト `scripts/ai-car-restore.sh`：ダッシュボード停止でスクリプトごと殺される問題を修正。逃げ道の `/sys/kernel/cgroup/procs` はこのPiに存在しない（ssh実測 procs=no、cgroup v2）。rootでルートcgroup（`/sys/fs/cgroup/cgroup.procs`）へ抜ける方式に変更し、抜けられないときは復元を進めず exit 3 で中断（部分復元を防ぐ）。
+- 復元名へのシェル記号混入によるrootコード実行（コマンド注入）をスクリプト側で拒否（正規表現検証）。manifest 読みを `python3 -c` の文字列埋め込みから argv 渡しへ変更（sha256・pi_version の2か所）。
+
 ## [1.32.3] - 2026-10-30
 
 ### Fixed
