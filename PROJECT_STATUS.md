@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.32.4（2026-10-30）
+- バージョン: 1.32.5（2026-10-30）
 - 更新日: 2026/10/28
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -24,10 +24,10 @@
 - 2026-10-29（v1.31.9、PR #341）: ユーザー指示で復元仕様変更。カードのラズパイ系統に「選んだバックアップを復元」ボタン＋`POST /api/restore`追加（sudoersホワイトリスト`sudo -n /usr/local/sbin/ai-car-restore ai-car-*`、名前は正規表現検証）。選んだバックアップの詳細表示行は削除。復元スクリプトにcgroup escape追加（dashboard停止に殺されない。root側反映には `install_service.sh` 再実行1回）。Piフック sha 34f86d4ef463。
 - 2026-10-29（v1.32.0、PR #342）: ユーザー指示の3件。①語を「スナップショット」→「バックアップ」に統一（UI・README・PROJECT_STATUS・CHANGELOG・AGENTS.md・スクリプト・sudoers。語の移り方：快照→スナップショット（v1.30.5）→バックアップ（v1.32.0））。②定時バックアップ廃止（Pi `ai-car-backup.timer` 除去＋install_serviceで無効化、Jetson crontab行削除）し、バージョンアップ時に作成（PiはPRマージ前のフック、JetsonはPi deploy時にSSH）。③Jetson復元ボタン＋`POST /api/jetson_restore`追加（Pi SSH→Jetson `sudo -n /usr/local/bin/ai-jetson-restore`、新スクリプト `scripts/ai-jetson-restore.sh`。Jetson sudoers導入はユーザーパスワード1回）。Piフック sha 6d57380045a6。
 - 2026-10-29（v1.32.2）: AGENTS.md に「マージ前の品質チェック」を追加（自動レビューの赤い指摘 0 件・root/復元/走行/認証はセルフマージ禁止・実機確認を PR に記載・1 PR 1 変更）。
-- 2026-10-30（v1.32.3、PR #345）: スタックちゃんの「AI-CARのようす」電源行カンマ欠落修正（`car_status`、v1.21.1/24a784a から。TypeError で回答不能）。PC再現ハーネスで修正前後を確認。ユーザー指示でセルフマージせずPRのみ（品質チェック2該当）。Piフックバックアップ ai-car-20261030_063254-v1.32.2-98dab7f（sha b1988b513516）作成・PCミラー照合一致。
 - 2026-10-29（v1.32.1、PR #343）: ダッシュボード認証修正。非ASCIIのAPIトークンヘッダーで `hmac.compare_digest` がTypeError（500）になっていたのを401返却へ（`token.isascii()` 検証）。検出はPR #342のJetson復元発動テスト時。Jetson復元sudoers導入済み（ユーザーSSH1回、visudo parsed OK）。Jetson復元E2EはPi経由SSHで実測（sudoers経由・最新版復元）。
 - 2026-10-30（v1.32.3、PR #345）: スタックちゃんの「AI-CARのようす」電源行カンマ欠落修正（`car_status`、v1.21.1/24a784a から。TypeError で回答不能）。PC再現ハーネスで修正前後を確認。ユーザー指示でセルフマージせずPRのみ（品質チェック2該当）。Piフックバックアップ ai-car-20261030_063254-v1.32.2-98dab7f（sha b1988b513516）作成・PCミラー照合一致。
 - 2026-10-30（v1.32.4、PR #346）: ラズパイ復元スクリプト安全化。ダッシュボード停止で復元スクリプトごと殺される重大バグ修正（rootでルートcgroup `/sys/fs/cgroup/cgroup.procs` へ抜ける。このPiに `/sys/kernel/cgroup/procs` は存在しない実測 procs=no。抜けられないときは exit 3 で中断）。rootスクリプトへの名前混入コマンド注入を正規表現検証で拒否。manifest読みをargv渡しへ。Pi側 `/tmp` にLFコピーし `bash -n`＋名前検証実測。root側反映はユーザーの `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` 再実行1回。Piフック ai-car-20261030_063254-v1.32.2-98dab7f（sha b1988b513516）作成・PCミラー照合一致。セルフマージせずPRのみ（品質チェック2該当、ユーザー指示）。
+- 2026-10-30（v1.32.5、PR #347）: 復元ボタン安全化。ラズパイ・Jetson両復元ボタンに確認ダイアログ追加＋押後はボタン無効化（失敗時復帰）。サーバー側に発動窓（Pi 8分・Jetson 11分、再発動は409）。Piは復元でダッシュボードが止まり再起動後リセット。実機未確認（マージ反映後に確認予定）。セルフマージせずPRのみ（品質チェック2該当、ユーザー指示）。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでバックアップ作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson crontab毎日04:00は導入済みだったがv1.32.0で削除（バージョンアップ時に作成）。
 
 ## システム構成

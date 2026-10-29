@@ -338,6 +338,10 @@ POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
 BACKUP_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-backup.service']
 RESTORE_CHECK = ['sudo', '-n', '/usr/local/sbin/ai-car-restore', 'ai-car-*']
+# 復元二重発動防止：発動時刻を覚え、窓の間の再発動を断る（Piは復元でダッシュボードが一度止まるので再起動後リセット）
+restore_started = {'pi': 0.0, 'jetson': 0.0}
+PI_RESTORE_WINDOW = 8 * 60
+JETSON_RESTORE_WINDOW = 11 * 60
 
 
 def _can_sudo(cmd):
@@ -2846,6 +2850,9 @@ def create_app(node: DashboardNode) -> FastAPI:
             raise HTTPException(status_code=400, detail='バックアップ名が正しくありません')
         if not _can_sudo(RESTORE_CHECK):
             raise HTTPException(status_code=503, detail='ai-car-restore のsudoersホワイトリストがありません（sudo bash systemd/install_service.sh を1回実行）')
+        if time.time() - restore_started['pi'] < PI_RESTORE_WINDOW:
+            raise HTTPException(status_code=409, detail='復元はすでに実行中です。二度押ししないでください（約5分）')
+        restore_started['pi'] = time.time()
         subprocess.Popen(['sudo', '-n', '/usr/local/sbin/ai-car-restore', name],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {'ok': True, 'note': '復元開始（sha256照合→home復元→設定再導入→ダッシュボード自動再起動）。約5分。ダッシュボードが一度止まります'}
@@ -2859,6 +2866,9 @@ def create_app(node: DashboardNode) -> FastAPI:
                              capture_output=True, text=True, timeout=15, check=False)
         if not chk.stdout.strip().isdigit() or int(chk.stdout.strip()) < 1:
             raise HTTPException(status_code=503, detail='Jetson 復元sudoers未導入（Jetson側で1回：sudo visudo -cf ~/ai-jetson-restore.sudoers && sudo install -m 440 ~/ai-jetson-restore.sudoers /etc/sudoers.d/ai-jetson-restore）')
+        if time.time() - restore_started['jetson'] < JETSON_RESTORE_WINDOW:
+            raise HTTPException(status_code=409, detail='Jetson復元はすでに実行中です。二度押ししないでください（約10分）')
+        restore_started['jetson'] = time.time()
         subprocess.Popen(JETSON_SSH + ["nohup sudo -n /usr/local/bin/ai-jetson-restore " + name +
                         " >> /home/jetson/jetson-backups/restore.log 2>&1 &"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
