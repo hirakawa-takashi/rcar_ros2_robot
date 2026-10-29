@@ -49,10 +49,12 @@ done
 systemctl daemon-reload
 # 発動前に動いていたサービスだけrestartする（ふだん止めてあるサービスは起動しない）
 for s in jetson-*.service; do
-  [ -f "$s" ] && grep -qx "${s%.service}.service" <<<"$ACTIVE" && systemctl restart "${s%.service}"
+  if [ -f "$s" ] && grep -qx "${s%.service}.service" <<<"$ACTIVE"; then
+    systemctl restart "${s%.service}" || echo "restart失敗: $s"
+  fi
 done
 if grep -qx "ollama.service" <<<"$ACTIVE"; then
-  systemctl restart ollama 2>/dev/null || true
+  systemctl restart ollama 2>/dev/null || echo "restart失敗: ollama"
 fi
 echo "復元完了: $NAME"
 echo "注意: netplan apply はSSH切断リスクがあるので必要時手動で。sudoersの中身は tierB/sudoers-content.md に記録（visudo -f で人手検証して導入）。"
