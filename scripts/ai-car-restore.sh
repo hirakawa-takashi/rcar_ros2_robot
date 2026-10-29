@@ -2,19 +2,28 @@
 # AI-CAR 復元スクリプト（v1.0 仕様 R2: 稼働Pi全体復元）
 # root で走る（sudo /usr/local/sbin/ai-car-restore <バックアップ名>）
 set -euo pipefail
-# ダッシュボードから発動したときはダッシュボードのcgroupから抜けて、dashboard停止に殺されない
-if [ -w /sys/kernel/cgroup/procs ]; then echo $$ > /sys/kernel/cgroup/procs; fi
+# ダッシュボードから発動したときはrootでルートcgroupへ抜け、ダッシュボード停止に殺されない
+# （このPiに /sys/kernel/cgroup/procs は存在しない。2026-10-30 ssh実測: procs=no、cgroup v2）
+if ! echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null; then
+  echo "cgroupから抜けられない（ダッシュボード停止でこのスクリプトが殺され、復元が未完成になる）ため中断" >&2
+  exit 3
+fi
 NAME="${1:?バックアップ名（ai-car-YYYYMMDD_HHMMSS-vX.Y.Z-<sha>）}"
+# シェル記号を混ぜた名前を拒否（コマンド注入防止。ダッシュボード側の正規表現検証に続くroot側2番目の防御）
+if [[ ! "$NAME" =~ ^ai-car-[0-9]{8}_[0-9]{6}-v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}$ ]]; then
+  echo "バックアップ名が正しくありません（実行拒否）: $NAME"
+  exit 1
+fi
 OUT=/home/super/ai-car-backups
 TAR="$OUT/$NAME.tar.zst"
 MAN="$OUT/$NAME.manifest.json"
 [ -f "$TAR" ] || { echo "バックアップが見つからない: $TAR"; exit 1; }
 [ -f "$MAN" ] || { echo "manifestが見つからない: $MAN"; exit 1; }
-WANT=$(python3 -c "import json;print(json.load(open('$MAN'))['tar_sha256'])")
+WANT=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["tar_sha256"])' "$MAN")
 GOT=$(sha256sum "$TAR" | cut -d' ' -f1)
 [ "$WANT" = "$GOT" ] || { echo "sha256不一致（バックアップ破損）: want=$WANT got=$GOT"; exit 2; }
 
-echo "復元開始: $NAME (version=$(python3 -c "import json;print(json.load(open('$MAN'))['pi_version'])"))"
+echo "復元開始: $NAME (version=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["pi_version"])' "$MAN"))"
 systemctl stop ai-car-dashboard.service || true
 pkill -f 'ai_car_web|camera_node|rplidar' || true
 sleep 2
