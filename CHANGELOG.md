@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [1.32.3] - 2026-10-30
+
+### Fixed
+- スタックちゃんの「AI-CARのようす」回答が電源行で壊れていたのを修正（`jetson/stackchan_bridge/stackchan_bridge.py` の `car_status`、電源文字列と電圧低下の括弧式の間のカンマ欠落。文字列呼び出しになり TypeError（'str' object is not callable）で回答不能）。v1.21.1（コミット 24a784a）から存在。PC上の再現ハーネスで修正前後を確認（修正前 TypeError、修正後 電源行「5V が 5.10 V、8.2 W、」＋電圧低下行が正しく出る）。
+
 ## [1.32.2] - 2026-10-29
 
 ### Changed
