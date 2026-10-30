@@ -6,10 +6,10 @@
 
 ## [1.32.9] - 2026-10-30
 
-- Jetson 復元スクリプト `scripts/ai-jetson-restore.sh`：復元後のサービス再起動の順番を、起動時と同じにした。
-  - 先に jetson-* を止め、声のLLM（`ollama`・`ollama-preload`）を再起動してから、jetson-* を起動する。
-  - 前は jetson-*（カメラAIなど）を先に起動していたため、GPUメモリが足りず、qwen2.5:3b が `cudaMalloc failed: out of memory` で載らなかった（ダッシュボードの復元ボタンの実機テストで発生。`ollama-preload` が activating のまま）。
-  - 発動前に動いていたものだけを再起動する点は変わらない。
+- Jetson 復元スクリプト `scripts/ai-jetson-restore.sh`：復元の最後は、サービスを1つずつ再起動せず、Jetson ごと再起動する（15秒後、`systemd-run --on-active=15 … systemctl reboot`）。約3分で、電源を入れたときと同じ順番で全サービスが戻る。ダッシュボードの確認ダイアログの文も「最後に Jetson が再起動します（約5分止まります）」にした。
+  - 前は jetson-*（カメラAIなど）を先に再起動していたため、GPUメモリが足りず、qwen2.5:3b が `cudaMalloc failed: out of memory` で載らなかった（ダッシュボードの復元ボタンの実機テストで発生。`ollama-preload` が activating のまま）。
+  - 「LLMを先に載せてから jetson-* を起動」もためしたが、今度は `jetson-finder` が GPU メモリ不足で再起動をくり返した（8 GB でぎりぎり）。
+  - 手で起動していた disabled のサービス（`jetson-owl` など）は、再起動のあとは止まったままになる。
 
 ## [1.32.8] - 2026-10-30
 

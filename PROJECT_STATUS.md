@@ -31,7 +31,7 @@
 - 2026-10-30（v1.32.6、PR #348）: Jetson復元スクリプト安全化。rootスクリプトへの名前混入コマンド注入を正規表現検証で拒否、manifest読みをargv渡しへ、サービスrestartを発動前に稼働中だったjetson-*・ollamaだけに限定（止めてあるサービスを起動しない問題解消）。Pi→Jetson ssh側でLFコピーし `bash -n`＋名前検証＋稼働記録フィルタ実測。Jetson側反映はscp＋CR除去（AGENTS.md手順）。root側E2E復元は未確認。セルフマージせずPRのみ（品質チェック2該当、ユーザー指示）。
 - 2026-10-30（v1.32.7、PR #349）: バックアップカード一覧のエスケープ表示（ラズパイ・Jetson両）。マニフェスト由来の名前・作成日時・版を `esc()` で表示し、記号混入マニフェストによるHTML注入を防止。セルフマージせずPRのみ（ユーザー指示、認証下UIカードの変更）。
 - 2026-10-30（v1.32.8、PR #350）: PROJECT_STATUS整合修正。最終更新のバージョン行を1.32.6→1.32.8、更新日を2026-10-28→2026-10-30に。PR #345〜#349の項目が降順で混在していたのを、既存の追記順（#344まで昇順）に合わせて昇順（#345→#349）へ並べ直し、#344の位置を末尾へ復帰。コード変更なし。
-- 2026-10-30（v1.32.9）: Jetson復元後の再起動順を起動時と同じに（jetson-*停止→ollama・ollama-preload再起動→jetson-*起動）。復元ボタンの実機テストで、jetson-*を先に起動したため声のLLM（qwen2.5:3b）がGPUメモリ不足で載らなかったのを修正。root側への導入はユーザーが1回（`sudo install -m 755 ~/ai-jetson-restore.sh /usr/local/bin/ai-jetson-restore`）。
+- 2026-10-30（v1.32.9）: Jetson復元の最後はJetsonごと再起動（15秒後、約3分で全サービスが起動時と同じ順番で戻る）。復元ボタンの実機テストで、サービスを1つずつ再起動すると声のLLM（qwen2.5:3b）か物さがし（jetson-finder）がGPUメモリ不足で載らなかったのを修正。root側への導入はユーザーが1回（`sudo install -m 755 ~/ai-jetson-restore.sh /usr/local/bin/ai-jetson-restore`）。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでバックアップ作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson crontab毎日04:00は導入済みだったがv1.32.0で削除（バージョンアップ時に作成）。
 
 ## システム構成
