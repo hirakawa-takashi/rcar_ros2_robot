@@ -4289,7 +4289,7 @@ document.getElementById('jr_restore').addEventListener('click', () => {
   const msg = document.getElementById('jr_msg');
   const btn = document.getElementById('jr_restore');
   if (!name) { msg.textContent = 'Jetsonバックアップを選んでください'; return; }
-  if (!confirm(`本当に復元しますか？\n「${esc(name)}」\nJetson の home・設定が上書きされ、サービスが約10分止まります。取り消せません。`)) { return; }
+  if (!confirm(`本当に復元しますか？\n「${esc(name)}」\nJetson の home・設定が上書きされ、最後に Jetson が再起動します（約5分止まります）。取り消せません。`)) { return; }
   btn.disabled = true;
   msg.textContent = '復元開始…';
   apiPost('/api/jetson_restore', {name}).then(r => {

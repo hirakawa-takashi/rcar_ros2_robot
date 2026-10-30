@@ -18,8 +18,6 @@ GOT=$(sha256sum "$TAR" | cut -d' ' -f1)
 [ "$WANT" = "$GOT" ] || { echo "sha256不一致（バックアップ破損）: want=$WANT got=$GOT"; exit 2; }
 
 echo "復元開始: $NAME"
-# 発動前に動いているサービスだけ記録（復元後、これだけをrestart。ふだん止めてあるサービスは起動しない）
-ACTIVE=$(systemctl list-units --type=service --state=active --no-legend --plain | awk '{print $1}')
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 tar --zstd -xf "$TAR" -C "$WORK"
@@ -47,14 +45,12 @@ for f in netplan*.yaml *.yaml; do
   install -m 600 -o root -g root "$f" "/etc/netplan/$f"
 done
 systemctl daemon-reload
-# 発動前に動いていたサービスだけrestartする（ふだん止めてあるサービスは起動しない）
-for s in jetson-*.service; do
-  if [ -f "$s" ] && grep -qx "${s%.service}.service" <<<"$ACTIVE"; then
-    systemctl restart "${s%.service}" || echo "restart失敗: $s"
-  fi
-done
-if grep -qx "ollama.service" <<<"$ACTIVE"; then
-  systemctl restart ollama 2>/dev/null || echo "restart失敗: ollama"
-fi
 echo "復元完了: $NAME"
 echo "注意: netplan apply はSSH切断リスクがあるので必要時手動で。sudoersの中身は tierB/sudoers-content.md に記録（visudo -f で人手検証して導入）。"
+# サービスは1つずつ再起動せず、Jetson ごと再起動する（電源を入れたときと同じ順番で全部が起動する）
+# 1つずつ再起動すると、8 GB の GPU メモリを先に取ったほうが勝ち、声のLLM（qwen2.5:3b）か物さがし（jetson-finder）が
+# cudaMalloc out of memory で載らなかった（2026-10-30 実測）。作業フォルダの削除が終わるよう 15 秒あけてから再起動する。
+sync
+systemd-run --on-active=15 --unit=ai-jetson-restore-reboot /usr/bin/systemctl reboot \
+  && echo "15秒後に Jetson を再起動します（約3分で全サービスが戻る）" \
+  || echo "再起動の予約に失敗: 手で sudo reboot してください"
