@@ -4235,7 +4235,7 @@ function renderBackup(j) {
   const items = (j.items || []).slice(0, 30);
   const sel = document.getElementById('bk_list');
   sel.innerHTML = items.map(it =>
-    `<option value="${it.name}">${it.created.slice(5, 10)} ${it.created.slice(11, 16)}　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
+    `<option value="${esc(it.name)}">${esc(it.created.slice(5, 10))} ${esc(it.created.slice(11, 16))}　v${esc(it.version)}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
     || '<option value="">（バックアップがありません）</option>';
   const st = document.getElementById('bk_state');
   st.textContent = j.sudo_ok ? 'ラズパイ バックアップ_versionアップ' : 'ラズパイ sudoers未導入';
@@ -4274,7 +4274,7 @@ function renderJetson(j) {
   const items = (j.items || []).slice(0, 30);
   const sel = document.getElementById('jb_list');
   sel.innerHTML = items.map(it =>
-    `<option value="${it.name}">${it.created.slice(5, 10)} ${it.created.slice(11, 16)}　v${it.version}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
+    `<option value="${esc(it.name)}">${esc(it.created.slice(5, 10))} ${esc(it.created.slice(11, 16))}　v${esc(it.version)}　${(it.bytes / 1e6).toFixed(0)} MB</option>`).join('')
     || '<option value="">（Jetsonバックアップがありません）</option>';
   const st = document.getElementById('jb_state');
   st.textContent = !j.ssh_ok ? 'Jetson SSH不通' : (j.restore_ok ? 'Jetson 復元sudoers OK' : 'Jetson 復元sudoers未導入');
