@@ -47,14 +47,20 @@ for f in netplan*.yaml *.yaml; do
   install -m 600 -o root -g root "$f" "/etc/netplan/$f"
 done
 systemctl daemon-reload
-# 発動前に動いていたサービスだけrestartする（ふだん止めてあるサービスは起動しない）
+# 発動前に動いていたサービスだけ再起動する（ふだん止めてあるサービスは起動しない）
+# 起動時と同じ順番にする: 先に声のLLM（ollama＋ollama-preload）をGPUに載せ、そのあとカメラAIなど jetson-* を起動する
+# （jetson-* を先に起動すると GPU メモリが足りず、qwen2.5:3b が cudaMalloc out of memory で載らない。2026-10-30 実測）
+RESTART=()
 for s in jetson-*.service; do
-  if [ -f "$s" ] && grep -qx "${s%.service}.service" <<<"$ACTIVE"; then
-    systemctl restart "${s%.service}" || echo "restart失敗: $s"
-  fi
+  [ -f "$s" ] && grep -qx "${s%.service}.service" <<<"$ACTIVE" && RESTART+=("${s%.service}")
 done
+for u in "${RESTART[@]}"; do systemctl stop "$u" || echo "stop失敗: $u"; done
 if grep -qx "ollama.service" <<<"$ACTIVE"; then
-  systemctl restart ollama 2>/dev/null || echo "restart失敗: ollama"
+  systemctl restart ollama || echo "restart失敗: ollama"
 fi
+if grep -qx "ollama-preload.service" <<<"$ACTIVE"; then
+  systemctl restart ollama-preload || echo "restart失敗: ollama-preload（声のLLMが載っていない）"
+fi
+for u in "${RESTART[@]}"; do systemctl start "$u" || echo "start失敗: $u"; done
 echo "復元完了: $NAME"
 echo "注意: netplan apply はSSH切断リスクがあるので必要時手動で。sudoersの中身は tierB/sudoers-content.md に記録（visudo -f で人手検証して導入）。"

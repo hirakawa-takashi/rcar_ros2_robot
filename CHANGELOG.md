@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.32.9] - 2026-10-30
+
+- Jetson 復元スクリプト `scripts/ai-jetson-restore.sh`：復元後のサービス再起動の順番を、起動時と同じにした。
+  - 先に jetson-* を止め、声のLLM（`ollama`・`ollama-preload`）を再起動してから、jetson-* を起動する。
+  - 前は jetson-*（カメラAIなど）を先に起動していたため、GPUメモリが足りず、qwen2.5:3b が `cudaMalloc failed: out of memory` で載らなかった（ダッシュボードの復元ボタンの実機テストで発生。`ollama-preload` が activating のまま）。
+  - 発動前に動いていたものだけを再起動する点は変わらない。
+
 ## [1.32.8] - 2026-10-30
 
 - PROJECT_STATUS.md の整合修正（コード変更なし）。
