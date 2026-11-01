@@ -47,8 +47,8 @@ system:
     - AI-CAR（Raspberry Pi 5）・ミニコン（Jetson Orin Nano Super）・パソコン（Windows 11 の WSL Ubuntu、RTX 4080 SUPER）・M5 スタックちゃんを、家の Wi-Fi と Tailscale でつなぐ。ローカルのときはクラウドを使わず、家の中で動かす
     - AI-CAR は走る・測る・止まるを受け持つ。安全の判定（LiDAR 360° の見張り・前後の段差センサー・指令の途絶）は AI-CAR の中だけで行い、ほかの機械が止まっても安全に止まる
     - ミニコンは重い AI（声→文字・会話・文字→声、言葉で物を探す NanoOWL）を受け持つ。結果は表示と命令だけで、AI-CAR の安全の判定は変えない
-    - パソコンを選ぶと（ダッシュボードのボタンか「パソコンにして」）、声→文字・会話・文字→声をもっと大きい AI でパソコンがする。パソコンが止まっていれば、自動でミニコンにもどる
-    - M5 スタックちゃんは顔・耳・口（画面・マイク・スピーカー・首振り）。つなぐ先はミニコン（jetson-stackchan.service）で、考えるのはミニコンかパソコン。ミニコンが落ちたら、パソコン（pc-stackchan.service）に直接つないで、パソコンだけで話す
+    - パソコンの GPU は AI-CAR・スタックちゃんの AI には使わない（Strata・ComfyUI 用）。パソコンは様子（温度・負荷率・メモリ・更新）をダッシュボードへ送るだけ
+    - M5 スタックちゃんは顔・耳・口（画面・マイク・スピーカー・首振り）。つなぐ先はミニコン（jetson-stackchan.service）で、考えるのもミニコン
   network: 家の Wi-Fi と Tailscale（AI-CAR 100.70.35.31、ミニコン 100.111.231.54、パソコン 100.86.172.21）。AI-CAR のダッシュボードは 8080 番
   devices:
     - id: ai_car
@@ -68,7 +68,7 @@ system:
       state: done
       items:
         - 声→文字（whisper-server、whisper.cpp small・GPU）・会話（Ollama の qwen2.5:3b）・文字→声（Kokoro・GPU）。スタックちゃんの会話に使う（jetson-stackchan.service）
-        - スタックちゃんの受け口（stackchan_bridge）。「ミニコンにして」「パソコンにして」で考える所を、「ネットにして」「ローカルにして」で会話の AI（ネットの XiaoZhi か家の AI）を切り替える。2 つは別々に選べる。パソコンのときの「ネット」は、会話はパソコンの AI のまま、天気・ニュースなど新しいことだけミニコンがネットで調べて渡す。声を選ぶと話し方・性格もその声のキャラクターになる
+        - スタックちゃんの受け口（stackchan_bridge）。「ネットにして」「ローカルにして」で会話の AI（ネットの XiaoZhi か家の AI）を切り替える
         - 「前に 1 メートル進んで」「右に 90 度回って」「止まって」を AI-CAR の速度の指令にする。進んだ距離はエンコーダー、回った角度は IMU で見て止める
         - NanoOWL で段ボール箱・袋などを探す（jetson-owl.service）。メモリを空けるため 2026/10 から止めている
         - 声で覚えた物を探す（jetson-finder.service、NanoOWL の「画像で探す」）。「覚えて」でカメラのまん中の物の見た目を覚え（場所は覚えない）、物を動かしてから「探して」で、最後に覚えた物を自動走行で部屋を回って探す。点 0.9 以上が 3 回中 2 回なら車を止めて「見つけました」と言う。名前つき（「これは〇〇、覚えて」「〇〇を探して」）も使える。5 分で見つからなければ止める
@@ -88,7 +88,6 @@ system:
       sub: WSL Ubuntu 26.04 / RTX 4080 SUPER 16GB
       state: done
       items:
-        - 声→文字 whisper large-v3・会話 qwen2.5:14b（GPU）・文字→声 VOICEVOX（43 人からダッシュボードで選ぶ、CPU）
         - 温度・負荷率・メモリ・更新を 1 秒ごとに AI-CAR へ送る（pc-status.service）
     - {id: browser, label: ブラウザ（PC・スマホ）, sub: ダッシュボード・手動操作, state: done}
     - {id: person, label: 家の人, sub: 声で話しかける, state: done}
@@ -99,8 +98,7 @@ system:
     - {from: stackchan, to: jetson, short: 声, desc: マイクの声（Opus 16 kHz）。カメラの映像はダッシュボードを見ている間だけ（HTTP 8003 /camera/frame）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: stackchan, short: 返事, desc: 返事の声（Opus 24 kHz）と顔の表情（考え中・笑顔）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（5 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
-    - {from: jetson, to: pc, short: 聞き取り・返事・声, desc: パソコンを選んでいて、動いているときだけ。マイクの声を文字にし（whisper large-v3）、返事を作り（qwen2.5:14b）、返事の声を作る（VOICEVOX のえらんだ声。ネットの会話のときも、ネットの声のかわりに読む）。10 秒ごとに見て、だめならミニコン, via: 'HTTP 8178・11434・50021（Tailscale）', state: done, both: true}
-    - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・AI の部品・更新の状況。パソコンを選んでいるとき、ダッシュボードのミニコンのカードをパソコンの値で出す, via: 'POST /api/mypc/status（API トークン）', state: done}
+    - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・更新の状況。ダッシュボードの Jetson のカードで「パソコン」を押すと出す（表示だけ）, via: 'POST /api/mypc/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
     - {from: person, to: stackchan, short: 話す, desc: 「スタックちゃん」と呼んで会話モードにし、声で話しかけて返事を聞く（30 秒だまると「じゃあ、またね。」）, via: 声, state: done, both: true}
 
@@ -796,8 +794,6 @@ api:
     - {method: GET, path: /api/slam/map.png, desc: 今の SLAM の地図の画像, auth: false}
     - {method: POST, path: /api/mypc/status, desc: パソコンの状態（温度・負荷率・メモリ・更新）, auth: true}
     - {method: POST, path: '/api/mypc/{action}', desc: パソコンの再起動・更新（reboot / upgrade）を頼む（次に状態が届いたときの返事で伝える）, auth: true}
-    - {method: POST, path: /api/stackchan/backend, desc: スタックちゃんの考える所を Jetson / パソコンに切り替える, auth: true}
-    - {method: POST, path: /api/stackchan/pc_voice, desc: パソコンの声（VOICEVOX の話者）を選ぶ, auth: true}
     - {method: POST, path: /api/stackchan/photo, desc: スタックちゃんで 5 秒数えて撮影する（GET /api/stackchan/photo.jpg で写真）, auth: true}
     - {method: POST, path: /api/stackchan/enroll, desc: 撮った写真の顔を名前で登録する, auth: true}
     - {method: POST, path: /api/stackchan/stream, desc: スタックちゃんのカメラの配信を始める・止める（GET /api/stackchan/frame.jpg で今の 1 枚）, auth: true}
@@ -878,7 +874,7 @@ programs:
   - {place: ラズパイ, name: ai-car-upgrade.sh, file: systemd/ai-car-upgrade.sh, role: 「ラズパイを更新」ボタンの更新, video: ai-car-upgrade_sh_yukkuri.mp4}
   - {place: ラズパイ, name: ai-car-usb-power-cycle.sh, file: systemd/ai-car-usb-power-cycle.sh, role: USB の電気を入れ直す, video: ai-car-usb-power-cycle_sh_yukkuri.mp4}
   - {place: ラズパイ, name: set_fan_curve.sh, file: scripts/set_fan_curve.sh, role: ファンの回り方, video: set_fan_curve_sh_yukkuri.mp4}
-  - {place: Jetson, name: stackchan_bridge, file: jetson/stackchan_bridge/stackchan_bridge.py, role: スタックちゃんの受け口（聞き取り・会話・声、パソコンへの切り替え）, video: stackchan_bridge_yukkuri.mp4}
+  - {place: Jetson, name: stackchan_bridge, file: jetson/stackchan_bridge/stackchan_bridge.py, role: スタックちゃんの受け口（聞き取り・会話・声）, video: stackchan_bridge_yukkuri.mp4}
   - {place: Jetson, name: jetson_status, file: jetson/status_reporter/jetson_status.py, role: 温度・メモリ・電力・更新を AI-CAR へ送る, video: jetson_status_yukkuri.mp4}
   - {place: Jetson, name: jetson-upgrade.sh, file: jetson/status_reporter/jetson-upgrade.sh, role: 「Jetson を更新」ボタンの更新, video: jetson-upgrade_sh_yukkuri.mp4}
   - {place: Jetson, name: oled_panel, file: jetson/oled_panel/oled_panel.py, role: ケースの OLED に CPU・温度・IP, video: oled_panel_yukkuri.mp4}
@@ -887,7 +883,6 @@ programs:
   - {place: Jetson, name: jetson_health.sh, file: jetson/health_log/jetson_health.sh, role: 1 分ごとの様子の記録, video: jetson_health_sh_yukkuri.mp4}
   - {place: Jetson, name: power_saving, file: jetson/power_saving/install.sh, role: Wi-Fi の省電力を切る, video: power_saving_yukkuri.mp4}
   - {place: パソコン, name: pc_status, file: jetson/stackchan_bridge/pc/pc_status.py, role: 温度・負荷率・メモリを AI-CAR へ送る, video: pc_status_yukkuri.mp4}
-  - {place: パソコン, name: stackchan-portproxy.ps1, file: jetson/stackchan_bridge/pc/stackchan-portproxy.ps1, role: スタックちゃんの控えの受け口を WSL へ通す, video: stackchan-portproxy_ps1_yukkuri.mp4}
   - {place: パソコン, name: wsl-ubuntu-keepalive.vbs, file: jetson/stackchan_bridge/pc/wsl-ubuntu-keepalive.vbs, role: ログオン時に WSL Ubuntu を起こしておく, video: wsl-ubuntu-keepalive_vbs_yukkuri.mp4}
   - {place: スタックちゃん, name: 顔の色, file: jetson/stackchan_bridge/firmware/stackchan-face-color.patch, role: ネットのとき顔を緑にする（ファームウェアの書きかえ）, video: stackchan-face-color_yukkuri.mp4}
   - {place: スタックちゃん, name: カメラの配信, file: jetson/stackchan_bridge/firmware/stackchan-camera-stream.patch, role: カメラの JPEG を Jetson へ送る, video: stackchan-camera-stream_yukkuri.mp4}
@@ -895,5 +890,4 @@ programs:
   - {place: スタックちゃん, name: 数えて撮影, file: jetson/stackchan_bridge/firmware/stackchan-countdown-shot.patch, role: 「撮影して」で 5 秒数えて撮る, video: stackchan-countdown-shot_yukkuri.mp4}
   - {place: スタックちゃん, name: 会話の自動つなぎ直し, file: jetson/stackchan_bridge/firmware/xiaozhi-auto-reopen.patch, role: 会話が切れたらつなぎ直す, video: xiaozhi-auto-reopen_yukkuri.mp4}
   - {place: スタックちゃん, name: 会話の見張り, file: jetson/stackchan_bridge/firmware/xiaozhi-channel-watchdog.patch, role: 線が死んだら閉じる・止まったら起動し直す, video: xiaozhi-channel-watchdog_yukkuri.mp4}
-  - {place: スタックちゃん, name: パソコンの控え, file: jetson/stackchan_bridge/firmware/xiaozhi-fallback-pc.patch, role: Jetson が止まったらパソコンへつなぐ, video: xiaozhi-fallback-pc_yukkuri.mp4}
   - {place: スタックちゃん, name: 自動更新を止める, file: jetson/stackchan_bridge/firmware/xiaozhi-no-auto-upgrade.patch, role: 純正の自動更新をしない, video: xiaozhi-no-auto-upgrade_yukkuri.mp4}

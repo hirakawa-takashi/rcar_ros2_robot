@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 1.32.9（2026-10-30。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.0.0（2026-11-01。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -297,7 +297,7 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 
 | フォルダ | サービス | 役割 |
 |----------|----------|------|
-| `stackchan_bridge` | `jetson-stackchan.service` | スタックちゃんの会話（聞き取り・会話の AI・声）、話して走る、パソコンが動いていればパソコンで処理 |
+| `stackchan_bridge` | `jetson-stackchan.service` | スタックちゃんの会話（聞き取り・会話の AI・声）、話して走る（いつもミニコンで処理。パソコンの GPU は使わない） |
 | `status_reporter` | `jetson-status.service`・`jetson-upgrade.service` | Jetson の状態をラズパイのダッシュボードへ 1 秒ごとに送る・更新 |
 | `oled_panel` | `jetson-oled.service` | ケースの OLED に CPU・温度・メモリ・SSD・IP |
 | `ollama` | `ollama.service`・`ollama-preload.service` | 会話の AI（qwen2.5:3b）を読み込んだままにする |

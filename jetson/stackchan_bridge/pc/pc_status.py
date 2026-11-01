@@ -1,7 +1,7 @@
 """パソコン（WSL）の状態を、Jetson の jetson_status.py と同じ形で AI-CAR の POST /api/mypc/status へ送る。
 
 CPU・メモリ・ページファイル（スワップの欄）・C: ドライブ・起動時刻は Windows の値（PowerShell を 1 つ動かしたまま 1 秒ごとに読む）、
-GPU は nvidia-smi、声の AI（whisper-server・Ollama）は WSL の中を見る。標準ライブラリだけで動く（pc-status.service）。
+GPU は nvidia-smi。標準ライブラリだけで動く（pc-status.service）。
 CPU の温度は LibreHardwareMonitor（管理者で動かしたまま）の「CPU Package」。0.9.6 は WMI がないので、その Web サーバー
 （http://localhost:8085/data.json）から読み、古い版のために WMI も見る。更新の数は 1 時間ごと
 （Ubuntu は apt、Windows は Windows Update）。返事で頼まれたら、Ubuntu（WSL）の再起動・止める（Windows の WMI から wsl.exe）と、
@@ -144,14 +144,6 @@ def reply_flag(reply, key):
         return False
 
 
-def http_ok(url, timeout=1.0):
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as res:
-            return res.status == 200, res.read()
-    except (urllib.error.URLError, OSError):
-        return False, b''
-
-
 def run(cmd, timeout=5):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False).stdout
@@ -173,44 +165,6 @@ def gpu():
             return None
     return {'gpu_name': parts[0].removeprefix('NVIDIA ').removeprefix('GeForce '), 'gpu_driver': parts[1],
             'temp': num(parts[2]), 'load': num(parts[3]), 'power': num(parts[4]), 'mhz': num(parts[5])}
-
-
-def services():
-    active = {k: run(['systemctl', 'is-active', unit]).strip() == 'active'
-              for k, unit in (('whisper', 'whisper-server'), ('ollama', 'ollama'))}
-    active['whisper'] = active['whisper'] and http_ok('http://127.0.0.1:8178/')[0]
-    active['voicevox'] = http_ok('http://127.0.0.1:50021/version')[0]
-    return active
-
-
-def tts_engine():
-    ok, body = http_ok('http://127.0.0.1:50021/version')
-    try:
-        return f'VOICEVOX {json.loads(body)}（CPU）' if ok else ''
-    except ValueError:
-        return ''
-
-
-def stt_engine():
-    m = re.search(r'\s(?:-m|--model)\s+(\S+)', run(['systemctl', 'show', '-p', 'ExecStart', '--value',
-                                                    'whisper-server']))
-    if not m:
-        return ''
-    return 'whisper.cpp ' + os.path.basename(m.group(1)).removeprefix('ggml-').removesuffix('.bin') + '（GPU）'
-
-
-def ollama_models():
-    empty = {'llm_models': [], 'llm_size_mb': None, 'llm_vram_mb': None}
-    ok, body = http_ok('http://127.0.0.1:11434/api/ps')
-    if not ok:
-        return empty
-    try:
-        models = json.loads(body).get('models', [])[:4]
-        return {'llm_models': [str(m.get('name', '')) for m in models],
-                'llm_size_mb': round(sum(int(m.get('size', 0)) for m in models) / 2**20),
-                'llm_vram_mb': round(sum(int(m.get('size_vram', 0)) for m in models) / 2**20)}
-    except (ValueError, TypeError, AttributeError):
-        return empty
 
 
 def ip_addresses():
@@ -243,9 +197,6 @@ def collect(win, slow, updates):
         'temperatures_c': {k: v for k, v in (('cpu', w.get('cpu_temp')), ('gpu', g.get('temp')))
                            if isinstance(v, (int, float)) and v > 0},
         'power_w': g.get('power'),
-        'services': services(),
-        'stt_engine': slow['stt'],
-        'tts_engine': slow['tts'],
         'ips': slow['ips'],
         'can_reboot': slow['can_wsl'],
         'can_upgrade': slow['can_upgrade'],
@@ -271,7 +222,6 @@ def collect(win, slow, updates):
         status['uptime_s'] = round(time.time() - datetime.fromisoformat(w['boot']).timestamp())
     except (KeyError, TypeError, ValueError):
         pass
-    status.update(ollama_models())
     return status
 
 
@@ -288,7 +238,7 @@ def main():
     win.start()
     updates = Updates()
     updates.start()
-    slow = {'os': wsl_os(), 'stt': stt_engine(), 'tts': tts_engine(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
+    slow = {'os': wsl_os(), 'ips': ip_addresses(), 'stamp': time.monotonic(),
             'can_wsl': os.access(POWERSHELL, os.X_OK), 'can_upgrade': can_sudo(UPGRADE_CMD)}
     if args.once:
         time.sleep(25)
@@ -300,7 +250,7 @@ def main():
     while True:
         time.sleep(args.interval)
         if time.monotonic() - slow['stamp'] > 60:
-            slow.update(stt=stt_engine(), tts=tts_engine(), ips=ip_addresses(), can_upgrade=can_sudo(UPGRADE_CMD),
+            slow.update(ips=ip_addresses(), can_upgrade=can_sudo(UPGRADE_CMD),
                         stamp=time.monotonic())
         status = collect(win, slow, updates)
         if upgrading and not status['upgrade_running']:

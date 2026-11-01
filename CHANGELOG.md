@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-01
+
+- パソコンの GPU のメモリを使う機能をやめた（パソコンの GPU 16GB を Strata・ComfyUI だけで使うため）。前の使い方ができなくなるのでメジャーを上げた。
+  - スタックちゃん（`stackchan_bridge.py`）: パソコンの whisper large-v3（約 3.1GB）・qwen2.5:14b（約 9.5GB）で聞き取り・返事をする機能、「パソコンにして」「ミニコンにして」、パソコンの VOICEVOX の声と声ごとの話し方、パソコンのときの「ネット」（調べるだけ）、ミニコンが落ちたときのパソコンの控え（`--primary-url`）を消した。いつもミニコン（whisper small・qwen2.5:3b・Kokoro）で話す。`--pc-host`・`--pc-model`・`--pc-speaker`・`--primary-url`・`POST /backend`・`POST /pc_voice` はなくなった。
+  - ダッシュボード: `POST /api/stackchan/backend`・`/api/stackchan/pc_voice` と、スタックちゃんの声の選択を消した。Jetson のカードの「ミニコン / パソコン」ボタンは、どちらの様子を出すかを選ぶだけ（表示だけ、ブラウザに覚える）。パソコンのときは AI の部品の欄を出さない。
+  - パソコン: `pc/whisper-server.service`・`pc/ollama-override.conf`・`pc/voicevox.service`・`pc/pc-stackchan.service`・`pc/stackchan-portproxy.ps1` を消した。`pc/pc_status.py` は whisper・Ollama・VOICEVOX を見なくなった（温度・負荷率・メモリ・GPU・更新はそのまま）。
+  - バックアップ・パソコンの再起動・Ubuntu の更新・`wsl-ubuntu-keepalive.vbs` はそのまま。
+
 ## [1.32.9] - 2026-10-30
 
 - Jetson 復元スクリプト `scripts/ai-jetson-restore.sh`：復元の最後は、サービスを1つずつ再起動せず、Jetson ごと再起動する（15秒後、`systemd-run --on-active=15 … systemctl reboot`）。約3分で、電源を入れたときと同じ順番で全サービスが戻る。ダッシュボードの確認ダイアログの文も「最後に Jetson が再起動します（約5分止まります）」にした。

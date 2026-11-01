@@ -2321,14 +2321,11 @@ class DashboardNode(Node):
         return {'ok': True}
 
     def _stackchan_bases(self):
-        """stackchan_bridge の URL。stackchan_bridge_url か、ミニコンとパソコン（控え）が送ってくる IP アドレス
-        （Tailscale を先に）。ミニコンが未接続ならパソコンを先に。"""
+        """stackchan_bridge の URL。stackchan_bridge_url か、ミニコンが送ってくる IP アドレス（Tailscale を先に）。"""
         if self.stackchan_bridge_url:
             return [self.stackchan_bridge_url]
         with self._lock:
-            hosts = [self._jetson_host_state(), self._mypc_host_state()]
-        if not (hosts[0] or {}).get('alive'):
-            hosts.reverse()
+            hosts = [self._jetson_host_state()]
         bases = []
         for state in hosts:
             ips = [ip for ip in (state or {}).get('ips') or [] if ip.get('addr')]
@@ -2338,8 +2335,7 @@ class DashboardNode(Node):
         return bases
 
     def stackchan_request(self, path, method='GET', timeout=STACKCHAN_TIMEOUT):
-        """stackchan_bridge に聞いて、(中身, Content-Type) を返す（スタックちゃんのカード用、表示だけ）。
-        ミニコンにつながらなければ、パソコンの控えに聞く。"""
+        """stackchan_bridge に聞いて、(中身, Content-Type) を返す（スタックちゃんのカード用、表示だけ）。"""
         bases = self._stackchan_bases()
         if not bases:
             raise HTTPException(status_code=503, detail='ミニコンの IP アドレスがまだ届いていません')
@@ -2926,21 +2922,11 @@ def create_app(node: DashboardNode) -> FastAPI:
         return node.stackchan_json('/enroll?name=' + urllib.parse.quote(name.strip()), 'POST',
                                    STACKCHAN_PHOTO_TIMEOUT)
 
-    @app.post('/api/stackchan/backend', dependencies=[Depends(require_token)])
-    def stackchan_backend(to: str):
-        if to not in ('jetson', 'pc'):
-            raise HTTPException(status_code=400, detail='to は jetson か pc')
-        return node.stackchan_json(f'/backend?to={to}', 'POST')
-
     @app.post('/api/stackchan/mode', dependencies=[Depends(require_token)])
     def stackchan_mode(to: str):
         if to not in ('local', 'net'):
             raise HTTPException(status_code=400, detail='to は local か net')
         return node.stackchan_json(f'/mode?to={to}', 'POST', STACKCHAN_MODE_TIMEOUT)
-
-    @app.post('/api/stackchan/pc_voice', dependencies=[Depends(require_token)])
-    def stackchan_pc_voice(speaker: int):
-        return node.stackchan_json(f'/pc_voice?speaker={speaker}', 'POST')
 
     @app.post('/api/stackchan/stream', dependencies=[Depends(require_token)])
     def stackchan_stream(on: int = 0):
