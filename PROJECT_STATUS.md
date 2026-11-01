@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.32.9（2026-10-30）
-- 更新日: 2026-10-30
+- バージョン: 1.32.10（2026-11-01）
+- 更新日: 2026-11-01
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
 - 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（バックアップ491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
@@ -32,6 +32,7 @@
 - 2026-10-30（v1.32.7、PR #349）: バックアップカード一覧のエスケープ表示（ラズパイ・Jetson両）。マニフェスト由来の名前・作成日時・版を `esc()` で表示し、記号混入マニフェストによるHTML注入を防止。セルフマージせずPRのみ（ユーザー指示、認証下UIカードの変更）。
 - 2026-10-30（v1.32.8、PR #350）: PROJECT_STATUS整合修正。最終更新のバージョン行を1.32.6→1.32.8、更新日を2026-10-28→2026-10-30に。PR #345〜#349の項目が降順で混在していたのを、既存の追記順（#344まで昇順）に合わせて昇順（#345→#349）へ並べ直し、#344の位置を末尾へ復帰。コード変更なし。
 - 2026-10-30（v1.32.9）: Jetson復元の最後はJetsonごと再起動（15秒後、約3分で全サービスが起動時と同じ順番で戻る）。復元ボタンの実機テストで、サービスを1つずつ再起動すると声のLLM（qwen2.5:3b）か物さがし（jetson-finder）がGPUメモリ不足で載らなかったのを修正。root側への導入はユーザーが1回（`sudo install -m 755 ~/ai-jetson-restore.sh /usr/local/bin/ai-jetson-restore`）。
+- 2026-11-01（v1.32.10）: スタックちゃん bridge が、パソコンの qwen2.5:14b をスタックちゃんがつながっているあいだだけ読み込む（`keep_alive` 30 分）。予備の `pc-stackchan` がずっと GPU に置いていたため、Strata・ComfyUI が遅くなっていたのを修正。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでバックアップ作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson crontab毎日04:00は導入済みだったがv1.32.0で削除（バージョンアップ時に作成）。
 
 ## システム構成

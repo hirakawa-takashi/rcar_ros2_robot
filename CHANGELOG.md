@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.32.10] - 2026-11-01
+
+- スタックちゃん bridge：パソコンの qwen2.5:14b（約 9.5 GB）を、スタックちゃんがつながっているあいだだけ GPU に読み込む。`keep_alive` を -1（ずっと）から 30 分（`PC_KEEP_ALIVE`）にした。
+  - 前は、つながっていない予備の `pc-stackchan.service` も 10 秒ごとに `keep_alive: -1` で読み込み直していたので、パソコンの Strata のモデルが GPU に入りきらず 30 GB を共有 GPU メモリに置いて遅くなり、ComfyUI（Wan2.2）の動画づくりも 1 ステップ約 8 分まで遅くなっていた。
+  - Jetson のモデル（qwen2.5:3b）は今までどおりずっと読み込んだまま。
+
 ## [1.32.9] - 2026-10-30
 
 - Jetson 復元スクリプト `scripts/ai-jetson-restore.sh`：復元の最後は、サービスを1つずつ再起動せず、Jetson ごと再起動する（15秒後、`systemd-run --on-active=15 … systemctl reboot`）。約3分で、電源を入れたときと同じ順番で全サービスが戻る。ダッシュボードの確認ダイアログの文も「最後に Jetson が再起動します（約5分止まります）」にした。

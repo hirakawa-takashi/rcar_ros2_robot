@@ -226,6 +226,8 @@ PC_OLLAMA_PORT = 11434
 PC_VOICEVOX_PORT = 50021
 PC_TTS_TIMEOUT = 10.0
 PC_CHECK_EVERY = 10.0
+# パソコンの PC['model'] を GPU に置いておく長さ。スタックちゃんがつながっているあいだだけ読み込み、使わなくなったら外れる（Strata・ComfyUI に GPU をあける）
+PC_KEEP_ALIVE = '30m'
 PC_CHECK_TIMEOUT = 2.0
 PC_WARM_TIMEOUT = 120.0
 PC_STT_TIMEOUT = 10.0
@@ -1266,7 +1268,8 @@ def llm_sentences(model, messages):
     if PC['up']:
         said = False
         try:
-            for x in _llm_sentences(pc_url(PC_OLLAMA_PORT, '/api/chat'), PC['model'], messages, PC_LLM_TIMEOUT):
+            for x in _llm_sentences(pc_url(PC_OLLAMA_PORT, '/api/chat'), PC['model'], messages, PC_LLM_TIMEOUT,
+                                    PC_KEEP_ALIVE):
                 said = True
                 yield x
             return
@@ -1283,8 +1286,8 @@ def is_chinese(s):
     return hanzi >= 6 and len(KANA.findall(s)) * 4 < hanzi and bool(CHINESE_ONLY.search(s))
 
 
-def _llm_sentences(url, model, messages, timeout=60):
-    body = json.dumps({'model': model, 'stream': True, 'keep_alive': -1, 'messages': messages,
+def _llm_sentences(url, model, messages, timeout=60, keep_alive=-1):
+    body = json.dumps({'model': model, 'stream': True, 'keep_alive': keep_alive, 'messages': messages,
                        'options': {'num_predict': 120}}).encode()
     buf = ''
     with urllib.request.urlopen(urllib.request.Request(url, body), timeout=timeout) as r:
@@ -1351,7 +1354,7 @@ def search_words(text):
     """質問から検索ことばを作る（パソコンの会話の AI に頼む。だめなら質問の文から決まった言い回しを除くだけ）。"""
     words = text
     try:
-        body = json.dumps({'model': PC['model'], 'stream': False, 'keep_alive': -1,
+        body = json.dumps({'model': PC['model'], 'stream': False, 'keep_alive': PC_KEEP_ALIVE,
                            'options': {'temperature': 0, 'num_predict': 24},
                            'messages': [{'role': 'system', 'content': SEARCH_PROMPT},
                                         {'role': 'user', 'content': text}]}).encode()
@@ -1544,15 +1547,16 @@ def pc_down(e):
 
 
 def pc_check():
-    """パソコンの whisper-server が返事をし、Ollama に PC['model'] があれば読み込ませる（読み込み済みならすぐ返る）。だめなら OSError。"""
+    """パソコンの whisper-server が返事をし、Ollama に PC['model'] があれば OK。スタックちゃんがつながっているときだけ読み込ませる。だめなら OSError。"""
     urllib.request.urlopen(pc_url(PC_WHISPER_PORT, '/'), timeout=PC_CHECK_TIMEOUT).read()
     with urllib.request.urlopen(pc_url(PC_OLLAMA_PORT, '/api/tags'), timeout=PC_CHECK_TIMEOUT) as r:
         names = {m.get('name') for m in json.loads(r.read()).get('models', [])}
     if PC['model'] not in names:
         raise OSError(f"Ollama に {PC['model']} がない")
-    body = json.dumps({'model': PC['model'], 'keep_alive': -1}).encode()
-    urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
-                           timeout=PC_WARM_TIMEOUT).read()
+    if STATUS['connected']:
+        body = json.dumps({'model': PC['model'], 'keep_alive': PC_KEEP_ALIVE}).encode()
+        urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
+                               timeout=PC_WARM_TIMEOUT).read()
     url = pc_url(PC_VOICEVOX_PORT, f"/initialize_speaker?speaker={PC['speaker']}&skip_reinit=true")
     try:
         urllib.request.urlopen(urllib.request.Request(url, b'', method='POST'), timeout=PC_WARM_TIMEOUT).read()

@@ -44,7 +44,7 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 文字→声（Kokoro）・呼びかけの見分け・カメラ・見守りは Jetson のまま。
 
 - bridge が 10 秒ごとに `http://<パソコン>:8178/` と `:11434/api/tags` を見て（2 秒で時間切れ）、どちらも返事をして
-  `--pc-model` があれば、モデルを読み込ませてからパソコンを使う。聞き取り（10 秒）・返事（10 秒）でつながらなければ、
+  `--pc-model` があれば、パソコンを使う。モデル（qwen2.5:14b）は、スタックちゃんがつながっているあいだだけ読み込ませ、`keep_alive` 30 分（`PC_KEEP_ALIVE`）で、使わなくなったら GPU から外れる（パソコンの Strata・ComfyUI に GPU をあけるため。つながっていない予備の `pc-stackchan` は読み込まない）。聞き取り（10 秒）・返事（10 秒）でつながらなければ、
   その回から Jetson（whisper small・qwen2.5:3b）にもどす。返事の途中で切れたときは、その返事はやめる
 - 行き先は `--pc-host`（既定は環境変数 `AI_PC_HOST`、なければ Tailscale の taka3-wsl `100.86.172.21`）。空でパソコンを使わない
 - 使っているほうは `GET :8003/status` の `engines` に出る（「（パソコン）」がつく）。`backend` は `want`（選んだ所 `jetson` / `pc`）・`active`（今使っている所）・`error`（パソコンにつながらない理由）
