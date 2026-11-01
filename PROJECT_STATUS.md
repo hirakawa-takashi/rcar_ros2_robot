@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 1.32.9（2026-10-30）
+- バージョン: 2.0.0（2026-11-01）
 - 更新日: 2026-10-30
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -31,6 +31,7 @@
 - 2026-10-30（v1.32.6、PR #348）: Jetson復元スクリプト安全化。rootスクリプトへの名前混入コマンド注入を正規表現検証で拒否、manifest読みをargv渡しへ、サービスrestartを発動前に稼働中だったjetson-*・ollamaだけに限定（止めてあるサービスを起動しない問題解消）。Pi→Jetson ssh側でLFコピーし `bash -n`＋名前検証＋稼働記録フィルタ実測。Jetson側反映はscp＋CR除去（AGENTS.md手順）。root側E2E復元は未確認。セルフマージせずPRのみ（品質チェック2該当、ユーザー指示）。
 - 2026-10-30（v1.32.7、PR #349）: バックアップカード一覧のエスケープ表示（ラズパイ・Jetson両）。マニフェスト由来の名前・作成日時・版を `esc()` で表示し、記号混入マニフェストによるHTML注入を防止。セルフマージせずPRのみ（ユーザー指示、認証下UIカードの変更）。
 - 2026-10-30（v1.32.8、PR #350）: PROJECT_STATUS整合修正。最終更新のバージョン行を1.32.6→1.32.8、更新日を2026-10-28→2026-10-30に。PR #345〜#349の項目が降順で混在していたのを、既存の追記順（#344まで昇順）に合わせて昇順（#345→#349）へ並べ直し、#344の位置を末尾へ復帰。コード変更なし。
+- 2026-11-01（v2.0.0）: パソコンの GPU を使う機能を削除。スタックちゃんの「パソコンにして」・パソコンの控え・ダッシュボードのパソコン切り替えをやめ、聞き取り・返事はいつもミニコン（Jetson）。声はパソコンの VOICEVOX（CPU）のまま。パソコンの GPU（16GB）は Strata・ComfyUI 用。パソコンの様子（温度・負荷率・メモリ・更新）は表示だけ残す
 - 2026-10-30（v1.32.9）: Jetson復元の最後はJetsonごと再起動（15秒後、約3分で全サービスが起動時と同じ順番で戻る）。復元ボタンの実機テストで、サービスを1つずつ再起動すると声のLLM（qwen2.5:3b）か物さがし（jetson-finder）がGPUメモリ不足で載らなかったのを修正。root側への導入はユーザーが1回（`sudo install -m 755 ~/ai-jetson-restore.sh /usr/local/bin/ai-jetson-restore`）。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでバックアップ作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson crontab毎日04:00は導入済みだったがv1.32.0で削除（バージョンアップ時に作成）。
 
@@ -40,7 +41,7 @@
 - ナビゲーション: Nav2（ros-jazzy-navigation2 1.3.13、Level 2。slam_toolbox の地図と自己位置で行き先へ）
 - センサー: LiDAR（RPLIDAR A1M8）、カメラ（Camera Module 3 Wide、IMX708）、IMU（BNO055）、落下防止センサー（VL53L1X ×2、前後）、エンコーダー（520 モーター ×4）
 - 駆動: Adafruit DC & Stepper Motor HAT（M1〜M4、メカナム 4 輪）
-- 外の機械: Jetson Orin Nano Super（スタックちゃんの会話・状態）、パソコン（WSL・RTX 4080 SUPER、使えるときだけ聞き取り・会話・声）、M5 スタックちゃん（CoreS3）
+- 外の機械: Jetson Orin Nano Super（スタックちゃんの会話・状態）、パソコン（WSL・RTX 4080 SUPER、様子の表示と VOICEVOX の声（CPU）。GPU は使わない）、M5 スタックちゃん（CoreS3）
 - Web: FastAPI + uvicorn
 - 開発環境: VS Code Remote-SSH
 - AI: Cline + LM Studio + DeepSeek 32B Q4_K_M
@@ -77,7 +78,7 @@
   - 声で覚えた物を探す: Jetson の `jetson/object_finder`（NanoOWL の「画像で探す」、`jetson-finder.service`、127.0.0.1:8095）。スタックちゃんに「覚えて」（名前つきなら「これは〇〇、覚えて」）と言うと、`stackchan_bridge` が `POST /register` を呼び、AI-CAR のカメラ画像のまん中（はしにつかない、画面の 1〜45 % の大きさ）の枠 1 つの特徴を名前（なければ「覚えた物」）といっしょに Jetson の `~/objects` に保存し、最後に覚えた物として残す（場所は保存しない）。「探して」（または「〇〇を探して」）で `POST /api/drive_mode` を auto にして部屋を回り、Jetson が 1 秒に 5 回画像を見て、点 0.9 以上が 3 回中 2 回なら `POST /api/stop` → manual にして「見つけました」（名前つきなら「〇〇を発見しました」）と言う。「止まって」・5 分・ラズパイが自動走行をやめたときも止める。ラズパイのプログラムは変えていない（安全の判定はいつもどおり）
   - Jetson の状態（表示のみ）: Jetson の `jetson/status_reporter`（`jetson-status.service`）が 1 秒ごとに温度・CPU / GPU の使用率・メモリ・スワップ・消費電力・AI の部品（whisper-server・Ollama・Kokoro。声→文字・文字→声は仕組みの名前（例: whisper.cpp small（GPU）・Kokoro TTS 1.0.0）、会話の AI はモデル名と GPU / CPU で動く割合も）・セキュリティ更新の残り・再起動が必要か・IP アドレスを `POST /api/jetson/status` へ送り、ダッシュボードの「Jetson Orin Nano Super — AI 担当」カード（「Raspberry Pi 5 — CPU」の右）に出す。5 秒以上届かないと「未接続」。速度や安全の判定には使わない。NanoOWL は 2026/10 からメモリを空けるため止めている（電源モード・ファン・NanoOWL の値も送るが、カードには出さない）
   - スタックちゃんのカード（表示のみ）: ダッシュボードの「M5 スタックちゃん（CoreS3）」カード（Jetson カードの下）。Jetson の `stackchan_bridge` の `GET /status`（8003）を `GET /api/stackchan/status`（API トークン）で 2 秒ごとに取って、今の様子（聞いている・呼びかけ待ち・考えている・話している・待ち受け）に合わせた顔、最後の会話（聞き取り・返事・かかった時間）、IP アドレス・ファームウェアの版・会話の数・使っている仕組みを出す。写真（320×240）は、スタックちゃんに「撮影して」と言って撮ったものを `GET /api/stackchan/photo.jpg` で出す（カードには撮るボタンを置かない）。行き先は `stackchan_bridge_url`、空なら Jetson が送ってくる IP アドレス（Tailscale を先に）の 8003。ネットのときもローカルのときも、つながったら「呼びかけ待ち」で、「スタックちゃん」と呼ぶと会話モードになり、最後に話してから 30 秒だまると「じゃあ、またね。」と言って呼びかけ待ちにもどる（`jetson/stackchan_bridge/README.md`「呼びかけ」）。テレビの声で起きないように、呼びかけは文の頭で名前を呼んだときだけ（whisper の音の注釈・文の途中・名前の話題・`--prompt` の返しはとらない）。走行・安全には使わない
-  - スタックちゃんの会話: 純正ファームウェア（1.5.1）の AI Agent を、Jetson の `jetson/stackchan_bridge`（`jetson-stackchan.service`、OTA 8003・WebSocket 8000）経由で whisper-server・Ollama qwen2.5:3b・Kokoro jf_alpha につなぐ。パソコン（WSL の Ubuntu、RTX 4080 SUPER、Tailscale の taka3-wsl）が動いているあいだは、聞き取りを whisper large-v3、返事を qwen2.5:14b でパソコンにさせ、止まっていれば Jetson にもどす（`jetson/stackchan_bridge/README.md`「パソコンで聞き取りと返事」）。ダッシュボードの Jetson のカードの「動かす所」（Jetson / MyPC）で、どちらでするかを選べる（`POST /api/stackchan/backend`）。ファームウェアは行き先（`CONFIG_OTA_URL`）と自動更新をやめるパッチだけを変える。純正の全部（16 MB）は Jetson の `~/stackchan_backup/` にある。走行・安全には使わない
+  - スタックちゃんの会話: 純正ファームウェア（1.5.1）の AI Agent を、Jetson の `jetson/stackchan_bridge`（`jetson-stackchan.service`、OTA 8003・WebSocket 8000）経由で whisper-server・Ollama qwen2.5:3b・Kokoro jf_alpha につなぐ。パソコンの GPU は使わない（2.0.0 で削除）。声はパソコンの VOICEVOX（CPU）、止まっていれば Kokoro。ファームウェアは行き先（`CONFIG_OTA_URL`）と自動更新をやめるパッチだけを変える。純正の全部（16 MB）は Jetson の `~/stackchan_backup/` にある。走行・安全には使わない
   - Jetson の更新ボタン: Jetson カードの「Jetson を更新」（確認の画面あり、API トークンが必要）。次の状態の返事で伝え、`jetson-upgrade.service`（`jetson-upgrade.sh`）が NVIDIA の部品（JetPack）以外を更新する。試しに動かして NVIDIA の部品が変わるか消える部品があるときはやめる。「全部」の数も NVIDIA の部品を除いた数
   - 再起動ボタン: ラズパイと Jetson のカードの「再起動」ボタン（確認の画面あり、API トークンが必要）。ラズパイは走行中・自動運転中は断り、押してから 10 秒後に再起動する（そのあいだに押した Jetson の再起動も受け付け、伝え終わってから再起動する）。Jetson は次の状態の返事で伝え、`jetson_status.py` が再起動する。「電源を切る」ボタンも同じしくみ（`POST /api/system/poweroff`・`/api/jetson/poweroff`、ダッシュボードからは入れ直せないので、本体の電源ボタンか電源のつなぎ直しで入れる）。どちらも `systemctl reboot` と `systemctl poweroff` だけをパスワードなしで許す sudoers が要る
   - つながりの印: カメラ・LiDAR・Raspberry Pi 5 — CPU・AI HAT+・IMU・落下防止センサー・Jetson のカードのタイトルの横に「接続中」などを出す（LiDAR・IMU は 2 秒、`/system_status` は 3 秒、Jetson は 5 秒届かないと途絶 / 未接続）

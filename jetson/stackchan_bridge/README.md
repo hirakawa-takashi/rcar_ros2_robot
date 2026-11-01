@@ -38,42 +38,18 @@ sudo systemctl enable --now jetson-stackchan.service
 journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒数が出る
 ```
 
-## パソコンで聞き取りと返事（WSL の Ubuntu、RTX 4080 SUPER）
+## パソコンの様子（ダッシュボード、表示だけ）
 
-パソコンが動いているあいだは、聞き取り（whisper large-v3）と返事（Ollama qwen2.5:14b）をパソコンでする。
-文字→声（Kokoro）・呼びかけの見分け・カメラ・見守りは Jetson のまま。
+パソコン（WSL の Ubuntu、RTX 4080 SUPER）の GPU は、スタックちゃんの AI には使わない（2.0.0 で、パソコンの聞き取り・返事・ミニコンが落ちたときの控え・「パソコンにして」をやめた。GPU は Strata・ComfyUI に使う）。
+パソコンで使うのは、CPU で動く VOICEVOX の声だけ（GPU のメモリは 0）。
+ダッシュボードの Jetson のカードの「パソコン」ボタンで、パソコンの温度・負荷率・メモリ・更新を出す（表示だけ、切り替えはしない）。
 
-- bridge が 10 秒ごとに `http://<パソコン>:8178/` と `:11434/api/tags` を見て（2 秒で時間切れ）、どちらも返事をして
-  `--pc-model` があれば、モデルを読み込ませてからパソコンを使う。聞き取り（10 秒）・返事（10 秒）でつながらなければ、
-  その回から Jetson（whisper small・qwen2.5:3b）にもどす。返事の途中で切れたときは、その返事はやめる
-- 行き先は `--pc-host`（既定は環境変数 `AI_PC_HOST`、なければ Tailscale の taka3-wsl `100.86.172.21`）。空でパソコンを使わない
-- 使っているほうは `GET :8003/status` の `engines` に出る（「（パソコン）」がつく）。`backend` は `want`（選んだ所 `jetson` / `pc`）・`active`（今使っている所）・`error`（パソコンにつながらない理由）
-- パソコンの状態（ダッシュボードでパソコンを選んだときの Jetson のカード）: `pc/pc_status.py` を `/home/super/ai/` に置き、`pc/pc-status.service` を入れる（`/etc/pc-status.env` に `AI_CAR_API_TOKEN=...`）。1 秒ごとに `POST /api/mypc/status`（jetson-status と同じ形 ＋ `gpu_name`・`gpu_driver`）
-- 声でも切りかえる（ローカルのときの会話モードで）: 「ミニコン / ジェットソン」→ `jetson`、「パソコン / PC」のあとに「にして」など（ネット / ローカルと同じ言い方）。ネット / ローカルとは別で、どちらの組み合わせでも使える。ネットのあいだの言葉は XiaoZhi が聞くので、先に「ローカルにして」
-- 切り替え: `POST :8003/backend?to=jetson|pc`（ダッシュボードの Jetson のカードの 1 行目のミニコン / パソコンボタンが `POST /api/stackchan/backend` 経由で呼ぶ）。`backend.txt` に書いて、起動し直してもそのまま。`jetson` ならパソコンを見ない。`pc` にするとすぐパソコンを見て、動いていれば使う（つながらないあいだは Jetson）
-- whisper の見回り（5 分ごと）は Jetson の whisper-server だけを試す
-- 文字→声: パソコンを使っているあいだは、パソコンの VOICEVOX ENGINE（CPU、`:50021`）の `--pc-speaker`（既定 3 = ずんだもん ノーマル）。高さはそのまま（Kokoro だけ `--pitch` で上げる）。パソコンを見るときに `POST /initialize_speaker` で読み込ませ、だめならその回から Kokoro。2026/10 の実機（ミニコンから）: 「こんにちは。」0.27 秒、26 文字の文 0.75 秒。家の中だけで使う（外に出すときは「VOICEVOX:ずんだもん」と書く決まり）
-- 2026/10/10 の実機（Jetson から同じ声 4 つ）: 聞き取り Jetson 0.53〜0.74 秒 → パソコン 0.29〜0.44 秒（Tailscale の中継込み）。
-  返事は Jetson qwen2.5:3b 15〜17 文字片/秒 → パソコン qwen2.5:14b 約 62 文字片/秒（読み込みは最初の 1 回 約 31 秒）。
-  GPU のメモリは whisper large-v3 と 14b で 16 GB のうち約 13.9 GB
+- `pc/pc_status.py` を `/home/super/ai/` に置き、`pc/pc-status.service` を入れる（`/etc/pc-status.env` に `AI_CAR_API_TOKEN=...`）。1 秒ごとに `POST /api/mypc/status`（jetson-status と同じ形 ＋ `gpu_name`・`gpu_driver`）
 
-パソコンに入れる（WSL 3.0.1 の Ubuntu 26.04、ユーザー `super`、Tailscale と openssh-server 入り）:
+- 文字→声: パソコンの VOICEVOX ENGINE（CPU、`:50021`）が動いていれば、`--pc-speaker`（既定 3 = ずんだもん ノーマル、ダッシュボードで選ぶと `pc_voice.txt`）の声。高さはそのまま（Kokoro だけ `--pitch` で上げる）。`voice_watch()` が 10 秒ごとに `POST /initialize_speaker` で読み込ませ、だめならその回から Kokoro。行き先は `--pc-host`（既定は環境変数 `AI_PC_HOST`、なければ Tailscale の taka3-wsl `100.86.172.21`）。空でいつも Kokoro。2026/10 の実機（ミニコンから）: 「こんにちは。」0.27 秒、26 文字の文 0.75 秒。家の中だけで使う（外に出すときは「VOICEVOX:ずんだもん」と書く決まり）
+- ネットの会話のときも、VOICEVOX が動いていれば、ネットの声は捨てて返事の文をパソコンの声で読む（`speak_own`）
 
 ```bash
-sudo apt install -y build-essential cmake git
-# CUDA（WSL 用。Windows の NVIDIA ドライバーはそのまま）
-curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
-sudo dpkg -i cuda-keyring_1.1-1_all.deb && sudo apt update && sudo apt install -y cuda-toolkit-13-3
-mkdir -p ~/ai && cd ~/ai && git clone --depth 1 https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
-curl -fL -o models/ggml-large-v3.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin
-curl -fL -o models/ggml-silero-v5.1.2.bin https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
-PATH=/usr/local/cuda/bin:$PATH cmake -B build -DGGML_CUDA=1 -DCMAKE_CUDA_ARCHITECTURES=89 -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j 24 --target whisper-server
-sudo install -m 644 pc/whisper-server.service /etc/systemd/system/   # このフォルダの pc/
-curl -fsSL https://ollama.com/install.sh | sh
-sudo install -D -m 644 pc/ollama-override.conf /etc/systemd/system/ollama.service.d/override.conf
-sudo systemctl daemon-reload && sudo systemctl enable --now whisper-server && sudo systemctl restart ollama
-ollama pull qwen2.5:14b
 # VOICEVOX ENGINE 0.25.2（linux-cpu-x64）を https://github.com/VOICEVOX/voicevox_engine/releases から ~/ai/voicevox に展開
 sudo install -m 644 pc/voicevox.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now voicevox
 # CPU 温度: Windows に LibreHardwareMonitor 0.9.6 を置き、管理者で 1 回起動して Options の「Run On Windows Startup」「Start Minimized」「Remote Web Server → Run」を入れる
@@ -95,7 +71,7 @@ WSL は PowerShell の画面を閉じるとしばらくして止まるので、`
 | `firmware/xiaozhi-auto-reopen.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply` | 会話が切れたら（画面をさわって止めたとき以外）、自分でつなぎ直す（3 秒後、だめなら 6・12…最大 60 秒ごと。つなぎ直しの失敗ではエラーの音を出さない）。AI Agent を開いたときも 2 秒後に自分でつなぐ（下の「呼びかけ」） |
 | `firmware/stackchan-camera-stream.patch` | `StackChan/firmware/` で `git apply` | カメラの映像を OTA と同じ所の `/camera/frame` へ送り続ける（下の「カメラの映像」） |
 | `firmware/stackchan-face-color.patch` | `StackChan/firmware/` で `git apply` | 顔（目と口）の色を変える MCP の道具 `self.robot.set_face_color`（`color`: 0xRRGGBB）。user only なので、ネットの AI からは見えない（下の「ネットとローカルの切り替え」） |
-| `firmware/xiaozhi-fallback-pc.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（auto-reopen のあと） | ミニコンが答えないとき、パソコン（`AICAR_FALLBACK_HOST` 192.168.11.7、同じ 8000・8003 番）につなぐ。WebSocket は毎回ミニコンを先に試し、だめならパソコン。起動のときの OTA も、失敗するたびにミニコンとパソコンを入れかえて聞く（下の「ミニコンが落ちたとき」） |
+| `firmware/xiaozhi-fallback-pc.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（auto-reopen のあと） | ミニコンが答えないとき、パソコン（`AICAR_FALLBACK_HOST` 192.168.11.7、同じ 8000・8003 番）につなぐ。WebSocket は毎回ミニコンを先に試し、だめならパソコン。起動のときの OTA も、失敗するたびにミニコンとパソコンを入れかえて聞く（下の「ミニコンが落ちたとき」） （2.0.0 からパソコンの控えは動かしていないので、つながらずミニコンを待つだけ）|
 | `firmware/xiaozhi-channel-watchdog.patch` | `StackChan/firmware/xiaozhi-esp32/` で `git apply`（fallback-pc のあと） | 会話の線が「閉じた」と知らせずに死んだとき（相手から 120 秒何も来ない）も、5 秒で閉じてつなぎ直す。つなぎ直しの時に「ひま」でなくても、1 秒ごとに待ってやり直す。線が 1 分つながらなければ（画面をさわって止めたときも）つなぎ直し、3 分つながらなければ自分で起動し直す。送りが固まって中の動きが 90 秒止まったときも起動し直す（AI Agent で起きる） |
 | `firmware/stackchan-camera-follow-server.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | カメラの映像・撮影の写真を、今つないでいる受け口（ミニコンかパソコン）へ送る |
 | `firmware/stackchan-countdown-shot.patch` | `StackChan/firmware/` で `git apply`（camera-stream のあと） | 「撮影して」の MCP の道具 `self.camera.countdown_photo`（`seconds`: 1〜9）。正面を向き、画面にカメラと数字を出して数え、撮って `/camera/shot` へ送る（下の「撮影と名前の登録」） |
@@ -129,34 +105,6 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 - 書き込むのは ota_0（0x20000）・assets（0xa00000）・otadata（0xd000）など。NVS（0x9000）の Wi-Fi の設定と、スマホのアプリの登録はそのまま
 - Jetson の IP アドレスが変わるとつながらない。ルーターで固定する（2026/10: Jetson 192.168.11.23、スタックちゃん 192.168.11.8）
 - スマホのアプリで変える AI の設定（声・性格）は使わなくなる。声の大きさは本体の設定の「Volume」（0〜100、最初は 70）でも変えられる
-
-## ミニコンが落ちたとき（パソコンの控え）
-
-パソコンでも同じ bridge を `--primary-url` つきで動かしておきます（`pc/pc-stackchan.service`、聞き取り・返事・声は
-パソコンの whisper large-v3・qwen2.5:14b・VOICEVOX）。
-
-```
-スタックちゃん → ws://192.168.11.23:8000（ミニコン）… だめなら → ws://192.168.11.7:8000（Windows）
-                 → portproxy → WSL の 127.0.0.1:8000（パソコンの bridge）
-```
-
-- Windows（管理者で 1 回）: `pc/stackchan-portproxy.ps1`。LAN の `192.168.11.7:8000/8003` を WSL へ通し、ファイアウォールで
-  同じ LAN（LocalSubnet）からだけ入れる。パソコンの IP アドレスはルーターで固定する
-- パソコンの bridge はミニコンの `GET /status` を 10 秒ごとに見る。動いていてスタックちゃんがつながっていなければ、
-  ネット / ローカルと声の選択をまねる。スタックちゃんがこちらにつながっていて、ミニコンが 3 回続けて（約 30 秒）動いていて、
-  呼びかけ待ち（会話中・撮影中・ネットの会話中でない）なら、こちらから切る → スタックちゃんは 3 秒後にミニコンへつなぎ直す
-- パソコンの bridge では「ミニコンにして」・`POST /backend?to=jetson` は使えない（「ミニコンが止まっているあいだは、パソコンで話します。」）。
-  見守り（face_id）・Kokoro・whisper の見回りは使わない。VOICEVOX が止まると声が出ない
-- ダッシュボードは、ミニコンが未接続か bridge が答えないとき、パソコンの bridge（Tailscale の :8003）からスタックちゃんの様子を出す
-- ミニコンが止まってから、パソコンで話せるまで: 会話が切れて 3 秒後につなぎ直し（ミニコンへの接続が失敗してから）。
-  起動のときにミニコンが止まっていれば、OTA の 1 回目の失敗から 10 秒後にパソコンに聞く
-
-```bash
-# パソコン（WSL）
-sudo apt install -y python3-websockets python3-numpy python3-opencv python3-opuslib sox
-mkdir -p ~/ai/stackchan_bridge && cp stackchan_bridge.py ~/ai/stackchan_bridge/
-sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now pc-stackchan
-```
 
 ## カメラの映像
 
@@ -213,13 +161,13 @@ sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemc
 
 ## 自動運転の実況
 
-自動運転（ダッシュボードの「自動」）＆ミニコン（Jetson / MyPC で Jetson）＆ローカルのとき、走っているあいだ AI-CAR の動きをしゃべる。
+自動運転（ダッシュボードの「自動」）＆ローカルのとき、走っているあいだ AI-CAR の動きをしゃべる。
 
 - `car_talk()` が 1 秒ごとに `GET /api/status` を見て、`autonomy.behavior` が変わったら一言（「前に進みます。障害物なし。前は 1.2 メートル空いています。」「前方障害物あり。左に回ります。」「段差発見！下がります。」など）
 - 同じ動きが続くときは 6 秒ごとに様子を話す（「順調に走っています。」「左まで 0.6 メートル、右まで 0.9 メートルです。」「秒速 5 センチで進んでいます。」など）
 - 自動に入る・出るときは「自動運転を始めます。」「自動運転を終わります。」
 - 会話・撮影・切り替えのあいだは話さない。実況のあとは会話モードにしない（呼びかけ待ちのまま）
-- パソコン・ネットのとき、パソコンの控えのときは話さない。`--no-car-talk` で止める
+- ネットのときは話さない。`--no-car-talk` で止める
 
 ## 撮影と名前の登録
 
@@ -328,23 +276,9 @@ sudo install -m 644 pc/pc-stackchan.service /etc/systemd/system/ && sudo systemc
 - XiaoZhi が会話を切っても、スタックちゃんとの会話は切りません。次に「スタックちゃん」と呼ばれたら、つなぎ直します
 - ネットの間も Jetson を通るので、Jetson が止まると会話はできません（走行・安全停止には関係ありません）
 
-### パソコンのときの「ネット」（調べるだけ）
-
-パソコンを選んでいて、パソコンが動いているときの「ネットにして」は、XiaoZhi につながず、会話はパソコンの qwen2.5:14b（選んだ声の話し方・性格）のままにします。顔は緑、`mode.txt` は `net`、言うことは「ネットで調べながら話します。」。
-
-- 毎回の質問で、ミニコンが調べた結果を会話の AI のプロンプトに足す（`web_info`、いっしょに調べて 6 秒まで、間に合わない所は飛ばす、全部で 1,500 字まで）
-  - はじめに、パソコンの qwen2.5:14b に質問から検索ことばを作らせる（`search_words`、例「今ネットに繋がってるから、ウクライナの首相調べて」→「ウクライナ 首相」、約 0.2〜0.5 秒）。だめなら質問の文から「今の・誰・調べて」などを除くだけ
-  - いつも: Wikipedia（日本語）の上から 2 記事の、はじめの説明と右の表（`incumbent`・`incumbentsince` など。今の首相・社長がわかる。API は 1 回だけ。何回も聞くと 429）
-  - いつも: DuckDuckGo の上から 4 つのページの説明、Google ニュースの検索（`news.google.com/rss/search`、5 件の見出しと日付）
-  - 「天気・雨・気温・傘」など: Open-Meteo（キー不要）の今・今日・明日・あさって。場所はネットの出口の IP（ip-api.com、1 回だけ）
-  - 「ニュース・話題」など: Google ニュースのトップ 5 件
-- ローカルのときは「ネットは見られないので、新しいことはわからないと言う」をプロンプトに足す
-- パソコンが止まっているあいだの「ネット」は、今までどおり XiaoZhi の会話（声はミニコンの Kokoro）
-- 2026/10 の実機（qwen2.5:14b）: 調べる 0.4〜1.0 秒、「今の日本の総理大臣は誰？」→「高市早苗殿ですわ」（四国めたん。調べないと「岸田文雄さん」と答えていた）
-
 ### 声ごとの話し方・性格
 
-ダッシュボードの Jetson のカードの「声」の、えらぶ欄（VOICEVOX 0.25.2 の 43 人。番号は各キャラクターの最初のスタイル、`PC_VOICES`）でパソコンの VOICEVOX の声を選ぶと、ローカルの会話の AI の最初の決まり（`system_prompt`）を、その声のキャラクターにします（`PC_PERSONAS`・`PERSONA_PROMPT`）。「だれ？」「誰の声？」「名前は？」には、そのキャラクターの名前で答えます（このときはネットで調べない、`SELF_ASK`）。ミニコン（Kokoro）のときは今までどおり「スタックちゃん」です。
+ダッシュボードの Jetson のカードの「声」の、えらぶ欄（VOICEVOX 0.25.2 の 43 人。番号は各キャラクターの最初のスタイル、`PC_VOICES`）でパソコンの VOICEVOX の声を選ぶと、ローカルの会話の AI の最初の決まり（`system_prompt`）を、その声のキャラクターにします（`PC_PERSONAS`・`PERSONA_PROMPT`）。「だれ？」「誰の声？」「名前は？」には、そのキャラクターの名前で答えます。パソコンが止まっていて Kokoro で話すときは「スタックちゃん」です。
 
 | 声 | 名乗る名前 | 話し方 |
 |---|---|---|

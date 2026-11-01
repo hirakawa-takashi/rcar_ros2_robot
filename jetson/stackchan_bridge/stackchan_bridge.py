@@ -32,11 +32,6 @@ XiaoZhi の 2 つの口をまねる:
   正面を向いて 5 秒数え、画面にカメラを出してから撮る。写真は `POST /camera/shot` に届く。face_id で顔を見て
   （`shot`）、ダッシュボードから `POST /enroll?name=` で名前を付けて face_id に登録する（ネットのときも同じ）。
 
-- パソコンの控え（--primary-url）: パソコンでも同じ受け口を動かしておく。ミニコンが落ちると、スタックちゃんは
-  パソコン（Windows の 192.168.11.7 → WSL）につなぎに来る（xiaozhi-fallback-pc.patch）。ここではミニコンの
-  bridge を 10 秒ごとに見て、動いていれば声・ネット/ローカルの選択をまね、スタックちゃんが呼びかけ待ちなら切って
-  ミニコンへつなぎ直させる。
-
 - 声で走る: 「前に 1 メートル進んで」「右に 90 度回って」「左に寄って」などを聞くと、ダッシュボードの
   `POST /api/cmd_vel`（0.2 秒ごと、正規化 −1〜1。速さはダッシュボードの「出力」まで）で動かす。進んだ量は
   `/api/status` の odom（エンコーダー）、回った角度は IMU の yaw で見て、着いたら止める。「止まって」「ストップ」は
@@ -48,7 +43,6 @@ XiaoZhi の 2 つの口をまねる:
 """
 import argparse
 import asyncio
-import concurrent.futures
 import html
 import io
 import json
@@ -79,10 +73,9 @@ from websockets.exceptions import ConnectionClosed
 WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
-# パソコン（WSL の Ubuntu、RTX 4080 SUPER）の whisper-server・Ollama。want が pc で動いていればこちらを使い、だめなら Jetson
-PC = {'host': '', 'model': '', 'up': False, 'want': 'pc', 'error': None, 'tts': False, 'speaker': 3}
+# パソコン（WSL）の VOICEVOX ENGINE（CPU。GPU は使わない）。動いていればこの声、だめならミニコンの Kokoro
+PC = {'host': '', 'tts': False, 'speaker': 3}
 PC_WAKE = threading.Event()
-BACKENDS = ('jetson', 'pc')
 # VOICEVOX の 43 人。番号は各キャラクターの最初のスタイル（ノーマルなど）。ダッシュボードの「えらぶ欄」の順
 PC_VOICES = {
     2: '四国めたん', 3: 'ずんだもん', 8: '春日部つむぎ', 10: '雨晴はう', 9: '波音リツ', 11: '玄野武宏',
@@ -94,35 +87,11 @@ PC_VOICES = {
     107: '東北ずん子', 108: '東北きりたん', 109: '東北イタコ', 113: 'あんこもん', 118: '夜語トバリ', 122: '暁記ミタマ',
     126: '里石ユカ',
 }
-# パソコンで「ネットにして」: 会話はパソコンの AI のまま、新しい情報だけネットで調べてプロンプトに足す
-WEB_TIMEOUT = 6.0
-WEB_UA = 'Mozilla/5.0 (X11; Linux aarch64) stackchan-bridge'
-WEATHER_ASK = re.compile(r'天気|気温|雨|雪|晴れ|くもり|曇り|傘|暑い|寒い|台風')
-NEWS_ASK = re.compile(r'ニュース|話題|出来事|事件')
 FOREIGN_TEXT = re.compile(r'[\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\uac00-\ud7af]+')  # キリル・アラビア・タイ・ハングル
 KANA = re.compile(r'[\u3041-\u30ff]')
 HANZI = re.compile(r'[\u4e00-\u9fff]')
 CHINESE_ONLY = re.compile(r'[，你我们么这说吗呢吧啊没]')  # 日本語ではまず使わない字
-WMO_JA = {0: '快晴', 1: '晴れ', 2: '晴れ時々くもり', 3: 'くもり', 45: '霧', 48: '霧', 51: '霧雨', 53: '霧雨', 55: '霧雨',
-          61: '小雨', 63: '雨', 65: '大雨', 66: '冷たい雨', 67: '冷たい雨', 71: '小雪', 73: '雪', 75: '大雪', 77: '雪',
-          80: 'にわか雨', 81: 'にわか雨', 82: '激しいにわか雨', 85: 'にわか雪', 86: 'にわか雪', 95: '雷雨', 96: '雷雨', 99: '雷雨'}
-NET_PROMPT = ('\n下はネットで今調べた結果です。天気・ニュース・今の出来事や、今の首相・社長など新しいことを聞かれたら、'
-              'これを使って答えてください。結果に答えがあれば、言い切って答えてください。'
-              '人や役職は、いちばん新しい日付のものを答えてください。'
-              '結果にないことは、自分の覚えで答えず、わからないと言ってください。URL や記号は読まないでください。\n')
-SEARCH_PROMPT = ('ユーザーの質問をネットで調べるための検索ことばを、日本語の名詞 2〜3 個を空白で区切って 1 行だけ出してください。'
-                 '外国語やカタカナの英語にせず、ふつうの日本語の言葉を使ってください。説明は書かないでください。\n'
-                 '例: 今の日本の総理大臣は誰？ → 日本 総理大臣\n例: ウクライナの首相を調べて → ウクライナ 首相\n'
-                 '例: イギリスの首相は？ → イギリス 首相')
-SEARCH_FILLER = re.compile(r'現在の?|今の?|最新の?|名前|だれ|誰|なに|何|教えて|調べて|知ってる|について|[、。,.?？!！「」『』]')
-WEB_INFO_CHARS = 1500
-WIKI_API = ('https://ja.wikipedia.org/w/api.php?format=json&formatversion=2&action=query&generator=search&gsrlimit=2'
-            '&prop=extracts|revisions&exintro=1&explaintext=1&exchars=200&exlimit=2'
-            '&rvprop=content&rvslots=main&gsrsearch=')
-WIKI_UA = 'stackchan-bridge/1.0 (https://github.com/hirakawa-takashi/rcar_ros2_robot)'
-WIKI_SKIP = re.compile(r'image|size|caption|insignia|website|map|flag|coa|symbol|logo|alt|画像|サイズ|地図|国旗|国章|位置')
 LOCAL_PROMPT = 'ネットは見られないので、天気やニュースなど新しいことを聞かれたら、わからないと言ってください。'
-HOME = {}
 # パソコンの声で話すときのキャラクター（名乗る名前, 話し方・性格）。ローカルの会話の AI の最初の決まりにする
 PC_PERSONAS = {
     3: ('ずんだもん', '一人称は「ボク」。文の終わりは、いつも「〜のだ」「〜なのだ」にします（「です」「ます」「だよ」「なのだよ」で終わらない）。'
@@ -304,12 +273,6 @@ GREET_HOLD = 30 * 60
 VIEWER_HOLD = 10.0
 FRAME_STALE = 3.0
 CLOUD_OTA_URL = 'https://api.tenclass.net/xiaozhi/ota/'
-# パソコンの控え: ミニコンの bridge（--primary-url）を見る間隔と、何回続けて動いていたら返すか
-PRIMARY = {'url': '', 'up': 0}
-PRIMARY_CHECK_EVERY = 10.0
-PRIMARY_TIMEOUT = 3.0
-PRIMARY_HANDBACK_CHECKS = 3
-STANDBY_ONLY = 'ミニコンが止まっているあいだは、パソコンで話します。'
 FACE_TOOL = 'self.robot.set_face_color'
 FACE_COLOR = {'local': 0xFFFFFF, 'net': 0x00FF00, 'patrol': 0xFF8000, 'mapping': 0x0080FF}
 # パトロール: 「パトロールして」で地図の全部を回る。見ているあいだ首を左右にふる。PATROL_TELL_EVERY か所ごとに話す
@@ -405,24 +368,25 @@ def power_bits(value, names, index=False):
 
 MODE_SWITCH_TIMEOUT = 40.0  # ダッシュボードの「ネット」でつなぐのを待つ秒
 BATTERY_EVERY = 300.0  # 電池の量（%）を記録する間かく（秒）
+PC_VOICEVOX_PORT = 50021
+PC_TTS_TIMEOUT = 10.0
+PC_CHECK_EVERY = 10.0
+PC_WARM_TIMEOUT = 120.0
+
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
-BACKEND_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend.txt')
 PC_VOICE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pc_voice.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
 # 聞きまちがい（ゲット・ヘッド・レッド・ベッドにして、ロータルにして）も受けつける。「ゲットして」などと分けるため「に/へ」がいる
 TO_NET = re.compile(r'(?:(?:インターネット|ネット|クラウド|net)' + _SWITCH + r'|(?:ゲット|ヘッド|ネッド|レッド|ベッド|メット|ネッツ)[にへ]' + _SWITCH + ')', re.I)
 TO_LOCAL = re.compile(r'(?:(?:ローカル|local)' + _SWITCH + r'|(?:ロータル|ロカール|ローカン)[にへ]' + _SWITCH + ')', re.I)
-# 家の AI（ローカル）の聞き取り・返事をする所。ネット / ローカルとは別に切りかえる
-TO_MINI = re.compile(r'(?:ミニコン|ミニ・?コン|ジェットソン|jetson)' + _SWITCH, re.I)
-TO_PC = re.compile(r'(?:パソコン|ピーシー|pc)' + _SWITCH, re.I)
 
 STATUS_LOCK = threading.Lock()
 STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': None, 'connected': 0,
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None, 'backend': None, 'pc_voice': None, 'standby': False,
+          'dozing': False, 'light': None, 'screen': None, 'pc_voice': None,
           'battery': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
@@ -493,14 +457,6 @@ def save_mode(mode):
     with open(MODE_FILE, 'w') as f:
         f.write(mode + '\n')
     set_status(mode=mode)
-
-
-def load_backend():
-    try:
-        with open(BACKEND_FILE) as f:
-            return 'jetson' if f.read().strip() == 'jetson' else 'pc'
-    except OSError:
-        return 'pc'
 
 
 def load_pc_voice(default):
@@ -633,7 +589,7 @@ def to_wav(samples, rate):
 
 
 def stt(samples, url=None):
-    """声を文字にする。url を決めなければ、パソコンが動いていればパソコン、だめなら Jetson の whisper-server。"""
+    """声を文字にする（Jetson の whisper-server）。"""
     peak = float(np.max(np.abs(samples))) or 1.0
     wav = to_wav(np.clip(samples * (0.7 * 32767 / peak), -32767, 32767), IN_RATE)
     b = uuid.uuid4().hex
@@ -642,13 +598,6 @@ def stt(samples, url=None):
         (f'\r\n--{b}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson'
          f'\r\n--{b}\r\nContent-Disposition: form-data; name="no_context"\r\n\r\ntrue\r\n--{b}--\r\n').encode()
     headers = {'Content-Type': f'multipart/form-data; boundary={b}'}
-    if url is None and PC['up']:
-        try:
-            req = urllib.request.Request(pc_url(PC_WHISPER_PORT, '/inference'), body, headers)
-            with urllib.request.urlopen(req, timeout=PC_STT_TIMEOUT) as r:
-                return json.loads(r.read())['text'].strip().replace('\n', '')
-        except OSError as e:
-            pc_down(e)
     req = urllib.request.Request(url or WHISPER_URL, body, headers)
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())['text'].strip().replace('\n', '')
@@ -731,8 +680,8 @@ def car_status(url):
 
 
 def car_talk_on():
-    """ミニコン・ローカルのときだけ実況する（パソコンの控えのときはしない）。"""
-    return STATUS['mode'] == 'local' and PC['want'] == 'jetson' and not PRIMARY['url']
+    """ローカルのときだけ実況する。"""
+    return STATUS['mode'] == 'local'
 
 
 def _meter(v):
@@ -1262,18 +1211,7 @@ def drive_car(url, cmd, stop):
 
 
 def llm_sentences(model, messages):
-    """返事を 1 文ずつ出す。パソコンが動いていればパソコンの PC['model']、だめなら Jetson の model。"""
-    if PC['up']:
-        said = False
-        try:
-            for x in _llm_sentences(pc_url(PC_OLLAMA_PORT, '/api/chat'), PC['model'], messages, PC_LLM_TIMEOUT):
-                said = True
-                yield x
-            return
-        except OSError as e:
-            if said:
-                raise
-            pc_down(e)
+    """返事を 1 文ずつ出す（Jetson の model）。"""
     yield from _llm_sentences(OLLAMA_URL, model, messages)
 
 
@@ -1309,132 +1247,9 @@ def voicevox_wav(text, speaker):
         return r.read()
 
 
-def web_get(url, ua=WEB_UA):
-    req = urllib.request.Request(url, headers={'User-Agent': ua, 'Accept-Language': 'ja'})
-    with urllib.request.urlopen(req, timeout=WEB_TIMEOUT) as r:
-        return r.read().decode('utf-8', 'replace')
-
-
-def home_place():
-    """家の場所（市・緯度経度）。インターネットの出口の IP から 1 回だけ調べて覚える。"""
-    if not HOME:
-        j = json.loads(web_get('http://ip-api.com/json/?lang=ja&fields=status,city,lat,lon'))
-        if j.get('status') == 'success':
-            HOME.update(city=j['city'], lat=j['lat'], lon=j['lon'])
-    return HOME
-
-
-def weather_info(_words=None):
-    h = home_place()
-    if not h:
-        return ''
-    j = json.loads(web_get(
-        f"https://api.open-meteo.com/v1/forecast?latitude={h['lat']}&longitude={h['lon']}&timezone=Asia%2FTokyo"
-        '&current=temperature_2m,weather_code&forecast_days=3'
-        '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'))
-    c, d = j['current'], j['daily']
-    lines = [f"{h['city']}の天気（Open-Meteo）: 今 {WMO_JA.get(c['weather_code'], '?')} {c['temperature_2m']:.0f}℃"]
-    for i, name in enumerate(('今日', '明日', 'あさって')):
-        lines.append(f"{name}（{d['time'][i]}）{WMO_JA.get(d['weather_code'][i], '?')}、"
-                     f"最高 {d['temperature_2m_max'][i]:.0f}℃、最低 {d['temperature_2m_min'][i]:.0f}℃、"
-                     f"雨の確率 {d['precipitation_probability_max'][i]}%")
-    return '\n'.join(lines)
-
-
-def news_info(_words=None):
-    root = ET.fromstring(web_get('https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja'))
-    titles = [t.text for t in root.iter('title')][2:7]
-    return 'ニュース（Google ニュース）:\n' + '\n'.join(f'- {t}' for t in titles if t)
-
-
-def search_words(text):
-    """質問から検索ことばを作る（パソコンの会話の AI に頼む。だめなら質問の文から決まった言い回しを除くだけ）。"""
-    words = text
-    try:
-        body = json.dumps({'model': PC['model'], 'stream': False, 'keep_alive': -1,
-                           'options': {'temperature': 0, 'num_predict': 24},
-                           'messages': [{'role': 'system', 'content': SEARCH_PROMPT},
-                                        {'role': 'user', 'content': text}]}).encode()
-        with urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/chat'), body),
-                                    timeout=WEB_TIMEOUT / 2) as r:
-            words = json.loads(r.read())['message']['content'].splitlines()[0]
-    except (OSError, ValueError, KeyError, IndexError) as e:
-        log(f'検索ことばを作れません（{e}）')
-    return ' '.join(SEARCH_FILLER.sub(' ', FOREIGN_TEXT.sub('', words.replace('\ufffd', ''))).split())[:40] or text
-
-
-def news_search_info(words):
-    """検索ことばで Google ニュースを検索して、新しい記事の見出しと日付を 5 つ。"""
-    root = ET.fromstring(web_get('https://news.google.com/rss/search?hl=ja&gl=JP&ceid=JP:ja&q='
-                                 + urllib.parse.quote(words)))
-    items = [(i.findtext('title'), (i.findtext('pubDate') or '')[5:16]) for i in root.iter('item')][:5]
-    return ('ニュースの検索「' + words + '」（Google ニュース）:\n'
-            + '\n'.join(f'- {t}（{d}）' for t, d in items if t)) if items else ''
-
-
-def ddg_info(words):
-    """検索ことばで DuckDuckGo を検索して、上から 4 つのページの説明。"""
-    page = web_get('https://html.duckduckgo.com/html/?q=' + urllib.parse.quote(words))
-    snips = [_plain(x)[:150] for x in re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', page, re.S)][:4]
-    return ('ウェブの検索（DuckDuckGo）:\n' + '\n'.join(f'- {x}' for x in snips if x)) if snips else ''
-
-
-def _wiki_text(v):
-    v = re.sub(r'<ref[^>]*/>|<ref.*?</ref>', '', v)
-    v = re.sub(r'\[\[(?:[^|\]]*\|)?([^\]]*)\]\]', r'\1', v)
-    v = re.sub(r'\[https?://\S+ ?([^\]]*)\]', r'\1', v)
-    v = re.sub(r'\{\{[^{}]*\}\}|\'\'+', '', v)
-    v = re.sub(r'<br\s*/?>', ' ', v)
-    return ' '.join(_plain(v).split())
-
-
-def wiki_info(words):
-    """Wikipedia（日本語）で上から 2 つの記事の、はじめの説明と右の表（現職・就任日など）。1 回で取る（何回も聞くと 429）。"""
-    pages = json.loads(web_get(WIKI_API + urllib.parse.quote(words), WIKI_UA)).get('query', {}).get('pages', [])
-    out = []
-    for page in sorted(pages, key=lambda x: x.get('index', 0)):
-        top = page['revisions'][0]['slots']['main']['content'].split('\n==')[0]
-        box = []
-        for k, v in re.findall(r'^\|\s*([^=|\n]+?)\s*=\s*(.+)$', top, re.M):
-            if not WIKI_SKIP.search(k) and (v := _wiki_text(v)) and len(box) < 12:
-                box.append(f'{k}: {v[:60]}')
-        intro = ' '.join(page.get('extract', '').split())
-        out.append(f"Wikipedia「{page['title']}」: {intro}" + ('\n' + '、'.join(box) if box else ''))
-    return '\n'.join(out)
-
-
-def web_info(query):
-    """聞かれたことをネットで調べて、プロンプトに足す文にする。いっしょに調べ、WEB_TIMEOUT 秒で間に合わない所は飛ばす。"""
-    words = search_words(query)
-    jobs = [wiki_info, ddg_info, news_search_info]
-    if NEWS_ASK.search(query):
-        jobs.insert(0, news_info)
-    if WEATHER_ASK.search(query):
-        jobs.insert(0, weather_info)
-    pool = concurrent.futures.ThreadPoolExecutor(len(jobs))
-    futs = [pool.submit(job, words) for job in jobs]
-    concurrent.futures.wait(futs, timeout=WEB_TIMEOUT)
-    pool.shutdown(wait=False, cancel_futures=True)
-    out = []
-    for job, fut in zip(jobs, futs):
-        if not fut.done():
-            log(f'ネットで調べるのが間に合いません（{job.__name__}）')
-        elif fut.exception():
-            log(f'ネットで調べられません（{job.__name__}）: {fut.exception()}')
-        elif fut.result():
-            out.append(fut.result())
-    log(f'検索ことば「{words}」: {len(out)} か所から')
-    return '\n'.join(out)[:WEB_INFO_CHARS]
-
-
-def pc_net():
-    """パソコンを使っていて「ネット」のとき。会話はパソコンの AI のまま、ネットは調べるだけに使う。"""
-    return STATUS['mode'] == 'net' and PC['want'] == 'pc' and PC['up']
-
-
 def system_prompt():
-    """会話の AI の最初の決まり。パソコンの VOICEVOX で話すときは、その声のキャラクター。ミニコン（Kokoro）のときはスタックちゃん。"""
-    if not (PC['up'] and PC['tts'] and PC['speaker'] in PC_PERSONAS):
+    """会話の AI の最初の決まり。パソコンの VOICEVOX で話すときは、その声のキャラクター。Kokoro のときはスタックちゃん。"""
+    if not (PC['tts'] and PC['speaker'] in PC_PERSONAS):
         return SYSTEM_PROMPT
     name, style = PC_PERSONAS[PC['speaker']]
     return PERSONA_PROMPT.format(name=name, style=style)
@@ -1442,9 +1257,9 @@ def system_prompt():
 
 def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE, use_pc=True):
     """文字を rate（ふつうは 24 kHz）・16 bit・1 ch の PCM（bytes）にする。いちばん大きい所を peak_db（dBFS）にそろえる。
-    パソコンを使っていて VOICEVOX が動いていれば VOICEVOX（高さはそのまま）、ほかは Kokoro（pitch だけ上げる）。"""
+    パソコンの VOICEVOX が動いていれば VOICEVOX（高さはそのまま）、ほかは Kokoro（pitch だけ上げる）。"""
     wav = None
-    if use_pc and PC['up'] and PC['tts']:
+    if use_pc and PC['tts']:
         try:
             wav = voicevox_wav(text, PC['speaker'])
         except (OSError, ValueError) as e:
@@ -1486,7 +1301,6 @@ def pc_url(port, path):
 
 def show_engines():
     set_status(engines=engines(PC['args']),
-               backend={'want': PC['want'], 'active': 'pc' if PC['up'] else 'jetson', 'error': PC['error']},
                pc_voice={'speaker': PC['speaker'],
                          'choices': [{'speaker': k, 'name': v} for k, v in PC_VOICES.items()]})
 
@@ -1497,62 +1311,17 @@ def set_pc_voice(speaker):
     with open(PC_VOICE_FILE, 'w') as f:
         f.write(f'{speaker}\n')
     log(f'パソコンの声: {PC_VOICES[speaker]}（{speaker}）')
-    PC_WAKE.set()
     show_engines()
-
-
-def set_backend(want):
-    """ダッシュボードの切り替え: jetson ならパソコンを使わない。pc ならパソコンを見て、動いていれば使う。"""
-    PC['want'] = want
-    with open(BACKEND_FILE, 'w') as f:
-        f.write(want + '\n')
-    log(f'聞き取り・返事をする所: {"パソコン" if want == "pc" else "Jetson"}')
-    if want == 'jetson':
-        PC.update(up=False, error=None)
     PC_WAKE.set()
-    show_engines()
-
-
-def switch_backend(want):
-    """「ミニコンにして」「パソコンにして」。返事の文を返す。"""
-    if PRIMARY['url'] and want == 'jetson':
-        return STANDBY_ONLY
-    if want == 'pc' and not PC['host']:
-        return 'パソコンが決められていないので、ミニコンで話します。'
-    was = PC['want']
-    set_backend(want)
-    if want == 'jetson':
-        return '今はミニコンです。' if was == want else 'ミニコンにしました。'
-    if PC['up']:
-        return '今はパソコンです。'
-    return 'パソコンにします。つながるまでは、ミニコンで話します。'
 
 
 def engines(args):
-    if PC['up']:
-        tts = f"VOICEVOX {PC_VOICES[PC['speaker']]}（パソコン）" if PC['tts'] else f'Kokoro {args.voice}'
-        return {'stt': 'whisper-server large-v3（パソコン）', 'llm': f"{PC['model']}（パソコン）", 'tts': tts}
-    return {'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'}
+    tts = f"VOICEVOX {PC_VOICES[PC['speaker']]}（パソコン）" if PC['tts'] else f'Kokoro {args.voice}'
+    return {'stt': 'whisper-server', 'llm': args.model, 'tts': tts}
 
 
-def pc_down(e):
-    PC['error'] = str(e)
-    if PC['up']:
-        PC['up'] = False
-        log(f'パソコンにつながらないので Jetson に戻します（{e}）')
-    show_engines()
-
-
-def pc_check():
-    """パソコンの whisper-server が返事をし、Ollama に PC['model'] があれば読み込ませる（読み込み済みならすぐ返る）。だめなら OSError。"""
-    urllib.request.urlopen(pc_url(PC_WHISPER_PORT, '/'), timeout=PC_CHECK_TIMEOUT).read()
-    with urllib.request.urlopen(pc_url(PC_OLLAMA_PORT, '/api/tags'), timeout=PC_CHECK_TIMEOUT) as r:
-        names = {m.get('name') for m in json.loads(r.read()).get('models', [])}
-    if PC['model'] not in names:
-        raise OSError(f"Ollama に {PC['model']} がない")
-    body = json.dumps({'model': PC['model'], 'keep_alive': -1}).encode()
-    urllib.request.urlopen(urllib.request.Request(pc_url(PC_OLLAMA_PORT, '/api/generate'), body),
-                           timeout=PC_WARM_TIMEOUT).read()
+def voice_check():
+    """パソコンの VOICEVOX に、選んだ声を読み込ませる（読み込み済みならすぐ返る）。だめなら Kokoro にする。"""
     url = pc_url(PC_VOICEVOX_PORT, f"/initialize_speaker?speaker={PC['speaker']}&skip_reinit=true")
     try:
         urllib.request.urlopen(urllib.request.Request(url, b'', method='POST'), timeout=PC_WARM_TIMEOUT).read()
@@ -1565,19 +1334,11 @@ def pc_check():
         show_engines()
 
 
-async def pc_watch(args):
-    """PC_CHECK_EVERY 秒ごと（切り替えたらすぐ）にパソコンを見て、聞き取りと返事の行き先を切り替える。"""
+async def voice_watch():
+    """PC_CHECK_EVERY 秒ごと（声を変えたらすぐ）に、パソコンの VOICEVOX が使えるかを見る。"""
     while True:
         PC_WAKE.clear()
-        if PC['want'] == 'pc':
-            try:
-                await asyncio.to_thread(pc_check)
-                if PC['want'] == 'pc' and not PC['up']:
-                    PC.update(up=True, error=None)
-                    log(f"パソコン（{PC['host']}）を使います: whisper large-v3・{PC['model']}")
-                    show_engines()
-            except (OSError, ValueError) as e:
-                pc_down(e)
+        await asyncio.to_thread(voice_check)
         await asyncio.to_thread(PC_WAKE.wait, PC_CHECK_EVERY)
 
 
@@ -1600,44 +1361,6 @@ async def stt_watchdog(voice, wake_words):
                 log(f'whisper がおかしいので起動し直します（「{said}」→「{text}」）')
                 subprocess.run(['pkill', '-KILL', '-x', 'whisper-server'], check=False)
                 break
-
-
-def primary_status():
-    with urllib.request.urlopen(PRIMARY['url'] + '/status', timeout=PRIMARY_TIMEOUT) as r:
-        return json.loads(r.read())
-
-
-def mirror_primary(st):
-    """ミニコンで選んでいる「ネット / ローカル」と声を、こちらにも入れる。"""
-    if st.get('mode') in ('net', 'local') and st['mode'] != STATUS['mode']:
-        save_mode(st['mode'])
-        log(f"ミニコンに合わせて {st['mode']} にしました")
-    speaker = (st.get('pc_voice') or {}).get('speaker')
-    if speaker in PC_VOICES and speaker != PC['speaker']:
-        set_pc_voice(speaker)
-
-
-async def primary_watch():
-    """パソコンの控え: ミニコンの bridge が動いていれば選択をまね、スタックちゃんがここで呼びかけ待ちなら
-    切って、ミニコンへつなぎ直させる（ファームウェアはミニコンを先に試す）。"""
-    while True:
-        try:
-            st = await asyncio.to_thread(primary_status)
-        except (OSError, ValueError) as e:
-            if PRIMARY['up']:
-                log(f'ミニコンの bridge につながりません（{e}）')
-            PRIMARY['up'] = 0
-        else:
-            PRIMARY['up'] += 1
-            if not SESSIONS:
-                mirror_primary(st)
-            elif (PRIMARY['up'] >= PRIMARY_HANDBACK_CHECKS
-                  and all(s.asleep() and not s.busy() and not s.cloud for s in SESSIONS)):
-                log('ミニコンがもどったので、スタックちゃんをミニコンへ返します')
-                for s in list(SESSIONS):
-                    await s.ws.close()
-        set_status(standby=PRIMARY['up'] == 0)
-        await asyncio.sleep(PRIMARY_CHECK_EVERY)
 
 
 class OtaHandler(BaseHTTPRequestHandler):
@@ -1728,17 +1451,6 @@ class OtaHandler(BaseHTTPRequestHandler):
             self._shot()
         elif path == '/enroll':
             self._enroll()
-        elif path == '/backend':
-            want = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('to', [''])[0]
-            if want not in BACKENDS:
-                return self._send_error(400, 'to は jetson か pc')
-            if want == 'pc' and not PC['host']:
-                return self._send_error(409, 'パソコン（--pc-host）が決まっていません')
-            if PRIMARY['url'] and want == 'jetson':
-                return self._send_error(409, STANDBY_ONLY)
-            set_backend(want)
-            with STATUS_LOCK:
-                self._send_json({'ok': True, 'backend': STATUS['backend']})
         elif path == '/mode':
             want = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('to', [''])[0]
             if want not in ('net', 'local'):
@@ -2249,14 +1961,6 @@ class Session:
 
     async def to_net(self, announce=True):
         """ネットの XiaoZhi につなぎ、このセッションの声と文字を中継する。だめならローカルのまま。"""
-        if PC['want'] == 'pc' and PC['up']:
-            save_mode('net')
-            await self.set_face('net')
-            log('ネット: パソコンの AI で話し、新しいことだけネットで調べます')
-            if announce:
-                await self.say('ネットで調べながら話します。')
-            set_status(state=self.listen_state())
-            return
         self.switching = True
         cloud = None
         try:
@@ -2328,7 +2032,7 @@ class Session:
 
     async def need_cloud(self):
         """ネットのモードで呼ばれたら、ネットの会話を開く。開けたら True。"""
-        if STATUS['mode'] == 'net' and not self.cloud and not pc_net():
+        if STATUS['mode'] == 'net' and not self.cloud:
             await self.to_net(announce=False)
         return bool(self.cloud)
 
@@ -2389,7 +2093,7 @@ class Session:
                 if self.shooting and msg.get('type') in ('tts', 'llm'):
                     continue
                 if msg.get('type') == 'tts' and msg.get('state') == 'start':
-                    own = PC['up'] and PC['tts']
+                    own = PC['tts']
                     hold = None if own else []
                     self.cancel.clear()
                 elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
@@ -3006,23 +2710,12 @@ class Session:
                 else:
                     await self.say('今はローカルです。')
                 return
-            if is_switch(TO_MINI, text) or is_switch(TO_PC, text):
-                await self.say(switch_backend('pc' if is_switch(TO_PC, text) else 'jetson'))
-                return
             if is_switch(SHOOT, text):
                 await self.countdown_shot()
                 return
             await self.send(type='llm', emotion='thinking', text='🤔')
             now = time.strftime('今は %Y年%m月%d日 %H時%M分です。')
-            system = system_prompt() + now
-            query = (self.wake.sub('', text) if self.wake else text).strip(' 、。,.') or text
-            if STATUS['mode'] == 'net' and not SELF_ASK.search(query):
-                t1 = time.time()
-                info = await asyncio.to_thread(web_info, query)
-                log(f'ネットで調べました（{time.time() - t1:.2f} 秒）: {info.splitlines()[0] if info else "なし"}')
-                system += NET_PROMPT + info
-            elif STATUS['mode'] != 'net':
-                system += LOCAL_PROMPT
+            system = system_prompt() + now + LOCAL_PROMPT
             if CAR_ASK.search(text):
                 car = await asyncio.to_thread(car_status, a.car_url)
                 log(f'AI-CAR のようすを渡します: {car.splitlines()[0]}')
@@ -3144,8 +2837,7 @@ async def main():
     p.add_argument('--ota-port', type=int, default=8003)
     p.add_argument('--model', default='qwen2.5:3b')
     p.add_argument('--pc-host', default=os.environ.get('AI_PC_HOST', '100.86.172.21'),
-                   help='聞き取りと返事に使うパソコン（whisper-server :8178・Ollama :11434）。空でパソコンを使わない')
-    p.add_argument('--pc-model', default='qwen2.5:14b', help='パソコンの Ollama で返事に使う会話の AI')
+                   help='声（VOICEVOX ENGINE :50021、CPU）に使うパソコン。空でパソコンを使わない（いつも Kokoro）')
     p.add_argument('--pc-speaker', type=int, default=3,
                    help='パソコンの VOICEVOX の声（スタイルの番号。3 = ずんだもん ノーマル）')
     p.add_argument('--voice', default='jf_alpha')
@@ -3174,32 +2866,26 @@ async def main():
                    help='「撮影して」で数えるときの首の上向きの角度（0〜90 度、0 が水平）')
     p.add_argument('--watch-interval', type=float, default=2.0,
                    help='見守りで顔を見る間隔（秒）。0 で見守りをしない')
-    p.add_argument('--primary-url', default=os.environ.get('AI_PRIMARY_URL', ''),
-                   help='パソコンの控えとして動かすとき、ミニコンの bridge（例 http://100.111.231.54:8003）。'
-                        '選択をまね、ミニコンがもどったらスタックちゃんを返す。いつもパソコンで話す')
     args = p.parse_args()
 
     global LOOP
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     WATCH['interval'] = max(0.0, args.watch_interval)
-    PRIMARY['url'] = args.primary_url.rstrip('/')
-    PC.update(host=args.pc_host, model=args.pc_model, args=args, speaker=load_pc_voice(args.pc_speaker),
-              want='pc' if PRIMARY['url'] else load_backend() if args.pc_host else 'jetson')
+    PC.update(host=args.pc_host, args=args, speaker=load_pc_voice(args.pc_speaker))
     load_device_ota()
     set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0)
     show_engines()
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
-    # 控えのときは Kokoro がないので whisper の見回りはしない（パソコンの whisper はパソコンの systemd が見る）
-    watchdog = asyncio.create_task(primary_watch() if PRIMARY['url'] else stt_watchdog(args.voice, args.wake_words))
-    pc = asyncio.create_task(pc_watch(args)) if args.pc_host else None
+    watchdog = asyncio.create_task(stt_watchdog(args.voice, args.wake_words))
+    voice = asyncio.create_task(voice_watch()) if args.pc_host else None
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
         log(f'待ち受け: OTA http://{args.host}:{args.ota_port}/xiaozhi/ota/  WebSocket :{args.ws_port}/xiaozhi/v1/')
         await asyncio.Future()
     watchdog.cancel()
-    if pc:
-        pc.cancel()
+    if voice:
+        voice.cancel()
 
 
 if __name__ == '__main__':
