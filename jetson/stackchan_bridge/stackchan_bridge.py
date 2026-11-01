@@ -1311,6 +1311,7 @@ def set_pc_voice(speaker):
     with open(PC_VOICE_FILE, 'w') as f:
         f.write(f'{speaker}\n')
     log(f'パソコンの声: {PC_VOICES[speaker]}（{speaker}）')
+    show_engines()
     PC_WAKE.set()
 
 

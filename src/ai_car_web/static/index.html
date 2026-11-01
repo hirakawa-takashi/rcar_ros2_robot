@@ -1603,7 +1603,9 @@ function renderAiRows(v) {
     : `${gpuPct < 90 ? badge('warn', gpuText) : gpuText} / CPU ${fmt(100 - gpuPct, 0)} %`;
   const gbDec = mb => fmt(mb * 2 ** 20 / 1e9, 1);
   byId('jt_llm_vram').textContent = loaded ? `${gbDec(v.llm_vram_mb)} / ${gbDec(v.llm_size_mb)} GB` : '-';
-  const tts = {on: (aiJetson.services || {}).kokoro, name: aiJetson.tts_engine};
+  const stackTts = ((aiStack && aiStack.engines) || {}).tts || '';
+  const tts = stackTts.startsWith('VOICEVOX') ? {on: true, name: stackTts}
+    : {on: (aiJetson.services || {}).kokoro, name: aiJetson.tts_engine};
   byId('jt_svc_kokoro').innerHTML = tts.on == null ? '-'
     : (tts.on && tts.name ? `<span class="nw">${esc(tts.name)}</span> / ` : '')
       + (tts.on ? badge('ok', '稼働中') : badge('warn', '停止'));
