@@ -40,12 +40,18 @@ journalctl -u jetson-stackchan -f    # 聞き取り・返事・かかった秒�
 
 ## パソコンの様子（ダッシュボード、表示だけ）
 
-パソコン（WSL の Ubuntu、RTX 4080 SUPER）の GPU は、スタックちゃんの AI には使わない（2.0.0 で、パソコンの聞き取り・返事・VOICEVOX の声・ミニコンが落ちたときの控えをやめた。GPU は Strata・ComfyUI に使う）。
+パソコン（WSL の Ubuntu、RTX 4080 SUPER）の GPU は、スタックちゃんの AI には使わない（2.0.0 で、パソコンの聞き取り・返事・ミニコンが落ちたときの控え・「パソコンにして」をやめた。GPU は Strata・ComfyUI に使う）。
+パソコンで使うのは、CPU で動く VOICEVOX の声だけ（GPU のメモリは 0）。
 ダッシュボードの Jetson のカードの「パソコン」ボタンで、パソコンの温度・負荷率・メモリ・更新を出す（表示だけ、切り替えはしない）。
 
 - `pc/pc_status.py` を `/home/super/ai/` に置き、`pc/pc-status.service` を入れる（`/etc/pc-status.env` に `AI_CAR_API_TOKEN=...`）。1 秒ごとに `POST /api/mypc/status`（jetson-status と同じ形 ＋ `gpu_name`・`gpu_driver`）
 
+- 文字→声: パソコンの VOICEVOX ENGINE（CPU、`:50021`）が動いていれば、`--pc-speaker`（既定 3 = ずんだもん ノーマル、ダッシュボードで選ぶと `pc_voice.txt`）の声。高さはそのまま（Kokoro だけ `--pitch` で上げる）。`voice_watch()` が 10 秒ごとに `POST /initialize_speaker` で読み込ませ、だめならその回から Kokoro。行き先は `--pc-host`（既定は環境変数 `AI_PC_HOST`、なければ Tailscale の taka3-wsl `100.86.172.21`）。空でいつも Kokoro。2026/10 の実機（ミニコンから）: 「こんにちは。」0.27 秒、26 文字の文 0.75 秒。家の中だけで使う（外に出すときは「VOICEVOX:ずんだもん」と書く決まり）
+- ネットの会話のときも、VOICEVOX が動いていれば、ネットの声は捨てて返事の文をパソコンの声で読む（`speak_own`）
+
 ```bash
+# VOICEVOX ENGINE 0.25.2（linux-cpu-x64）を https://github.com/VOICEVOX/voicevox_engine/releases から ~/ai/voicevox に展開
+sudo install -m 644 pc/voicevox.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now voicevox
 # CPU 温度: Windows に LibreHardwareMonitor 0.9.6 を置き、管理者で 1 回起動して Options の「Run On Windows Startup」「Start Minimized」「Remote Web Server → Run」を入れる
 #   （設定ファイルでは runWebServerMenuItem=true。pc_status.py は Windows の PowerShell から http://localhost:8085/data.json の CPU Package を読む）
 ```
@@ -269,6 +275,21 @@ python3 esptool.py --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash $(cat bu
 - ネットの間も、カメラの映像（`/camera/frame`）は Jetson に来ます。「写真を撮る」は、XiaoZhi が写真の送り先を自分のほうに変えるので使えません（ローカルにもどると、送り先を Jetson にもどす）
 - XiaoZhi が会話を切っても、スタックちゃんとの会話は切りません。次に「スタックちゃん」と呼ばれたら、つなぎ直します
 - ネットの間も Jetson を通るので、Jetson が止まると会話はできません（走行・安全停止には関係ありません）
+
+### 声ごとの話し方・性格
+
+ダッシュボードの Jetson のカードの「声」の、えらぶ欄（VOICEVOX 0.25.2 の 43 人。番号は各キャラクターの最初のスタイル、`PC_VOICES`）でパソコンの VOICEVOX の声を選ぶと、ローカルの会話の AI の最初の決まり（`system_prompt`）を、その声のキャラクターにします（`PC_PERSONAS`・`PERSONA_PROMPT`）。「だれ？」「誰の声？」「名前は？」には、そのキャラクターの名前で答えます。パソコンが止まっていて Kokoro で話すときは「スタックちゃん」です。
+
+| 声 | 名乗る名前 | 話し方 |
+|---|---|---|
+| ずんだもん | ずんだもん | 一人称「ボク」、文の終わりはいつも「〜のだ」「〜なのだ」。明るく元気 |
+| 四国めたん | 四国めたん | 一人称「わたくし」、「〜ですわ」「〜ですの」「〜かしら」。上品 |
+| 春日部つむぎ | 春日部つむぎ | 一人称「あーし」、「〜じゃん」「マジで」。人なつっこい |
+| 冥鳴ひまり | 冥鳴ひまり | 一人称「わたし」、おっとりした静かな丁寧語 |
+| もち子さん | もち子 | 一人称「わたし」、やさしいお姉さんの丁寧語、ほめ上手 |
+| ほか 38 人 | 名前のまま（†聖騎士 紅桜† は「聖騎士 紅桜」、小夜/SAYO は「小夜」） | `PC_PERSONAS` に 1 人ずつ（例: 白上虎太郎「ぼく」「〜だよ」、ちび式じい「わし」「〜じゃ」、中国うさぎ「〜ぴょん」） |
+
+返事の中のキリル・アラビア・タイ・ハングルの文字は読まずに消す（`FOREIGN_TEXT`。qwen2.5 がときどき混ぜる）。漢字ばかりで、かなが漢字の 1/4 より少なく、「，你我们么」など中国語だけの字がある文も読まない（`is_chinese`）。
 
 ## 純正にもどす
 

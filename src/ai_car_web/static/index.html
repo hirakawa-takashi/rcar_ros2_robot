@@ -288,6 +288,7 @@
   button.reboot:disabled { opacity: .4; }
   .aiswitch { margin-left: 8px; }
   .voicebtns { display: flex; justify-content: space-between; align-items: flex-start; }
+  #jt_voice_btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .voicebtns .k { color: #9fb0c7; font-family: system-ui, sans-serif; font-size: 14px; }
   .voicebtns select { padding: 3px 6px; font-size: 13px; max-width: 100%; }
   #bk_list, #jb_list { padding: 3px 6px; font-size: 13px; width: 100%; background: #101418;
@@ -559,7 +560,8 @@
           <tr><td class="k">会話の AI</td><td class="v wrap" id="jt_svc_ollama" title="Ollama（読み込み中のモデル / 状態）">-</td></tr>
           <tr><td class="k">　GPU / CPU</td><td class="v" id="jt_llm_split" title="会話の AI のうち GPU と CPU で動く割合（ollama ps の PROCESSOR）">-</td></tr>
           <tr><td class="k">　GPU / 全体</td><td class="v" id="jt_llm_vram" title="GPU に載っている量 / モデルの大きさ（ollama ps と同じ 1 GB = 10^9 バイト）">-</td></tr>
-          <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="Kokoro（GPU、Docker）。仕組みの名前と版">-</td></tr>
+          <tr><td class="k">文字→声</td><td class="v wrap" id="jt_svc_kokoro" title="パソコンが動いていればパソコンの VOICEVOX（CPU）、止まっていればミニコンの Kokoro（GPU、Docker）。仕組みの名前と版">-</td></tr>
+          <tr id="jt_voice_row" style="display:none"><td class="v" colspan="2"><div class="voicebtns"><span class="k">　声</span><span id="jt_voice_btns" title="パソコンの VOICEVOX（CPU）の声と、ローカルの会話の話し方・性格。次の文から変わる（パソコンが止まっているときは Kokoro・ふつうの話し方）"></span></div></td></tr>
         </table>
       </div>
       <div>
@@ -1607,6 +1609,30 @@ function renderAiRows(v) {
       + (tts.on ? badge('ok', '稼働中') : badge('warn', '停止'));
 }
 
+let voiceBusy = false;
+
+function renderVoiceBtns() {
+  const v = aiStack && aiStack.pc_voice;
+  const row = document.getElementById('jt_voice_row'), box = document.getElementById('jt_voice_btns');
+  row.style.display = v ? '' : 'none';
+  if (!v) return;
+  const key = v.choices.map(c => c.speaker).join(',');
+  if (box.dataset.key !== key) {
+    box.dataset.key = key;
+    box.innerHTML = `<select id="jt_voice_sel">${v.choices.map(c => `<option value="${c.speaker}">${esc(c.name)}</option>`).join('')}</select>`;
+    box.querySelector('select').addEventListener('change', e => {
+      voiceBusy = true;
+      e.target.disabled = true;
+      apiPost(`/api/stackchan/pc_voice?speaker=${e.target.value}`).then(r => r && r.json().then(j => [r, j])).then(res => {
+        if (res && !res[0].ok) alert(res[1].detail || '声を変えられませんでした');
+      }).finally(() => { voiceBusy = false; pollStackchan(); });
+    });
+  }
+  const sel = box.querySelector('select');
+  sel.disabled = voiceBusy;
+  if (!voiceBusy && document.activeElement !== sel) sel.value = String(v.speaker);
+}
+
 ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
   jtView = k;
   localStorage.setItem('jt_view', k);
@@ -1725,7 +1751,10 @@ function renderJetsonHost() {
   byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
 
   byId('jt_ai_col').style.display = pc ? 'none' : '';
-  if (!pc) renderAiRows(v);
+  if (!pc) {
+    renderAiRows(v);
+    renderVoiceBtns();
+  }
 
   renderUpdates(v, 'jt_');
   byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +

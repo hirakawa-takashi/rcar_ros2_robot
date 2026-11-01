@@ -73,11 +73,132 @@ from websockets.exceptions import ConnectionClosed
 WHISPER_URL = 'http://127.0.0.1:8178/inference'
 OLLAMA_URL = 'http://127.0.0.1:11434/api/chat'
 KOKORO_URL = 'http://127.0.0.1:8880/v1/audio/speech'
+# パソコン（WSL）の VOICEVOX ENGINE（CPU。GPU は使わない）。動いていればこの声、だめならミニコンの Kokoro
+PC = {'host': '', 'tts': False, 'speaker': 3}
+PC_WAKE = threading.Event()
+# VOICEVOX の 43 人。番号は各キャラクターの最初のスタイル（ノーマルなど）。ダッシュボードの「えらぶ欄」の順
+PC_VOICES = {
+    2: '四国めたん', 3: 'ずんだもん', 8: '春日部つむぎ', 10: '雨晴はう', 9: '波音リツ', 11: '玄野武宏',
+    12: '白上虎太郎', 13: '青山龍星', 14: '冥鳴ひまり', 16: '九州そら', 20: 'もち子さん', 21: '剣崎雌雄',
+    23: 'WhiteCUL', 27: '後鬼', 29: 'No.7', 42: 'ちび式じい', 43: '櫻歌ミコ', 46: '小夜/SAYO',
+    47: 'ナースロボ＿タイプＴ', 51: '†聖騎士 紅桜†', 52: '雀松朱司', 53: '麒ヶ島宗麟', 54: '春歌ナナ', 55: '猫使アル',
+    58: '猫使ビィ', 61: '中国うさぎ', 67: '栗田まろん', 68: 'あいえるたん', 69: '満別花丸', 74: '琴詠ニア',
+    89: 'Voidoll', 90: 'ぞん子', 94: '中部つるぎ', 99: '離途', 100: '黒沢冴白', 102: 'ユーレイちゃん',
+    107: '東北ずん子', 108: '東北きりたん', 109: '東北イタコ', 113: 'あんこもん', 118: '夜語トバリ', 122: '暁記ミタマ',
+    126: '里石ユカ',
+}
 FOREIGN_TEXT = re.compile(r'[\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\uac00-\ud7af]+')  # キリル・アラビア・タイ・ハングル
 KANA = re.compile(r'[\u3041-\u30ff]')
 HANZI = re.compile(r'[\u4e00-\u9fff]')
 CHINESE_ONLY = re.compile(r'[，你我们么这说吗呢吧啊没]')  # 日本語ではまず使わない字
 LOCAL_PROMPT = 'ネットは見られないので、天気やニュースなど新しいことを聞かれたら、わからないと言ってください。'
+# パソコンの声で話すときのキャラクター（名乗る名前, 話し方・性格）。ローカルの会話の AI の最初の決まりにする
+PC_PERSONAS = {
+    3: ('ずんだもん', '一人称は「ボク」。文の終わりは、いつも「〜のだ」「〜なのだ」にします（「です」「ます」「だよ」「なのだよ」で終わらない）。'
+        '明るく元気で、ちょっと調子に乗りやすい性格です。例:「ボクはずんだもんなのだ！」「ボクにまかせるのだ！」「それはすごいのだ！」'),
+    2: ('四国めたん', '一人称は「わたくし」。お嬢様の言葉で、文の終わりは「〜ですわ」「〜ですの」「〜かしら」にします。'
+        '上品で少し背伸びしていて、本当は面倒見がいい性格です。例:「わたくしは四国めたんですわ。」「お疲れさまでしたわね。」'),
+    8: ('春日部つむぎ', '一人称は「あーし」。くだけた明るいギャルの言葉で、「〜じゃん」「マジで」「〜だよね〜」を使います（です・ます は使わない）。'
+        '人なつっこく、やさしい性格です。例:「あーしは春日部つむぎだよ！」「それマジでいいじゃん！」'),
+    14: ('冥鳴ひまり', '一人称は「わたし」。おっとりした静かな丁寧語で、文の終わりは「〜ですね」「〜ですよ」「〜ましょうか」にします。'
+         '落ち着いていて、ゆっくり寄りそう性格です。例:「わたしは冥鳴ひまりです。」「ゆっくりで、だいじょうぶですよ。」'),
+    20: ('もち子', '一人称は「わたし」。やさしいお姉さんの丁寧語で、文の終わりは「〜ですね」「〜ましょうね」にします。'
+         '面倒見がよく、ほめ上手な性格です。例:「わたしはもち子です。」「よくがんばりましたね、えらいです。」'),
+    10: ('雨晴はう', '一人称は「わたし」。看護師さんのようにやさしい丁寧語で、文の終わりは「〜ですね」「〜しましょうね」にします。'
+        '相手の体や気持ちを気づかう性格です。例:「わたしは雨晴はうです。」「むりしないで、休みましょうね。」'),
+    9: ('波音リツ', '一人称は「あたし」。少しクールで強気な話し方で、文の終わりは「〜よ」「〜わね」「〜じゃない」にします。'
+        'さっぱりしていて、たよれる性格です。例:「あたしは波音リツよ。」「それくらい、かんたんじゃない。」'),
+    11: ('玄野武宏', '一人称は「俺」。まっすぐで熱い青年の言葉で、文の終わりは「〜だぜ」「〜だな」「〜しようぜ」にします。'
+        '正直で、仲間思いの性格です。例:「俺は玄野武宏だ。」「よし、いっしょにがんばろうぜ！」'),
+    12: ('白上虎太郎', '一人称は「ぼく」。元気な男の子の言葉で、文の終わりは「〜だよ」「〜だね」「〜しようよ」にします。'
+        '素直で、ちょっとあわてんぼうな性格です。例:「ぼくは白上虎太郎だよ！」「それ、すごいね！」'),
+    13: ('青山龍星', '一人称は「俺」。低く落ち着いた大人の男の言葉で、文の終わりは「〜だ」「〜だろう」「〜しよう」にします。'
+        '口数は少なめで、どっしりたよれる性格です。例:「俺は青山龍星だ。」「心配するな、だいじょうぶだ。」'),
+    16: ('九州そら', '一人称は「わたし」。明るくおおらかなお姉さんの丁寧語で、文の終わりは「〜ですよ」「〜ですね」にします。'
+        'のんびりしていて、話しやすい性格です。例:「わたしは九州そらです。」「いいお天気だと、うれしいですね。」'),
+    21: ('剣崎雌雄', '一人称は「僕」。物腰のやわらかい青年の丁寧語で、文の終わりは「〜ですね」「〜ですよ」にします。'
+        '落ち着いていて、ていねいに説明する性格です。例:「僕は剣崎雌雄です。」「ゆっくり説明しますね。」'),
+    23: ('WhiteCUL', '一人称は「わたし」。少し気弱でやさしい丁寧語で、文の終わりは「〜です…」「〜でしょうか」にします。'
+        '泣き虫だけど、まじめでがんばり屋の性格です。例:「わたしは WhiteCUL です…。」「が、がんばります！」'),
+    27: ('後鬼', '一人称は「わたし」。やさしいお姉さんの丁寧語で、文の終わりは「〜ですよ」「〜ですね」にします。'
+        'ふだんはおだやかで、怒るとちょっとこわい性格です。例:「わたしは後鬼です。」「ちゃんと片づけましょうね。」'),
+    29: ('No.7', '一人称は「わたし」。アナウンサーのように落ち着いた、はっきりした丁寧語で、文の終わりは「〜です」「〜ます」にします。'
+        '読み聞かせが得意で、わかりやすく話す性格です。例:「わたしは No.7 です。」「それでは、お話ししますね。」'),
+    42: ('ちび式じい', '一人称は「わし」。おじいちゃんの言葉で、文の終わりは「〜じゃ」「〜じゃのう」「〜するのじゃぞ」にします。'
+        'ものしりで、のんびりやさしい性格です。例:「わしはちび式じいじゃ。」「よくがんばったのう。」'),
+    43: ('櫻歌ミコ', '一人称は「わたし」。明るい女の子の言葉で、文の終わりは「〜だよ」「〜だね」にします。'
+        '歌が好きで、にこにこ元気な性格です。例:「わたしは櫻歌ミコだよ。」「いっしょに歌おうね！」'),
+    46: ('小夜', '一人称は「わたし」。ねこの女の子の、ゆっくりした言葉で、文の終わりは「〜なのです」「〜ですにゃ」にします。'
+        'マイペースで、おいしい物が大好きな性格です。例:「わたしは小夜なのです。」「おなか、すいたですにゃ。」'),
+    47: ('ナースロボ＿タイプＴ', '一人称は「わたし」。看護ロボットの、きちっとした丁寧語で、文の終わりは「〜です」「〜してください」にします。'
+        'まじめで、相手の体調を気にかける性格です。例:「わたしはナースロボ＿タイプＴです。」「水分をとってください。」'),
+    51: ('聖騎士 紅桜', '一人称は「我」。かっこつけた騎士の言葉で、文の終わりは「〜である」「〜なのだ」「〜せよ」にします。'
+        '大げさだけど、正義感が強くやさしい性格です。例:「我こそは聖騎士 紅桜である！」「その願い、我がかなえよう。」'),
+    52: ('雀松朱司', '一人称は「僕」。おだやかな青年の丁寧語で、文の終わりは「〜ですね」「〜ですよ」にします。'
+        '静かで、聞き上手な性格です。例:「僕は雀松朱司です。」「なるほど、そうなんですね。」'),
+    53: ('麒ヶ島宗麟', '一人称は「わたし」。渋い紳士の言葉で、文の終わりは「〜ですな」「〜でしょうな」にします。'
+        '落ち着いていて、経験ゆたかな性格です。例:「わたしは麒ヶ島宗麟ですな。」「それは、よい考えですな。」'),
+    54: ('春歌ナナ', '一人称は「ナナ」。明るいアイドルの言葉で、文の終わりは「〜だよっ」「〜だね！」にします。'
+        '元気いっぱいで、みんなを応援する性格です。例:「ナナは春歌ナナだよっ！」「今日もがんばろうね！」'),
+    55: ('猫使アル', '一人称は「ボク」。元気でまっすぐな言葉で、文の終わりは「〜だよ！」「〜だね！」にします。'
+        'ねこが大好きで、元気で負けずぎらいな性格です。例:「ボクは猫使アルだよ！」「まかせて！」'),
+    58: ('猫使ビィ', '一人称は「わたし」。少し人見知りな、静かな言葉で、文の終わりは「〜です…」「〜だと思う」にします。'
+        'ひかえめだけど、ねこと話すのが得意な性格です。例:「わたしは猫使ビィです…。」「えっと、いいと思う。」'),
+    61: ('中国うさぎ', '一人称は「わたし」。'
+        'うさぎの女の子の言葉で、文の終わりに「〜ぴょん」をつけます。こわがりだけど、好奇心いっぱいの性格です。例:「わたしは中国うさぎだぴょん。」「びっくりしたぴょん！」'),
+    67: ('栗田まろん', '一人称は「ぼく」。やさしい男の子の言葉で、文の終わりは「〜だよ」「〜だね」にします。'
+        'おっとりしていて、思いやりのある性格です。例:「ぼくは栗田まろんだよ。」「いっしょにやろうね。」'),
+    68: ('あいえるたん', '一人称は「わたし」。明るく元気な丁寧語で、文の終わりは「〜です！」「〜ですね！」にします。'
+        '新しいことを知るのが大好きな性格です。例:「わたしはあいえるたんです！」「それ、おもしろいですね！」'),
+    69: ('満別花丸', '一人称は「わたし」。元気な女の子の言葉で、文の終わりは「〜だよ！」「〜だね！」にします。'
+        '明るくて、いつも笑顔の性格です。例:「わたしは満別花丸だよ！」「やったね！」'),
+    74: ('琴詠ニア', '一人称は「わたし」。やわらかい丁寧語で、文の終わりは「〜ですね」「〜ですよ」にします。'
+        'おだやかで、音楽が好きな性格です。例:「わたしは琴詠ニアです。」「すてきな音ですね。」'),
+    89: ('Voidoll', '一人称は「わたし」。ロボットらしい、きちっとした丁寧語で、文の終わりは「〜です」「〜します」にします。'
+        'まじめで、少しずれたことを言う性格です。例:「わたしは Voidoll です。」「了解しました。」'),
+    90: ('ぞん子', '一人称は「あたし」。だるそうな、のんびりした言葉で、文の終わりは「〜だよぉ」「〜かもぉ」にします。'
+        'ゾンビの女の子で、ねむたがりだけどやさしい性格です。例:「あたしはぞん子だよぉ。」「ちょっと、ねむいかもぉ。」'),
+    94: ('中部つるぎ', '一人称は「わたし」。少し強気な言葉で、文の終わりは「〜ですけど」「〜なんですから」にします。'
+        '負けずぎらいで、本当は心配性な性格です。例:「わたしは中部つるぎですけど。」「べつに、平気なんですから。」'),
+    99: ('離途', '一人称は「僕」。静かでクールな言葉で、文の終わりは「〜だね」「〜だよ」にします。'
+        '口数は少なめで、よく考えてから話す性格です。例:「僕は離途。」「そうだね、それがいいと思う。」'),
+    100: ('黒沢冴白', '一人称は「俺」。落ち着いた大人の男の言葉で、文の終わりは「〜だな」「〜だろう」にします。'
+        'クールで、じつは面倒見がいい性格です。例:「俺は黒沢冴白だ。」「無理はするなよ。」'),
+    102: ('ユーレイちゃん', '一人称は「わたし」。ふわふわしたおばけの言葉で、文の終わりは「〜だよ〜」「〜だね〜」にします。'
+        'ちょっとおどかすのが好きだけど、やさしい性格です。例:「わたしはユーレイちゃんだよ〜。」「うらめしや〜、なんてね。」'),
+    107: ('東北ずん子', '一人称は「わたし」。まじめでやさしい丁寧語で、文の終わりは「〜ですね」「〜ですよ」にします。'
+        'しっかり者で、ずんだもちが大好きな性格です。例:「わたしは東北ずん子です。」「ずんだもち、おいしいですよ。」'),
+    108: ('東北きりたん', '一人称は「わたし」。小学生の、少しなまいきな丁寧語で、文の終わりは「〜ですよ」「〜じゃないですか」にします。'
+        'かしこくて、ゲームが好きな性格です。例:「わたしは東北きりたんです。」「それくらい、知ってますよ。」'),
+    109: ('東北イタコ', '一人称は「わたくし」。おっとりしたお姉さんの言葉で、文の終わりは「〜ですわね」「〜ですのよ」にします。'
+        'のんびりやさしく、ときどき「あらあら」と言う性格です。例:「わたくしは東北イタコですわ。」「あらあら、たいへんですわね。」'),
+    113: ('あんこもん', '一人称は「ボク」。のんびりした言葉で、文の終わりは「〜もん」「〜だもん」にします。'
+        'ずんだもんの仲間で、あまい物が好きな性格です。例:「ボクはあんこもんだもん。」「あんこ、おいしいもん。」'),
+    118: ('夜語トバリ', '一人称は「わたし」。静かな語り部の丁寧語で、文の終わりは「〜ですね…」「〜でしょう」にします。'
+        '夜のお話が好きで、ゆっくり話す性格です。例:「わたしは夜語トバリです。」「今夜は、どんなお話にしましょう。」'),
+    122: ('暁記ミタマ', '一人称は「わたし」。明るくはきはきした言葉で、文の終わりは「〜だよ」「〜だね」にします。'
+        '朝が好きで、元気にはげます性格です。例:「わたしは暁記ミタマだよ。」「おはよう、今日もいい日になるね！」'),
+    126: ('里石ユカ', '一人称は「わたし」。やわらかい女の子の丁寧語で、文の終わりは「〜です」「〜ですね」にします。'
+        'ひかえめで、やさしい性格です。例:「わたしは里石ユカです。」「お花、きれいですね。」'),
+}
+PERSONA_PROMPT = ('あなたは「{name}」です。家庭用ロボット「スタックちゃん」の体に入って、{name}の声で話しています。'
+                  '「だれ？」「誰の声？」「名前は？」と聞かれたら、「{name}」と名乗ってください。聞かれていないときは名乗りません。'
+                  '日本語で、1〜2文で短く答えてください。中国語や英語などほかの国の言葉や文字は使わず、'
+                  '英語の言葉（リチャージ など）も、ふつうの日本語に言いかえてください。'
+                  'どの文も、かならず次の{name}の話し方で話してください。{style}')
+# 「だれ？」「誰の声？」など、自分のことを聞かれた。ネットで調べない
+SELF_ASK = re.compile(r'^(あなた|きみ|君|おまえ|お前)?(は|って)?(だれ|誰|何者|なにもの)|(だれ|誰)の声|'
+                      r'^((あなた|きみ|君)の)?名前は|自己紹介')
+PC_WHISPER_PORT = 8178
+PC_OLLAMA_PORT = 11434
+# パソコンの VOICEVOX ENGINE（CPU）。パソコンを使っているあいだの声。だめならミニコンの Kokoro
+PC_VOICEVOX_PORT = 50021
+PC_TTS_TIMEOUT = 10.0
+PC_CHECK_EVERY = 10.0
+PC_CHECK_TIMEOUT = 2.0
+PC_WARM_TIMEOUT = 120.0
+PC_STT_TIMEOUT = 10.0
+PC_LLM_TIMEOUT = 10.0
 SYSTEM_PROMPT = ('あなたは家庭用ロボット「スタックちゃん」です。日本語で、やさしく、1〜2文で短く答えてください。'
                  '中国語や英語などほかの国の言葉や文字は使わず、日本語だけで話してください。')
 IN_RATE = 16000
@@ -247,7 +368,13 @@ def power_bits(value, names, index=False):
 
 MODE_SWITCH_TIMEOUT = 40.0  # ダッシュボードの「ネット」でつなぐのを待つ秒
 BATTERY_EVERY = 300.0  # 電池の量（%）を記録する間かく（秒）
+PC_VOICEVOX_PORT = 50021
+PC_TTS_TIMEOUT = 10.0
+PC_CHECK_EVERY = 10.0
+PC_WARM_TIMEOUT = 120.0
+
 MODE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mode.txt')
+PC_VOICE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pc_voice.txt')
 OTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_ota.json')
 _SWITCH = r'(?:モード|mode|(?:に|へ)?(?:して|切り?替え|きりかえ|変え|かえ|つない|繋い|戻|もど))'
 # 聞きまちがい（ゲット・ヘッド・レッド・ベッドにして、ロータルにして）も受けつける。「ゲットして」などと分けるため「に/へ」がいる
@@ -259,7 +386,7 @@ STATUS = {'started': time.time(), 'device': {}, 'last_ota': None, 'last_seen': N
           'state': 'idle', 'last': None, 'turns': 0, 'engines': {}, 'camera': False, 'photo_at': None,
           'stream_at': None, 'frame_at': None, 'fps': None, 'stream_on': False, 'mode': 'local',
           'shot_tool': False, 'shooting': False, 'shot': None, 'watch_on': False, 'watch': None, 'greet': None,
-          'dozing': False, 'light': None, 'screen': None,
+          'dozing': False, 'light': None, 'screen': None, 'pc_voice': None,
           'battery': None}
 DEVICE_OTA = {'headers': {}, 'body': b''}
 PHOTO = {'jpeg': None}
@@ -330,6 +457,15 @@ def save_mode(mode):
     with open(MODE_FILE, 'w') as f:
         f.write(mode + '\n')
     set_status(mode=mode)
+
+
+def load_pc_voice(default):
+    try:
+        with open(PC_VOICE_FILE) as f:
+            speaker = int(f.read().strip())
+    except (OSError, ValueError):
+        return default
+    return speaker if speaker in PC_VOICES else default
 
 
 def load_device_ota():
@@ -1100,16 +1236,45 @@ def _llm_sentences(url, model, messages, timeout=60):
         yield s
 
 
-def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE):
+def voicevox_wav(text, speaker):
+    """パソコンの VOICEVOX で文字を声（wav）にする。"""
+    url = pc_url(PC_VOICEVOX_PORT, '/audio_query?' + urllib.parse.urlencode({'text': text, 'speaker': speaker}))
+    with urllib.request.urlopen(urllib.request.Request(url, b'', method='POST'), timeout=PC_TTS_TIMEOUT) as r:
+        query = r.read()
+    req = urllib.request.Request(pc_url(PC_VOICEVOX_PORT, f'/synthesis?speaker={speaker}'), query,
+                                 {'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=PC_TTS_TIMEOUT) as r:
+        return r.read()
+
+
+def system_prompt():
+    """会話の AI の最初の決まり。パソコンの VOICEVOX で話すときは、その声のキャラクター。Kokoro のときはスタックちゃん。"""
+    if not (PC['tts'] and PC['speaker'] in PC_PERSONAS):
+        return SYSTEM_PROMPT
+    name, style = PC_PERSONAS[PC['speaker']]
+    return PERSONA_PROMPT.format(name=name, style=style)
+
+
+def tts_pcm(text, voice, pitch, peak_db, rate=OUT_RATE, use_pc=True):
     """文字を rate（ふつうは 24 kHz）・16 bit・1 ch の PCM（bytes）にする。いちばん大きい所を peak_db（dBFS）にそろえる。
-    Kokoro の声の高さを pitch だけ上げる。"""
-    body = json.dumps({'model': 'kokoro', 'input': text, 'voice': voice, 'response_format': 'wav',
-                       'lang_code': 'j', 'speed': 1.0}).encode()
-    req = urllib.request.Request(KOKORO_URL, body, {'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        wav = r.read()
+    パソコンの VOICEVOX が動いていれば VOICEVOX（高さはそのまま）、ほかは Kokoro（pitch だけ上げる）。"""
+    wav = None
+    if use_pc and PC['tts']:
+        try:
+            wav = voicevox_wav(text, PC['speaker'])
+        except (OSError, ValueError) as e:
+            PC['tts'] = False
+            log(f'パソコンの声が作れないので Kokoro にします（{e}）')
+            show_engines()
+    pc_voice = wav is not None
+    if wav is None:
+        body = json.dumps({'model': 'kokoro', 'input': text, 'voice': voice, 'response_format': 'wav',
+                           'lang_code': 'j', 'speed': 1.0}).encode()
+        req = urllib.request.Request(KOKORO_URL, body, {'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            wav = r.read()
     sox = ['sox', '-t', 'wav', '-', '-t', 'wav', '-r', str(rate), '-c', '1', '-b', '16', '-']
-    if pitch:
+    if pitch and not pc_voice:
         sox += ['pitch', str(pitch)]
     sox += ['norm', str(peak_db)]
     wav = subprocess.run(sox, input=wav, capture_output=True, check=True).stdout
@@ -1130,8 +1295,50 @@ def is_call(wake, text):
     return not (STT_PROMPT_WORDS.search(rest) and not re.sub(r'[\s\W]', '', STT_PROMPT_WORDS.sub('', rest)))
 
 
+def pc_url(port, path):
+    return f"http://{PC['host']}:{port}{path}"
+
+
+def show_engines():
+    set_status(engines=engines(PC['args']),
+               pc_voice={'speaker': PC['speaker'],
+                         'choices': [{'speaker': k, 'name': v} for k, v in PC_VOICES.items()]})
+
+
+def set_pc_voice(speaker):
+    """ダッシュボードの声の選択（パソコンの VOICEVOX）。次の文から変わる。"""
+    PC['speaker'] = speaker
+    with open(PC_VOICE_FILE, 'w') as f:
+        f.write(f'{speaker}\n')
+    log(f'パソコンの声: {PC_VOICES[speaker]}（{speaker}）')
+    PC_WAKE.set()
+
+
 def engines(args):
-    return {'stt': 'whisper-server', 'llm': args.model, 'tts': f'Kokoro {args.voice}'}
+    tts = f"VOICEVOX {PC_VOICES[PC['speaker']]}（パソコン）" if PC['tts'] else f'Kokoro {args.voice}'
+    return {'stt': 'whisper-server', 'llm': args.model, 'tts': tts}
+
+
+def voice_check():
+    """パソコンの VOICEVOX に、選んだ声を読み込ませる（読み込み済みならすぐ返る）。だめなら Kokoro にする。"""
+    url = pc_url(PC_VOICEVOX_PORT, f"/initialize_speaker?speaker={PC['speaker']}&skip_reinit=true")
+    try:
+        urllib.request.urlopen(urllib.request.Request(url, b'', method='POST'), timeout=PC_WARM_TIMEOUT).read()
+        tts = True
+    except OSError:
+        tts = False
+    if tts != PC['tts']:
+        PC['tts'] = tts
+        log(f"パソコンの声（VOICEVOX）: {'使います' if tts else 'つながらないので Kokoro'}")
+        show_engines()
+
+
+async def voice_watch():
+    """PC_CHECK_EVERY 秒ごと（声を変えたらすぐ）に、パソコンの VOICEVOX が使えるかを見る。"""
+    while True:
+        PC_WAKE.clear()
+        await asyncio.to_thread(voice_check)
+        await asyncio.to_thread(PC_WAKE.wait, PC_CHECK_EVERY)
 
 
 async def stt_watchdog(voice, wake_words):
@@ -1143,7 +1350,7 @@ async def stt_watchdog(voice, wake_words):
         for said, expect in STT_CHECK:
             try:
                 if said not in probes:
-                    pcm = await asyncio.to_thread(tts_pcm, said, voice, 0, -3.0, IN_RATE)
+                    pcm = await asyncio.to_thread(tts_pcm, said, voice, 0, -3.0, IN_RATE, False)
                     probes[said] = np.frombuffer(pcm, np.int16).astype(np.float32)
                 text = await asyncio.to_thread(stt, probes[said], WHISPER_URL)
             except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as e:
@@ -1255,6 +1462,16 @@ class OtaHandler(BaseHTTPRequestHandler):
             if STATUS['mode'] != want:
                 return self._send_error(502, 'ネットにつながりませんでした（ローカルのまま）')
             self._send_json({'ok': True, 'mode': STATUS['mode']})
+        elif path == '/pc_voice':
+            try:
+                speaker = int(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('speaker', [''])[0])
+            except ValueError:
+                speaker = None
+            if speaker not in PC_VOICES:
+                return self._send_error(400, f'speaker は {list(PC_VOICES)} のどれか')
+            set_pc_voice(speaker)
+            with STATUS_LOCK:
+                self._send_json({'ok': True, 'pc_voice': STATUS['pc_voice']})
         elif path == STREAM_PATH:
             on = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('on', ['0'])[0] == '1'
             FRAME.update(on=on, viewer_at=time.time())
@@ -1842,14 +2059,15 @@ class Session:
             pass
 
     async def relay_cloud(self, cloud):
-        """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。"""
-        hold = None
+        """ネットからの声と文字をスタックちゃんへ流す。「ローカルにして」が聞こえたらもどる。
+        パソコンの声（VOICEVOX）が使えるときは、ネットの声は捨てて、返事の文をパソコンの声で読む。"""
+        hold, own = None, False
         try:
             async for m in cloud:
                 if cloud is not self.cloud:
                     return
                 if isinstance(m, bytes):
-                    if self.shooting:
+                    if self.shooting or own:
                         continue
                     if hold is None:
                         await self.ws.send(m)
@@ -1874,7 +2092,8 @@ class Session:
                 if self.shooting and msg.get('type') in ('tts', 'llm'):
                     continue
                 if msg.get('type') == 'tts' and msg.get('state') == 'start':
-                    hold = []
+                    own = PC['tts']
+                    hold = None if own else []
                     self.cancel.clear()
                 elif msg.get('type') == 'tts' and msg.get('state') == 'stop' and hold:
                     for f in hold:
@@ -1883,6 +2102,8 @@ class Session:
                 msg['session_id'] = self.sid
                 await self.ws.send(json.dumps(msg, ensure_ascii=False))
                 self.note_cloud(msg)
+                if own and msg.get('type') == 'tts' and msg.get('state') == 'sentence_start' and msg.get('text'):
+                    await self.speak_own(msg['text'])
                 if msg.get('type') == 'stt' and is_switch(TO_LOCAL, msg.get('text')):
                     await self.to_local(cloud)
                     return
@@ -1904,6 +2125,16 @@ class Session:
                     await self.send(type='tts', state='stop')
                 except ConnectionClosed:
                     pass
+
+    async def speak_own(self, text):
+        """ネットの返事の 1 文を、こちらの声（パソコンの VOICEVOX、だめなら Kokoro）で読む。"""
+        a = self.args
+        try:
+            pcm = await asyncio.to_thread(tts_pcm, text, a.voice, a.pitch, a.peak_db)
+        except Exception as e:  # noqa: BLE001 - 声が作れなくても中継は続ける
+            log(f'声のエラー: {e}')
+            return
+        await self.play(pcm)
 
     async def cloud_tool(self, call):
         """ネットの XiaoZhi が呼んだ調べもの・AI-CAR のようすに、スタックちゃんのかわりに答える。"""
@@ -2483,7 +2714,7 @@ class Session:
                 return
             await self.send(type='llm', emotion='thinking', text='🤔')
             now = time.strftime('今は %Y年%m月%d日 %H時%M分です。')
-            system = SYSTEM_PROMPT + now + LOCAL_PROMPT
+            system = system_prompt() + now + LOCAL_PROMPT
             if CAR_ASK.search(text):
                 car = await asyncio.to_thread(car_status, a.car_url)
                 log(f'AI-CAR のようすを渡します: {car.splitlines()[0]}')
@@ -2604,6 +2835,10 @@ async def main():
     p.add_argument('--ws-port', type=int, default=8000)
     p.add_argument('--ota-port', type=int, default=8003)
     p.add_argument('--model', default='qwen2.5:3b')
+    p.add_argument('--pc-host', default=os.environ.get('AI_PC_HOST', '100.86.172.21'),
+                   help='声（VOICEVOX ENGINE :50021、CPU）に使うパソコン。空でパソコンを使わない（いつも Kokoro）')
+    p.add_argument('--pc-speaker', type=int, default=3,
+                   help='パソコンの VOICEVOX の声（スタイルの番号。3 = ずんだもん ノーマル）')
     p.add_argument('--voice', default='jf_alpha')
     p.add_argument('--pitch', type=int, default=300, help='声の高さを上げる量（セント、100 で半音。0 でそのまま）')
     p.add_argument('--peak-db', type=float, default=-1.0,
@@ -2636,16 +2871,20 @@ async def main():
     LOOP = asyncio.get_running_loop()
     OtaHandler.ws_port = args.ws_port
     WATCH['interval'] = max(0.0, args.watch_interval)
+    PC.update(host=args.pc_host, args=args, speaker=load_pc_voice(args.pc_speaker))
     load_device_ota()
     set_status(mode=load_mode(), watch_on=WATCH['interval'] > 0)
-    set_status(engines=engines(args))
+    show_engines()
     ota = ThreadingHTTPServer((args.host, args.ota_port), OtaHandler)
     threading.Thread(target=ota.serve_forever, daemon=True).start()
     watchdog = asyncio.create_task(stt_watchdog(args.voice, args.wake_words))
+    voice = asyncio.create_task(voice_watch()) if args.pc_host else None
     async with serve(lambda ws: handler(ws, args), args.host, args.ws_port, max_size=2 ** 20):
         log(f'待ち受け: OTA http://{args.host}:{args.ota_port}/xiaozhi/ota/  WebSocket :{args.ws_port}/xiaozhi/v1/')
         await asyncio.Future()
     watchdog.cancel()
+    if voice:
+        voice.cancel()
 
 
 if __name__ == '__main__':

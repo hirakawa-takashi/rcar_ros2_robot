@@ -2922,6 +2922,10 @@ def create_app(node: DashboardNode) -> FastAPI:
         return node.stackchan_json('/enroll?name=' + urllib.parse.quote(name.strip()), 'POST',
                                    STACKCHAN_PHOTO_TIMEOUT)
 
+    @app.post('/api/stackchan/pc_voice', dependencies=[Depends(require_token)])
+    def stackchan_pc_voice(speaker: int):
+        return node.stackchan_json(f'/pc_voice?speaker={speaker}', 'POST')
+
     @app.post('/api/stackchan/mode', dependencies=[Depends(require_token)])
     def stackchan_mode(to: str):
         if to not in ('local', 'net'):
