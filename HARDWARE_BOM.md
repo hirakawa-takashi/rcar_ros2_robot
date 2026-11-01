@@ -31,7 +31,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 |------|-----------|---------|
 | **Jetson Orin Nano Super**（メモリ 8GB、JetPack 6.2、Yahboom ケース・OLED） | スタックちゃんの会話（whisper・Ollama qwen2.5:3b・Kokoro）・顔の見分け・状態の送信（`jetson/`） | Wi-Fi / Tailscale。ラズパイのダッシュボードへ状態・速度の指令 |
 | **M5 スタックちゃん**（M5Stack CoreS3） | 話しかける顔・カメラ・首のサーボ | Wi-Fi で Jetson の `stackchan_bridge` |
-| **パソコン**（Windows 11 + WSL、RTX 4080 SUPER） | 様子（温度・負荷率・メモリ・更新）をダッシュボードへ送るだけ。GPU は AI-CAR・スタックちゃんに使わない（Strata・ComfyUI 用） | Tailscale |
+| **パソコン**（Windows 11 + WSL、RTX 4080 SUPER） | 様子（温度・負荷率・メモリ・更新）をダッシュボードへ送る。声（VOICEVOX、CPU）。GPU は AI-CAR・スタックちゃんに使わない（Strata・ComfyUI 用） | Tailscale |
 
 ---
 
