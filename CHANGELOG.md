@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-01
+
+- PROJECT_STATUS.md の整合修正（docsのみ、コード変更なし）。
+  - 機能説明の「root timer自動毎日04:00」「Jetson crontab毎日04:00」を現状（開発フック＋SSH手動）に修正。
+  - 履歴の並びを v1.32.9 → v2.0.0 の追記順に並べ替え。
+  - 更新日を 2026-11-01 に。
+  - 開発環境のAI行（Cline + LM Studio + DeepSeek 32B）を現状（Devin・Strata／Jetsonミニコン）に。
+
+
 ## [2.0.0] - 2026-11-01
 
 - パソコンの GPU のメモリを使う機能をやめた（パソコンの GPU 16GB を Strata・ComfyUI だけで使うため）。前の使い方ができなくなるのでメジャーを上げた。
