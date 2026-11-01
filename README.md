@@ -306,6 +306,7 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 | `owl_detector` | `jetson-owl.service` | NanoOWL の物体検出（ラズパイへ `/jetson_detections`）。メモリを空けるため 2026/10 から止めている（disabled） |
 | `power_saving` | - | Wi-Fi の省電力を切る |
 | `voice_chat` | - | Bluetooth のスピーカー＆マイクで話す（試し） |
+| `face_id` | `jetson-face.service` | 家族の顔認識（YuNet+SFace、CPU）。`face_id.html` は顔の登録画面。`models/`（onnx 38MB）と `data/`（顔ライブラリ）はgit入れ（READMEのURLから取得） |
 
 ## バックアップと復元（2系統：ラズパイ と Jetson、v1.32.0）
 

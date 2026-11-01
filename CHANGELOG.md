@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-11-01
+
+- Jetson実機にあった `face_id`（顔認識 YuNet+SFace、unit `jetson-face.service`、稼働中）と `voice_chat`（Bluetooth声会話、サービス未登録）をリポジトリ `jetson/` に追加。大物の `models/`（onnx 38MB）と `data/`（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS（履歴・機能）に反映。
+
+
 ## [2.0.1] - 2026-11-01
 
 - PROJECT_STATUS.md の整合修正（docsのみ、コード変更なし）。

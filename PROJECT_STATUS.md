@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.0.1（2026-11-01）
+- バージョン: 2.0.2（2026-11-01）
 - 更新日: 2026-11-01
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -33,6 +33,7 @@
 - 2026-10-30（v1.32.8、PR #350）: PROJECT_STATUS整合修正。最終更新のバージョン行を1.32.6→1.32.8、更新日を2026-10-28→2026-10-30に。PR #345〜#349の項目が降順で混在していたのを、既存の追記順（#344まで昇順）に合わせて昇順（#345→#349）へ並べ直し、#344の位置を末尾へ復帰。コード変更なし。
 - 2026-10-30（v1.32.9）: Jetson復元の最後はJetsonごと再起動（15秒後、約3分で全サービスが起動時と同じ順番で戻る）。復元ボタンの実機テストで、サービスを1つずつ再起動すると声のLLM（qwen2.5:3b）か物さがし（jetson-finder）がGPUメモリ不足で載らなかったのを修正。root側への導入はユーザーが1回（`sudo install -m 755 ~/ai-jetson-restore.sh /usr/local/bin/ai-jetson-restore`）。
 - 2026-11-01（v2.0.0）: パソコンの GPU を使う機能を削除。スタックちゃんの「パソコンにして」・パソコンの控え・ダッシュボードのパソコン切り替えをやめ、聞き取り・返事はいつもミニコン（Jetson）。声はパソコンの VOICEVOX（CPU）のまま。パソコンの GPU（16GB）は Strata・ComfyUI 用。パソコンの様子（温度・負荷率・メモリ・更新）は表示だけ残す
+- 2026-11-01（v2.0.2）: Jetson実機の face_id（顔認識、jetson-face.service として稼働中）と voice_chat（Bluetooth声会話）をリポジトリ `jetson/` に取り込み。models（onnx 38MB）と data（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS・CHANGELOGに反映
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでバックアップ作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson crontab毎日04:00は導入済みだったがv1.32.0で削除（バージョンアップ時に作成）。
 
 ## システム構成
@@ -103,6 +104,9 @@
     - 依存: `psutil`、`vcgencmd`、`lspci`、`hailortcli`（あれば利用）
   - GPIO 40 ピンヘッダーカード（プロジェクト説明「ハードウェア構成」タブ内「配線詳細」に表示）: `ai_car_web/gpio_pinout.py` の固定ピン定義（物理番号・名称・BCM・種別）と `config/gpio_pins.yaml` の配線定義（`pins` / `device` / `signal` / `color` / `note`）を結合し `GET /api/gpio` で返す。画面は SVG のヘッダー図（種別ごとの色、使用中ピンは緑の外枠、配線色バー、ホバーで接続先表示）と一覧表（ピン / 名称 / BCM / 使用 / 配線色 / 接続先 / 信号・備考）。同一ピンへの複数接続（I2C バス共有）は「/」区切りで併記。パラメータ `gpio_config`（空なら share 内の `gpio_pins.yaml`）。YAML 編集後は `dashboard_node` 再起動で反映
   - Motor HAT 接続図カード（同じく「配線詳細」に表示）: `ai_car_web/motor_hat.py` が `config/motor_hat.yaml` の割り付け（`channel` / `wheel` / `reversed` / `colors` / `note`）に端子ごとの固定情報（PCA9685 の PWM / IN1 / IN2 チャンネル、TB6612 ブリッジ）を重ねて `GET /api/motor_hat` で返す。割り付け: M1=前左（front_left）/ M2=前右（front_right）/ M3=後左（rear_left）/ M4=後右（rear_right）。右側 2 輪は左右対称取り付けのため `reversed: true`（モーター制御ノードで符号反転する前提）。画面は上面図の SVG（前方が上、中央に HAT の端子台 M1 M2 | +− | M3 M4、四隅に車輪、端子→車輪の配線を +/− の配線色で描画、電源端子→12V 系統）と一覧表（端子 / 車輪 / 回転 / 配線色 / PCA9685 ch / ブリッジ / 備考）。端子・車輪の重複や未割り付けは警告表示。各モーターの `encoder`（`a_pin` / `b_pin` / `colors`）と `hat.encoder`（`vcc_pin` / `gnd_pins`）で 520 モーターエンコーダーの Pi 直結ピンを定義し、BCM 番号へ解決・非 GPIO ピン・I2C/ID ピン・ピン重複・VCC が 3V3 以外を警告。接続図は車輪ごとに「M1 前左」＋ 6 本の線（名称・配線色・接続先）を列挙し、一覧表は 1 線 1 行（モーター / 線番号 / ピン名称 / 配線色 / 接続先 / 回転・ドライバ・備考）。パラメータ `motor_hat_config`（空なら share 内の `motor_hat.yaml`）
+
+- Jetson（ミニコン）: face_id（`jetson/face_id`、v2.0.2・リポジトリ追加）: 家族の顔認識（YuNet+SFace、CPU、`face_id.html` 登録UI、models/data はgit外）。unit `jetson-face.service`（稼働中）
+- Jetson（ミニコン）: voice_chat（`jetson/voice_chat`、v2.0.2・リポジトリ追加）: Bluetoothスピーカー＆マイクの声スクリプト（サービス未登録）
 
 ## 現在作業中
 - なし（2026/10/17 に Level 2 の Nav2 を入れ、v1.10〜v1.11 で床で試走して直した）
