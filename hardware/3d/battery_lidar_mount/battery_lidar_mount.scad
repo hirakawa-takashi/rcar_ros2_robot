@@ -380,6 +380,14 @@ module boss_body(i) {
     p = boss_pts[i];
     if (len(search(i, boss_open)) == 0) {
         translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+        // 前後の壁から離した柱（リポの形の右の 2 本）は、壁まで板でつなぐ（開口側の壁は切り抜くので、柱だけ立たないように）
+        front = p[1] > box_cy;
+        wy = front ? box_y0 + box_y - wall_y : box_y0;
+        if (front ? p[1] + boss_d / 2 < wy : p[1] - boss_d / 2 > wy + wall_y)
+            hull() {
+                translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+                translate([p[0] - boss_d / 2, wy, 0]) cube([boss_d, wall_y, box_h]);
+            }
     } else {
         translate([p[0], p[1], 0]) cylinder(d = boss_d, h = flange_t + boss_keep);
         boss_top(p);
