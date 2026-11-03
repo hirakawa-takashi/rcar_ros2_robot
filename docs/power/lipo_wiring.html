@@ -317,7 +317,7 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <div class="box"><b>安全のこと</b><ol>
 <li>XT60 は<b>最後にさして、最初にぬく</b>。線をさわるときは XT60 をぬく。</li>
 <li>赤と黒の金具をふれさせない（ショートすると、線が一瞬で熱くなります。ヒューズは WAGO A より先の所しか守れません）。</li>
-<li>充電は、XT60 を車からぬいて、リポを車から外して、燃えにくい袋の中で。バランスの口（XH 4 ピン）も充電器にさす。5A で約 2 時間。</li>
+<li>充電は、XT60 を車からぬいて、リポを車から外して、燃えにくい袋の中で。バランスの口（XH 4 ピン）も充電器にさす。5A で約 2 時間（くわしくは 6 ページ目）。</li>
 <li>何日も使わないときは、充電器の「保管」で 1 セル 3.8V（11.4V）にする。</li>
 <li>ふくらんだ・へこんだ・熱いリポは使わない。</li>
 <li>ラズパイを止めるときは、シャットダウンしてからスイッチ（ラズパイ）を OFF。</li>
@@ -331,6 +331,110 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <li>線の長さ（車の上で、WAGO の場所から各部品まで測る。目安 10〜25 cm）</li>
 </ol></div>
 <div class="note"><b>買った部品との対応</b>：XT60 線つき＝Amass 5 ペア（14AWG）、WAGO 221＝12 個入り、ヒューズホルダー＝エーモン 3367 ×2、ヒューズ＝ミニ平型セット（5A・7.5A）、スイッチ＝ミニロッカー 2 ピン 配線済み 12V 20A、INA226＝Alinan、アラーム＝yueton 1-8S、赤黒の線＝BNTECHGO 18AWG。新しく買わないもの：丸プラグ（今の PD トリガーケーブルを切って使う）、ジャンパー線（家にあるもの）。</div>
+</div>
+</div>
+</div>
+<div class="page" style="font-size:9.6pt">
+<h2>充電するときの配線（充電器：ハイテック X2 AC プラス 200）</h2>
+<svg viewBox="0 0 1120 340" width="100%" height="70mm">
+ <style>
+  .part{fill:#fff;stroke:#222;stroke-width:2} .bag{fill:#f3f3f3;stroke:#555;stroke-width:2;stroke-dasharray:8,4}
+  .t{font-size:13px} .ts{font-size:11px;fill:#333} .tb{font-size:14px;font-weight:bold}
+  .p14{stroke:#c00;stroke-width:7;fill:none} .n14{stroke:#111;stroke-width:7;fill:none}
+  .bal{stroke-width:2.5;fill:none}
+  .num{font-size:12px;font-weight:bold;fill:#fff}
+ </style>
+ <!-- outlet -->
+ <rect class="part" x="20" y="60" width="110" height="80" rx="6"/>
+ <text class="tb" x="34" y="88">コンセント</text><text class="ts" x="34" y="108">AC 100V</text>
+ <rect x="62" y="116" width="8" height="16" fill="#333"/><rect x="80" y="116" width="8" height="16" fill="#333"/>
+ <path d="M130,100 C170,100 170,100 210,100" stroke="#333" stroke-width="5" fill="none"/>
+ <text class="ts" x="136" y="152">AC コード</text><text class="ts" x="136" y="166">（付属）</text>
+ <circle cx="170" cy="120" r="11" fill="#1565c0"/><text class="num" x="166" y="124">a</text>
+ <!-- charger -->
+ <rect class="part" x="210" y="30" width="330" height="250" rx="10"/>
+ <text class="tb" x="226" y="56">充電器 X2 AC プラス 200</text>
+ <text class="ts" x="226" y="74">AC のときは 2 つの口の合計で 100W まで</text>
+ <rect x="250" y="88" width="250" height="100" fill="#e8f0ff" stroke="#555"/>
+ <text class="t" x="262" y="110">画面：A の口</text>
+ <text class="ts" x="262" y="130">LiPo / Balance CHG（バランス充電）</text>
+ <text class="ts" x="262" y="148">3S（11.1V）・5.0A</text>
+ <text class="ts" x="262" y="166">1 セル 4.20V になると止まる</text>
+ <text class="ts" x="226" y="204">前の下（A の口）</text>
+ <rect x="232" y="224" width="44" height="24" fill="#ffb300" stroke="#222"/><text class="ts" x="236" y="241">XT60</text>
+ <rect x="300" y="224" width="120" height="24" fill="#fff" stroke="#222"/>
+ <text class="ts" x="306" y="241">6 5 4 3 2 1 −</text>
+ <text class="ts" x="300" y="219">バランスの口（右によせる）</text>
+ <text class="ts" x="440" y="241">B の口は使わない</text>
+ <!-- bag + battery -->
+ <rect class="bag" x="640" y="40" width="300" height="250" rx="8"/>
+ <text class="tb" x="656" y="64">燃えにくい袋（18×22cm）</text>
+ <text class="ts" x="656" y="82">袋は燃えないもの（タイル・金属のトレー）の上に置く</text>
+ <rect class="part" x="680" y="110" width="200" height="80" rx="6" fill="#e9e0ff"/>
+ <text class="tb" x="694" y="138">リポ 3S 10000mAh</text>
+ <text class="ts" x="694" y="158">車から外して入れる</text>
+ <text class="ts" x="694" y="176">170×47×31mm</text>
+ <!-- main lead -->
+ <rect x="604" y="196" width="40" height="22" fill="#ffb300" stroke="#222"/><text class="ts" x="607" y="211">XT60</text>
+ <path class="p14" d="M680,150 L660,150 L660,200 L644,200"/>
+ <path class="n14" d="M680,170 L670,170 L670,214 L644,214"/>
+ <path class="p14" d="M604,200 L590,200 L590,320 L246,320 L246,248"/>
+ <path class="n14" d="M604,214 L578,214 L578,306 L262,306 L262,248"/>
+ <circle cx="560" cy="190" r="11" fill="#1565c0"/><text class="num" x="556" y="194">b</text>
+ <text class="ts" x="276" y="336">太い線（XT60、赤＋・黒−）</text>
+ <!-- balance lead -->
+ <rect x="740" y="232" width="34" height="18" fill="#fff" stroke="#222"/><text class="ts" x="742" y="246">XH4</text>
+ <path class="bal" d="M760,190 L760,232" stroke="#888"/>
+ <path class="bal" d="M740,241 L630,241 L630,268 L418,268 L418,248" stroke="#111"/>
+ <path class="bal" d="M740,245 L638,245 L638,276 L404,276 L404,248" stroke="#c00"/>
+ <path class="bal" d="M740,237 L646,237 L646,284 L390,284 L390,248" stroke="#c00"/>
+ <path class="bal" d="M740,249 L654,249 L654,292 L376,292 L376,248" stroke="#c00"/>
+ <circle cx="700" cy="270" r="11" fill="#1565c0"/><text class="num" x="696" y="274">c</text>
+ <text class="ts" x="640" y="310">バランスの線（白い 4 ピン、黒い線が 1 本）</text>
+ <!-- car -->
+ <rect class="part" x="970" y="60" width="140" height="130" rx="6"/>
+ <text class="tb" x="984" y="86">AI-CAR</text>
+ <text class="ts" x="984" y="106">スイッチ 2 個 OFF</text>
+ <text class="ts" x="984" y="124">XT60 はぬいたまま</text>
+ <text class="ts" x="984" y="142">リポ アラームは外す</text>
+ <text class="ts" x="984" y="160">（バランスの口を</text>
+ <text class="ts" x="984" y="176">　充電器に使うため）</text>
+ <path d="M940,120 L970,120" stroke="#c00" stroke-width="3" stroke-dasharray="4,4"/>
+ <text x="946" y="112" font-size="20" fill="#c00" font-weight="bold">×</text>
+</svg>
+<div class="cols">
+<div>
+<b>充電器の設定（A の口）</b>
+<table>
+<tr><th>項目</th><th>値</th><th>なぜ</th></tr>
+<tr><td>電池の種類</td><td>LiPo</td><td>LiHV（4.35V）にしない</td></tr>
+<tr><td>モード</td><td>Balance CHG（バランス充電）</td><td>3 つのセルを同じ電圧にそろえる</td></tr>
+<tr><td>セル数</td><td>3S（11.1V）</td><td>充電器も自分で数えるので、画面の 3S と合うか見る</td></tr>
+<tr><td>電流</td><td>5.0A</td><td>10000mAh の半分（0.5C）。12.6V×5A＝63W で AC の 100W に入る。空から約 2 時間</td></tr>
+<tr><td>止まる電圧</td><td>1 セル 4.20V（12.6V）</td><td>LiPo のふつうの値（変えない）</td></tr>
+<tr><td>保管（Storage）</td><td>1 セル 3.8V くらい</td><td>何日も使わないとき。11.4V くらい</td></tr>
+</table>
+<div class="note">2 個目のリポ（予備）を同時に充電するときは、AC では合計 100W までなので、<b>1 個ずつ</b>充電してください（2 個同時なら 1 個 3.5A ずつ）。</div>
+<div class="note"><b>届いてから確かめる</b>：リポの XT60 が充電器の XT60 にそのままさせるか（ふつうはさせる形）。させないときは写真を送ってください。XT60 線つき（5 ペア）の残りと WAGO 2 個で、変換の線を作ります。バランスの口の向きも、充電器の説明書の絵と合わせます。</div>
+</div>
+<div>
+<b>つなぐ順番（a → b → c）</b>
+<ol>
+<li>車のスイッチ 2 個を OFF → 車の XT60 をぬく → リポ アラームをバランスの口からぬく → リポを前から引き出す。</li>
+<li>リポを見る：ふくらみ・へこみ・熱さがないか。あれば充電しない。</li>
+<li><b>a</b>：充電器の AC コードをコンセントにさす（画面がつく）。</li>
+<li><b>b</b>：リポの XT60 を、充電器の <b>A の口</b>の XT60 にまっすぐ奥までさす。</li>
+<li><b>c</b>：リポの白い 4 ピンを、A の口の右の「バランスの口」に、<b>黒い線を右はし（「1」の右の −）</b>に合わせてさす。左の 3 つの穴はあく。</li>
+<li>画面で、セル 3 つの電圧が出て、ちがいが 0.05V より小さいか見る（届いたばかりは 1 セル 3.8V くらい）。</li>
+<li>上の表の設定にして、ダイヤルを長押しして始める。<b>そばをはなれない</b>。</li>
+</ol>
+<b>はずす順番（終わったら）</b>
+<ol>
+<li>画面で「完了」と、12.5〜12.6V（1 セル 4.2V）を見る。</li>
+<li>c（バランス）をぬく → b（XT60）をぬく → AC コードをぬく。</li>
+<li>リポがさめてから車にもどす。XT60 は最後にさす（5 ページ目）。</li>
+</ol>
+
 </div>
 </div>
 </div>
