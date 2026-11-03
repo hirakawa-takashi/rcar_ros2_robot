@@ -66,17 +66,18 @@ GHOSTS = {
     "heads": ("screw_heads();", None),
 }
 
-# わざと重ねている組（順不同）: 理由
+# わざと重ねている組（順不同）: (重なりの上限 mm3, 理由)。形が変わって上限をこえたら x にする
 ALLOWED = {
-    frozenset(("lid", "lidar")): "LiDAR の柱は LiDAR の下の穴に付く（ゴーストの下の 60x60 の四角は大まかな形）",
-    frozenset(("lipo", "lipo_path")): "通り道はリポ自身をふくむ",
-    frozenset(("cover", "lipo_path")): "リポはカバーを外して差し込む",
-    frozenset(("box", "cio_bat")): "CIO の電池の右の端が、箱の右の口のふちに 0.7 mm かかる（いま使っている箱の形。ゴーストは公称の長さ）",
+    frozenset(("lid", "lidar")): (360, "LiDAR の柱は LiDAR の下の穴に付く（ゴーストの下の 60x60 の四角は大まかな形）"),
+    frozenset(("lipo", "lipo_path")): (260000, "通り道はリポ自身をふくむ"),
+    frozenset(("cover", "lipo_path")): (3600, "リポはカバーを外して差し込む"),
+    frozenset(("box", "cio_bat")): (90, "CIO の電池の右の端が、箱の右の口のふちに 0.7 mm かかる（いま使っている箱の形。ゴーストは公称の長さ）"),
 }
 
 
-def run_pair(power, a, b, ea, eb):
-    src = f'include <{MAIN}>\n{HEADS}\npart = "none";\npower = "{power}";\nintersection() {{ union() {{ {ea} }} union() {{ {eb} }} }}\n'
+def run_scad(power, body):
+    """body を OpenSCAD で形にして (体積 mm3, エラー) を返す。空の形は体積 0。"""
+    src = f'include <{MAIN}>\n{HEADS}\npart = "none";\npower = "{power}";\n{body}\n'
     with tempfile.TemporaryDirectory() as d:
         scad, stl = os.path.join(d, "c.scad"), os.path.join(d, "c.stl")
         with open(scad, "w") as f:
@@ -86,12 +87,30 @@ def run_pair(power, a, b, ea, eb):
         # 部品の名前や変数を変えて式が空になると、ぶつかりなしに見えてしまうので失敗にする
         unknown = re.findall(r"WARNING: (?:Ignoring unknown \w+|Unknown variable)[^\n]*", log)
         if unknown:
-            return power, a, b, None, unknown[:1]
+            return None, unknown[:1]
+        errors = re.findall(r"ERROR:[^\n]*", log)
+        if errors:
+            return None, errors[:1]
+        # 重ならない組は空の形になり、OpenSCAD は終了コード 1 を返す
         if "top level object is empty" in log:
-            return power, a, b, 0.0, None
-        if r.returncode != 0 or not os.path.exists(stl):
-            return power, a, b, None, log.strip().splitlines()[-1:] or ["openscad failed"]
-        return power, a, b, stl_volume(stl), None
+            return 0.0, None
+        if r.returncode != 0:
+            return None, log.strip().splitlines()[-1:] or ["openscad failed"]
+        if not os.path.exists(stl):
+            return None, ["no STL written"]
+        return stl_volume(stl), None
+
+
+def run_pair(power, a, b, ea, eb):
+    vol, err = run_scad(power, f"intersection() {{ union() {{ {ea} }} union() {{ {eb} }} }}")
+    return power, a, b, vol, err
+
+
+def run_part(power, a, ea):
+    vol, err = run_scad(power, ea)
+    if err is None and vol <= TOL_MM3:
+        err = ["形が空（この部品をふくむ組は調べられない）"]
+    return power, a, None, vol, err
 
 
 def stl_volume(path):
@@ -120,24 +139,27 @@ def main():
     ap.add_argument("--power", choices=["cio", "lipo"], action="append")
     ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 2)
     args = ap.parse_args()
-    jobs = [(p, a, b, ea, eb) for p in (args.power or ["cio", "lipo"]) for (a, ea), (b, eb) in pairs(p)]
+    powers = args.power or ["cio", "lipo"]
+    parts = [(p, n, e) for p in powers for n, (e, m) in {**SOLIDS, **GHOSTS}.items() if m is None or m == p]
+    jobs = [(p, a, b, ea, eb) for p in powers for (a, ea), (b, eb) in pairs(p)]
     bad = 0
     with ThreadPoolExecutor(args.jobs) as ex:
-        for power, a, b, vol, err in ex.map(lambda j: run_pair(*j), jobs):
-            key = frozenset((a, b))
-            if err:
-                mark, note = "!", " ".join(err)
-                bad += 1
-            elif vol <= TOL_MM3:
-                mark, note = "o", ""
-            elif key in ALLOWED:
-                mark, note = "-", ALLOWED[key]
-            else:
-                mark, note = "x", ""
-                bad += 1
-            if mark != "o":
-                print(f"{mark} {power:4} {a} x {b}: {vol if vol is not None else '?'} mm3 {note}".rstrip())
-    print(f"{len(jobs)} pairs, {bad} problem(s)")
+        results = list(ex.map(lambda j: run_part(*j), parts)) + list(ex.map(lambda j: run_pair(*j), jobs))
+    for power, a, b, vol, err in results:
+        name = a if b is None else f"{a} x {b}"
+        lim, why = ALLOWED.get(frozenset((a, b)), (None, ""))
+        if err:
+            mark, note = "!", " ".join(err)
+            bad += 1
+        elif b is None or vol <= TOL_MM3:
+            continue
+        elif lim is not None and vol <= lim:
+            mark, note = "-", why
+        else:
+            mark, note = "x", f"(上限 {lim} mm3) {why}" if lim is not None else ""
+            bad += 1
+        print(f"{mark} {power:4} {name}: {vol if vol is not None else '?'} mm3 {note}".rstrip())
+    print(f"{len(parts)} parts, {len(jobs)} pairs, {bad} problem(s)")
     sys.exit(1 if bad else 0)
 
 
