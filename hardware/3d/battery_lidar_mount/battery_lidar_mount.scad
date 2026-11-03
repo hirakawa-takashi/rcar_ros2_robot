@@ -10,10 +10,13 @@
 //       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
 //       openscad -D 'part="cc_holder"' -o cc_holder.stl battery_lidar_mount.scad（CC スイッチの箱と IMU の台、床を下にした向き）
 //       openscad -D 'part="cc_spacer"' -o cc_spacer.stl battery_lidar_mount.scad（CC スイッチの箱の下に入れる筒 2 個）
+// リポ 1 個の形（予定）: -D 'power="lipo"' を足す。part="lipo_tray"（リポの台 + IMU の台）、box / lid / cam_mount は *_lipo.stl に出す
 
-part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "cc_holder" | "cc_spacer" | "assembly"
+part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "cc_holder" | "cc_spacer" | "lipo_tray" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
+power = "cio";        // "cio"（いまの CIO 2 個）| "lipo"（3S リポ 1 個を天板の右はしに置く予定の形）
+lipo = power == "lipo";
 
 $fn = 48;
 
@@ -23,7 +26,7 @@ plate_l = 200;
 plate_t = 2;               // 実測
 plate_holes = [[11, 11], [143, 11], [11, 189], [143, 189],
                [9, 90], [145, 90], [9, 110], [145, 110]];
-mount_holes = [[11, 189], [143, 189], [9, 110], [145, 110]];
+mount_holes = lipo ? [[11, 189], [9, 110]] : [[11, 189], [143, 189], [9, 110], [145, 110]];  // リポの形では右の 2 つはリポの台が使う
 mount_hole_d = 4.4;
 
 // 天板の上に頭が出ているモーター取付のネジ（図面: 28 x 28 mm の範囲 4 か所、左右の端から 7 mm、前後の端から 38 mm、高さ 3 mm）
@@ -72,7 +75,7 @@ module clear_hole(m, h, cb = 0) {
 }
 
 // ---- バッテリー（CIO SMARTCOBY Pro SLIM 35W）x 2 段重ね ----
-bat_x = 98.2;   // 長辺（実測。X 方向に置く。ポートのある短辺が開口側を向く）
+bat_x = lipo ? 63.9 : 98.2;   // 長辺（実測。X 方向に置く。ポートのある短辺が開口側を向く）。リポの形では箱を右から 34.5 mm 縮め、中はヒューズと WAGO の場所にする
 bat_y = 66.8;   // 短辺（実測）
 bat_z = 16.2;
 bat_n = 2;
@@ -87,7 +90,7 @@ flange_t = 3;
 flange_y0 = 104;
 flange_y1 = 196;
 flange_x0 = 3;
-flange_x1 = 151;
+flange_x1 = lipo ? 101 : 151;
 flange_r = 4;
 open_end = "right";   // バッテリー出し入れ・ケーブル側: "right"(+X) / "left"(-X)
 strap_w = 12;         // 面ファスナー / 結束バンド用スロットの高さ
@@ -99,7 +102,7 @@ in_z = bat_n * bat_z + 1.0;
 box_x = in_x + 2 * wall;
 box_y = in_y + 2 * wall_y;
 box_h = floor_t + in_z;
-box_cx = plate_w / 2;
+box_cx = lipo ? 59.75 : plate_w / 2;  // リポの形では箱の左端（X 25）をそのままにする
 box_cy = (flange_y0 + flange_y1) / 2;
 box_x0 = box_cx - box_x / 2;
 box_y0 = box_cy - box_y / 2;
@@ -118,11 +121,11 @@ function disp_rect() = let(x1 = in_x0 + clr_x + bat_x, y0 = box_y0 + wall_y + cl
 // ふた固定用ボス（箱の外側 4 隅、M3 タッピング）
 boss_d = 8;
 boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
-            [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + 6],
+            [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + (lipo ? 13 : 6)],  // リポの形では LiDAR の右後ろの柱（Y 115）から前へ離す
             [box_x0 - boss_d / 2 + 1.5, box_y0 + box_y - 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + box_y - 6]];
 // 中を抜くボス（boss_pts の番号）。開口側の後ろの角は、バッテリーに差す L 字の USB プラグが当たるので、上下 boss_keep だけ残す
-boss_open = [1];
+boss_open = lipo ? [] : [1];
 boss_keep = 5;            // 残す高さ（下はフランジの上から、上は箱の上端から）
 boss_tie_l = 20;          // 上の部分を、後ろ（前）の壁の外側に沿わせて留める長さ
 boss_tie_t = 2;           // 壁の外側に足す厚さ
@@ -130,7 +133,7 @@ boss_tie_t = 2;           // 壁の外側に足す厚さ
 // ---- カメラの板の位置の基準 ----
 // 板・ふたの前端の柱 2 本（M3）・ふたの M2 ナットのくぼみの位置は、前に付けていた USB 2 眼カメラ（基板 80 x 17 mm）の寸法から決めた。
 // 今のカメラ（Camera Module 3 Wide、下の wcam_*）もこの位置を使うので、変えると板・ふた・カバーが動く
-scam_board = [80, 17, 1.6];   // 幅 x 高さ（実測）x 厚さ（仮）
+scam_board = [lipo ? 58 : 80, 17, 1.6];   // 幅 x 高さ（実測）x 厚さ（仮）
 scam_lens_z = 0;              // 仮: 基板の上下の中心からレンズの中心まで
 scam_hole_in = 1.5;           // 四隅の M2 の穴の中心の、基板のふちからの距離（実測）
 scam_back_h = 2;              // 基板の裏の部品の高さ（実測）
@@ -243,7 +246,7 @@ lidar_motor_front = true; // LiDAR のモーター側（細い側）を前（+Y�
 // RPLIDAR A1M8 取付穴（回転中心基準、データシート Figure 5-2）
 //   ヘッド側 2 穴: 中心から 28 mm、間隔 56 mm / モーター側 2 穴: 中心から 42 mm、間隔 40 mm
 lidar_holes_rel = [[-28, 28], [28, 28], [-20, -42], [20, -42]];
-lidar_dx = -8;          // 左へ寄せる（ROS の TF と dashboard.yaml のカメラとの位置の差に反映済み。動かすときは両方を直す）
+lidar_dx = lipo ? 9.25 : -8;          // 左へ寄せる（ROS の TF と dashboard.yaml のカメラとの位置の差に反映済み。動かすときは両方を直す）
 lidar_cx = box_cx + lidar_dx;
 lidar_motor_d = 32;     // 取付面より下に出るモーター（回転中心から 45.5 mm、取付面から 26.5 mm 下まで）
 lidar_motor_off = 45.5;
@@ -312,7 +315,7 @@ module tie_mount() {
     }
 }
 
-tie_pts_box = [[13, 128], [13, 168], [134, 108]];  // 左の 2 個はモーターのネジのくぼみの前後
+tie_pts_box = lipo ? [[13, 128], [13, 168]] : [[13, 128], [13, 168], [134, 108]];  // 左の 2 個はモーターのネジのくぼみの前後
 
 // DROK 降圧コンバーター（12V → 5.2V、B09JKHD3SH）。取付穴がないので、箱の後ろの壁に立てて結束バンドで留める
 drok_board = [63, 27, 1.6];   // 商品画像の寸法
@@ -389,7 +392,7 @@ module box() {
             rrect(flange_x0, flange_y0, flange_x1, flange_y1, flange_r, flange_t);
             translate([box_x0, box_y0, 0]) cube([box_x, box_y, box_h]);
             for (i = [0 : len(boss_pts) - 1]) boss_body(i);
-            motor_recess_pad([motor_scr_pts[2], motor_scr_pts[3]]);
+            motor_recess_pad(lipo ? [motor_scr_pts[2]] : [motor_scr_pts[2], motor_scr_pts[3]]);
             for (p = tie_pts_box) translate([p[0], p[1], flange_t - 0.01]) tie_mount();
             drok_holder();
         }
@@ -1044,6 +1047,74 @@ module cc_ghost(plugs = true) {
     }
 }
 
+
+// ---- 3S リポ 1 個（予定、power = "lipo"）: 天板の右はしに前後に長く置く台 ----
+// リポは後ろから前へ差しこみ、線（XT60・バランス）は前の端から出して、箱の右の開口（ヒューズ・WAGO）へ回す
+lipo_bat = [47, 170, 31];          // 横・長さ・厚さ（商品ページの寸法。届いたら測りなおす）
+lipo_clr = 0.4;
+lipo_wall = 1.6;
+lipo_floor = [4, 11];              // 床の下面・上面（モーターのネジの頭 3 mm・ラズパイ台の腕 3 mm を越え、床の上面は後ろのバンパーの腕 7 mm + M4 の低頭ネジの頭の上）
+lipo_in = [lipo_bat[0] + 2 * lipo_clr, lipo_bat[1] + 2 * lipo_clr];
+lipo_x1 = plate_w - 1.5;           // 右の壁の外側（カバーの壁の内側との間に面ファスナーを通す）
+lipo_x0 = lipo_x1 - lipo_in[0] - 2 * lipo_wall;
+lipo_y0 = 1;                       // 後ろの壁の外側
+lipo_y1 = lipo_y0 + lipo_wall + lipo_in[1];  // 前は開ける（IMU の橋の下へ前から差し込む。線を曲げる所 約 15 mm）
+lipo_wall_h = lipo_floor[1] + 20;
+lipo_top = lipo_floor[1] + lipo_bat[2];
+lipo_bump = [135.5, 151.5, 7.5, 17.5, 182.5];  // バンパーの腕（X 136〜151、Z 3〜7）の逃げ: X0, X1, Z, 後ろの Y, 前の Y
+lipo_strap_y = [117, 133];         // 面ファスナー（幅 16 mm まで）: 左右の壁を切り、床の下（4 mm のすき間）を通してリポの上へ回す
+lipo_pads = [[145, 110], [145, 90]];    // 天板の穴に共締め（90 はラズパイ台の腕の上）
+lipo_tongue = [135, 168, 151, 196];     // 前のバンパーの腕の下（もとの箱のフランジの代わり、Z 0〜3）
+
+module lipo_tray() {
+    bz = lipo_top + 1;                  // IMU の柱の下の橋の下面
+    bt = 3;
+    iy = imu_board[1] + 0.6;
+    my0 = imu_c[1] - iy / 2 - imu_wall;
+    my1 = imu_c[1] + iy / 2 + imu_wall;
+    mx0 = sw_x0 - sw_clr - sw_wall;
+    difference() {
+        union() {
+            // 床と壁
+            translate([lipo_x0, lipo_y0, lipo_floor[0]]) cube([lipo_x1 - lipo_x0, lipo_y1 - lipo_y0, lipo_floor[1] - lipo_floor[0]]);
+            for (x = [lipo_x0, lipo_x1 - lipo_wall])
+                translate([x, lipo_y0, lipo_floor[0]]) cube([lipo_wall, lipo_y1 - lipo_y0, lipo_wall_h - lipo_floor[0]]);
+            translate([lipo_x0, lipo_y0, lipo_floor[0]]) cube([lipo_x1 - lipo_x0, lipo_wall, lipo_wall_h - lipo_floor[0]]);
+            // IMU の柱をのせる橋（リポの上をまたぐ）
+            for (x = [lipo_x0, lipo_x1 - lipo_wall])
+                translate([x, my0, lipo_floor[0]]) cube([lipo_wall, my1 - my0, bz + bt - lipo_floor[0]]);
+            translate([lipo_x0, my0, bz]) cube([lipo_x1 - lipo_x0, my1 - my0, bt]);
+            translate([mx0, my0, bz + bt - 0.01]) cube([lipo_x1 - lipo_wall - mx0, my1 - my0, sw_top - bz - bt + 0.02]);
+            imu_mast();
+            // 天板の穴の足
+            translate([lipo_pads[0][0], lipo_pads[0][1], 0]) cylinder(d = 10, h = lipo_floor[0] + 0.01);
+            translate([lipo_pads[1][0], lipo_pads[1][1], pi_base_t]) cylinder(d = 10, h = lipo_floor[0] - pi_base_t + 0.01);
+            // 前のバンパーの腕の下の板と、床へのつなぎ
+            rrect(lipo_tongue[0], lipo_tongue[1], lipo_tongue[2], lipo_tongue[3], 3, flange_t);
+            translate([lipo_tongue[0], lipo_tongue[1], 0]) cube([lipo_tongue[2] - lipo_tongue[0], lipo_y1 - lipo_tongue[1], lipo_floor[1]]);
+        }
+        // バンパーの腕（前・後ろ）
+        translate([lipo_bump[0], -1, flange_t]) cube([lipo_bump[1] - lipo_bump[0], lipo_bump[3] + 1, lipo_bump[2] - flange_t]);
+        translate([lipo_bump[0], -1, -1]) cube([lipo_bump[1] - lipo_bump[0], lipo_bump[3] + 1, lipo_bump[2] + 1]);
+        translate([lipo_bump[0], lipo_bump[4], flange_t]) cube([lipo_bump[1] - lipo_bump[0], plate_l, lipo_bump[2] - flange_t]);
+        // モーターのネジの頭（床の下 0.5 mm）
+        motor_recess();
+        // 面ファスナーの穴
+        for (x = [lipo_x0 - 1, lipo_x1 - lipo_wall - lipo_clr]) translate([x, lipo_strap_y[0], -1]) cube([lipo_wall + lipo_clr + 1, lipo_strap_y[1] - lipo_strap_y[0], lipo_wall_h + 2]);
+        // ネジ穴
+        for (p = concat(lipo_pads, [[143, 189]])) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = 60);
+        // リポの下のネジの頭: 台を留める 2 本は座ぐり、後ろのバンパーの腕のネジ（[143, 11]）は丸く抜く
+        for (p = lipo_pads) translate([p[0], p[1], lipo_floor[1] - sw_cb[1] - 0.3]) cylinder(d = sw_cb[0], h = 20);
+        translate([plate_holes[1][0], plate_holes[1][1], -1]) cylinder(d = 10, h = lipo_floor[1] + 2);
+        // 床の肉抜き
+        translate([lipo_x0 + 8, lipo_y0 + 30, lipo_floor[0] - 1]) cube([lipo_x1 - lipo_x0 - 16, 30, 5]);
+    }
+}
+
+module lipo_ghost() {
+    color("royalblue", 0.6) translate([lipo_x0 + lipo_wall + lipo_clr, lipo_y0 + lipo_wall + lipo_clr, lipo_floor[1]]) cube(lipo_bat);
+}
+
 if (part == "box") box();
 else if (part == "lid") lid();
 else if (part == "pi_base") pi_base();
@@ -1052,12 +1123,13 @@ else if (part == "bumper") translate([0, 0, flange_t + bump_t]) mirror([0, 0, 1]
 else if (part == "cover") translate([0, cov_oy0 + cov_oy1, cov_oz]) rotate([180, 0, 0]) cover();
 else if (part == "cover_asm") cover();
 else if (part == "none") {}   // ほかの .scad から include して部品どうしの重なりを調べるとき
+else if (part == "lipo_tray") lipo_tray();
 else if (part == "cc_holder") translate([0, 0, -sw_floor[0]]) cc_holder();
 else if (part == "cc_spacer") for (i = [0, 1]) translate([i * 14, 0, 0]) cc_spacer_at(i);
 else {
     plate();
     color("royalblue") box();
-    batteries();
+    if (lipo) { color("#d9a441") lipo_tray(); lipo_ghost(); } else batteries();
     color("orange") translate([0, 0, box_h]) lid();
     lidar_ghost();
     color("seagreen") pi_base();
@@ -1068,9 +1140,11 @@ else {
     if (show_cables) cable_ghost();
     color("dimgray") both_bumpers();
     tof_ghost();
-    color("darkorange") cc_holder();
-    color("darkorange") for (i = [0, 1]) translate([sw_holes[i][0][0], sw_holes[i][0][1], sw_holes[i][1]]) cc_spacer_at(i);
-    cc_ghost();
+    if (!lipo) {
+        color("darkorange") cc_holder();
+        color("darkorange") for (i = [0, 1]) translate([sw_holes[i][0][0], sw_holes[i][0][1], sw_holes[i][1]]) cc_spacer_at(i);
+        cc_ghost();
+    }
     if (show_cover) color("#3c4452") cover();
 }
 

@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.0.3（2026-11-03）
+- バージョン: 2.0.4（2026-11-03）
 - 更新日: 2026-11-03
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -35,6 +35,7 @@
 - 2026-11-01（v2.0.0）: パソコンの GPU を使う機能を削除。スタックちゃんの「パソコンにして」・パソコンの控え・ダッシュボードのパソコン切り替えをやめ、聞き取り・返事はいつもミニコン（Jetson）。声はパソコンの VOICEVOX（CPU）のまま。パソコンの GPU（16GB）は Strata・ComfyUI 用。パソコンの様子（温度・負荷率・メモリ・更新）は表示だけ残す
 - 2026-11-01（v2.0.2）: Jetson実機の face_id（顔認識、jetson-face.service として稼働中）と voice_chat（Bluetooth声会話）をリポジトリ `jetson/` に取り込み。models（onnx 38MB）と data（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS・CHANGELOGに反映
 - 2026-11-03（v2.0.3）: 電源をリポ 3S 11.1V 10000mAh 1 個にする予定の配線（`architecture.yaml` の `power_wiring` に点線の予定 2 つ）と部品一覧（HARDWARE_BOM）を追加。説明だけでコード変更なし。電圧センサー（INA226）と新しい箱は部品が届いてから別の PR。
+- 2026-11-03（v2.0.4）: リポ 1 個を天板の右はしに置く 3D の形（予定、`power = "lipo"`）。`lipo_tray.stl`・`box_lipo.stl`・`lid_lipo.stl`・`cam_mount_lipo.stl`。LiDAR と IMU の位置は今と同じ。まだ印刷していない
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでバックアップ作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson crontab毎日04:00は導入済みだったがv1.32.0で削除（バージョンアップ時に作成）。
 
 ## システム構成
