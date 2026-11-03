@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-11-03
+
+- 電源を「CIO のモバイルバッテリー 2 個」から「リポ 3S 11.1V 10000mAh 1 個」にする予定の配線と部品を書いた（説明だけ、コードは変えていない）。
+  - `architecture.yaml` の `hardware.power_wiring` に予定 2 つ（ラズパイ側・モーター側）を点線で足した。1 個のリポを XT60 から 2 本に分け、それぞれヒューズ（5A・7.5A）とスイッチを通して DROK と Motor HAT へ。
+  - `HARDWARE_BOM.md` に「予定：リポ 1 個」の部品一覧と、使わなくなる部品（PD トリガーケーブル・USB スイッチ・CC スイッチの予定の部品）を書いた。
+  - 電圧センサー INA226（I2C 0x40）で電圧だけを測る予定。ダッシュボードの表示と低い電圧で止める仕組みは、部品が届いてから別の PR で作る。
+  - 箱（`hardware/3d/battery_lidar_mount`）は、リポ（170×47×31 mm）が今の箱に入らないので、別の PR で作りなおす。
+
 ## [2.0.2] - 2026-11-01
 
 - Jetson実機にあった `face_id`（顔認識 YuNet+SFace、unit `jetson-face.service`、稼働中）と `voice_chat`（Bluetooth声会話、サービス未登録）をリポジトリ `jetson/` に追加。大物の `models/`（onnx 38MB）と `data/`（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS（履歴・機能）に反映。

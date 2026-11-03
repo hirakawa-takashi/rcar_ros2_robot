@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.0.2（2026-11-01）
-- 更新日: 2026-11-01
+- バージョン: 2.0.3（2026-11-03）
+- 更新日: 2026-11-03
 - 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
 - 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（バックアップ491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
@@ -34,6 +34,7 @@
 - 2026-10-30（v1.32.9）: Jetson復元の最後はJetsonごと再起動（15秒後、約3分で全サービスが起動時と同じ順番で戻る）。復元ボタンの実機テストで、サービスを1つずつ再起動すると声のLLM（qwen2.5:3b）か物さがし（jetson-finder）がGPUメモリ不足で載らなかったのを修正。root側への導入はユーザーが1回（`sudo install -m 755 ~/ai-jetson-restore.sh /usr/local/bin/ai-jetson-restore`）。
 - 2026-11-01（v2.0.0）: パソコンの GPU を使う機能を削除。スタックちゃんの「パソコンにして」・パソコンの控え・ダッシュボードのパソコン切り替えをやめ、聞き取り・返事はいつもミニコン（Jetson）。声はパソコンの VOICEVOX（CPU）のまま。パソコンの GPU（16GB）は Strata・ComfyUI 用。パソコンの様子（温度・負荷率・メモリ・更新）は表示だけ残す
 - 2026-11-01（v2.0.2）: Jetson実機の face_id（顔認識、jetson-face.service として稼働中）と voice_chat（Bluetooth声会話）をリポジトリ `jetson/` に取り込み。models（onnx 38MB）と data（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS・CHANGELOGに反映
+- 2026-11-03（v2.0.3）: 電源をリポ 3S 11.1V 10000mAh 1 個にする予定の配線（`architecture.yaml` の `power_wiring` に点線の予定 2 つ）と部品一覧（HARDWARE_BOM）を追加。説明だけでコード変更なし。電圧センサー（INA226）と新しい箱は部品が届いてから別の PR。
 - 残課題: 新規SD復元（R3）は予備SDがなく未実施。済（2026-10-28）: ユーザーが `sudo bash ~/AI-CAR_ws/systemd/install_service.sh` を再実行してgit safe.directory修正がrootスクリプトに反映され、ダッシュボードカード→rootサービスでバックアップ作成成功（v1.30.4-94f7b4c、492MB、PCミラー照合）。Jetsonバックアップ `scripts/ai-jetson-backup.sh`（v1.30.2、PR #326）：T1実測成功（スナップショット3.41GB、sha256一致、PCミラー照合）。Jetson crontab毎日04:00は導入済みだったがv1.32.0で削除（バージョンアップ時に作成）。
 
 ## システム構成
