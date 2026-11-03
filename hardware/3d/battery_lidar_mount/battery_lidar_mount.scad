@@ -121,11 +121,11 @@ function disp_rect() = let(x1 = in_x0 + clr_x + bat_x, y0 = box_y0 + wall_y + cl
 // ふた固定用ボス（箱の外側 4 隅、M3 タッピング）
 boss_d = 8;
 boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
-            [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + 6],
+            [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + (lipo ? 13 : 6)],  // リポの形では LiDAR の右後ろの柱（Y 115）から前へ離す
             [box_x0 - boss_d / 2 + 1.5, box_y0 + box_y - 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + box_y - 6]];
 // 中を抜くボス（boss_pts の番号）。開口側の後ろの角は、バッテリーに差す L 字の USB プラグが当たるので、上下 boss_keep だけ残す
-boss_open = [1];
+boss_open = lipo ? [] : [1];
 boss_keep = 5;            // 残す高さ（下はフランジの上から、上は箱の上端から）
 boss_tie_l = 20;          // 上の部分を、後ろ（前）の壁の外側に沿わせて留める長さ
 boss_tie_t = 2;           // 壁の外側に足す厚さ
@@ -1053,16 +1053,17 @@ module cc_ghost(plugs = true) {
 lipo_bat = [47, 170, 31];          // 横・長さ・厚さ（商品ページの寸法。届いたら測りなおす）
 lipo_clr = 0.4;
 lipo_wall = 1.6;
-lipo_floor = [4, 7.5];             // 床の下面・上面（モーターのネジの頭 3 mm・ラズパイ台の腕 3 mm・後ろのバンパーの腕 7 mm の上を越える）
+lipo_floor = [4, 11];              // 床の下面・上面（モーターのネジの頭 3 mm・ラズパイ台の腕 3 mm を越え、床の上面は後ろのバンパーの腕 7 mm + M4 の低頭ネジの頭の上）
 lipo_in = [lipo_bat[0] + 2 * lipo_clr, lipo_bat[1] + 2 * lipo_clr];
 lipo_x1 = plate_w - 1.5;           // 右の壁の外側（カバーの壁の内側との間に面ファスナーを通す）
 lipo_x0 = lipo_x1 - lipo_in[0] - 2 * lipo_wall;
 lipo_y0 = 1;                       // 後ろの壁の外側
-lipo_y1 = lipo_y0 + lipo_wall + lipo_in[1];  // 前は開ける（線を曲げる所 約 15 mm）
+lipo_y1 = lipo_y0 + 2 * lipo_wall + lipo_in[1];  // 前は低い縁だけ（線はリポの前の面の真ん中から出る。曲げる所 約 13 mm）
+lipo_lip = 5;                      // 前の縁の高さ（床の上から）
 lipo_wall_h = lipo_floor[1] + 20;
 lipo_top = lipo_floor[1] + lipo_bat[2];
 lipo_bump = [135.5, 151.5, 7.5, 17.5, 182.5];  // バンパーの腕（X 136〜151、Z 3〜7）の逃げ: X0, X1, Z, 後ろの Y, 前の Y
-lipo_strap_y = [[70, 90], [120, 140]];  // 面ファスナーを通す壁の穴
+lipo_strap_y = [117, 133];         // 面ファスナー（幅 16 mm まで）: 左右の壁を切り、床の下（4 mm のすき間）を通してリポの上へ回す
 lipo_pads = [[145, 110], [145, 90]];    // 天板の穴に共締め（90 はラズパイ台の腕の上）
 lipo_tongue = [135, 168, 151, 196];     // 前のバンパーの腕の下（もとの箱のフランジの代わり、Z 0〜3）
 
@@ -1080,6 +1081,7 @@ module lipo_tray() {
             for (x = [lipo_x0, lipo_x1 - lipo_wall])
                 translate([x, lipo_y0, lipo_floor[0]]) cube([lipo_wall, lipo_y1 - lipo_y0, lipo_wall_h - lipo_floor[0]]);
             translate([lipo_x0, lipo_y0, lipo_floor[0]]) cube([lipo_x1 - lipo_x0, lipo_wall, lipo_wall_h - lipo_floor[0]]);
+            translate([lipo_x0, lipo_y1 - lipo_wall, lipo_floor[0]]) cube([lipo_x1 - lipo_x0, lipo_wall, lipo_floor[1] + lipo_lip - lipo_floor[0]]);
             // IMU の柱をのせる橋（リポの上をまたぐ）
             for (x = [lipo_x0, lipo_x1 - lipo_wall])
                 translate([x, my0, lipo_floor[0]]) cube([lipo_wall, my1 - my0, bz + bt - lipo_floor[0]]);
@@ -1100,9 +1102,12 @@ module lipo_tray() {
         // モーターのネジの頭（床の下 0.5 mm）
         motor_recess();
         // 面ファスナーの穴
-        for (y = lipo_strap_y) translate([lipo_x0 - 1, y[0], lipo_floor[1]]) cube([lipo_x1 - lipo_x0 + 2, y[1] - y[0], 3]);
+        for (x = [lipo_x0 - 1, lipo_x1 - lipo_wall - lipo_clr]) translate([x, lipo_strap_y[0], -1]) cube([lipo_wall + lipo_clr + 1, lipo_strap_y[1] - lipo_strap_y[0], lipo_wall_h + 2]);
         // ネジ穴
         for (p = concat(lipo_pads, [[143, 189]])) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = 60);
+        // リポの下のネジの頭: 台を留める 2 本は座ぐり、後ろのバンパーの腕のネジ（[143, 11]）は丸く抜く
+        for (p = lipo_pads) translate([p[0], p[1], lipo_floor[1] - sw_cb[1] - 0.3]) cylinder(d = sw_cb[0], h = 20);
+        translate([plate_holes[1][0], plate_holes[1][1], -1]) cylinder(d = 10, h = lipo_floor[1] + 2);
         // 床の肉抜き
         translate([lipo_x0 + 8, lipo_y0 + 30, lipo_floor[0] - 1]) cube([lipo_x1 - lipo_x0 - 16, 30, 5]);
     }
