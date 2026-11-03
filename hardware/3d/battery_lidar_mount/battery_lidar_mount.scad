@@ -123,7 +123,7 @@ boss_d = 8;
 boss_pts = [[box_x0 - boss_d / 2 + 1.5, box_y0 + 6],
             [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + (lipo ? 13 : 6)],  // リポの形では LiDAR の右後ろの柱（Y 115）から前へ離す
             [box_x0 - boss_d / 2 + 1.5, box_y0 + box_y - 6],
-            [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + box_y - 6]];
+            [box_x0 + box_x + boss_d / 2 - 1.5, box_y0 + box_y - (lipo ? 10 : 6)]];  // リポの形ではカメラの板の右の耳の柱（Y 181.6 から前）から後ろへ離す
 // 中を抜くボス（boss_pts の番号）。開口側の後ろの角は、バッテリーに差す L 字の USB プラグが当たるので、上下 boss_keep だけ残す
 boss_open = lipo ? [] : [1];
 boss_keep = 5;            // 残す高さ（下はフランジの上から、上は箱の上端から）
@@ -380,6 +380,14 @@ module boss_body(i) {
     p = boss_pts[i];
     if (len(search(i, boss_open)) == 0) {
         translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+        // 前後の壁から離した柱（リポの形の右の 2 本）は、壁まで板でつなぐ（開口側の壁は切り抜くので、柱だけ立たないように）
+        front = p[1] > box_cy;
+        wy = front ? box_y0 + box_y - wall_y : box_y0;
+        if (front ? p[1] + boss_d / 2 < wy : p[1] - boss_d / 2 > wy + wall_y)
+            hull() {
+                translate([p[0], p[1], 0]) cylinder(d = boss_d, h = box_h);
+                translate([p[0] - boss_d / 2, wy, 0]) cube([boss_d, wall_y, box_h]);
+            }
     } else {
         translate([p[0], p[1], 0]) cylinder(d = boss_d, h = flange_t + boss_keep);
         boss_top(p);
