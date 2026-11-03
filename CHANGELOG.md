@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-11-03
+
+- 3D（リポの形）: ふたの右前のネジ（`boss_pts[3]`）の頭が、カメラの板の右の耳の柱に約 0.6 mm 重なっていた（体積 7.9 mm³）。リポの形だけ、ネジを 4 mm 後ろ（Y 177.6）へ。`box_lipo.stl`・`lid_lipo.stl`・`top_lipo.png`・`assembly_lipo.png` を作り直した。CIO の形は変わらない。
+
 ## [2.0.4] - 2026-11-03
 
 - 3D: リポ 3S 10000mAh 1 個を天板の右はしに置く形（予定）を `battery_lidar_mount.scad` に足した（`-D 'power="lipo"'`。ふだんは今の CIO 2 個の形のままで、今の STL は変えていない）。
