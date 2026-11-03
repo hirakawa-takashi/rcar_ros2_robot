@@ -28,7 +28,7 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <!-- ================= 1 ページ目：全体の図 ================= -->
 <div class="page">
 <h1>AI-CAR リポ 1 個の配線図（くわしい版）　予定・部品待ち</h1>
-<div class="sub">リポ 3S 11.1V 10000mAh（XT60）1 個で、ラズパイ側とモーター側の両方に電気を送る。丸の数字 ①〜㉔ は 2 ページ目の「線の表」の番号。WAGO は A〜F。　2026-11-03　AI-CAR v2.1.0 の記録をもとに作成</div>
+<div class="sub">リポ 3S 11.1V 10000mAh（XT60）1 個で、ラズパイ側とモーター側の両方に電気を送る。丸の数字 ①〜㉔ は 2 ページ目の「線の表」の番号。WAGO は A〜F。　2026-11-03 作成（AI-CAR の HARDWARE_BOM.md・architecture.yaml の記録をもとに）</div>
 <svg viewBox="0 0 1120 600" width="100%" height="160mm">
  <defs>
   <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker>
@@ -211,7 +211,7 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <tr><td class="n">17</td><td>WAGO B</td><td>Motor HAT の電源の端子台 <b>−</b></td><td>黒 18AWG</td><td>今の PD トリガーケーブル（モーター側）の線は外す</td></tr>
 <tr><td class="n">18</td><td>Motor HAT M1〜M4</td><td>モーター 4 個</td><td>今の線</td><td>今と同じ（さわらない）</td></tr>
 <tr><th colspan="5" style="text-align:left">電圧センサー INA226・リポ アラーム</th></tr>
-<tr><td class="n">19</td><td>WAGO D</td><td>INA226 の VBUS（と IN+・IN−）</td><td>赤（短く）</td><td>電圧を見るだけの線。電気はほとんど流れない（1 mA より小さい）。ラズパイのスイッチを入れたときだけ電圧がかかる</td></tr>
+<tr><td class="n">19</td><td>WAGO D</td><td>INA226 の VBUS（と IN+・IN−）</td><td>赤 18AWG</td><td>電圧を見るだけの線（ふだんは 1 mA より小さい）。でも、ショートしたときは 5A ヒューズが切れるまで大きな電気が流れるので、細いジャンパー線ではなく<b>ほかと同じ 18AWG</b> にする。INA226 の VBUS がピンだけで 18AWG が入らないときは、届いてから AI さんが決める</td></tr>
 <tr><td class="n">20</td><td>INA226 の VCC</td><td>ラズパイ pin 17（3V3）</td><td>ジャンパー線 赤</td><td>pin 1 は IMU が使っているので pin 17。<b>5V（pin 2・4）にはささない</b></td></tr>
 <tr><td class="n">21</td><td>INA226 の GND</td><td>ラズパイ pin 14（GND）</td><td>ジャンパー線 黒</td><td>リポの−（WAGO B）には<b>つながない</b>（下の「なぜ」を見る）</td></tr>
 <tr><td class="n">22</td><td>INA226 の SDA</td><td>ラズパイ pin 3</td><td>ジャンパー線 青</td><td>pin 3 は今 IMU と落下防止センサー 2 個で 3 又。4 又にする</td></tr>
@@ -267,6 +267,7 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 </svg>
 <div class="box"><b>なぜ INA226 の GND をリポの−につながないか</b><br>
 ラズパイの GND は、DROK と Motor HAT を通して、もうリポの−につながっています。INA226 の GND を両方につなぐと、DROK の−の線がぬけたとき、ラズパイの電気（約 3A）が細いジャンパー線を流れて、線が熱くなります。なので GND はラズパイの pin 14 だけにします（測る電圧のずれは 0.05V くらい）。<br>
+もう 1 つ：リポ 1 個にすると、DROK の−と Motor HAT の−が同じ WAGO B につながります。Motor HAT はラズパイの上にのっていて GND がつながっているので、DROK の−の線がぬけると、ラズパイの電気が Motor HAT の端子台 → ラズパイの GND ピンを通って流れます（これは INA226 がなくても起きます）。なので <b>⑨（DROK の−）と ⑰（Motor HAT の−）は、つないだあと軽く引いてぬけないことを確かめ</b>、走る前にときどき見ます。<br>
 ※ 前の記録（ダッシュボードの「電源の配線」）には「GND をリポの−に」と書いてあるので、そちらを直します。</div>
 </div>
 <div>
@@ -275,7 +276,7 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <tr><td>ラズパイ側（DROK の入力）</td><td>ふだん 1〜2A、いちばん多いとき約 3A（ラズパイ・AI HAT+・LiDAR・カメラで 最大 25W ÷ 9.9V ÷ 0.9）</td><td>ヒューズ 5A・18AWG（10A まで大丈夫）</td></tr>
 <tr><td>モーター側（Motor HAT）</td><td>走っているとき 1〜3A、4 個が止まりそうなほど重いとき約 5A（Motor HAT は 1 個 1.2A まで × 4）</td><td>ヒューズ 7.5A・18AWG</td></tr>
 <tr><td>リポ → WAGO A・B</td><td>上の 2 つの合計、最大 約 8A</td><td>14AWG（20A まで大丈夫）</td></tr>
-<tr><td>INA226 の線</td><td>1 mA より小さい</td><td>ジャンパー線でよい</td></tr>
+<tr><td>INA226 の線</td><td>1 mA より小さい</td><td>VBUS の線 ⑲ は 18AWG（ショートしても 5A ヒューズが切れるまで持つ）。pin 17・14・3・5 の 4 本はジャンパー線でよい</td></tr>
 </table>
 <h2 style="margin-top:4mm">電圧の目安（3 セルの合計）</h2>
 <table>
