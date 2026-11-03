@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-03
+
+- 説明: リポ 1 個にする予定のくわしい配線図 `docs/power/lipo_wiring.pdf`（A4 横 5 ページ。全体の図・線 ①〜㉔ の表・ラズパイの 40 ピン・流れる電気・つなぐ順番とテスターで見る値）を足した。元は `lipo_wiring.html`。
+- 電圧センサー INA226 の GND は、リポの−ではなくラズパイの pin 14 だけにつなぐように直した（両方につなぐと、DROK の−の線がぬけたとき細い線に約 3A 流れる）。電気は pin 17（pin 1 は IMU）。DROK の丸プラグは、今の PD トリガーケーブルを切って使う。
+
 ## [2.1.0] - 2026-11-03
 
 - 3D: 部品どうしのぶつかりを自動で調べる `hardware/3d/check_interference.py` を足した（`python3 hardware/3d/check_interference.py`）。

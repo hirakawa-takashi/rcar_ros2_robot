@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<title>AI-CAR リポ 1 個の配線図（くわしい版）</title>
+<style>
+@page { size: A4 landscape; margin: 9mm; }
+* { box-sizing: border-box; }
+body { font-family: "Noto Sans CJK JP", sans-serif; font-size: 10.5pt; color: #111; margin: 0; }
+h1 { font-size: 16pt; margin: 0 0 2mm; }
+h2 { font-size: 13pt; margin: 0 0 2mm; border-left: 5px solid #c00; padding-left: 6px; }
+.page { page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+.sub { color: #444; font-size: 9.5pt; margin-bottom: 2mm; }
+table { border-collapse: collapse; width: 100%; font-size: 8.6pt; }
+th, td { border: 1px solid #888; padding: 0.7mm 1.4mm; vertical-align: top; }
+th { background: #eee; }
+td.n { text-align: center; font-weight: bold; width: 7mm; }
+.red { color: #c00; font-weight: bold; }
+.box { border: 2px solid #c00; padding: 2mm 3mm; margin: 2mm 0; background: #fff5f5; }
+.note { border: 1px solid #888; padding: 2mm 3mm; margin: 2mm 0; background: #f7f7f7; }
+.cols { display: flex; gap: 5mm; }
+.cols > div { flex: 1; }
+ol { margin: 1mm 0 1mm 5mm; padding-left: 3mm; }
+ol li { margin-bottom: 1.2mm; }
+svg text { font-family: "Noto Sans CJK JP", sans-serif; }
+.sw { display:inline-block; width:18px; height:4px; vertical-align:middle; margin-right:3px; }
+</style></head><body>
+
+<!-- ================= 1 ページ目：全体の図 ================= -->
+<div class="page">
+<h1>AI-CAR リポ 1 個の配線図（くわしい版）　予定・部品待ち</h1>
+<div class="sub">リポ 3S 11.1V 10000mAh（XT60）1 個で、ラズパイ側とモーター側の両方に電気を送る。丸の数字 ①〜㉔ は 2 ページ目の「線の表」の番号。WAGO は A〜F。　2026-11-03 作成（AI-CAR の HARDWARE_BOM.md・architecture.yaml の記録をもとに）</div>
+<svg viewBox="0 0 1120 600" width="100%" height="160mm">
+ <defs>
+  <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker>
+ </defs>
+ <style>
+  .part{fill:#fff;stroke:#222;stroke-width:2}
+  .plan{fill:#fffbe6;stroke:#222;stroke-width:2}
+  .wago{fill:#ffb300;stroke:#222;stroke-width:1.5}
+  .t{font-size:13px} .ts{font-size:11px;fill:#333} .tb{font-size:14px;font-weight:bold}
+  .p14{stroke:#c00;stroke-width:7;fill:none} .n14{stroke:#111;stroke-width:7;fill:none}
+  .p18{stroke:#c00;stroke-width:4;fill:none} .n18{stroke:#111;stroke-width:4;fill:none}
+  .v5{stroke:#f08000;stroke-width:5;fill:none}
+  .sig{stroke-width:2;fill:none}
+  .num{font-size:12px;font-weight:bold;fill:#fff}
+ </style>
+
+ <!-- リポ -->
+ <rect class="part" x="20" y="200" width="150" height="150" rx="8"/>
+ <text class="tb" x="34" y="228">リポ 3S</text>
+ <text class="t" x="34" y="248">11.1V 10000mAh</text>
+ <text class="ts" x="34" y="266">満充電 12.6V</text>
+ <text class="ts" x="34" y="282">止める 9.9V</text>
+ <text class="ts" x="34" y="298">170×47×31mm 580g</text>
+ <text class="ts" x="34" y="314">天板の右はしの台</text>
+ <text class="ts" x="34" y="336">（守る回路なし）</text>
+ <!-- XT60 -->
+ <rect x="170" y="255" width="34" height="40" fill="#ffd54f" stroke="#222" stroke-width="2"/>
+ <text class="ts" x="172" y="312">XT60</text>
+ <!-- バランス -->
+ <rect x="60" y="350" width="40" height="18" fill="#fff" stroke="#222"/>
+ <text class="ts" x="106" y="364">バランスの口 XH 4 ピン</text>
+ <path d="M80,368 L80,440" stroke="#2e7d32" stroke-width="3" fill="none"/>
+ <rect class="part" x="20" y="440" width="150" height="80" rx="6"/>
+ <text class="tb" x="30" y="464">リポ アラーム</text>
+ <text class="ts" x="30" y="482">1 セルずつ見る</text>
+ <text class="ts" x="30" y="498">3.5V で鳴るように合わせる</text>
+ <text class="ts" x="30" y="514">ラズパイが止まっていても鳴る</text>
+
+ <!-- XT60 線 -->
+ <path class="p14" d="M204,265 L250,265 L250,150 L280,150"/>
+ <path class="n14" d="M204,285 L250,285 L250,470 L280,470"/>
+ <text class="ts" x="210" y="258">赤 14AWG</text>
+ <text class="ts" x="210" y="305">黒 14AWG</text>
+
+ <!-- WAGO A (+分け) -->
+ <rect class="wago" x="280" y="130" width="40" height="40" rx="4"/><text class="tb" x="292" y="156">A</text>
+ <text class="ts" x="270" y="124">＋を 2 つに</text>
+ <!-- WAGO B (−まとめ) -->
+ <rect class="wago" x="280" y="450" width="40" height="40" rx="4"/><text class="tb" x="292" y="476">B</text>
+ <text class="ts" x="262" y="506">−をまとめる</text>
+
+ <!-- ラズパイ側 上段 y=90 -->
+ <path class="p18" d="M320,140 L340,140 L340,90 L380,90"/>
+ <rect class="plan" x="380" y="72" width="80" height="36" rx="4"/>
+ <text class="tb" x="388" y="96">ヒューズ</text><text class="tb" x="392" y="125" fill="#c00">5A</text>
+ <path class="p18" d="M460,90 L490,90"/>
+ <rect class="wago" x="490" y="74" width="30" height="32" rx="4"/><text class="tb" x="499" y="96">C</text>
+ <path class="p18" d="M520,90 L550,90"/>
+ <rect class="plan" x="550" y="70" width="90" height="40" rx="4"/>
+ <text class="tb" x="557" y="88">スイッチ</text><text class="ts" x="557" y="104">ラズパイ</text>
+ <path class="p18" d="M640,90 L670,90"/>
+ <rect class="wago" x="670" y="70" width="34" height="40" rx="4"/><text class="tb" x="680" y="96">D</text>
+ <path class="p18" d="M704,84 L760,84"/>
+ <rect class="part" x="760" y="55" width="140" height="80" rx="6"/>
+ <text class="tb" x="770" y="78">DROK</text><text class="ts" x="770" y="96">9〜36V → 5.2V 5A</text><text class="ts" x="770" y="112">入: 丸い口（DC ジャック）</text><text class="ts" x="770" y="127">出: USB-A</text>
+ <path class="v5" d="M900,95 L960,95"/>
+ <text class="ts" x="904" y="88">5.2V</text>
+ <rect class="part" x="960" y="40" width="140" height="150" rx="6"/>
+ <text class="tb" x="970" y="64">Raspberry Pi 5</text>
+ <text class="ts" x="970" y="82">電源 USB-C（今と同じ）</text>
+ <text class="ts" x="970" y="112">40 ピン:</text>
+ <text class="ts" x="970" y="128">pin 17 = 3V3（新）</text>
+ <text class="ts" x="970" y="144">pin 14 = GND（新）</text>
+ <text class="ts" x="970" y="160">pin 3 = SDA（4 又に）</text>
+ <text class="ts" x="970" y="176">pin 5 = SCL（4 又に）</text>
+
+ <!-- モーター側 中段 y=290 -->
+ <path class="p18" d="M320,160 L340,160 L340,290 L380,290"/>
+ <rect class="plan" x="380" y="272" width="80" height="36" rx="4"/>
+ <text class="tb" x="388" y="296">ヒューズ</text><text class="tb" x="388" y="325" fill="#c00">7.5A</text>
+ <path class="p18" d="M460,290 L490,290"/>
+ <rect class="wago" x="490" y="274" width="30" height="32" rx="4"/><text class="tb" x="499" y="296">E</text>
+ <path class="p18" d="M520,290 L550,290"/>
+ <rect class="plan" x="550" y="270" width="90" height="40" rx="4"/>
+ <text class="tb" x="557" y="288">スイッチ</text><text class="ts" x="557" y="304">モーター</text>
+ <path class="p18" d="M640,290 L670,290"/>
+ <rect class="wago" x="670" y="274" width="30" height="32" rx="4"/><text class="tb" x="679" y="296">F</text>
+ <path class="p18" d="M700,290 L760,290"/>
+ <rect class="part" x="760" y="260" width="140" height="90" rx="6"/>
+ <text class="tb" x="770" y="282">Motor HAT</text><text class="ts" x="770" y="300">電源の端子台（ねじ）</text><text class="ts" x="770" y="316">＋ / −　4.5〜13.5V</text><text class="ts" x="770" y="332">Adafruit 2348・今と同じ</text>
+ <path class="p18" d="M900,300 L960,300" stroke-dasharray="0"/>
+ <rect class="part" x="960" y="260" width="140" height="80" rx="6"/>
+ <text class="tb" x="970" y="284">モーター ×4</text><text class="ts" x="970" y="302">M1 前左・M2 前右</text><text class="ts" x="970" y="318">M3 後左・M4 後右</text><text class="ts" x="970" y="334">今と同じ</text>
+
+ <!-- −の線 -->
+ <path class="n18" d="M320,480 L730,480 L730,120 L760,120"/>
+ <path class="n18" d="M320,470 L745,470 L745,335 L760,335"/>
+ <text class="ts" x="420" y="498">黒 18AWG（DROK の−・Motor HAT の−）</text>
+
+ <!-- INA226 -->
+ <rect class="plan" x="760" y="400" width="150" height="130" rx="6"/>
+ <text class="tb" x="770" y="424">電圧センサー INA226</text>
+ <text class="ts" x="770" y="442">I2C 0x40・電圧だけ測る</text>
+ <text class="ts" x="770" y="460">VBUS / IN+ / IN− ← D</text>
+ <text class="ts" x="770" y="476">VCC → pin 17（3V3）</text>
+ <text class="ts" x="770" y="492">GND → pin 14</text>
+ <text class="ts" x="770" y="508">SDA → pin 3 / SCL → pin 5</text>
+ <text class="ts" x="770" y="524">リポの−にはつながない</text>
+ <path d="M687,110 L687,200 L715,200 L715,380 L800,380 L800,400" stroke="#c00" stroke-width="2.5" fill="none" stroke-dasharray="6,3"/>
+ <text class="ts" x="500" y="374">電圧を見る細い線（電気はほぼ流れない）→</text>
+ <path class="sig" d="M910,505 L915,505 L915,155 L960,155" stroke="#1565c0"/>
+ <path class="sig" d="M910,490 L925,490 L925,171 L960,171" stroke="#777"/>
+ <path class="sig" d="M910,475 L935,475 L935,123 L960,123" stroke="#d32f2f"/>
+ <path class="sig" d="M910,490 M910,460 L945,460 L945,139 L960,139" stroke="#111"/>
+ <text class="tb" x="960" y="470">⑳ 3V3 赤 → pin 17</text><text class="tb" x="960" y="490">㉑ GND 黒 → pin 14</text><text class="tb" x="960" y="510">㉒ SDA 青 → pin 3</text><text class="tb" x="960" y="530">㉓ SCL 灰 → pin 5</text>
+
+ <!-- 番号 -->
+ <g>
+  <circle cx="190" cy="240" r="10" fill="#333"/><text class="num" x="185" y="244">1</text>
+  <circle cx="258" cy="205" r="10" fill="#333"/><text class="num" x="253" y="209">2</text>
+  <circle cx="258" cy="400" r="10" fill="#333"/><text class="num" x="253" y="404">3</text>
+  <circle cx="352" cy="74" r="10" fill="#333"/><text class="num" x="347" y="78">4</text>
+  <circle cx="475" cy="74" r="10" fill="#333"/><text class="num" x="470" y="78">5</text>
+  <circle cx="535" cy="74" r="10" fill="#333"/><text class="num" x="530" y="78">6</text>
+  <circle cx="655" cy="74" r="10" fill="#333"/><text class="num" x="650" y="78">7</text>
+  <circle cx="732" cy="68" r="10" fill="#333"/><text class="num" x="727" y="72">8</text>
+  <circle cx="716" cy="140" r="10" fill="#333"/><text class="num" x="711" y="144">9</text>
+  <circle cx="930" cy="114" r="11" fill="#333"/><text class="num" x="922" y="118">11</text>
+  <circle cx="352" cy="274" r="11" fill="#333"/><text class="num" x="344" y="278">12</text>
+  <circle cx="475" cy="274" r="11" fill="#333"/><text class="num" x="467" y="278">13</text>
+  <circle cx="535" cy="274" r="11" fill="#333"/><text class="num" x="527" y="278">14</text>
+  <circle cx="655" cy="274" r="11" fill="#333"/><text class="num" x="647" y="278">15</text>
+  <circle cx="730" cy="274" r="11" fill="#333"/><text class="num" x="722" y="278">16</text>
+  <circle cx="760" cy="456" r="0"/>
+  <circle cx="745" cy="440" r="11" fill="#333"/><text class="num" x="737" y="444">17</text>
+  <circle cx="975" cy="356" r="11" fill="#333"/><text class="num" x="967" y="360">18</text>
+  <circle cx="800" cy="390" r="11" fill="#333"/><text class="num" x="792" y="394">19</text>
+  <circle cx="955" cy="510" r="0"/>
+  
+  <circle cx="80" cy="410" r="11" fill="#333"/><text class="num" x="72" y="414">24</text>
+ </g>
+
+ <!-- 凡例 -->
+ <g transform="translate(20,545)">
+  <rect x="0" y="0" width="1080" height="48" fill="#fafafa" stroke="#aaa"/>
+  <line x1="12" y1="16" x2="52" y2="16" class="p14"/><text class="ts" x="58" y="20">＋ 太い線 14AWG（XT60 線つき）</text>
+  <line x1="250" y1="16" x2="290" y2="16" class="p18"/><text class="ts" x="296" y="20">＋ 18AWG 赤</text>
+  <line x1="400" y1="16" x2="440" y2="16" class="n18"/><text class="ts" x="446" y="20">− 18AWG 黒（太い黒は 14AWG）</text>
+  <line x1="640" y1="16" x2="680" y2="16" class="v5"/><text class="ts" x="686" y="20">5.2V（USB ケーブル、今と同じ）</text>
+  <rect x="12" y="28" width="20" height="14" class="wago"/><text class="ts" x="38" y="40">WAGO 221（レバーでとめる。はんだ不要）A〜F の 6 個を使う</text>
+  <rect x="460" y="28" width="20" height="14" class="plan"/><text class="ts" x="486" y="40">新しく買った部品</text>
+  <text class="ts" x="640" y="40">ヒューズは＋の線だけに入れる。−の線にスイッチ・ヒューズは入れない</text>
+ </g>
+</svg>
+</div>
+
+<!-- ================= 2 ページ目：線の表 ================= -->
+<div class="page">
+<h2>線の表（①〜㉔、図の番号と同じ）</h2>
+<table>
+<tr><th>番号</th><th>どこから</th><th>どこへ</th><th>線</th><th>気をつけること</th></tr>
+<tr><td class="n">1</td><td>リポの XT60</td><td>XT60 線つき（Amass、オス・メスの合うほう）</td><td>XT60</td><td>いちばん<b>最後に</b>さして、いちばん<b>最初に</b>ぬく。リポがオスかメスかは届いてから見る（5 ペアに両方ある）</td></tr>
+<tr><td class="n">2</td><td>XT60 線の＋（赤）</td><td>WAGO A</td><td>赤 14AWG</td><td>線の先の皮を 11 mm むいて、奥までさしてレバーを下げる</td></tr>
+<tr><td class="n">3</td><td>XT60 線の−（黒）</td><td>WAGO B</td><td>黒 14AWG</td><td>赤と黒の先が、ぜったいにふれないようにする</td></tr>
+<tr><th colspan="5" style="text-align:left">ラズパイ側（ヒューズ 5A）</th></tr>
+<tr><td class="n">4</td><td>WAGO A</td><td>ヒューズホルダー①の線の片方</td><td>ホルダーの線</td><td>ヒューズ <b>5A</b>（色はふつう<b>だいだい色</b>）を入れる</td></tr>
+<tr><td class="n">5</td><td>ヒューズホルダー①の線のもう片方</td><td>WAGO C</td><td>ホルダーの線</td><td>ホルダーの線はどちら向きでもよい</td></tr>
+<tr><td class="n">6</td><td>WAGO C</td><td>スイッチ（ラズパイ）の線の片方</td><td>スイッチの線</td><td>スイッチの 2 本はどちら向きでもよい</td></tr>
+<tr><td class="n">7</td><td>スイッチ（ラズパイ）の線のもう片方</td><td>WAGO D</td><td>スイッチの線</td><td>WAGO D は 3 つ穴（DROK の＋と電圧センサーもさす）</td></tr>
+<tr><td class="n">8</td><td>WAGO D</td><td>DROK の丸プラグの<b>＋</b></td><td>赤</td><td>丸プラグは、今つかっている PD トリガーケーブルの丸プラグの側を約 15 cm 残して切って使う（今 DROK にささっているので形が合う）。<b>中が＋</b>。切ったあとテスターで、どちらの線が中か確かめる</td></tr>
+<tr><td class="n">9</td><td>WAGO B</td><td>DROK の丸プラグの<b>−</b></td><td>黒</td><td>丸プラグの外がわ</td></tr>
+<tr><td class="n">10</td><td>丸プラグ</td><td>DROK の丸い口</td><td>—</td><td>今と同じ</td></tr>
+<tr><td class="n">11</td><td>DROK の USB-A</td><td>ラズパイの電源 USB-C</td><td>USB-A→USB-C</td><td>今と同じ（5.2V）。12V の線をラズパイにさわらせない</td></tr>
+<tr><th colspan="5" style="text-align:left">モーター側（ヒューズ 7.5A）</th></tr>
+<tr><td class="n">12</td><td>WAGO A</td><td>ヒューズホルダー②の線の片方</td><td>ホルダーの線</td><td>ヒューズ <b>7.5A</b>（色はふつう<b>茶色</b>）</td></tr>
+<tr><td class="n">13</td><td>ヒューズホルダー②の線のもう片方</td><td>WAGO E</td><td>ホルダーの線</td><td></td></tr>
+<tr><td class="n">14</td><td>WAGO E</td><td>スイッチ（モーター）の線の片方</td><td>スイッチの線</td><td></td></tr>
+<tr><td class="n">15</td><td>スイッチ（モーター）の線のもう片方</td><td>WAGO F</td><td>スイッチの線</td><td></td></tr>
+<tr><td class="n">16</td><td>WAGO F</td><td>Motor HAT の電源の端子台 <b>＋</b></td><td>赤 18AWG</td><td>端子台のねじをゆるめて、線を入れてしめる。<b>＋と−を逆にしない</b></td></tr>
+<tr><td class="n">17</td><td>WAGO B</td><td>Motor HAT の電源の端子台 <b>−</b></td><td>黒 18AWG</td><td>今の PD トリガーケーブル（モーター側）の線は外す</td></tr>
+<tr><td class="n">18</td><td>Motor HAT M1〜M4</td><td>モーター 4 個</td><td>今の線</td><td>今と同じ（さわらない）</td></tr>
+<tr><th colspan="5" style="text-align:left">電圧センサー INA226・リポ アラーム</th></tr>
+<tr><td class="n">19</td><td>WAGO D</td><td>INA226 の VBUS（と IN+・IN−）</td><td>赤 18AWG</td><td>電圧を見るだけの線（ふだんは 1 mA より小さい）。でも、ショートしたときは 5A ヒューズが切れるまで大きな電気が流れるので、細いジャンパー線ではなく<b>ほかと同じ 18AWG</b> にする。INA226 の VBUS がピンだけで 18AWG が入らないときは、届いてから AI さんが決める</td></tr>
+<tr><td class="n">20</td><td>INA226 の VCC</td><td>ラズパイ pin 17（3V3）</td><td>ジャンパー線 赤</td><td>pin 1 は IMU が使っているので pin 17。<b>5V（pin 2・4）にはささない</b></td></tr>
+<tr><td class="n">21</td><td>INA226 の GND</td><td>ラズパイ pin 14（GND）</td><td>ジャンパー線 黒</td><td>リポの−（WAGO B）には<b>つながない</b>（下の「なぜ」を見る）</td></tr>
+<tr><td class="n">22</td><td>INA226 の SDA</td><td>ラズパイ pin 3</td><td>ジャンパー線 青</td><td>pin 3 は今 IMU と落下防止センサー 2 個で 3 又。4 又にする</td></tr>
+<tr><td class="n">23</td><td>INA226 の SCL</td><td>ラズパイ pin 5</td><td>ジャンパー線 灰</td><td>pin 5 も 3 又 → 4 又</td></tr>
+<tr><td class="n">24</td><td>リポのバランスの口（XH 4 ピン）</td><td>リポ アラーム</td><td>—</td><td>黒い線を、アラームの「−」の印の側にあわせてさす。ボタンで 3.5V に合わせる</td></tr>
+</table>
+<div class="note">WAGO の穴: A＝3 つ（② ④ ⑫）、B＝3 つ（③ ⑨ ⑰）、C＝2 つ（⑤ ⑥）、D＝3 つ（⑦ ⑧ ⑲）、E＝2 つ（⑬ ⑭）、F＝2 つ（⑮ ⑯）。12 個入りのうち 6 個を使う（3 つ穴が 3 個、2 つ穴が 3 個いる）。WAGO とヒューズは、左の箱（縮めた箱）の中に入れる。</div>
+</div>
+
+<!-- ================= 3 ページ目：センサーと電気の量 ================= -->
+<div class="page">
+<h2>電圧センサー・ラズパイの 40 ピン・流れる電気の量</h2>
+<div class="cols">
+<div>
+<svg viewBox="0 0 520 330" width="100%">
+ <style>.pin{stroke:#333;stroke-width:1}.lb{font-size:12px}.lbs{font-size:10.5px;fill:#333}</style>
+ <text class="lb" x="10" y="18" font-weight="bold">ラズパイ 5 の 40 ピン（上から見て、SD カードが左）</text>
+ <rect x="10" y="30" width="500" height="70" fill="#1b5e20" rx="6"/>
+ <!-- 20 列 × 2 段。上段 = 偶数 (2,4..)、下段 = 奇数 (1,3..) -->
+ <g id="pins"></g>
+ <!-- 奇数 1..39 下段 y=80, 偶数 上段 y=50。x = 30 + (k-1)*24 -->
+ <g>
+  <!-- 使うピン -->
+  <circle cx="30"  cy="80" r="8" fill="#ff7043" class="pin"/><text class="lbs" x="26" y="118">1</text>
+  <circle cx="54"  cy="80" r="8" fill="#42a5f5" class="pin"/><text class="lbs" x="50" y="118">3</text>
+  <circle cx="78"  cy="80" r="8" fill="#9e9e9e" class="pin"/><text class="lbs" x="74" y="118">5</text>
+  <circle cx="126" cy="80" r="8" fill="#212121" class="pin"/><text class="lbs" x="122" y="118">9</text>
+  <circle cx="222" cy="80" r="8" fill="#ff7043" class="pin" stroke-width="3"/><text class="lbs" x="214" y="118">17</text>
+  <circle cx="174" cy="50" r="8" fill="#212121" class="pin" stroke-width="3"/><text class="lbs" x="166" y="26" fill="#333">14</text>
+  <circle cx="30"  cy="50" r="8" fill="#e53935" class="pin"/><text class="lbs" x="26" y="26" fill="#333">2</text>
+  <circle cx="54"  cy="50" r="8" fill="#e53935" class="pin"/><text class="lbs" x="50" y="26" fill="#333">4</text>
+ </g>
+ <g fill="#c8e6c9" class="pin">
+  <circle cx="102" cy="80" r="6"/><circle cx="150" cy="80" r="6"/><circle cx="174" cy="80" r="6"/><circle cx="198" cy="80" r="6"/>
+  <circle cx="246" cy="80" r="6"/><circle cx="270" cy="80" r="6"/><circle cx="294" cy="80" r="6"/><circle cx="318" cy="80" r="6"/>
+  <circle cx="342" cy="80" r="6"/><circle cx="366" cy="80" r="6"/><circle cx="390" cy="80" r="6"/><circle cx="414" cy="80" r="6"/>
+  <circle cx="438" cy="80" r="6"/><circle cx="462" cy="80" r="6"/><circle cx="486" cy="80" r="6"/>
+  <circle cx="78" cy="50" r="6"/><circle cx="102" cy="50" r="6"/><circle cx="126" cy="50" r="6"/><circle cx="150" cy="50" r="6"/>
+  <circle cx="198" cy="50" r="6"/><circle cx="222" cy="50" r="6"/><circle cx="246" cy="50" r="6"/><circle cx="270" cy="50" r="6"/>
+  <circle cx="294" cy="50" r="6"/><circle cx="318" cy="50" r="6"/><circle cx="342" cy="50" r="6"/><circle cx="366" cy="50" r="6"/>
+  <circle cx="390" cy="50" r="6"/><circle cx="414" cy="50" r="6"/><circle cx="438" cy="50" r="6"/><circle cx="462" cy="50" r="6"/><circle cx="486" cy="50" r="6"/>
+ </g>
+ <text class="lbs" x="10" y="145">● 太い丸＝新しく使う（INA226）: pin 17 = 3V3、pin 14 = GND</text>
+ <text class="lbs" x="10" y="163">● 今も使っている: pin 1 = 3V3（IMU）、pin 3 = SDA、pin 5 = SCL、pin 9 = GND（IMU）</text>
+ <text class="lbs" x="10" y="181">　　pin 11・13 = 落下防止センサー、pin 29〜38 = エンコーダー（この図には色をつけていない）</text>
+ <text class="lbs" x="10" y="199" fill="#c00">● pin 2・4 は 5V。INA226 の VCC をここにさすと、I2C に 5V がかかって</text>
+ <text class="lbs" x="10" y="215" fill="#c00">　 ラズパイがこわれることがある</text>
+ <text class="lb" x="10" y="248" font-weight="bold">INA226 のピン（ふつうの形。届いたら印字を写真で確かめる）</text>
+ <text class="lbs" x="10" y="268">VBUS ← WAGO D（リポの＋、スイッチのあと）　IN+・IN− ← VBUS と同じ所</text>
+ <text class="lbs" x="10" y="286">VCC → pin 17　GND → pin 14　SDA → pin 3　SCL → pin 5　ALE はつながない</text>
+ <text class="lbs" x="10" y="304">A0・A1 はつながない（アドレス 0x40。今の 0x29・0x30・0x31・0x60 と重ならない）</text>
+ <text class="lbs" x="10" y="322">IN+ と IN− を同じ所にするのは、大きな電気をセンサーに通さないため（電圧だけ測る）</text>
+</svg>
+<div class="box"><b>なぜ INA226 の GND をリポの−につながないか</b><br>
+ラズパイの GND は、DROK と Motor HAT を通して、もうリポの−につながっています。INA226 の GND を両方につなぐと、DROK の−の線がぬけたとき、ラズパイの電気（約 3A）が細いジャンパー線を流れて、線が熱くなります。なので GND はラズパイの pin 14 だけにします（測る電圧のずれは 0.05V くらい）。<br>
+もう 1 つ：リポ 1 個にすると、DROK の−と Motor HAT の−が同じ WAGO B につながります。Motor HAT はラズパイの上にのっていて GND がつながっているので、DROK の−の線がぬけると、ラズパイの電気が Motor HAT の端子台 → ラズパイの GND ピンを通って流れます（これは INA226 がなくても起きます）。なので <b>⑨（DROK の−）と ⑰（Motor HAT の−）は、つないだあと軽く引いてぬけないことを確かめ</b>、走る前にときどき見ます。<br>
+※ 前の記録（ダッシュボードの「電源の配線」）には「GND をリポの−に」と書いてあるので、そちらを直します。</div>
+</div>
+<div>
+<table>
+<tr><th>どこ</th><th>流れる電気（目安）</th><th>ヒューズ・線</th></tr>
+<tr><td>ラズパイ側（DROK の入力）</td><td>ふだん 1〜2A、いちばん多いとき約 3A（ラズパイ・AI HAT+・LiDAR・カメラで 最大 25W ÷ 9.9V ÷ 0.9）</td><td>ヒューズ 5A・18AWG（10A まで大丈夫）</td></tr>
+<tr><td>モーター側（Motor HAT）</td><td>走っているとき 1〜3A、4 個が止まりそうなほど重いとき約 5A（Motor HAT は 1 個 1.2A まで × 4）</td><td>ヒューズ 7.5A・18AWG</td></tr>
+<tr><td>リポ → WAGO A・B</td><td>上の 2 つの合計、最大 約 8A</td><td>14AWG（20A まで大丈夫）</td></tr>
+<tr><td>INA226 の線</td><td>1 mA より小さい</td><td>VBUS の線 ⑲ は 18AWG（ショートしても 5A ヒューズが切れるまで持つ）。pin 17・14・3・5 の 4 本はジャンパー線でよい</td></tr>
+</table>
+<h2 style="margin-top:4mm">電圧の目安（3 セルの合計）</h2>
+<table>
+<tr><th>電圧</th><th>1 セル</th><th>どういう時</th></tr>
+<tr><td>12.6V</td><td>4.2V</td><td>満充電</td></tr>
+<tr><td>11.4V</td><td>3.8V</td><td>何日も使わないときの保管の電圧（充電器の「保管」）</td></tr>
+<tr><td>11.1V</td><td>3.7V</td><td>まんなか</td></tr>
+<tr><td>10.5V</td><td>3.5V</td><td>ダッシュボードで「そろそろ充電」（INA226・予定）、アラームが鳴る</td></tr>
+<tr><td>9.9V</td><td>3.3V</td><td>止める（INA226・予定）。これより下まで使うとリポがいたむ</td></tr>
+</table>
+<div class="note">INA226 は 3 セルの<b>合計</b>しか見られません。1 つのセルだけ先に下がることがあるので、1 セルずつはリポ アラームで見ます。INA226 の 9.9V は「最後の守り」です。電圧を出す・止めるしくみ（ソフト）は、部品が届いてから AI さんが作ります。</div>
+<div class="note">電池が減ると、モーターの電圧も 12.6V → 9.9V に下がります。同じ速さの命令でも、空に近いと 2 割くらい遅くなります。</div>
+</div>
+</div>
+</div>
+
+<!-- ================= 4 ページ目：つなぐ順番と確かめ ================= -->
+<div class="page">
+<h2>つなぐ順番と、テスターでの確かめ（1 つずつ）</h2>
+<div class="cols">
+<div>
+<ol>
+<li><b>準備</b>：リポは<b>まだつながない</b>。スイッチ 2 個を <b>OFF</b> にする。今の CIO の線（PD トリガーケーブル 2 本・USB スイッチ 2 個）を外す。</li>
+<li>切った丸プラグの 2 本の線のうち、どちらが「中の金具」とつながっているか、テスターのピーと鳴るモードで確かめる → その線を＋（⑧、WAGO D）にする。</li>
+<li>表の ②〜⑨、⑫〜⑰、⑲ をつなぐ（WAGO は皮を 11 mm むいて、奥までさしてレバーを下げる。軽く引いてぬけなければ OK）。</li>
+<li><b>テスター（ピーと鳴るモード）</b>：XT60 線の先の＋と−の金具にあてる → <b>鳴らなければ OK</b>。鳴ったら、どこかで＋と−がふれています。つながずに AI さんに写真を送ってください。</li>
+<li>DROK の丸プラグを DROK から<b>ぬいておく</b>。Motor HAT の端子台の⑯（赤）を<b>まだ入れない</b>（線の先にテープ）。</li>
+<li>リポの XT60 を ① にさす（スイッチは 2 個とも OFF のまま）。</li>
+<li><b>テスター（直流 V、20V の所）</b>：WAGO の横の小さな四角い穴（テスターの棒を入れる穴）に、赤い棒を WAGO D、黒い棒を WAGO B に入れる → <b>0V</b> なら OK。</li>
+<li>スイッチ（ラズパイ）を <b>ON</b> → 同じ所（D と B）が <b>11〜12.6V</b> なら OK。<b>マイナス（−11V など）が出たら XT60 の＋と−が逆</b>。すぐ XT60 をぬいて、AI さんに写真を送ってください。</li>
+<li>スイッチ（ラズパイ）を OFF。丸プラグを DROK にさす。ラズパイの USB-C もさす。スイッチを ON → ラズパイが動く（赤と緑のランプ）。「つけた」と AI さんに教えてください。AI さんが電圧低下（Undervoltage）がないか見ます。</li>
+<li>スイッチ（モーター）を ON → 赤い棒を WAGO F、黒い棒を WAGO B の四角い穴に入れて <b>11〜12.6V</b> なら OK。OFF にして、⑯ の赤を Motor HAT の端子台の＋に入れてしめる。</li>
+<li>INA226 の ⑳〜㉓ は、<b>ラズパイを止めて、スイッチ（ラズパイ）を OFF にしてから</b>さす。ON にしたら、AI さんが I2C で 0x40 が見えるか確かめます。</li>
+<li>リポ アラームを ㉔ にさして、3.5V に合わせる。</li>
+</ol>
+</div>
+<div>
+<div class="box"><b>安全のこと</b><ol>
+<li>XT60 は<b>最後にさして、最初にぬく</b>。線をさわるときは XT60 をぬく。</li>
+<li>赤と黒の金具をふれさせない（ショートすると、線が一瞬で熱くなります。ヒューズは WAGO A より先の所しか守れません）。</li>
+<li>充電は、XT60 を車からぬいて、リポを車から外して、燃えにくい袋の中で。バランスの口（XH 4 ピン）も充電器にさす。5A で約 2 時間。</li>
+<li>何日も使わないときは、充電器の「保管」で 1 セル 3.8V（11.4V）にする。</li>
+<li>ふくらんだ・へこんだ・熱いリポは使わない。</li>
+<li>ラズパイを止めるときは、シャットダウンしてからスイッチ（ラズパイ）を OFF。</li>
+</ol></div>
+<div class="note"><b>まだ確かめていないこと（届いてから）</b><ol>
+<li>リポの XT60 がオスかメスか、長さ・はば・厚さ（定規で測る）</li>
+<li>INA226 のピンの印字（VBUS が別にあるか）・ピンのはんだ付けがいるか → 写真</li>
+<li>ヒューズホルダーとスイッチの線の太さ・長さ</li>
+<li>pin 3・5 の 3 又を 4 又にする方法（今の 3 又の写真を送ってください）</li>
+<li>スイッチ 2 個の置き場所（台に穴をあけるか、外に出すか）</li>
+<li>線の長さ（車の上で、WAGO の場所から各部品まで測る。目安 10〜25 cm）</li>
+</ol></div>
+<div class="note"><b>買った部品との対応</b>：XT60 線つき＝Amass 5 ペア（14AWG）、WAGO 221＝12 個入り、ヒューズホルダー＝エーモン 3367 ×2、ヒューズ＝ミニ平型セット（5A・7.5A）、スイッチ＝ミニロッカー 2 ピン 配線済み 12V 20A、INA226＝Alinan、アラーム＝yueton 1-8S、赤黒の線＝BNTECHGO 18AWG。新しく買わないもの：丸プラグ（今の PD トリガーケーブルを切って使う）、ジャンパー線（家にあるもの）。</div>
+</div>
+</div>
+</div>
+</body></html>
