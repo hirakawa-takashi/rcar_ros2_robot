@@ -1058,8 +1058,7 @@ lipo_in = [lipo_bat[0] + 2 * lipo_clr, lipo_bat[1] + 2 * lipo_clr];
 lipo_x1 = plate_w - 1.5;           // 右の壁の外側（カバーの壁の内側との間に面ファスナーを通す）
 lipo_x0 = lipo_x1 - lipo_in[0] - 2 * lipo_wall;
 lipo_y0 = 1;                       // 後ろの壁の外側
-lipo_y1 = lipo_y0 + 2 * lipo_wall + lipo_in[1];  // 前は低い縁だけ（線はリポの前の面の真ん中から出る。曲げる所 約 13 mm）
-lipo_lip = 5;                      // 前の縁の高さ（床の上から）
+lipo_y1 = lipo_y0 + lipo_wall + lipo_in[1];  // 前は開ける（IMU の橋の下へ前から差し込む。線を曲げる所 約 15 mm）
 lipo_wall_h = lipo_floor[1] + 20;
 lipo_top = lipo_floor[1] + lipo_bat[2];
 lipo_bump = [135.5, 151.5, 7.5, 17.5, 182.5];  // バンパーの腕（X 136〜151、Z 3〜7）の逃げ: X0, X1, Z, 後ろの Y, 前の Y
@@ -1081,7 +1080,6 @@ module lipo_tray() {
             for (x = [lipo_x0, lipo_x1 - lipo_wall])
                 translate([x, lipo_y0, lipo_floor[0]]) cube([lipo_wall, lipo_y1 - lipo_y0, lipo_wall_h - lipo_floor[0]]);
             translate([lipo_x0, lipo_y0, lipo_floor[0]]) cube([lipo_x1 - lipo_x0, lipo_wall, lipo_wall_h - lipo_floor[0]]);
-            translate([lipo_x0, lipo_y1 - lipo_wall, lipo_floor[0]]) cube([lipo_x1 - lipo_x0, lipo_wall, lipo_floor[1] + lipo_lip - lipo_floor[0]]);
             // IMU の柱をのせる橋（リポの上をまたぐ）
             for (x = [lipo_x0, lipo_x1 - lipo_wall])
                 translate([x, my0, lipo_floor[0]]) cube([lipo_wall, my1 - my0, bz + bt - lipo_floor[0]]);
