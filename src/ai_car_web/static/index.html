@@ -626,7 +626,7 @@
         <tr><td class="k">前 [mm]</td><td class="v" id="c_front">-</td></tr>
         <tr><td class="k">後 [mm]</td><td class="v" id="c_rear">-</td></tr>
         <tr><td class="k">しきい値 [mm]</td><td class="v" id="c_th">-</td></tr>
-        <tr><td class="k">床の基準</td><td class="v"><span id="c_cal">-</span> <button id="c_cal_btn">床の補正</button></td></tr>
+        <tr><td class="k">床の基準</td><td class="v"><button id="c_cal_btn">床の補正</button> <span id="c_cal">-</span></td></tr>
       </table>
     </div>
   </div>
@@ -2540,11 +2540,14 @@ function renderCliff(c) {
       (c.bump_height_cm > 0 ? `・+${fmt(c.bump_height_cm * 10, 0)} 以上` : '') + 'で段差（床 0）' : '-';
   const fc = alive ? c.floor_calibration : null;
   const cal = document.getElementById('c_cal');
+  const failed = fc && fc.result && !fc.result.startsWith('補正しました');
   cal.textContent = !fc ? '-' : fc.recording
     ? `記録中 あと ${fmt(fc.remaining_s, 0)} 秒`
-    : (fc.result || (fc.calibrated_at ? `補正済（${fc.calibrated_at}）` : '設定の値'));
-  cal.title = fc && c.sensors ? ['front', 'rear'].map(s => c.sensors[s]
+    : (failed ? 'できませんでした' : (fc.calibrated_at ? `済 ${fc.calibrated_at.slice(5)}` : '設定の値'));
+  cal.className = failed ? 'badge warn' : '';
+  const floors = fc && c.sensors ? ['front', 'rear'].map(s => c.sensors[s]
     ? `${c.sensors[s].label} ${fmt(c.sensors[s].floor_distance_m * 1000, 0)} mm` : '').join('・') : '';
+  cal.title = fc ? [fc.result, `床 ${floors}`].filter(Boolean).join('\n') : '';
   document.getElementById('c_cal_btn').disabled = !fc || fc.recording || !c.connected;
 }
 document.getElementById('c_cal_btn').addEventListener('click', () => {
