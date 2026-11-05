@@ -32,6 +32,9 @@ esac
 pc() { ssh "${O[@]}" "$PC" "$1"; }
 LOG=$HOME/mirror-$KIND.log
 log() { echo "$(date '+%F %T') $*" | tee -a "$LOG"; }
+# 同じ機械のコピーは 1 つだけ（2 つが同じファイルに足すと PC のファイルがこわれる）
+exec 9>"$HOME/.mirror-$KIND.lock"
+flock -n 9 || { echo "$(date '+%F %T') skip 別のコピーが動いている" >> "$LOG"; exit 3; }
 
 if [ -z "$F" ]; then
   M=$(src "ls -1 $SD/${PFX}*.manifest.json 2>/dev/null | sort | tail -1")
