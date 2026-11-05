@@ -36,6 +36,7 @@
 - 2026-11-01（v2.0.2）: Jetson実機の face_id（顔認識、jetson-face.service として稼働中）と voice_chat（Bluetooth声会話）をリポジトリ `jetson/` に取り込み。models（onnx 38MB）と data（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS・CHANGELOGに反映
 - 2026-11-03（v2.0.3）: 電源をリポ 3S 11.1V 10000mAh 1 個にする予定の配線（`architecture.yaml` の `power_wiring` に点線の予定 2 つ）と部品一覧（HARDWARE_BOM）を追加。説明だけでコード変更なし。電圧センサー（INA226）と新しい箱は部品が届いてから別の PR。
 - 2026-11-05（v2.2.0）: LiDAR を RPLIDAR A1M8 → C1 に交換。driver を workspace の rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` を C1 の by-id・460800bps・`scan_mode: Standard` に更新。向き（`scan_angle_offset_deg` / URDF の `laser_yaw_deg`）は C1 で実測して −176.2°（C1 の 0° は後ろ向き。カメラの真ん前 50 cm の封筒が生の角度 176.2° に見えた）。高さは前の値のまま
+- 2026-11-05（v2.4.0）: ダッシュボードのラズパイのカードに「ディスク [GB]」（使っている量 / 全体・%）を足し、ミニコンのカードのディスクにも % を足した（90% 以上で黄色）
 - 2026-11-03（v2.1.2）: 配線図 PDF に充電するときの配線（充電器 X2 AC プラス 200、LiPo・Balance CHG・3S・5.0A）
 - 2026-11-03（v2.1.1）: リポ 1 個のくわしい配線図 `docs/power/lipo_wiring.pdf`。INA226 の GND はラズパイの pin 14 だけ（リポの−にはつながない）
 - 2026-11-03（v2.1.0）: 3D の部品どうしのぶつかりを自動で調べる `hardware/3d/check_interference.py`（STL を作り直したら 1 回実行。ぶつかりがあると終了コード 1）
