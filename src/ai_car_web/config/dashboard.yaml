@@ -25,7 +25,7 @@ dashboard_node:
     # 「出力」の初期値（%）。手動（Web・ゲームパッド）は max_* × 出力、自動も drive_mode_node でこれ以下にする
     output_percent: 15.0
     drive_output_topic: "/drive_output"
-    # CPU 負荷軽減のため画面更新 5Hz、LiDAR 点群は 360 点に間引き
+    # 画面更新 10Hz。LiDAR の図に送る点は最大 720（C1 の /scan は 0.5° ごとの 720 点なので、間引かない。360 なら 1 こおき）
     telemetry_rate: 10.0
     scan_max_points: 720
     # 40 ピンヘッダーの配線表。空なら share/ai_car_web/config/gpio_pins.yaml
