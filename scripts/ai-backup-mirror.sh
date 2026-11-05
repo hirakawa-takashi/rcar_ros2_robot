@@ -15,8 +15,9 @@ O=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliv
 if [ "$KIND" = videos ]; then
   LOG=$HOME/mirror-videos.log
   echo "$(date '+%F %T') start videos → $PC:$W/ai-car-videos" | tee -a "$LOG"
-  if rsync -a --partial -e "ssh ${O[*]}" "$HOME"/AI-CAR_ws/videos "$HOME"/AI-CAR_ws/videos_old_* \
-       "$PC:$W/ai-car-videos/" 2>&1 | tee -a "$LOG"; then
+  rsync -a --partial -e "ssh ${O[*]}" "$HOME"/AI-CAR_ws/videos "$HOME"/AI-CAR_ws/videos_old_* \
+    "$PC:$W/ai-car-videos/" 2>&1 | tee -a "$LOG"
+  if [ "${PIPESTATUS[0]}" -eq 0 ]; then
     echo "$(date '+%F %T') OK videos" | tee -a "$LOG"; exit 0
   fi
   echo "$(date '+%F %T') NG videos" | tee -a "$LOG"; exit 1
