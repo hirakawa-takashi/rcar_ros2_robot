@@ -46,6 +46,7 @@ except ImportError:
     SlamReset = DeserializePoseGraph = SerializePoseGraph = None
 
 from ai_car_web.architecture import VIDEO_DIR, load_architecture, read_program
+from ai_car_web import backup_progress
 from ai_car_web.dev_diary import find_repo, query_dev_diary, sync_dev_diary
 from ai_car_web.version import load_version
 from ai_car_web.gpio_pinout import build_pinout
@@ -338,6 +339,10 @@ POWEROFF_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'poweroff']
 UPGRADE_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-upgrade.service']
 BACKUP_CMD = ['sudo', '-n', '/usr/bin/systemctl', 'start', '--no-block', 'ai-car-backup.service']
 RESTORE_CHECK = ['sudo', '-n', '/usr/local/sbin/ai-car-restore', 'ai-car-*']
+JETSON_SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
+              '-o', 'ConnectTimeout=8', 'jetson@192.168.11.23']
+BACKUP_WATCH_S = 5.0
+BACKUP_WATCH_JETSON_IDLE_S = 30.0
 # 復元二重発動防止：発動時刻を覚え、窓の間の再発動を断る（Piは復元でダッシュボードが一度止まるので再起動後リセット）
 # 単一ユーザー運用なので、失敗時に窓を解除しない（Pi 8分・Jetson 11分の窓で許容）
 restore_started = {'pi': 0.0, 'jetson': 0.0}
@@ -554,6 +559,8 @@ class DashboardNode(Node):
         self.diary_db = self.get_parameter('diary_db').value
         if self.repo_dir:
             threading.Thread(target=self._sync_diary, daemon=True).start()
+        self.backup_progress = backup_progress.ProgressTracker(BACKUP_WATCH_S)
+        threading.Thread(target=self._watch_backups, daemon=True).start()
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
             float(self.get_parameter('scan_angle_offset_deg').value))
@@ -2442,6 +2449,34 @@ class DashboardNode(Node):
         self.get_logger().info('ダッシュボードからラズパイの更新を始めました')
         return {'ok': True}
 
+    def _watch_backups(self):
+        """5 秒ごとに、ラズパイと Jetson のバックアップのファイルを作っている・読み出しているかを見る。"""
+        pi_dir = os.path.expanduser('~/ai-car-backups')
+        with open(backup_progress.__file__, encoding='utf-8') as f:
+            remote_src = f.read()
+        jetson_checked = 0.0
+        while rclpy.ok():
+            try:
+                self.backup_progress.update('pi', backup_progress.scan_dir(pi_dir))
+            except Exception as e:  # noqa: BLE001  見張りを止めない
+                self.get_logger().warning(f'バックアップの様子を調べられません: {e}', throttle_duration_sec=600)
+            now = time.time()
+            busy = any(j['host'] == 'jetson' and j['state'] in ('run', 'stall')
+                       for j in self.backup_progress.snapshot(now)['jobs'])
+            if busy or now - jetson_checked >= BACKUP_WATCH_JETSON_IDLE_S:
+                jetson_checked = now
+                try:
+                    r = subprocess.run(JETSON_SSH + ['python3', '-', '/home/jetson/jetson-backups'],
+                                       input=remote_src, capture_output=True, text=True,
+                                       timeout=15, check=False)
+                    if r.returncode == 0:
+                        self.backup_progress.update('jetson', json.loads(r.stdout))
+                    else:
+                        self.backup_progress.lost('jetson')
+                except (OSError, subprocess.TimeoutExpired, ValueError):
+                    self.backup_progress.lost('jetson')
+            time.sleep(BACKUP_WATCH_S)
+
     def _sync_diary(self):
         try:
             added = sync_dev_diary(self.repo_dir, self.diary_db)
@@ -2855,6 +2890,10 @@ def create_app(node: DashboardNode) -> FastAPI:
                           'bytes': int(m.get('tar_bytes', 0)), 'sha256': m.get('tar_sha256', '')[:12]})
         return {'items': items, 'sudo_ok': _can_sudo(BACKUP_CMD), 'dir': d}
 
+    @app.get('/api/backup/progress')
+    def backup_progress_now():
+        return node.backup_progress.snapshot()
+
     @app.post('/api/restore', dependencies=[Depends(require_token)])
     def restore_start(req: RestoreRequest):
         name = req.name
@@ -2887,9 +2926,6 @@ def create_app(node: DashboardNode) -> FastAPI:
                         " >> /home/jetson/jetson-backups/restore.log 2>&1 &"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {'ok': True, 'note': 'Jetson復元開始（約10分・Jetsonのサービスが一度止まり自動復帰）'}
-
-    JETSON_SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
-                  '-o', 'ConnectTimeout=8', 'jetson@192.168.11.23']
 
     @app.get('/api/jetson_backup')
     def jetson_backup_list():
