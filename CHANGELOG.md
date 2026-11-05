@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-05
+
+- `scripts/ai-backup-mirror.sh` を足した（ユーザーの頼み：Devin を終えてもバックアップの PC へのコピーが終わるように）。ラズパイで super が手動で `bash scripts/ai-backup-mirror.sh pi|jetson [ファイル名.tar.zst]` と動かす（名前を省くと manifest のある一番新しいもの）。ラズパイから PC（WSL）へ直接 ssh で送る（Jetson の分は `ssh jetson … tail -c` をラズパイで受けて PC へ）。PC にとちゅうまであれば続きから、切れたら 6 回までやり直す。大きさが同じになったら manifest もコピーし、PC で `sha256sum` を manifest の `tar_sha256` と照合する。記録は `~/mirror-pi.log`・`~/mirror-jetson.log`。定時には動かさない。
+  - 前は Devin の VM を通して送っていて、1 秒に約 1 MB で、Devin を終えると止まった。ラズパイから直接だと 1 秒に約 7〜16 MB（2026-11-05 の実機：Jetson の残り 1.8 GB が 4 分、ラズパイ・Jetson とも sha256 が合った）。
+  - ラズパイの公開鍵を PC の WSL の `authorized_keys` に入れた（2026-11-05、ユーザーの OK）。
+
 ## [2.5.0] - 2026-11-05
 
 - ダッシュボードの「バックアップ」カードに「バックアップ中の様子」を足した（ユーザーの頼み：バックアップ中は表と、様子がわかるモニターのグラフを出す）。
