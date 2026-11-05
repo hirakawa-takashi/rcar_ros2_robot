@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-11-05
+
+- README の「ラズパイ系統：Pi SSD 内 `~/ai-car-backups/`」を「Pi の SD カード内」に直した。ラズパイのバックアップは、システムと同じ SD カード（`/dev/mmcblk0p2`、117 GB）にある。SD がこわれたときに助かるのは PC ミラーだけ。説明だけの変更。
+- （リポジトリの外）PC の `ai-car-backups` にまちがって入っていた `jetson-20261028_085304-L4T36.4.7.manifest.json` を消した。`jetson-backups` に同じ中身のものがある（`cmp` で同じと確かめた）。
+
 ## [2.6.0] - 2026-11-05
 
 - `scripts/ai-backup-mirror.sh` を足した（ユーザーの頼み：Devin を終えてもバックアップの PC へのコピーが終わるように）。ラズパイで super が手動で `bash scripts/ai-backup-mirror.sh pi|jetson [ファイル名.tar.zst]` と動かす（名前を省くと manifest のある一番新しいもの）。ラズパイから PC（WSL）へ直接 ssh で送る（Jetson の分は `ssh jetson … tail -c` をラズパイで受けて PC へ）。PC にとちゅうまであれば続きから、切れたら 6 回までやり直す。大きさが同じになったら manifest もコピーし、PC で `sha256sum` を manifest の `tar_sha256` と照合する。記録は `~/mirror-pi.log`・`~/mirror-jetson.log`。定時には動かさない。

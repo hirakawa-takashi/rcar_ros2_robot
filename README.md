@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.6.0（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.6.1（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -332,7 +332,7 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 
 ラズパイ と Jetson は別系統でバックアップする。バックアップ＝zstd tar＋`manifest.json`（tar の sha256 含む）で、それぞれの機械のディスクに保存し、Windows PC へミラーする（PC `Strata/Workspace/ai-car-backups` ＝ラズパイ系統、`jetson-backups` ＝Jetson系統、sha256照合済み）。
 
-- **ラズパイ系統**：Pi SSD 内 `~/ai-car-backups/`（輪転30個、`AI_CAR_BACKUP_KEEP`）。命名 `ai-car-<日時>-v<version>-<gitsha>`。
+- **ラズパイ系統**：Pi の SD カード内 `~/ai-car-backups/`（`/dev/mmcblk0p2`、システムと同じディスク。SD がこわれたときに助かるのは PC ミラーだけ）（輪転30個、`AI_CAR_BACKUP_KEEP`）。命名 `ai-car-<日時>-v<version>-<gitsha>`。
 - **Jetson系統**：Jetson NVMe 内 `~/jetson-backups/`（輪転30個、`JETSON_BACKUP_KEEP`。空き723GBで30個≈102GB収まる）。命名 `jetson-<日時>-v<L4T版>`（REVISION動的抽出）、manifest に `jetson_version`。
 - **作る（ラズパイ）**：Piのバージョンアップ時に作る（PRマージ前、strata側で自動化＝開発フック）。手動作成はSSHで `bash scripts/ai-car-backup.sh`（superで可、私に依頼）。定時timer（毎日04:00）は廃止（`ai-car-backup.timer` 除去。`install_service.sh` 再実行で古いtimer無効化＋ユニットファイル削除）。カードの作成ボタンはv1.31.7で削除（カードはドロップダウン＋復元ボタン）。
 - **作る（Jetson）**：Piのバージョンアップ反映時にPi経由SSHで作る（strata、約10分、シャットダウンしない）。手動作成はSSHで `bash ~/ai-jetson-backup.sh`（私に依頼）。定時crontab（毎日04:00）は削除。カードの作成ボタンはv1.31.8で削除。
