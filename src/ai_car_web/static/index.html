@@ -759,6 +759,7 @@
       <tr><td class="k">Jetson 復元</td><td class="v"><button id="jr_restore">選んだJetsonバックアップを復元</button> <span id="jr_msg"></span></td></tr>
     </table>
     <div class="bp_head">バックアップ中の様子 <span class="badge" id="bp_state">-</span></div>
+    <div id="bp_mirror" class="note"></div>
     <div id="bp_idle" class="note">いまはバックアップしていません（ラズパイは 5 秒、Jetson は 30 秒ごとに見ています。root で動く復元・照合は、ファイルを読んでいるのが見えないので出ません）</div>
     <canvas id="bp_chart" width="960" height="300" hidden title="上：進み [%]、下：速さ [MB/s]。色は表の ● と同じ"></canvas>
     <table id="bp_table" class="bptable" hidden>
@@ -4342,6 +4343,20 @@ function drawBackupChart(cv, jobs, now) {
     g.stroke();
   });
 }
+function renderMirror(m) {
+  const el = document.getElementById('bp_mirror');
+  if (!m) { el.textContent = ''; return; }
+  el.innerHTML = ['pi', 'jetson'].map(k => {
+    const s = m[k] || {}, last = s.last;
+    const v = s.ok_file ? (/-v(\d+\.\d+\.\d+)/.exec(s.ok_file) || /-L4T(\d+\.\d+\.\d+)/.exec(s.ok_file)) : null;
+    const d = s.ok_file ? /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(s.ok_file) : null;
+    const what = d ? `${d[2]}-${d[3]} ${d[4]}:${d[5]}${v ? (k === 'jetson' ? ' L4T ' : ' v') + v[1] : ''} の分` : '';
+    let txt = s.ok_time ? `${badge('ok', 'sha256 OK')} ${esc(s.ok_time.slice(5, 16))}（${esc(what)}）` : badge('warn', 'まだ');
+    if (s.running) txt = `${badge('ok', '送っている')} ` + txt;
+    else if (last && !last.ok) txt += ` ${badge('warn', 'NG')} ${esc(last.time.slice(5, 16))} ${esc(last.text)}`;
+    return `PC へのコピー（${esc(BP_HOST[k] || k)}）：${txt}`;
+  }).join('<br>') + (m.enabled ? '' : '<br>自動で送るのは止めています（backup_auto_mirror: false）');
+}
 let bpWasActive = false;
 function renderBackupProgress(j) {
   const jobs = (j.jobs || []).slice().sort((a, b) =>
@@ -4369,6 +4384,7 @@ function renderBackupProgress(j) {
       `<td>${hms(r.elapsed_s)} / ${hms(r.eta_s)}</td><td>${badge(cls, word)}</td></tr>`;
   }).join('');
   if (jobs.length) drawBackupChart(cv, jobs, j.now);
+  renderMirror(j.mirror);
   if (bpWasActive && !run.length) { loadBackup(); loadJetsonBackup(); }
   bpWasActive = run.length > 0;
   return run.length > 0;
