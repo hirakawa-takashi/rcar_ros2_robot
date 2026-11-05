@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.8.1（2026-11-05）
+- バージョン: 2.8.2（2026-11-06）
 - 更新日: 2026-11-05
 - 更新概要: LiDAR を RPLIDAR A1M8 から RPLIDAR C1 に交換（dTOF・最大 12 m・CP2102N 460800bps）。driver を workspace の公式 rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` のポートを C1 の by-id・460800bps・`scan_mode: Standard` に更新。apt の 2.1.0 では C1 が `Cannot start scan: 80008002` で回らなかった。LiDAR の向き・高さの値は前と同じまま（C1 で測り直しが必要）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）

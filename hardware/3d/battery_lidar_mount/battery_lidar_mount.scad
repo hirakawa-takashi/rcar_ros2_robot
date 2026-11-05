@@ -1,4 +1,4 @@
-// AI-CAR バッテリー 2 個 + RPLIDAR A1M8 マウント
+// AI-CAR バッテリー 2 個 + RPLIDAR C1 マウント
 // 座標: 天板 154 x 200 mm の左下角が原点。X = 横幅方向、Y = 前後方向（Y=200 側が前 / LiDAR 側）
 // 天板の穴位置は Y 方向に対称なので、前後どちら向きでも同じ穴に合う。
 //
@@ -17,6 +17,8 @@ show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
 power = "cio";        // "cio"（いまの CIO 2 個）| "lipo"（3S リポ 1 個を天板の右はしに置く予定の形）
 lipo = power == "lipo";
+lidar_model = "c1";   // "c1"（いまの RPLIDAR C1）| "a1m8"（前の RPLIDAR A1M8）
+a1m8 = lidar_model == "a1m8";
 
 $fn = 48;
 
@@ -241,11 +243,21 @@ tof_face_t = 2;
 lid_t = 4;
 lidar_tower_h = 48;     // LiDAR 取付面より下に出ている部分（約 26.5 mm）をかわし、ヘッドをカバーの上面（82.4 mm）より上に出す高さ
 lidar_tower_d = 8.5;
-lidar_floor = 4;        // 柱の上端に残す厚さ。LiDAR 底面の M2.5 ねじ穴へ、ふたの裏から柱の中を通したネジで留める
+lidar_floor = a1m8 ? 4 : 5;  // 柱の上端に残す厚さ。LiDAR 底面の M2.5 ねじ穴へ、ふたの裏から柱の中を通したネジで留める
+                             // C1 は M2.5 x 8 mm で 3 mm 入る（C1 のデータシート: 4 mm より深く入れない）
 lidar_motor_front = true; // LiDAR のモーター側（細い側）を前（+Y）に向ける
 // RPLIDAR A1M8 取付穴（回転中心基準、データシート Figure 5-2）
 //   ヘッド側 2 穴: 中心から 28 mm、間隔 56 mm / モーター側 2 穴: 中心から 42 mm、間隔 40 mm
-lidar_holes_rel = [[-28, 28], [28, 28], [-20, -42], [20, -42]];
+a1m8_holes_rel = [[-28, 28], [28, 28], [-20, -42], [20, -42]];
+// RPLIDAR C1 取付穴（回転中心基準、データシート Figure 4-1）: 底面 55.6 mm 角、M2.5 が 43 x 43 mm の 4 か所（深さ 4 mm）
+lidar_holes_rel = a1m8 ? a1m8_holes_rel
+                       : [[-21.5, 21.5], [21.5, 21.5], [-21.5, -21.5], [21.5, -21.5]];
+// C1 の形（データシート Figure 4-1）。ヘッドの太さは図からの読み取り
+c1_base = 55.6;
+c1_base_h = 23.1;
+c1_head_d = 51;
+c1_h = 41.3;
+c1_cable_front = true;  // ケーブルの出口を前（+Y）に向ける（0° が後ろ向き。scan_angle_offset_deg −176.2° で実測した向き）
 lidar_dx = lipo ? 9.25 : -8;          // 左へ寄せる（ROS の TF と dashboard.yaml のカメラとの位置の差に反映済み。動かすときは両方を直す）
 lidar_cx = box_cx + lidar_dx;
 lidar_motor_d = 32;     // 取付面より下に出るモーター（回転中心から 45.5 mm、取付面から 26.5 mm 下まで）
@@ -665,7 +677,7 @@ module batteries() {
                 cube([bat_x, bat_y, bat_z - 0.2]);
 }
 
-module lidar_ghost() {
+module a1m8_ghost() {
     z = box_h + lid_t + lidar_tower_h;
     s = lidar_motor_front ? -1 : 1;
     color("black", 0.6) translate([0, 0, z]) {
@@ -679,6 +691,19 @@ module lidar_ghost() {
         translate([lidar_cx - 30, lidar_cy - 30, -lidar_core_below]) cube([60, 60, lidar_core_below]);
     }
 }
+
+// C1: 底の四角（取付面から上）、ヘッド、ケーブルの出口
+module c1_ghost() {
+    z = box_h + lid_t + lidar_tower_h;
+    s = c1_cable_front ? 1 : -1;
+    color("black", 0.6) translate([lidar_cx, lidar_cy, z]) {
+        translate([-c1_base / 2, -c1_base / 2, 0]) cube([c1_base, c1_base, c1_base_h]);
+        cylinder(d = c1_head_d, h = c1_h);
+        translate([-4, s > 0 ? c1_base / 2 : -c1_base / 2 - 10, 0]) cube([8, 10, 6]);
+    }
+}
+
+module lidar_ghost() { if (a1m8) a1m8_ghost(); else c1_ghost(); }
 
 // 配線経路の目安（組立図のみ）
 module path(pts, d) {
@@ -844,11 +869,11 @@ cov_oy0 = cov_y0 - cov_t;
 cov_oy1 = cov_y1 + cov_t;
 cov_oz = cov_top + cov_t;
 
-// LiDAR を真上へ抜くための外形（ヘッド、柱 4 本、前のモーター側）
+// LiDAR を真上へ抜くための外形（A1M8 のヘッド、柱 4 本、前のモーター側）。C1 の柱（43 mm 角）もこの中に入るので、カバーは A1M8 のときのまま
 module cover_lidar_cut() {
     hull() {
         translate([lidar_cx, lidar_cy]) circle(r = 38);
-        for (p = lidar_holes_rel) translate(lidar_hole(p)) circle(r = 8);
+        for (p = a1m8_holes_rel) translate([lidar_cx + p[0], lidar_cy - p[1]]) circle(r = 8);
         translate([lidar_cx, lidar_cy + 47]) circle(r = 16);
     }
 }
@@ -1177,7 +1202,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x - end_fill, in_y, in_z]
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
      screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
      bat_disp_rect = disp_rect(),
-     lidar_tower_x_max = lidar_cx + 28 + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + lidar_motor_d / 2,
+     lidar_tower_x_max = lidar_cx + max([for (p = lidar_holes_rel) p[0]]) + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + lidar_motor_d / 2,
      lidar_motor_bottom_z = box_h + lid_t + lidar_tower_h - lidar_below, lid_top_z = box_h + lid_t,
      motor_recess = [for (p = motor_scr_pts) [p[0] - recess_clr, p[1] - recess_clr, p[0] + motor_scr_sq + recess_clr, p[1] + motor_scr_sq + recess_clr]], recess_t = recess_t,
      lid_screw_head_x_min = boss_pts[1][0] - head_d(3) / 2,
