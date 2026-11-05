@@ -27,8 +27,7 @@ if [ -z "$F" ]; then
   [ -n "$M" ] || { log "NG バックアップがない: $SD"; exit 1; }
   F=$(basename "${M%.manifest.json}").tar.zst
 fi
-case "$F" in ${PFX}*.tar.zst) ;; *) log "NG 名前がちがう: $F"; exit 2 ;; esac
-case "$F" in */*|*" "*) log "NG 名前がちがう: $F"; exit 2 ;; esac
+[[ "$F" =~ ^${PFX}[A-Za-z0-9._-]+\.tar\.zst$ ]] || { log "NG 名前がちがう: $F"; exit 2; }
 M=${F%.tar.zst}.manifest.json
 
 log "start $F → $PC:$D"
@@ -42,10 +41,13 @@ for try in 1 2 3 4 5 6; do
 done
 S=$(pc "stat -c %s '$D/$F' 2>/dev/null || echo 0")
 [ "$S" -eq "$TOTAL" ] || { log "NG 大きさがちがう: PC $S / $TOTAL"; exit 1; }
-src "cat $SD/$M" | pc "cat > '$D/$M'"
-WANT=$(src "cat $SD/$M" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tar_sha256"])')
+MJ=$(src "cat $SD/$M") || { log "NG manifest が読めない"; exit 1; }
+WANT=$(printf '%s' "$MJ" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tar_sha256"])') \
+  || { log "NG manifest がこわれている"; exit 1; }
 GOT=$(pc "sha256sum '$D/$F'" | cut -d' ' -f1)
 if [ -n "$WANT" ] && [ "$WANT" = "$GOT" ]; then
+  printf '%s\n' "$MJ" | pc "cat > '$D/$M.part' && mv '$D/$M.part' '$D/$M'" \
+    || { log "NG manifest を PC に置けない"; exit 1; }
   log "OK sha256 $GOT $F"
 else
   log "NG sha256 want=$WANT got=$GOT $F"; exit 1
