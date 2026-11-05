@@ -12,6 +12,7 @@
   - **LiDAR の向きの測り直しが要る**: `scan_angle_offset_deg` −1.7°・URDF の `laser_yaw_deg`・取りつけ高さは A1M8 の実測値。C1 は寸法（55.4 mm 角・高さ 33 mm）・内部光学が違うので前方方位がずれている可能性がある。当て推量で変えず前の値のまま（実測して決める）。
   - CAD（`battery_lidar_mount` の LiDAR 取付穴は A1M8 寸法）の作り直しは別作業。`slam_toolbox.yaml` の 12 m は C1 でもそのまま妥当。
   - `architecture.yaml`・README・`PROJECT_STATUS.md`・`HARDWARE_BOM.md` の「RPLIDAR A1M8」を C1 に更新。
+  - 実機（2026-11-05 20:11 にダッシュボードを再起動）: workspace の `rplidar_composition` が動き、`/scan` は 10.0 Hz、1 回 720 点のうち 626 点が 0.15〜6.58 m を測れた。再起動のあと watchdog の USB のつなぎ直しは 0 回。
 
 ## [2.1.2] - 2026-11-03
 

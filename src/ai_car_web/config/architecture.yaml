@@ -111,7 +111,7 @@ hardware:
     - {id: ai_hat, label: AI HAT+, sub: Hailo-8 NPU 26 TOPS, bus: PCIe（GPIO ヘッダー経由）, power: 5V, jump: hat, side: top}
     - {id: motor_hat, label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2, bus: I2C 0x60, power: 12V（モーター）, jump: motor, side: right}
     - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
-    - {id: lidar, label: RPLIDAR C1, sub: 2D LiDAR（dTOF）最大 12 m / 約 8 Hz, bus: USB シリアル（CP2102N 460800bps）, power: 5V, side: left}
+    - {id: lidar, label: RPLIDAR C1, sub: 2D LiDAR（dTOF）最大 12 m / 約 10 Hz, bus: USB シリアル（CP2102N 460800bps）, power: 5V, side: left}
     - {id: camera, label: Camera Module 3 Wide（SC0874）, sub: IMX708 / 横 102° / 960×540 30fps, bus: CSI（フラットケーブル）, power: 3V3（Pi から）, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz（AMG モード、向きはラズパイで計算）, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
@@ -642,7 +642,7 @@ nodes:
   - id: rplidar
     label: rplidar（rplidar_ros）
     file: 外部パッケージ ros-jazzy-rplidar-ros
-    role: RPLIDAR C1 を読み /scan を約 8 Hz で publish（launch 側で respawn。driver は workspace の rplidar_ros 2.1.4・コミット 24cc9b6 固定）
+    role: RPLIDAR C1 を読み /scan を約 10 Hz で publish（launch 側で respawn。driver は workspace の rplidar_ros 2.1.4・コミット 24cc9b6 固定）
     publishes: [/scan]
     subscribes: []
     params: []
