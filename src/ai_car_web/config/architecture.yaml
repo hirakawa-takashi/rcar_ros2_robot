@@ -100,7 +100,7 @@ system:
     - {from: jetson, to: stackchan, short: 返事, desc: 返事の声（Opus 24 kHz）と顔の表情（考え中・笑顔）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（5 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
     - {from: jetson, to: pc, short: 声, desc: 返事の文を VOICEVOX のえらんだ声にする（CPU。ネットの会話のときも、ネットの声のかわりに読む）。10 秒ごとに見て、だめならミニコンの Kokoro, via: 'HTTP 50021（Tailscale）', state: done, both: true}
-    - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・更新の状況。ダッシュボードの Jetson のカードで「パソコン」を押すと出す（表示だけ）, via: 'POST /api/mypc/status（API トークン）', state: done}
+    - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・更新の状況。受け取るだけで、ダッシュボードには出さない（v2.2.1 で切りかえボタンを削除）, via: 'POST /api/mypc/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
     - {from: person, to: stackchan, short: 話す, desc: 「スタックちゃん」と呼んで会話モードにし、声で話しかけて返事を聞く（30 秒だまると「じゃあ、またね。」）, via: 声, state: done, both: true}
 
