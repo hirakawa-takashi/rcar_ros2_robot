@@ -11,7 +11,8 @@
   - グラフ：上が進み [%]、下が速さ [MB/s]（横は時刻）。終わった仕事は 15 分のこる。
   - しくみ：新しい `ai_car_web/backup_progress.py`。`~/ai-car-backups`（ラズパイ）・`/home/jetson/jetson-backups`（Jetson、同じファイルを `ssh … python3 -` で送る）の `.tar.zst` を開いているプロセスを `/proc/<pid>/fd`・`fdinfo` の `pos` から見つける（書いている＝作る、`sha256sum`＝照合、それ以外の読み出し＝コピー）。manifest のない `.tar.zst` が 90 秒以内に大きくなっていても「作る」とする（root で動くサービスのときはプロセスが見えないため。全体は前のバックアップの大きさで「約」）。
   - ダッシュボードの見張りのスレッドが、ラズパイは 5 秒ごと、Jetson はふだん 30 秒・バックアップ中は 5 秒ごとに見る。`GET /api/backup/progress`（見るだけ）。
-  - PC 側（WSL）で受けとる様子や、PC での sha256 照合は見えない（ラズパイ・Jetson から読み出した量で進みを出す）。
+  - PC 側（WSL）で受けとる様子や、PC での sha256 照合は見えない（ラズパイ・Jetson から読み出した量で進みを出す）。root で動く復元（`ai-car-restore`・`ai-jetson-restore`）と、root のサービスの sha256 照合も、読み出しが見えないので出ない（root のサービスの「作る」は、manifest があとからできたら「終わった」になる）。
+  - Jetson に SSH できなくなったら、動いていた仕事は「見えない（Jetson につながらない）」にして、15 分で消す。
 
 ## [2.4.2] - 2026-11-05
 

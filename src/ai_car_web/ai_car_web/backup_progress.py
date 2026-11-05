@@ -152,13 +152,31 @@ class ProgressTracker:
                 if len(rec['samples']) > MAX_SAMPLES:
                     rec['samples'] = rec['samples'][::2]
             complete = scan.get('complete', {})
-            for key, rec in list(self.jobs.items()):
-                if rec['host'] != host:
+            for key, rec in self.jobs.items():
+                if rec['host'] != host or key in seen:
                     continue
-                if rec['state'] == 'run' and key not in seen:
+                if rec['state'] == 'run':
                     self._end(rec, complete, now)
-                elif rec['state'] != 'run' and now - rec['last'] > KEEP_ENDED_S:
-                    del self.jobs[key]
+                elif rec['state'] == 'stopped' and rec['kind'] == 'create' and rec['file'] in complete:
+                    # root の sha256 照合はプロセスが見えないので、manifest があとからできることがある
+                    rec['state'] = 'done'
+                    rec['bytes'] = rec['total'] = complete[rec['file']]
+                    rec['estimated'] = False
+            self._prune(now)
+
+    def lost(self, host, now=None):
+        """host を調べられなかった（SSH 不通など）。動いていた仕事は「見えない」にする。"""
+        now = time.time() if now is None else now
+        with self.lock:
+            for rec in self.jobs.values():
+                if rec['host'] == host and rec['state'] == 'run':
+                    rec['state'] = 'lost'
+                    rec['ended'] = rec['last'] = now
+            self._prune(now)
+
+    def _prune(self, now):
+        for key in [k for k, r in self.jobs.items() if r['state'] != 'run' and now - r['last'] > KEEP_ENDED_S]:
+            del self.jobs[key]
 
     def _end(self, rec, complete, now):
         rec['ended'] = now

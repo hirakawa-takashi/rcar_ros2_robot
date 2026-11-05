@@ -2471,8 +2471,10 @@ class DashboardNode(Node):
                                        timeout=15, check=False)
                     if r.returncode == 0:
                         self.backup_progress.update('jetson', json.loads(r.stdout))
+                    else:
+                        self.backup_progress.lost('jetson')
                 except (OSError, subprocess.TimeoutExpired, ValueError):
-                    pass
+                    self.backup_progress.lost('jetson')
             time.sleep(BACKUP_WATCH_S)
 
     def _sync_diary(self):

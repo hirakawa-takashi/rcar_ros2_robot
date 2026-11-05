@@ -759,7 +759,7 @@
       <tr><td class="k">Jetson 復元</td><td class="v"><button id="jr_restore">選んだJetsonバックアップを復元</button> <span id="jr_msg"></span></td></tr>
     </table>
     <div class="bp_head">バックアップ中の様子 <span class="badge" id="bp_state">-</span></div>
-    <div id="bp_idle" class="note">いまはバックアップしていません（ラズパイは 5 秒、Jetson は 30 秒ごとに見ています）</div>
+    <div id="bp_idle" class="note">いまはバックアップしていません（ラズパイは 5 秒、Jetson は 30 秒ごとに見ています。root で動く復元・照合は、ファイルを読んでいるのが見えないので出ません）</div>
     <table id="bp_table" class="bptable" hidden>
       <thead><tr><th>機械</th><th>すること</th><th>進み [GB]</th><th>速さ [MB/s]</th><th>経過 / 残り</th><th>状態</th></tr></thead>
       <tbody id="bp_rows"></tbody>
@@ -4269,7 +4269,7 @@ document.getElementById('bk_restore').addEventListener('click', () => {
 
 const BP_KIND = {create: '作る', copy: 'PC へコピー（送り出し）', verify: 'sha256 の照合', restore: '中身を読む（復元）'};
 const BP_HOST = {pi: 'ラズパイ', jetson: 'Jetson'};
-const BP_STATE = {run: ['ok', '進んでいる'], stall: ['warn', '止まっている？'], done: ['ok', '終わった'], stopped: ['warn', '途中で終わった']};
+const BP_STATE = {run: ['ok', '進んでいる'], stall: ['warn', '止まっている？'], done: ['ok', '終わった'], stopped: ['warn', '途中で終わった'], lost: ['warn', '見えない（Jetson につながらない）']};
 const BP_COLORS = ['#35e39a', '#5ab0ff', '#f5b942', '#ff6b8b', '#c38bff'];
 const bpActive = r => r.state === 'run' || r.state === 'stall';
 function hms(s) {
