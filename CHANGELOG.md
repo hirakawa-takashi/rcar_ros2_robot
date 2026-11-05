@@ -4,12 +4,21 @@
 
 ## [Unreleased]
 
-## [2.2.1] - 2026-11-05
+## [2.4.1] - 2026-11-05
 
 - ダッシュボードの Jetson のカードの「ミニコン／パソコン」の切りかえボタンを削除（ユーザーの依頼）。パソコンの GPU は v2.0.0 から AI に使っておらず、パソコンの表示は迷うもとだった（例: 「Ubuntu を更新」を押しても「全部 1」が消えない。残りは Windows のドライバー更新で、Ubuntu の更新では消えない）。
   - カードはいつもミニコンの様子を出す。前にパソコンを選んでいたブラウザ（`localStorage` の `jt_view`）も、ミニコンの表示になる。
   - 「更新」「再起動」ボタンはいつもミニコン（`/api/jetson/upgrade`・`/api/jetson/reboot`）。パソコンの「Ubuntu を更新」「Ubuntu を再起動」は画面から出せなくなった。
   - サーバーの `/api/mypc/*`（パソコンの pc-status.service が送る様子の受け取り）は変えない。
+
+## [2.4.0] - 2026-11-05
+
+- ダッシュボードのラズパイのカードに「ディスク [GB]」（`/` の使っている量 / 全体、%）を足した（ユーザーの依頼）。`system_monitor_node` は前から `memory.disk_used_gb`・`disk_total_gb` を送っていたが、画面に出していなかった。
+- ミニコン（Jetson）のカードの「ディスク [GB]」にも % を足した。ラズパイ・ミニコンとも 90% 以上で黄色のバッジ（`diskText()`）。バックアップ（ラズパイは SD カード、Jetson は SSD に輪転で置く）がたまると、ここがいっぱいになる。2026-11-05 の実機: ラズパイ 39 / 117 G（35%）、ミニコン 135 / 866 G（17%）（`df -h`）。
+
+## [2.3.0] - 2026-11-05
+
+- 落下防止センサーの「床の補正」ボタン。水平な床に置いても、後ろの高さが -0.7〜-1.1 cm（前は 0 cm 前後）に出ていた（後ろの床までの距離が 10 秒の中央 0.092 m、設定は 0.082 m。段差のしきい -2.0 cm に近い）。ダッシュボードの落下防止センサーのカードの「床の補正」（`POST /api/cliff/floor_calibrate`、API トークンが必要）で、`cliff_node` の `/cliff/floor_calibrate`（std_srvs/Trigger）が 3 秒（`floor_calibration_s`）の前後の距離の中央値を平らな床の距離にし、`~/.ros/cliff_floor_calibration.json`（`floor_calibration_file`）に保存する。起動時はこのファイルを `front_floor_distance_m`・`rear_floor_distance_m` より優先する。設定の値から 3 cm（`floor_calibration_max_change_m`）より離れる・記録中のゆれが 2 cm（`floor_calibration_max_spread_m`）より大きい・測れない回がある・10 回より少ないときは使わない（平らでない所や持ち上げたままで押したとき）。`/cliff_status` に `floor_calibration`（記録中・残り秒・補正した日時・結果）。カードの「床の基準」に結果、マウスを乗せると前後の床の距離
 
 ## [2.2.0] - 2026-11-05
 

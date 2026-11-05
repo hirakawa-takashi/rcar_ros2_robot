@@ -100,7 +100,7 @@ system:
     - {from: jetson, to: stackchan, short: 返事, desc: 返事の声（Opus 24 kHz）と顔の表情（考え中・笑顔）, via: WebSocket 8000（XiaoZhi の形、jetson-stackchan.service）, state: done}
     - {from: jetson, to: ai_car, short: 状態, desc: 温度・メモリ・GPU・電力・AI の部品・更新の状況。ダッシュボードの Jetson カードに出す（5 秒届かないと未接続、速度には使わない）, via: 'POST /api/jetson/status（API トークン）', state: done}
     - {from: jetson, to: pc, short: 声, desc: 返事の文を VOICEVOX のえらんだ声にする（CPU。ネットの会話のときも、ネットの声のかわりに読む）。10 秒ごとに見て、だめならミニコンの Kokoro, via: 'HTTP 50021（Tailscale）', state: done, both: true}
-    - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・更新の状況。受け取るだけで、ダッシュボードには出さない（v2.2.1 で切りかえボタンを削除）, via: 'POST /api/mypc/status（API トークン）', state: done}
+    - {from: pc, to: ai_car, short: 状態, desc: 温度・負荷率・メモリ・電力・更新の状況。受け取るだけで、ダッシュボードには出さない（v2.4.1 で切りかえボタンを削除）, via: 'POST /api/mypc/status（API トークン）', state: done}
     - {from: browser, to: ai_car, short: 見る・操作, desc: ダッシュボードの表示と手動操作, via: 'HTTP 8080・WebSocket /ws', state: done, both: true}
     - {from: person, to: stackchan, short: 話す, desc: 「スタックちゃん」と呼んで会話モードにし、声で話しかけて返事を聞く（30 秒だまると「じゃあ、またね。」）, via: 声, state: done, both: true}
 
@@ -693,6 +693,9 @@ nodes:
       - {name: bump_height_cm, ref: cliff_node.bump_height_cm, unit: cm, desc: 床（0 cm）よりこれ以上高い盛り上がりも段差（0 で見ない）}
       - {name: front_floor_distance_m, ref: cliff_node.front_floor_distance_m, unit: m, desc: 前の平らな床までの距離（高さ 0 cm の基準）}
       - {name: rear_floor_distance_m, ref: cliff_node.rear_floor_distance_m, unit: m, desc: 後の平らな床までの距離（高さ 0 cm の基準）}
+      - {name: floor_calibration_s, ref: cliff_node.floor_calibration_s, unit: s, desc: ダッシュボードの「床の補正」（POST /api/cliff/floor_calibrate → /cliff/floor_calibrate）で、平らな床の距離をこの秒数の中央値で測り直して floor_calibration_file に保存（上の 2 つより優先）}
+      - {name: floor_calibration_max_change_m, ref: cliff_node.floor_calibration_max_change_m, unit: m, desc: 床の補正の値が *_floor_distance_m からこれより離れたら使わない（平らでない所で押したとき）}
+      - {name: floor_calibration_max_spread_m, ref: cliff_node.floor_calibration_max_spread_m, unit: m, desc: 床の補正の記録中のゆれ（最大 - 最小）がこれより大きければ使わない}
       - {name: tilt_deg, ref: cliff_node.tilt_deg, unit: °, desc: 真下から進行方向へのかたむき（高さ = 距離の差 × cos）}
       - {name: confirm_count, ref: cliff_node.confirm_count, unit: 回, desc: 連続で超えたら段差と確定}
       - {name: invalid_is_cliff, ref: cliff_node.invalid_is_cliff, unit: '', desc: 床が見えない（測定無効）も段差とみなす}
