@@ -495,6 +495,7 @@
       <tr><td class="k">ファン [rpm]</td><td class="v" id="cpu_fan">-</td></tr>
       <tr><td class="k">メモリ [GB]</td><td class="v" id="mem">-</td></tr>
       <tr><td class="k">Swap使用率</td><td class="v" id="swap">-</td></tr>
+      <tr><td class="k">ディスク [GB]</td><td class="v" id="pi_disk" title="SSD の / の使っている量 / 全体（GiB）">-</td></tr>
       <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
       <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
       <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
@@ -568,7 +569,7 @@
         <h3>更新・システム</h3>
         <table>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
-          <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
+          <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk" title="SSD の / の使っている量 / 全体">-</td></tr>
           <tr><td class="k" id="jt_l4t_k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
@@ -1154,6 +1155,12 @@ document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 
+function diskText(used, total) {
+  if (used == null || !total) return '-';
+  const pct = 100 * used / total;
+  const p = `${fmt(pct, 0)}%`;
+  return `${fmt(used, 0)} / ${fmt(total, 0)} (${pct >= 90 ? badge('warn', p) : p})`;
+}
 function badge(cls, text) {
   return `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;
 }
@@ -1207,6 +1214,7 @@ function renderSystem(s) {
     : `${fmt(m.used_mb / 1024, 1)} / ${fmt(m.total_mb / 1024, 1)} (${fmt(m.percent, 0)}%)`;
   document.getElementById('swap').textContent =
     m.swap_percent == null ? '-' : fmt(m.swap_percent, 1) + ' %';
+  document.getElementById('pi_disk').innerHTML = diskText(m.disk_used_gb, m.disk_total_gb);
   const cores = document.getElementById('cores');
   cores.innerHTML = (c.per_core || [])
     .map(coreHtml)
@@ -1769,7 +1777,7 @@ function renderJetsonHost() {
   byId('jt_uptime').textContent = up == null ? '-'
     : up >= 86400 ? `${Math.floor(up / 86400)} 日 ${Math.floor(up % 86400 / 3600)} 時間`
     : `${Math.floor(up / 3600)} 時間 ${Math.floor(up % 3600 / 60)} 分`;
-  byId('jt_disk').textContent = v.disk_total_gb == null ? '-' : `${fmt(v.disk_used_gb, 0)} / ${fmt(v.disk_total_gb, 0)}`;
+  byId('jt_disk').innerHTML = diskText(v.disk_used_gb, v.disk_total_gb);
   byId('jt_l4t').textContent = v.l4t || '-';
   byId('jt_l4t').title = v.os || '';
   byId('jt_os').textContent = v.os || '-';
@@ -4204,7 +4212,7 @@ function connect() {
     }
   };
 }
-const PI_VALUE_IDS = ['pi_os', 'cpu_pct', 'cpu_freq', 'cpu_fan', 'mem', 'swap', 'pwr_total', 'pwr_input',
+const PI_VALUE_IDS = ['pi_os', 'cpu_pct', 'cpu_freq', 'cpu_fan', 'mem', 'swap', 'pi_disk', 'pwr_total', 'pwr_input',
                      'pwr_amp', 'pwr_state', 'pwr_supply', 'pi_ips', 'pi_security', 'pi_reboot_req'];
 
 function blankPiCard() {
