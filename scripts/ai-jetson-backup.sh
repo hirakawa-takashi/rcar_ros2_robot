@@ -39,10 +39,11 @@ cat > "$B/sudoers-content.md" <<'EOF'
 EOF
 
 cd "$HOME_DIR"
+# open-webui-backup-0.6.14（1.66 GB、2026-10-04 から変わらない）は入れない。PC の jetson-extra に 1 こある
 # Tier Aメンバは存在するものだけ
 MEMBERS=()
 for p in stackchan_bridge face_id object_finder oled_panel owl_detector health_log \
-         migrate-jetson-to-ssd objects objects_test fw_clear open-webui-backup-0.6.14 \
+         migrate-jetson-to-ssd objects objects_test fw_clear \
          .ollama/models .config .cache huggingface; do
   [ -e "$p" ] && MEMBERS+=("$p")
 done
