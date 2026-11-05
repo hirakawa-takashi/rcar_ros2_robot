@@ -56,7 +56,7 @@ system:
       sub: Raspberry Pi 5 8GB / ROS 2 Jazzy
       state: done
       items:
-        - LiDAR（A1M8）で障害物までの距離
+        - LiDAR（C1）で障害物までの距離
         - Camera Module 3 Wide（960×540・30 fps）
         - 落下防止センサー（VL53L1X）前後 2 個で段差を見る（20 Hz）
         - 運転モード・自律走行・安全ガード（LiDAR 360° の見張り）
@@ -111,7 +111,7 @@ hardware:
     - {id: ai_hat, label: AI HAT+, sub: Hailo-8 NPU 26 TOPS, bus: PCIe（GPIO ヘッダー経由）, power: 5V, jump: hat, side: top}
     - {id: motor_hat, label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2, bus: I2C 0x60, power: 12V（モーター）, jump: motor, side: right}
     - {id: motors, label: 520 エンコーダー付きモーター ×4, sub: メカナムホイール M1〜M4, bus: Motor HAT M+ / M− ＋ エンコーダー A/B → Pi GPIO, power: 12V, jump: motor, side: right}
-    - {id: lidar, label: RPLIDAR A1M8, sub: 2D LiDAR 最大 8 m / 約 8 Hz, bus: USB シリアル（CP2102 115200bps）, power: 5V, side: left}
+    - {id: lidar, label: RPLIDAR C1, sub: 2D LiDAR（dTOF）最大 12 m / 約 10 Hz, bus: USB シリアル（CP2102N 460800bps）, power: 5V, side: left}
     - {id: camera, label: Camera Module 3 Wide（SC0874）, sub: IMX708 / 横 102° / 960×540 30fps, bus: CSI（フラットケーブル）, power: 3V3（Pi から）, side: left}
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz（AMG モード、向きはラズパイで計算）, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
@@ -256,7 +256,7 @@ print3d:
       material: PLA / PETG
       orient: 板を下
       holds:
-        - RPLIDAR A1M8（柱 4 本、ふたの裏から M2.5 × 8 ×4）
+        - RPLIDAR（今の CAD の取付穴は A1M8 の寸法。C1 は 55.4 mm 角・高さ 33 mm なので CAD 作り直しは別作業）
         - カメラの板（cam_mount）を留める前端の柱 2 本（M3 の下穴）と、前の面のカメラの M2 のナット・ネジの先の逃げ穴（Ø6.5、深さ 4 mm ×2）
         - 加速度センサー（GY-BNO055、12 × 20 mm、ピン下向き。LiDAR のヘッドの下、右寄り。四方を壁で囲んだ高さ 25 mm の台の受けに両面テープ）
         - カメラのフラットケーブル（ふたの上の結束バンド用ブリッジ 2 か所）
@@ -642,7 +642,7 @@ nodes:
   - id: rplidar
     label: rplidar（rplidar_ros）
     file: 外部パッケージ ros-jazzy-rplidar-ros
-    role: RPLIDAR A1M8 を読み /scan を約 8 Hz で publish（launch 側で respawn）
+    role: RPLIDAR C1 を読み /scan を約 10 Hz で publish（launch 側で respawn。driver は workspace の rplidar_ros 2.1.4・コミット 24cc9b6 固定）
     publishes: [/scan]
     subscribes: []
     params: []
@@ -796,7 +796,7 @@ autonomy:
     - {id: tilted, label: 停止（かたむいた）, condition: /imu/data の roll / pitch が AUTO に入ったときより tilt_stop_deg 以上を tilt_hold_sec つづけた（落ちた・乗り上げた）, output: ゼロ速度（AUTO に入り直すまで）。かたむいた所（車のまん中）を段差の印にする（横の段差はセンサーで見えないため）}
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
-    - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
+    - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −176.2°（RPLIDAR C1 の 0° は後ろ向き））→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
     - （10 回/秒）カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 63 mm・横 0 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
     - LiDAR /scan → 360° を 5° ごとに車体の端からの空き（move）と左右に回れる角度（turn_free_deg）→ drive_mode_node が動く向き・回る向きごとに止める
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（表示）
@@ -908,7 +908,7 @@ programs:
   - {place: ラズパイ, name: nav2.launch.py, file: src/ai_car_web/launch/nav2.launch.py, role: Nav2（controller・planner・behavior・bt_navigator）を起動, video: nav2_launch_py_yukkuri.mp4}
   - {place: ラズパイ, name: view_robot.launch.py, file: src/ai_car_description/launch/view_robot.launch.py, role: ロボットの形（URDF）を表示, video: view_robot_launch_py_yukkuri.mp4}
   - {place: ラズパイ, name: setup.py, file: src/ai_car_web/setup.py, role: ROS 2 パッケージの設定, video: setup_py_yukkuri.mp4}
-  - {place: ラズパイ, name: rplidar（rplidar_ros）, external: ros-jazzy-rplidar-ros, role: RPLIDAR A1M8 → /scan, video: rplidar_yukkuri.mp4}
+  - {place: ラズパイ, name: rplidar（rplidar_ros）, external: workspace rplidar_ros 2.1.4（コミット 24cc9b6 固定・README 参照）, role: RPLIDAR C1 → /scan, video: rplidar_yukkuri.mp4}
   - {place: ラズパイ, name: camera（camera_ros）, external: camera_ros + libcamera, role: Camera Module 3 Wide → 画像, video: camera_yukkuri.mp4}
   - {place: ラズパイ, name: slam_toolbox, external: ros-jazzy-slam-toolbox, role: LiDAR と /odom で地図を作る, video: slam_toolbox_yukkuri.mp4}
   - {place: ラズパイ, name: Nav2, external: ros-jazzy-navigation2, role: 地図の行き先までの道を考えて走る, video: nav2_yukkuri.mp4}

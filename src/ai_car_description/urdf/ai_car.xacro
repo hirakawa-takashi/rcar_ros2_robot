@@ -19,7 +19,7 @@
        base_link の原点は天板の中心（前後・左右）、車軸の高さ。x: 前、y: 左、z: 上 -->
   <xacro:property name="laser_x" value="0.043"/>   <!-- LiDAR の回転中心: 天板の中心から前 43 mm・左 8 mm -->
   <xacro:property name="laser_y" value="0.008"/>
-  <xacro:property name="laser_yaw_deg" value="-1.7"/>  <!-- 前方カメラの正面に合わせた LiDAR の向き（dashboard.yaml の scan_angle_offset_deg と同じ） -->
+  <xacro:property name="laser_yaw_deg" value="-176.2"/>  <!-- 前方カメラの正面に合わせた LiDAR の向き（dashboard.yaml の scan_angle_offset_deg と同じ） -->
   <xacro:property name="laser_h" value="0.175"/>   <!-- 光の高さ（床から）。取付面 162 mm + ヘッド内の発光部（推定） -->
   <xacro:property name="camera_x" value="0.106"/>  <!-- Camera Module 3 Wide のレンズの先: LiDAR の回転中心の真ん前 63 mm -->
   <xacro:property name="camera_y" value="0.008"/>
@@ -119,7 +119,8 @@
   <xacro:mecanum_wheel name="rear_left"   x="${-wheel_x}" y="${wheel_y}"/>
   <xacro:mecanum_wheel name="rear_right"  x="${-wheel_x}" y="${-wheel_y}"/>
 
-  <!-- LiDAR: RPLIDAR A1M8 -->
+  <!-- LiDAR: RPLIDAR C1（2026-11-05 交換）。寸法は C1（55.4 mm 角・高さ 33 mm）にまだ合わせていない。
+       向き（laser_yaw_deg −176.2°）は C1 で実測（C1 の 0° は後ろ向き）。回転中心の位置・高さは A1M8 の値のまま -->
   <link name="laser">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>

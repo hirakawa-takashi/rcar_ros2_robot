@@ -13,7 +13,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
 | 2 | **Raspberry Pi AI HAT+** | Hailo-8・26TOPS NPU。YOLOv8m でカメラに写った物の名前を当てる（1 秒に 10 回。表示だけ） | Pi 5 GPIO ヘッダー |
 | 3 | **Adafruit DC & Stepper Motor HAT**（Adafruit 2348） | モーター駆動制御（4ch、PCA9685 0x60 + TB6612 ×2）。2026/10/12 に同型品へ交換 | Pi 5 GPIO ヘッダー（I²C） |
 | 4 | **Raspberry Pi Camera Module 3 Wide**（SC0874、IMX708） | 横の画角 102°。960×540・30fps・JPEG 品質 80（`camera_ros`） | CSI バス |
-| 5 | **LiDAR（RPLIDAR A1M8）** | 2D レーザースキャナ（最大距離8m） | USB シリアル |
+| 5 | **LiDAR（RPLIDAR C1）** | 2D レーザースキャナ（dTOF・最大距離12m・CP2102N 460800bps）。2026/11/5 に A1M8 から交換、driver は workspace の rplidar_ros 2.1.4 | USB シリアル |
 | 6 | **9軸 IMU（GY-BNO055）** | 加速度・ジャイロ・地磁気融合 | I²C |
 | 8 | **Logicool F710 ゲームパッド** | 手動操作（XInput モード、`/dev/input/js0`） | USB 無線レシーバー（2.4GHz） |
 | 9 | **メカナムホイール駆動系** | オムニディレクショナル移動（4輪）。OSOYOO 520 エンコーダー付きモーター ×4（2024005900、Ø37 × 72 mm、軸 Ø4 D カット、56:1）、メカナムホイール Ø80.59 × 幅 39.1 mm（六角穴 6.5 mm）、37 mm モーター台 ×4（天板の下、穴 24 × 30 mm） | モーター HAT 経由（エンコーダーは Pi GPIO 直結） |
@@ -54,7 +54,7 @@ AI-CAR（自律走行ロボットカー）のハードウェア構成を記録�
  CSIバス   I²C        USB        GPIO    I²C
    │       │          │          │       │
  カメラ   IMU      RPLIDAR    エンコーダー Motor HAT
- 3 Wide  BNO055    A1M8       ×4      (0x60) → M1〜M4
+ 3 Wide  BNO055    C1         ×4      (0x60) → M1〜M4
         VL53L1X ×2（0x30 / 0x31）
 ```
 

@@ -15,9 +15,10 @@ dashboard_node:
     # ブラウザへの MJPEG 配信レート（カメラ取り込み 15fps と同じ）
     camera_stream_rate: 30.0
     obstacle_topic: "/obstacle_status"
-    # LiDAR の取り付け向きの補正。画面の「前方」= 前方カメラの正面。カメラの画面の真ん中に置いたボトルが
-    # LiDAR で右 4°・0.47 m に見えたことから求めた値（2026/10 実機で測定）。perception / autonomy も同じ値にする
-    scan_angle_offset_deg: -1.7
+    # LiDAR の取り付け向きの補正。画面の「前方」= 前方カメラの正面。RPLIDAR C1 の 0° は後ろ向き。
+    # カメラの真ん前 50 cm に置いた封筒が、/scan の生の角度 176.2°（20 回の平均）・0.52 m に見えたことから
+    # 求めた値（2026-11-05 実機で測定）。perception / autonomy と URDF の laser_yaw_deg も同じ値にする
+    scan_angle_offset_deg: -176.2
     max_linear_speed: 0.3
     max_angular_speed: 4.0   # 出力 15 % で 0.6 rad/s（1 秒に約 34°）。本当の回る速さ（motor_driver_node で合わせる）
     cmd_timeout: 0.7
@@ -152,7 +153,7 @@ autonomy_node:
     cmd_topic: "/cmd_vel_auto"
     status_topic: "/autonomy_status"
     publish_rate: 10.0   # 判断周期 0.1s（停止距離 0.35m・巡航 0.15m/s に対して十分）
-    scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
+    scan_angle_offset_deg: -176.2   # dashboard_node と同じ値
     scan_max_age: 1.0
     cruise_speed: 0.15
     slow_speed: 0.08
@@ -383,7 +384,7 @@ perception_node:
     detect_history_frames: 3
     # Camera Module 3 Wide の横の画角（公称 102°。ふつうの Camera Module 3 は 66.0）
     camera_hfov_deg: 102.0
-    scan_angle_offset_deg: -1.7   # dashboard_node と同じ値
+    scan_angle_offset_deg: -176.2   # dashboard_node と同じ値
     # LiDAR の回転中心から見たカメラのレンズの先の位置 [m]（x: 前、y: 左）。3D マウントの CAD 値（Camera Module 3 Wide は真ん前 63 mm）。
     # LiDAR の点をこの位置に移して、カメラから見た方位と前方の距離で照合する（URDF の laser / camera_link と同じ値）
     camera_offset_x_m: 0.063
@@ -409,8 +410,11 @@ perception_node:
 
 rplidar:
   ros__parameters:
-    serial_port: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
-    serial_baudrate: 115200
+    # RPLIDAR C1（CP2102N）。 drivers は workspace の rplidar_ros 2.1.4（コミット 24cc9b6、README 参照）。
+    # C1 は 460800bps 固定（apt の 2.1.0 だと Cannot start scan: 80008002 で回らない）
+    serial_port: "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7cd561565431f111820f935f30d20014-if00-port0"
+    serial_baudrate: 460800
+    scan_mode: "Standard"
     frame_id: "laser"
     angle_compensate: true
 
