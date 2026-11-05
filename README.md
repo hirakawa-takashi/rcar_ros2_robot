@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.7.2（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.8.0（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -347,4 +347,5 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 - **ダッシュボードカード**：「バックアップ（ラズパイ と Jetson の2系統）」。ラズパイ系統＝ドロップダウン（新しい順・30個まで）＋「選んだバックアップを復元」ボタン。Jetson系統＝ドロップダウン＋「選んだJetsonバックアップを復元」ボタン。作成ボタンはv1.31.7–v1.31.8、詳細表示行はv1.31.9で削除。状態バッジ（ラズパイ バックアップ_versionアップ／Jetson 復元sudoers OK）。
 - **開発フック**：PRマージ前にPiバックアップを必ず作る（バージョンアップ時、strata側で自動化）。Piのバージョンアップ反映時（deploy後）にJetsonバックアップもSSHで作成し、PCミラーへsha256照合コピー。`install_service.sh`（Pi）と `ai-jetson-restore.sudoers`（Jetson）のsudo導入はユーザーのパスワードで1回だけ必要。
 - **PCミラー**：ラズパイで `bash scripts/ai-backup-mirror.sh pi|jetson [ファイル名.tar.zst]`（v2.6.0、super、手動）。名前を省くと一番新しいもの。ラズパイから PC（WSL `super@100.86.172.21`）へ直接送り（Jetson の分はラズパイ経由、1 秒に約 7〜16 MB）、PC にとちゅうまであれば続きから送り、manifest もコピーして sha256 を照合する。記録は `~/mirror-pi.log`・`~/mirror-jetson.log`。エージェントが終わっても続けるには `setsid nohup bash scripts/ai-backup-mirror.sh jetson >/dev/null 2>&1 &`。前提：ラズパイの公開鍵が PC の WSL と Jetson の authorized_keys にある（2026-11-05 に PC へ導入）。
+  - v2.8.0 から、ダッシュボードが自動で送る：manifest のある一番新しいバックアップ（ラズパイ・Jetson それぞれ）が `~/mirror-pi.log`・`~/mirror-jetson.log` に `OK sha256` でなく、その機械でバックアップ中でなければ、`ai-backup-mirror.sh` を動かす（定時ではない。失敗したら 10 分あけてもう一度）。結果はバックアップのカードの「PC へのコピー」に出る。止めるときは `dashboard.yaml` の `backup_auto_mirror: false`。
 - **注意**：同一ディスク内のバックアップは削除・暴走からの回復用。ディスク故障はPCミラーが救う（ラズパイ系統 `ai-car-backups`、Jetson系統 `jetson-backups` にsha256照合済みミラー）。

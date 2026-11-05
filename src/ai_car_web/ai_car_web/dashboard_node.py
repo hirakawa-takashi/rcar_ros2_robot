@@ -46,7 +46,7 @@ except ImportError:
     SlamReset = DeserializePoseGraph = SerializePoseGraph = None
 
 from ai_car_web.architecture import VIDEO_DIR, load_architecture, read_program
-from ai_car_web import backup_progress
+from ai_car_web import backup_mirror, backup_progress
 from ai_car_web.dev_diary import find_repo, query_dev_diary, sync_dev_diary
 from ai_car_web.version import load_version
 from ai_car_web.gpio_pinout import build_pinout
@@ -498,6 +498,7 @@ class DashboardNode(Node):
         self.declare_parameter('architecture_config', '')
         self.declare_parameter('params_config', '')
         self.declare_parameter('repo_dir', '')
+        self.declare_parameter('backup_auto_mirror', True)
         self.declare_parameter('diary_db', '~/.ros/ai_car_dev_diary.sqlite')
         # ゲームパッド（joy_teleop_node）からの正規化指令。空で無効
         self.declare_parameter('joy_cmd_topic', '/joy_cmd')
@@ -560,6 +561,9 @@ class DashboardNode(Node):
         if self.repo_dir:
             threading.Thread(target=self._sync_diary, daemon=True).start()
         self.backup_progress = backup_progress.ProgressTracker(BACKUP_WATCH_S)
+        self.auto_mirror = backup_mirror.AutoMirror(
+            os.path.join(self.repo_dir, 'scripts', 'ai-backup-mirror.sh') if self.repo_dir else None,
+            os.path.expanduser('~'), bool(self.get_parameter('backup_auto_mirror').value))
         threading.Thread(target=self._watch_backups, daemon=True).start()
         # LiDAR の 0° とロボット前方のずれ（取り付け向きの補正）
         self.scan_angle_offset = math.radians(
@@ -2457,7 +2461,9 @@ class DashboardNode(Node):
         jetson_checked = 0.0
         while rclpy.ok():
             try:
-                self.backup_progress.update('pi', backup_progress.scan_dir(pi_dir))
+                scan = backup_progress.scan_dir(pi_dir)
+                self.backup_progress.update('pi', scan)
+                self._auto_mirror('pi', scan)
             except Exception as e:  # noqa: BLE001  見張りを止めない
                 self.get_logger().warning(f'バックアップの様子を調べられません: {e}', throttle_duration_sec=600)
             now = time.time()
@@ -2470,12 +2476,26 @@ class DashboardNode(Node):
                                        input=remote_src, capture_output=True, text=True,
                                        timeout=15, check=False)
                     if r.returncode == 0:
-                        self.backup_progress.update('jetson', json.loads(r.stdout))
+                        scan = json.loads(r.stdout)
+                        self.backup_progress.update('jetson', scan)
+                        self._auto_mirror('jetson', scan)
                     else:
                         self.backup_progress.lost('jetson')
                 except (OSError, subprocess.TimeoutExpired, ValueError):
                     self.backup_progress.lost('jetson')
             time.sleep(BACKUP_WATCH_S)
+
+    def _auto_mirror(self, host, scan):
+        """manifest のある一番新しいバックアップが PC にまだなければ、ai-backup-mirror.sh で送る。"""
+        busy = any(j['host'] == host and j['state'] in ('run', 'stall')
+                   for j in self.backup_progress.snapshot()['jobs'])
+        try:
+            name = self.auto_mirror.maybe_start(host, scan.get('complete', {}), busy)
+        except OSError as e:
+            self.get_logger().warning(f'PC へのコピーを始められません: {e}', throttle_duration_sec=600)
+            return
+        if name:
+            self.get_logger().info(f'PC へのコピーを自動で始めました: {name}')
 
     def _sync_diary(self):
         try:
@@ -2892,7 +2912,7 @@ def create_app(node: DashboardNode) -> FastAPI:
 
     @app.get('/api/backup/progress')
     def backup_progress_now():
-        return node.backup_progress.snapshot()
+        return {**node.backup_progress.snapshot(), 'mirror': node.auto_mirror.status()}
 
     @app.post('/api/restore', dependencies=[Depends(require_token)])
     def restore_start(req: RestoreRequest):
