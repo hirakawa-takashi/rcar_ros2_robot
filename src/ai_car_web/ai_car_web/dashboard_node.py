@@ -507,6 +507,7 @@ class DashboardNode(Node):
         self.declare_parameter('autonomy_status_topic', '/autonomy_status')
         # 落下防止センサー（cliff_node）。空で無効
         self.declare_parameter('cliff_topic', '/cliff_status')
+        self.declare_parameter('cliff_calibrate_service', '/cliff/floor_calibrate')
         # SLAM（slam_toolbox）の地図と自己位置。空で無効
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('slam_pose_topic', '/pose')
@@ -588,6 +589,9 @@ class DashboardNode(Node):
         mag_calibrate_service = str(self.get_parameter('mag_calibrate_service').value)
         self.mag_calibrate_client = (self.create_client(Trigger, mag_calibrate_service)
                                      if mag_calibrate_service else None)
+        cliff_calibrate_service = str(self.get_parameter('cliff_calibrate_service').value)
+        self.cliff_calibrate_client = (self.create_client(Trigger, cliff_calibrate_service)
+                                       if cliff_calibrate_service else None)
         self.create_subscription(
             Odometry, self.get_parameter('odom_topic').value, self._odom_cb, 10)
         self.create_subscription(
@@ -1257,14 +1261,20 @@ class DashboardNode(Node):
 
     def start_mag_calibration(self):
         """imu_node に磁気の補正（床でまわしながら記録）を始めさせる。"""
-        client = self.mag_calibrate_client
+        return self._call_trigger(self.mag_calibrate_client, 'imu_node')
+
+    def start_cliff_calibration(self):
+        """cliff_node に平らな床までの距離（高さ 0 の基準）を測り直させる。"""
+        return self._call_trigger(self.cliff_calibrate_client, 'cliff_node')
+
+    def _call_trigger(self, client, node_name: str):
         if client is None or not client.service_is_ready():
-            return {'ok': False, 'reason': 'imu_node が応答しません'}
+            return {'ok': False, 'reason': f'{node_name} が応答しません'}
         done = threading.Event()
         future = client.call_async(Trigger.Request())
         future.add_done_callback(lambda _: done.set())
         if not done.wait(3.0):
-            return {'ok': False, 'reason': 'imu_node から返事がない'}
+            return {'ok': False, 'reason': f'{node_name} から返事がない'}
         res = future.result()
         if res is None or not res.success:
             return {'ok': False, 'reason': res.message if res else '失敗'}
@@ -2821,6 +2831,10 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.post('/api/imu/mag_calibrate', dependencies=[Depends(require_token)])
     def imu_mag_calibrate():
         return node.start_mag_calibration()
+
+    @app.post('/api/cliff/floor_calibrate', dependencies=[Depends(require_token)])
+    def cliff_floor_calibrate():
+        return node.start_cliff_calibration()
 
     @app.get('/api/backup')
     def backup_list():

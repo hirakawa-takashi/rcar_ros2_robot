@@ -11,6 +11,9 @@ VL53L1X の初期アドレス 0x29 は BNO055 と同じなので、XSHUT を GPI
 1 台ずつ上げ、起動直後に 0x30 / 0x31 などへ変更してから測定する。
 wired: false の間は I2C / GPIO に触らず、「未配線」の状態だけを配信する。
 
+平らな床の距離は、平らな床の上で floor_calibrate_service（std_srvs/Trigger）を呼ぶと
+floor_calibration_s 秒の中央値で測り直し、floor_calibration_file に保存して次の起動でも使う。
+
 レジスタ設定は ST の VL53L1X ULD と Adafruit_CircuitPython_VL53L1X（MIT）に基づく。
 """
 
@@ -29,6 +32,7 @@ except ImportError:
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 I2C_SLAVE = 0x0703
 REG_I2C_SLAVE_DEVICE_ADDRESS = 0x0001
@@ -207,6 +211,11 @@ class CliffNode(Node):
         self.declare_parameter('invalid_is_cliff', True)
         self.declare_parameter('confirm_count', 2)
         self.declare_parameter('stale_timeout', 0.5)
+        self.declare_parameter('floor_calibrate_service', '/cliff/floor_calibrate')
+        self.declare_parameter('floor_calibration_file', '~/.ros/cliff_floor_calibration.json')
+        self.declare_parameter('floor_calibration_s', 3.0)
+        self.declare_parameter('floor_calibration_max_change_m', 0.03)
+        self.declare_parameter('floor_calibration_max_spread_m', 0.02)
 
         wired = bool(self.get_parameter('wired').value)
         self.active = [s for s in SENSORS if wired and self.get_parameter(f'{s}_wired').value]
@@ -228,6 +237,16 @@ class CliffNode(Node):
         self.invalid_is_cliff = bool(self.get_parameter('invalid_is_cliff').value)
         self.confirm_count = max(1, int(self.get_parameter('confirm_count').value))
         self.stale_timeout = float(self.get_parameter('stale_timeout').value)
+        self.default_floor = dict(self.floor_distance)
+        self.calibration_file = os.path.expanduser(
+            str(self.get_parameter('floor_calibration_file').value))
+        self.calibration_s = float(self.get_parameter('floor_calibration_s').value)
+        self.calibration_max_change = float(self.get_parameter('floor_calibration_max_change_m').value)
+        self.calibration_max_spread = float(self.get_parameter('floor_calibration_max_spread_m').value)
+        self._calibrated_at = ''
+        self._cal_rec = None
+        self._cal_result = ''
+        self._load_floor_calibration()
 
         self.pub = self.create_publisher(
             String, self.get_parameter('status_topic').value, 10)
@@ -241,6 +260,9 @@ class CliffNode(Node):
 
         rate = float(self.get_parameter('publish_rate').value)
         self.create_timer(1.0 / max(rate, 1.0), self._timer_cb)
+        service = str(self.get_parameter('floor_calibrate_service').value)
+        if service:
+            self.create_service(Trigger, service, self._start_floor_calibration)
         if not self.wired:
             self.get_logger().info('落下防止センサーは未配線（wired: false）のため状態だけを配信します')
 
@@ -248,6 +270,106 @@ class CliffNode(Node):
     def _empty_state():
         return {'distance_m': None, 'height_cm': None, 'valid': False, 'level': 'unknown',
                 'over_count': 0, 'stamp': 0.0}
+
+    # --- 床の補正 ---
+    def _floor_ok(self, side: str, distance: float) -> bool:
+        return abs(distance - self.default_floor[side]) <= self.calibration_max_change
+
+    def _load_floor_calibration(self):
+        try:
+            with open(self.calibration_file, encoding='utf-8') as f:
+                data = json.load(f)
+            floors = {s: float(data[f'{s}_floor_distance_m']) for s in SENSORS
+                      if data.get(f'{s}_floor_distance_m') is not None}
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            self.get_logger().warn(f'床の補正を読みこめません: {e}')
+            return
+        for side, distance in floors.items():
+            if self._floor_ok(side, distance):
+                self.floor_distance[side] = distance
+            else:
+                self.get_logger().warn(
+                    f'床の補正の{LABELS[side]} {distance:.3f} m は設定 {self.default_floor[side]:.3f} m から'
+                    f' {self.calibration_max_change * 100:.0f} cm より離れているので使いません')
+        self._calibrated_at = str(data.get('stamp', ''))
+        self.get_logger().info(
+            f'床の補正を読みこみました: {self.calibration_file}（' + '・'.join(
+                f'{LABELS[s]} {self.floor_distance[s]:.3f} m' for s in SENSORS) + '）')
+
+    def _start_floor_calibration(self, request, response):
+        if not self._sensors:
+            response.success = False
+            response.message = '落下防止センサーがつながっていません'
+        elif self._cal_rec is not None:
+            response.success = False
+            response.message = '床の補正の記録中です'
+        else:
+            self._cal_rec = {'start': time.monotonic(),
+                             'samples': {s: [] for s in self.active},
+                             'invalid': {s: 0 for s in self.active}}
+            self._cal_result = ''
+            response.success = True
+            response.message = f'{self.calibration_s:.0f} 秒のあいだ、車を平らな床に置いたまま動かさないでください'
+            self.get_logger().info('床の補正の記録を始めました')
+        return response
+
+    def _record_floor(self, side: str, valid: bool, distance: float):
+        rec = self._cal_rec
+        if rec is None or side not in rec['samples']:
+            return
+        if valid:
+            rec['samples'][side].append(distance)
+        else:
+            rec['invalid'][side] += 1
+
+    def _finish_floor_calibration(self):
+        rec, self._cal_rec = self._cal_rec, None
+        new = {}
+        for side in rec['samples']:
+            samples = sorted(rec['samples'][side])
+            label = LABELS[side]
+            if rec['invalid'][side] or len(samples) < 10:
+                self._cal_result = f'{label}のセンサーが床を測れません（測れた {len(samples)} 回・無効 {rec["invalid"][side]} 回）'
+                return
+            spread = samples[-1] - samples[0]
+            if spread > self.calibration_max_spread:
+                self._cal_result = f'{label}の距離のゆれが {spread * 1000:.0f} mm で大きすぎます（車を動かさないでください）'
+                return
+            median = samples[len(samples) // 2]
+            if not self._floor_ok(side, median):
+                self._cal_result = (f'{label}の床までの距離 {median * 1000:.0f} mm が設定 {self.default_floor[side] * 1000:.0f} mm から'
+                                    f' {self.calibration_max_change * 1000:.0f} mm より離れています（平らな床に置いてください）')
+                return
+            new[side] = round(median, 4)
+        stamp = time.strftime('%Y-%m-%d %H:%M')
+        data = {f'{s}_floor_distance_m': new.get(s, self.floor_distance[s]) for s in SENSORS}
+        data['stamp'] = stamp
+        tmp = self.calibration_file + '.tmp'
+        try:
+            os.makedirs(os.path.dirname(self.calibration_file) or '.', exist_ok=True)
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+            os.replace(tmp, self.calibration_file)
+        except OSError as e:
+            self._cal_result = f'床の補正を保存できません: {e}'
+            return
+        old = dict(self.floor_distance)
+        self.floor_distance.update(new)
+        self._calibrated_at = stamp
+        self._cal_result = '補正しました（' + '・'.join(
+            f'{LABELS[s]} {old[s] * 1000:.0f} → {new[s] * 1000:.0f} mm' for s in new) + '）'
+        self.get_logger().info(self._cal_result)
+
+    def _calibration_payload(self):
+        rec = self._cal_rec
+        return {
+            'recording': rec is not None,
+            'remaining_s': round(max(0.0, self.calibration_s - (time.monotonic() - rec['start'])), 1) if rec else 0.0,
+            'calibrated_at': self._calibrated_at,
+            'result': self._cal_result,
+        }
 
     # --- 接続 ---
     def _find_chip(self):
@@ -337,6 +459,7 @@ class CliffNode(Node):
 
     # --- 判定 ---
     def _update(self, side: str, valid: bool, distance: float):
+        self._record_floor(side, valid, distance)
         st = self._state[side]
         height_cm = (self.floor_distance[side] - distance) * self.cos_tilt * 100.0
         bump = valid and self.bump_height_cm > 0 and height_cm >= self.bump_height_cm
@@ -403,6 +526,7 @@ class CliffNode(Node):
             'tilt_deg': self.tilt_deg,
             'cliff_height_cm': self.cliff_height_cm,
             'bump_height_cm': self.bump_height_cm,
+            'floor_calibration': self._calibration_payload(),
             'sensors': sensors,
         }
 
@@ -423,6 +547,12 @@ class CliffNode(Node):
                     self._disconnect()
                     self._warn('VL53L1X 読み取りエラー', e)
                     self._next_retry = time.monotonic() + 2.0
+            if self._cal_rec is not None:
+                if not self._sensors:
+                    self._cal_rec = None
+                    self._cal_result = '記録の途中でセンサーが切れました'
+                elif time.monotonic() - self._cal_rec['start'] >= self.calibration_s:
+                    self._finish_floor_calibration()
         msg = String()
         msg.data = json.dumps(self._payload(), ensure_ascii=False)
         self.pub.publish(msg)

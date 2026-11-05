@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-05
+
+- 落下防止センサーの「床の補正」ボタン。水平な床に置いても、後ろの高さが -0.7〜-1.1 cm（前は 0 cm 前後）に出ていた（後ろの床までの距離が 10 秒の中央 0.092 m、設定は 0.082 m。段差のしきい -2.0 cm に近い）。ダッシュボードの落下防止センサーのカードの「床の補正」（`POST /api/cliff/floor_calibrate`、API トークンが必要）で、`cliff_node` の `/cliff/floor_calibrate`（std_srvs/Trigger）が 3 秒（`floor_calibration_s`）の前後の距離の中央値を平らな床の距離にし、`~/.ros/cliff_floor_calibration.json`（`floor_calibration_file`）に保存する。起動時はこのファイルを `front_floor_distance_m`・`rear_floor_distance_m` より優先する。設定の値から 3 cm（`floor_calibration_max_change_m`）より離れる・記録中のゆれが 2 cm（`floor_calibration_max_spread_m`）より大きい・測れない回がある・10 回より少ないときは使わない（平らでない所や持ち上げたままで押したとき）。`/cliff_status` に `floor_calibration`（記録中・残り秒・補正した日時・結果）。カードの「床の基準」に結果、マウスを乗せると前後の床の距離
+
 ## [2.2.0] - 2026-11-05
 
 - LiDAR を RPLIDAR A1M8 から **RPLIDAR C1**（dTOF・最大 12 m・CP2102N）に交換。

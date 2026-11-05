@@ -626,6 +626,7 @@
         <tr><td class="k">前 [mm]</td><td class="v" id="c_front">-</td></tr>
         <tr><td class="k">後 [mm]</td><td class="v" id="c_rear">-</td></tr>
         <tr><td class="k">しきい値 [mm]</td><td class="v" id="c_th">-</td></tr>
+        <tr><td class="k">床の基準</td><td class="v"><span id="c_cal">-</span> <button id="c_cal_btn">床の補正</button></td></tr>
       </table>
     </div>
   </div>
@@ -2537,7 +2538,21 @@ function renderCliff(c) {
   document.getElementById('c_th').textContent = alive && c.cliff_height_cm != null
     ? `${fmt(-c.cliff_height_cm * 10, 0)} 以下` +
       (c.bump_height_cm > 0 ? `・+${fmt(c.bump_height_cm * 10, 0)} 以上` : '') + 'で段差（床 0）' : '-';
+  const fc = alive ? c.floor_calibration : null;
+  const cal = document.getElementById('c_cal');
+  cal.textContent = !fc ? '-' : fc.recording
+    ? `記録中 あと ${fmt(fc.remaining_s, 0)} 秒`
+    : (fc.result || (fc.calibrated_at ? `補正済（${fc.calibrated_at}）` : '設定の値'));
+  cal.title = fc && c.sensors ? ['front', 'rear'].map(s => c.sensors[s]
+    ? `${c.sensors[s].label} ${fmt(c.sensors[s].floor_distance_m * 1000, 0)} mm` : '').join('・') : '';
+  document.getElementById('c_cal_btn').disabled = !fc || fc.recording || !c.connected;
 }
+document.getElementById('c_cal_btn').addEventListener('click', () => {
+  if (!confirm('落下防止センサーの床の補正をします。車を平らな床に置いて、3 秒のあいだ動かさないでください。始めますか？')) return;
+  apiPost('/api/cliff/floor_calibrate').then(r => r && r.json()).then(j => {
+    if (j && !j.ok) alert(j.reason);
+  }).catch(() => {});
+});
 
 function renderJoy(j) {
   const el = document.getElementById('joy_state');
