@@ -7,3 +7,5 @@ __pycache__/
 *.pyc
 *.egg-info/
 .vscode/
+# LiDAR driver (Slamtec rplidar_ros ros2 を clone してコミット 24cc9b6 に固定。README 参照)
+src/rplidar_ros/

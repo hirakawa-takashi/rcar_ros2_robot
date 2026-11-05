@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.1.2（2026-11-03。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.2.0（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -275,6 +275,22 @@ pip3 install fastapi uvicorn
 # WebSocket 配信（未導入なら /api/status の 250ms ポーリングへ自動フォールバック）。
 # apt の python3-websockets 10.4 は uvicorn が要求する API を持たないため使わない。
 pip3 install --user --break-system-packages "websockets>=13"
+```
+
+### LiDAR driver（RPLIDAR C1）
+
+apt の `ros-jazzy-rplidar-ros`（2.1.0・SDK 1.12）は RPLIDAR C1 に対応せず、つながっても
+`Cannot start scan: 80008002` でスキャンが回らない。workspace 版の公式 rplidar_ros（ros2 ブランチ、
+**コミット `24cc9b6dea97e045bda1408eaa867ce730fd3fc3`**＝2.1.4）を clone して使う。
+パッケージ名・実行ファイル名（`rplidar_composition`）は apt 版と同じなので、workspace 側が
+先に使われ、`dashboard.launch.py` や `lidar_watchdog_node` の `process_pattern` は変更不要。
+`src/rplidar_ros/` は git で無視しているので、Pi で直接 clone する。
+
+```bash
+cd ~/AI-CAR_ws/src
+git clone https://github.com/Slamtec/rplidar_ros.git
+cd rplidar_ros && git checkout 24cc9b6dea97e045bda1408eaa867ce730fd3fc3
+cd ~/AI-CAR_ws && colcon build --symlink-install --packages-select rplidar_ros ai_car_web
 ```
 
 映像の滑らかさは `config/dashboard.yaml` で調整する。既定は `camera` の `width: 960` /

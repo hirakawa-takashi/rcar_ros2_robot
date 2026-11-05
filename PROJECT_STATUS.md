@@ -1,9 +1,9 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.1.2（2026-11-03）
-- 更新日: 2026-11-03
-- 更新概要: 機能の開発がひと区切りしたので、文書（README・PROJECT_STATUS・HARDWARE_BOM・CHANGELOG・プロジェクト説明 `architecture.yaml`）を今の main のプログラムと実機（ラズパイ・Jetson）に合わせて見直した。前後の落下防止センサー（VL53L1X、0x30 / 0x31）は配線済み・床の上で読める、IMU（0x29）はセンサーと取り合わずに動く、後ろ右のエンコーダーは止まっているとき・手で回したときに問題なし（2026/10/17、下の「テスト結果」）。これまでの変更の中身は CHANGELOG.md
+- バージョン: 2.2.0（2026-11-05）
+- 更新日: 2026-11-05
+- 更新概要: LiDAR を RPLIDAR A1M8 から RPLIDAR C1 に交換（dTOF・最大 12 m・CP2102N 460800bps）。driver を workspace の公式 rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` のポートを C1 の by-id・460800bps・`scan_mode: Standard` に更新。apt の 2.1.0 では C1 が `Cannot start scan: 80008002` で回らなかった。LiDAR の向き・高さの値は前と同じまま（C1 で測り直しが必要）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
 - 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（バックアップ491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
 - 2026-10-28（v1.30.2、PR #326）: Jetsonバックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同設計、輪転7）。T1実測成功（バックアップ3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
@@ -35,6 +35,7 @@
 - 2026-11-01（v2.0.0）: パソコンの GPU を使う機能を削除。スタックちゃんの「パソコンにして」・パソコンの控え・ダッシュボードのパソコン切り替えをやめ、聞き取り・返事はいつもミニコン（Jetson）。声はパソコンの VOICEVOX（CPU）のまま。パソコンの GPU（16GB）は Strata・ComfyUI 用。パソコンの様子（温度・負荷率・メモリ・更新）は表示だけ残す
 - 2026-11-01（v2.0.2）: Jetson実機の face_id（顔認識、jetson-face.service として稼働中）と voice_chat（Bluetooth声会話）をリポジトリ `jetson/` に取り込み。models（onnx 38MB）と data（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS・CHANGELOGに反映
 - 2026-11-03（v2.0.3）: 電源をリポ 3S 11.1V 10000mAh 1 個にする予定の配線（`architecture.yaml` の `power_wiring` に点線の予定 2 つ）と部品一覧（HARDWARE_BOM）を追加。説明だけでコード変更なし。電圧センサー（INA226）と新しい箱は部品が届いてから別の PR。
+- 2026-11-05（v2.2.0）: LiDAR を RPLIDAR A1M8 → C1 に交換。driver を workspace の rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` を C1 の by-id・460800bps・`scan_mode: Standard` に更新。向き（`scan_angle_offset_deg` / URDF の `laser_yaw_deg`）と高さは前の値のまま（C1 で測り直しが要る）
 - 2026-11-03（v2.1.2）: 配線図 PDF に充電するときの配線（充電器 X2 AC プラス 200、LiPo・Balance CHG・3S・5.0A）
 - 2026-11-03（v2.1.1）: リポ 1 個のくわしい配線図 `docs/power/lipo_wiring.pdf`。INA226 の GND はラズパイの pin 14 だけ（リポの−にはつながない）
 - 2026-11-03（v2.1.0）: 3D の部品どうしのぶつかりを自動で調べる `hardware/3d/check_interference.py`（STL を作り直したら 1 回実行。ぶつかりがあると終了コード 1）
@@ -46,7 +47,7 @@
 - 実行環境: Raspberry Pi 5
 - ROS: ROS2 Jazzy（ros-base）
 - ナビゲーション: Nav2（ros-jazzy-navigation2 1.3.13、Level 2。slam_toolbox の地図と自己位置で行き先へ）
-- センサー: LiDAR（RPLIDAR A1M8）、カメラ（Camera Module 3 Wide、IMX708）、IMU（BNO055）、落下防止センサー（VL53L1X ×2、前後）、エンコーダー（520 モーター ×4）
+- センサー: LiDAR（RPLIDAR C1）、カメラ（Camera Module 3 Wide、IMX708）、IMU（BNO055）、落下防止センサー（VL53L1X ×2、前後）、エンコーダー（520 モーター ×4）
 - 駆動: Adafruit DC & Stepper Motor HAT（M1〜M4、メカナム 4 輪）
 - 外の機械: Jetson Orin Nano Super（スタックちゃんの会話・状態）、パソコン（WSL・RTX 4080 SUPER、様子の表示と VOICEVOX の声（CPU）。GPU は使わない）、M5 スタックちゃん（CoreS3）
 - Web: FastAPI + uvicorn
@@ -74,7 +75,7 @@
   - REST: `GET /api/status`、`POST /api/cmd_vel`、`POST /api/stop`、`GET /api/camera/snapshot`、`GET /api/camera/stream`（MJPEG）、WebSocket `/ws`（テレメトリ配信）
   - カメラカード: MJPEG 映像と受信フレーム数・最終受信時刻を表示（未受信時は待機表示）
   - LiDAR カード: `/scan` の360度スキャンを上面視の点群マップ（Canvas、最大720点（`scan_max_points`）、表示範囲は 3 m で固定、3 m より遠い点は描かない）として描画。「見え方」の行に、3 秒の平均で返る点の割合といちばん遠い点（例: 79%・3.8 m）を出す。65% より少ないか 2.5 m より遠くが 1 点も見えないと、赤で「レンズをふいて」（v1.24.0 のよごれチェック）。カード順は カメラ → LiDAR → CPU → AI HAT+ で、カメラと LiDAR は横幅 2 列分（狭い画面では 1 列）
-  - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。ポートは by-id パス、115200bps、`frame_id: laser`。`lidar_watchdog_node` が `/scan` の 3 秒途絶で rplidar を止め、respawn で起動し直させる（USB が抜けてつながり直すと、rplidar は `/scan` を出さなくなるため）。2 回続けて戻らなければ LiDAR の USB をつなぎ直す（電池の電圧低下の後に CP2102 が返事をしなくなったとき用）。4 回で USB の電気を 3 秒切って入れ直し（`ai-car-usb-power-cycle`、uhubctl、ゲームパッドも数秒切れる）、7 回でラズパイを再起動する（この起動で `/scan` が来ていて、起動から 30 分たっているときだけ）
+  - LiDAR ノード: `rplidar_ros`（`rplidar_composition`）を `dashboard.launch.py` の `use_lidar` で起動。driver は workspace の公式 rplidar_ros 2.1.4（コミット 24cc9b6 固定・README 参照。apt の 2.1.0 は RPLIDAR C1 が `Cannot start scan: 80008002` で動かない）。ポートは C1 の by-id パス、460800bps、`scan_mode: Standard`、`frame_id: laser`。`lidar_watchdog_node` が `/scan` の 3 秒途絶で rplidar を止め、respawn で起動し直させる（USB が抜けてつながり直すと、rplidar は `/scan` を出さなくなるため）。2 回続けて戻らなければ LiDAR の USB をつなぎ直す（電池の電圧低下の後に CP2102 が返事をしなくなったとき用。C1 は CP2102N で同じ 10c4:ea60）。4 回で USB の電気を 3 秒切って入れ直し（`ai-car-usb-power-cycle`、uhubctl、ゲームパッドも数秒切れる）、7 回でラズパイを再起動する（この起動で `/scan` が来ていて、起動から 30 分たっているときだけ）
   - カメラノード: `dashboard.launch.py` の `use_camera` で Camera Module 3 Wide の `camera_ros`（libcamera）を起動。`~/opt/rpicam` の Raspberry Pi 版 libcamera を `LD_LIBRARY_PATH` に自動追加
   - 障害物判定ノード（`perception_node`）: LiDAR を主として前方 ±30° を左/中央/右セクターで評価し、停止 0.35m / 減速 0.8m で 停止・減速・安全・不明 を判定。カメラ画像の AI（AI HAT+ の YOLO `yolov8m.hef`、10 回/秒）で、検出枠を履歴3中2回で確認して物体名（テレビ・ボトルなど）を補助情報として付ける（表示だけ。速さには使わない）。結果は `/obstacle_status`（JSON, 5Hz）
   - 検出物体の距離: LiDAR の距離（画面に「（LiDAR）」）。LiDAR は床から 17.5 cm の 1 本の線なので、高い所の物（テレビなど）では手前の低い物の距離になることがある。LiDAR の距離: 画像の横位置を `camera_hfov_deg`（102°）で方位角に変換し、LiDAR の同方位の距離を採用（LiDAR の点は、LiDAR の中心から見たカメラの位置 `camera_offset_x_m` 0.063 / `camera_offset_y_m` 0.0（真ん前 63 mm。Camera Module 3 Wide のレンズの先、CAD 値）に移し、カメラから見た方位で照合する。距離はカメラのレンズから前方への距離）。カメラ映像に検出枠と距離を重畳し（枠の色は LiDAR の図の点と同じ距離の色: `danger_distance` 以内 赤 #ff5c6c / 停止距離以内 橙 #ff8a4c / 減速距離以内 黄 #f5b942 / それより遠い 水色 #35d6ff、距離不明 灰色）、LiDAR 点群マップでは前方 ±30°（`front_angle_deg` 60°）内かつ 0.3m 以内の点を赤点で表示。点群マップには前方／後方／左／右のラベルを表示（上＝前方）。方位角範囲内の点は距離でクラスタリングし（`cluster_gap` 0.25m）、最も手前のまとまりの中央値を採用する。スキャンが `scan_max_age`（1秒）より古い場合は距離を出さない。LiDAR の取り付け向きは `scan_angle_offset_deg` で補正する。画面の「前方」は前方カメラの正面とし、カメラの画面の真ん中に置いたボトルが LiDAR で右 4°・0.47 m に見えたことから −1.7° とした（2026/10 実測。`dashboard_node`・`perception_node`・`autonomy_node` と URDF の `laser` の向きで同じ値）

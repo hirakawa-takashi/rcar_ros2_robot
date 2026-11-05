@@ -409,8 +409,11 @@ perception_node:
 
 rplidar:
   ros__parameters:
-    serial_port: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
-    serial_baudrate: 115200
+    # RPLIDAR C1（CP2102N）。 drivers は workspace の rplidar_ros 2.1.4（コミット 24cc9b6、README 参照）。
+    # C1 は 460800bps 固定（apt の 2.1.0 だと Cannot start scan: 80008002 で回らない）
+    serial_port: "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7cd561565431f111820f935f30d20014-if00-port0"
+    serial_baudrate: 460800
+    scan_mode: "Standard"
     frame_id: "laser"
     angle_compensate: true
 
