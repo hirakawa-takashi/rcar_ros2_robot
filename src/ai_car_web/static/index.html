@@ -4357,7 +4357,9 @@ function renderBackupProgress(j) {
     const about = r.estimated ? '約 ' : '';
     const [cls, word] = BP_STATE[r.state] || ['warn', r.state];
     const m = /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(r.file);
-    const when = m ? `（${m[2]}-${m[3]} ${m[4]}:${m[5]} の分）` : '';
+    const v = /-v(\d+\.\d+\.\d+)/.exec(r.file) || /-L4T(\d+\.\d+\.\d+)/.exec(r.file);
+    const ver = v ? (r.host === 'jetson' ? ` L4T ${v[1]}` : ` v${v[1]}`) : '';
+    const when = m ? `（${m[2]}-${m[3]} ${m[4]}:${m[5]}${ver} の分）` : (ver ? `（${ver.trim()}）` : '');
     return `<tr title="${esc(r.file)}（${esc(r.comm || '-')}）">` +
       `<td><span style="color:${BP_COLORS[i % BP_COLORS.length]}">●</span> ${esc(BP_HOST[r.host] || r.host)}</td>` +
       `<td>${esc(BP_KIND[r.kind] || r.kind)}${esc(when)}</td>` +
