@@ -178,7 +178,8 @@ class ProgressTracker:
     def _prune(self, now):
         """終わった仕事は、機械ごとに一番新しい KEEP_ENDED_PER_HOST 件を KEEP_ENDED_S 秒だけ残す。"""
         ended = sorted((k for k, r in self.jobs.items() if r['state'] != 'run'),
-                       key=lambda k: self.jobs[k].get('ended', self.jobs[k]['last']), reverse=True)
+                       key=lambda k: (self.jobs[k].get('ended', self.jobs[k]['last']), self.jobs[k]['start']),
+                       reverse=True)
         kept = {}
         for key in ended:
             r = self.jobs[key]
