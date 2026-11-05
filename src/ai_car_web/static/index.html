@@ -512,9 +512,7 @@
 
   <div class="card wide">
     <h2><span id="jt_title">ミニコン（Orin Nano Super） — AI 担当</span> <span class="badge" id="jt_state">-</span>
-      <span class="aiswitch nw"><button id="ai_be_jetson" title="ミニコン（Jetson）の様子を出す。スタックちゃんの聞き取り（whisper small）と返事（qwen2.5:3b）はいつもミニコン">ミニコン</button> <button id="ai_be_pc" title="パソコン（Windows・WSL）の様子を出す（表示だけ）。パソコンの GPU は AI に使わない">パソコン</button></span>
-      <span class="aiswitch nw"><button id="ai_md_local" title="スタックちゃんの会話を家の AI（ローカル）でする。「ローカルにして」でも切りかわる">ローカル</button> <button id="ai_md_net" title="スタックちゃんの会話をネットの XiaoZhi でする（顔が緑）。パソコンのときは、パソコンの AI で話して新しいことだけネットで調べる。「ネットにして」でも切りかわる">ネット</button></span>
-      <span id="ai_be_msg"></span></h2>
+      <span class="aiswitch nw"><button id="ai_md_local" title="スタックちゃんの会話を家の AI（ローカル）でする。「ローカルにして」でも切りかわる">ローカル</button> <button id="ai_md_net" title="スタックちゃんの会話をネットの XiaoZhi でする（顔が緑）。パソコンのときは、パソコンの AI で話して新しいことだけネットで調べる。「ネットにして」でも切りかわる">ネット</button></span></h2>
     <div class="osline" id="jt_os">-</div>
     <div class="jcols">
       <div>
@@ -1106,12 +1104,8 @@ function renderIps(el, ips) {
   el.innerHTML = ips && ips.length
     ? [...ips].sort((a, b) => order(a) - order(b)).map(ip => `<span class="nw">${esc(ip.addr)}</span><wbr><span class="nw">（${esc(ipLabel(ip.iface || ''))}）</span>`).join('<br>') : '-';
 }
-let jtView = localStorage.getItem('jt_view') === 'pc' ? 'pc' : 'jetson';
-const jtTarget = () => jtView === 'pc'
-  ? {name: 'Ubuntu ', path: k => `/api/mypc/${k}`} : {name: 'ミニコン', path: k => `/api/jetson/${k}`};
 function rebootButton(btnId, msgId, name, path, when) {
   document.getElementById(btnId).addEventListener('click', () => {
-    if (btnId === 'jt_reboot_btn') ({name, path} = {name: jtTarget().name, path: jtTarget().path('reboot')});
     if (!confirm(`${name}を再起動しますか？\n${when ? when + '再起動します。' : ''}戻るまで 1〜2 分かかります。`)) return;
     const msg = document.getElementById(msgId);
     msg.textContent = '送っています…';
@@ -1144,13 +1138,11 @@ document.getElementById('pi_upgrade_btn').addEventListener('click', () => {
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
-  const pc = jtTarget().name === 'Ubuntu ';
-  const n = pc ? latestTelemetry.mypc_host?.ubuntu_updates_pending : latestTelemetry.jetson_host?.updates_pending;
-  if (!confirm(pc ? `Ubuntu（WSL）を更新しますか？（${n ?? '?'} 個）\nWindows Update はしません。終わるまで数分かかります。`
-    : `ミニコンを更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
+  const n = latestTelemetry.jetson_host?.updates_pending;
+  if (!confirm(`ミニコンを更新しますか？（NVIDIA の部品を除く ${n ?? '?'} 個）\n終わるまで数分〜数十分かかります。そのあいだ、声の会話が遅くなることがあります。`)) return;
   const msg = document.getElementById('jt_upgrade_msg');
   msg.textContent = '送っています…';
-  apiPost(jtTarget().path('upgrade')).then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
+  apiPost('/api/jetson/upgrade').then(r => r ? r.json().then(j => [r.ok, j]) : [false, {}]).then(([ok, j]) => {
     msg.textContent = ok ? '頼みました' : (j.detail || '送れませんでした');
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
@@ -1580,7 +1572,6 @@ function stackTime(t) {
 let modeBusy = false;
 
 function renderBackend(r) {
-  ['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).classList.toggle('active', jtView === k));
   ['local', 'net'].forEach(k => {
     const btn = document.getElementById(`ai_md_${k}`);
     btn.disabled = !r || modeBusy;
@@ -1592,7 +1583,7 @@ function renderBackend(r) {
 
 let aiStack = null;
 let aiJetson = {};
-let aiHosts = {jetson: null, pc: null};
+let aiHosts = {jetson: null};
 
 function renderAiRows(v) {
   const byId = id => document.getElementById(id);
@@ -1643,12 +1634,6 @@ function renderVoiceBtns() {
   sel.disabled = voiceBusy;
   if (!voiceBusy && document.activeElement !== sel) sel.value = String(v.speaker);
 }
-
-['jetson', 'pc'].forEach(k => document.getElementById(`ai_be_${k}`).addEventListener('click', () => {
-  jtView = k;
-  localStorage.setItem('jt_view', k);
-  renderBackend(aiStack);
-}));
 
 ['local', 'net'].forEach(k => document.getElementById(`ai_md_${k}`).addEventListener('click', () => {
   modeBusy = true;
@@ -1735,13 +1720,12 @@ function pollStackchan() {
 
 function renderJetsonHost() {
   const byId = id => document.getElementById(id);
-  const pc = jtView === 'pc';
-  const j = pc ? aiHosts.pc : aiHosts.jetson;
+  const j = aiHosts.jetson;
   aiJetson = aiHosts.jetson && aiHosts.jetson.alive ? aiHosts.jetson : {};
   const alive = !!(j && j.alive);
   byId('jt_state').className = 'badge' + (alive ? ' ok' : j ? ' warn' : '');
   byId('jt_state').textContent = alive ? '接続中' : '未接続';
-  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : (pc ? '/api/mypc/status 未受信（パソコンの pc-status.service）' : '/api/jetson/status 未受信');
+  byId('jt_state').title = j ? `最後の受信から ${fmt(j.age_s, 1)} s` : '/api/jetson/status 未受信';
   const v = alive ? j : {};
   const t = v.temperatures_c || {};
   setTempBar(byId('jt_cpu_temp_bar'), byId('jt_cpu_temp'), t.cpu);
@@ -1761,11 +1745,8 @@ function renderJetsonHost() {
   byId('jt_power').textContent = fmt(v.power_w, 1);
   byId('jt_power').title = v.input_volt == null ? '' : `入力 ${fmt(v.input_volt, 2)} V（VDD_IN）`;
 
-  byId('jt_ai_col').style.display = pc ? 'none' : '';
-  if (!pc) {
-    renderAiRows(v);
-    renderVoiceBtns();
-  }
+  renderAiRows(v);
+  renderVoiceBtns();
 
   renderUpdates(v, 'jt_');
   byId('jt_security').title = 'apt-check で 1 時間に 1 回（と更新のあと）調べる' +
@@ -1785,20 +1766,6 @@ function renderJetsonHost() {
   renderIps(byId('jt_ips'), v.ips);
   byId('jt_reboot_btn').disabled = !alive;
   byId('jt_poweroff_btn').disabled = !alive;
-  byId('jt_title').textContent = pc ? `パソコン${v.gpu_name ? `（${v.gpu_name}）` : ''}` : 'ミニコン（Orin Nano Super） — AI 担当';
-  byId('jt_l4t_k').textContent = pc ? 'GPU' : 'JetPack（L4T）';
-  if (pc) byId('jt_l4t').textContent = v.gpu_name ? `${v.gpu_name}（ドライバ ${v.gpu_driver || '-'}）` : '-';
-  if (pc) byId('jt_power').title = 'GPU だけ（nvidia-smi の power.draw）';
-  byId('jt_upgrade_btn').textContent = pc ? 'Ubuntu を更新' : 'ミニコンを更新';
-  byId('jt_upgrade_btn').title = pc ? 'WSL の Ubuntu だけ（Windows Update は Windows の設定から）' : 'NVIDIA の部品（JetPack）は変えない';
-  byId('jt_reboot_btn').textContent = pc ? 'Ubuntu を再起動' : 'ミニコンを再起動';
-  byId('jt_poweroff_row').style.display = pc ? 'none' : '';
-  byId('jt_reboot').title = pc ? `Ubuntu の再起動。Windows の再起動は${v.win_reboot_required ? 'いる' : 'いらない'}` : '';
-  if (pc) byId('jt_security').title = `Ubuntu ${v.ubuntu_security_pending ?? '-'}（全部 ${v.ubuntu_updates_pending ?? '-'}）・Windows ${v.win_security_pending ?? '-'}（全部 ${v.win_updates_pending ?? '-'}）。1 時間に 1 回調べる`;
-  if (pc) byId('jt_cpu_temp').title = t.cpu == null ? 'LibreHardwareMonitor を管理者で動かすと出る（CPU Package）' : 'LibreHardwareMonitor の CPU Package';
-  byId('jt_note').textContent = pc
-    ? 'パソコンの pc-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。CPU・メモリ・スワップ（ページファイル）・ディスク（C:）・動いている時間は Windows、GPU は nvidia-smi。表示だけで、AI-CAR の速度や安全の判定には使わない。'
-    : 'ミニコン（Jetson）の jetson-status.service が 1 秒ごとに送る（5 秒届かないと未接続）。表示だけで、AI-CAR の速度や安全の判定には使わない（安全は LiDAR・AI HAT+・段差センサーで AI-CAR の中だけで判定）。';
 }
 
 function setLink(id, cls, text, title) {
@@ -1892,7 +1859,7 @@ function renderAll(d) {
   renderCliff(d.cliff);
   renderSlam(d.slam);
   renderSystem(freshMsg(d.system, d.stamp, 3.0));
-  aiHosts = {jetson: d.jetson_host, pc: d.mypc_host};
+  aiHosts = {jetson: d.jetson_host};
   renderJetsonHost();
   renderCamera(d.camera);
   renderLinks(d);
