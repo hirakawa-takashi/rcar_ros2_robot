@@ -12,6 +12,7 @@ import time
 ACTIVE_WRITE_S = 90
 STALL_S = 60
 KEEP_ENDED_S = 15 * 60
+KEEP_ENDED_PER_HOST = 1
 MAX_SAMPLES = 1200
 
 
@@ -175,8 +176,16 @@ class ProgressTracker:
             self._prune(now)
 
     def _prune(self, now):
-        for key in [k for k, r in self.jobs.items() if r['state'] != 'run' and now - r['last'] > KEEP_ENDED_S]:
-            del self.jobs[key]
+        """終わった仕事は、機械ごとに一番新しい KEEP_ENDED_PER_HOST 件を KEEP_ENDED_S 秒だけ残す。"""
+        ended = sorted((k for k, r in self.jobs.items() if r['state'] != 'run'),
+                       key=lambda k: (self.jobs[k].get('ended', self.jobs[k]['last']), self.jobs[k]['start']),
+                       reverse=True)
+        kept = {}
+        for key in ended:
+            r = self.jobs[key]
+            kept[r['host']] = kept.get(r['host'], 0) + 1
+            if kept[r['host']] > KEEP_ENDED_PER_HOST or now - r['last'] > KEEP_ENDED_S:
+                del self.jobs[key]
 
     def _end(self, rec, complete, now):
         rec['ended'] = now

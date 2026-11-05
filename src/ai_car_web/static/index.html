@@ -760,11 +760,11 @@
     </table>
     <div class="bp_head">バックアップ中の様子 <span class="badge" id="bp_state">-</span></div>
     <div id="bp_idle" class="note">いまはバックアップしていません（ラズパイは 5 秒、Jetson は 30 秒ごとに見ています。root で動く復元・照合は、ファイルを読んでいるのが見えないので出ません）</div>
+    <canvas id="bp_chart" width="960" height="300" hidden title="上：進み [%]、下：速さ [MB/s]。色は表の ● と同じ"></canvas>
     <table id="bp_table" class="bptable" hidden>
       <thead><tr><th>機械</th><th>すること</th><th>進み [GB]</th><th>速さ [MB/s]</th><th>経過 / 残り</th><th>状態</th></tr></thead>
       <tbody id="bp_rows"></tbody>
     </table>
-    <canvas id="bp_chart" width="960" height="300" hidden title="上：進み [%]、下：速さ [MB/s]。色は表の ● と同じ"></canvas>
     <div class="note">ラズパイのバックアップはバージョンアップ時に作る（PRマージ前、私＝strataが自動化。開発フック）。手動作成はSSHで `bash ~/AI-CAR_ws/scripts/ai-car-backup.sh`（私に依頼）。定時timer（毎日04:00）は廃止。カードの作成ボタンは削除。ラズパイバックアップには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。同一ディスク内のバックアップは削除・暴走からの回復用。復元は「選んだバックアップを復元」ボタン（約5分・ダッシュボードが一度止まり自動再起動）。手動復元はSSHで `sudo /usr/local/sbin/ai-car-restore バックアップ名`（同じ）。<br>Jetsonバックアップ＝スタックちゃんのプログラム・AIモデル・ミニコン設定（L4T版名）。ラズパイ とは別系統で Jetson の SSD に保管（30個輪転）。Piのバージョンアップ反映時にPi経由SSHで作る（私＝strata、約10分）＋手動SSH依頼。定時crontab（毎日04:00）は削除。復元は「選んだJetsonバックアップを復元」ボタン（Pi経由SSHでJetsonのrootスクリプトを発動、約10分・Jetsonのサービスが一度止まる。Jetson sudoersの初回導入にJetson側のユーザーパスワード1回必要）。WindowsのPCにもコピーして照合（PCのフォルダ `jetson-backups`）。</div>
   </div>
 
@@ -4357,7 +4357,9 @@ function renderBackupProgress(j) {
     const about = r.estimated ? '約 ' : '';
     const [cls, word] = BP_STATE[r.state] || ['warn', r.state];
     const m = /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(r.file);
-    const when = m ? `（${m[2]}-${m[3]} ${m[4]}:${m[5]} の分）` : '';
+    const v = /-v(\d+\.\d+\.\d+)/.exec(r.file) || /-L4T(\d+\.\d+\.\d+)/.exec(r.file);
+    const ver = v ? (r.host === 'jetson' ? ` L4T ${v[1]}` : ` v${v[1]}`) : '';
+    const when = m ? `（${m[2]}-${m[3]} ${m[4]}:${m[5]}${ver} の分）` : (ver ? `（${ver.trim()}）` : '');
     return `<tr title="${esc(r.file)}（${esc(r.comm || '-')}）">` +
       `<td><span style="color:${BP_COLORS[i % BP_COLORS.length]}">●</span> ${esc(BP_HOST[r.host] || r.host)}</td>` +
       `<td>${esc(BP_KIND[r.kind] || r.kind)}${esc(when)}</td>` +
