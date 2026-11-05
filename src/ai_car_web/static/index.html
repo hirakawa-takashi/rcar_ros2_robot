@@ -4319,7 +4319,8 @@ function drawBackupChart(cv, jobs, now) {
     const t = t0 + (t1 - t0) * i / 4;
     const d = new Date(t * 1000);
     g.textAlign = i === 0 ? 'left' : (i === 4 ? 'right' : 'center');
-    g.fillText(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, X(t), H - 6);
+    const hm = [d.getHours(), d.getMinutes()].concat(t1 - t0 < 600 ? [d.getSeconds()] : []);
+    g.fillText(hm.map(v => String(v).padStart(2, '0')).join(':'), X(t), H - 6);
     g.textAlign = 'left';
   }
   jobs.forEach((r, i) => {
@@ -4343,7 +4344,8 @@ function drawBackupChart(cv, jobs, now) {
 }
 let bpWasActive = false;
 function renderBackupProgress(j) {
-  const jobs = j.jobs || [];
+  const jobs = (j.jobs || []).slice().sort((a, b) =>
+    (bpActive(b) - bpActive(a)) || a.host.localeCompare(b.host) || a.start - b.start);
   const run = jobs.filter(bpActive);
   const st = document.getElementById('bp_state');
   st.textContent = run.length ? `${run.length} 件 バックアップ中` : (jobs.length ? '終わった' : 'なし');
