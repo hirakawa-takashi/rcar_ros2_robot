@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.2.0（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.4.0（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -159,6 +159,10 @@ i2cdetect -y 1    # 0x29 が表示されることを確認
 床を 0 cm とした高さ `height_cm = (床の距離 - 測った距離) × cos 45° × 100` に直す。床より `cliff_height_cm`（既定 2.0 cm）以上低いか、
 床が見えない状態が `confirm_count` 回続くと段差とする。ダッシュボードの落下防止センサーのカードは、この高さを cm で出す。`drive_mode_node` は前が段差なら前進、後ろが段差なら後退を止める。
 自動運転は停止モードにせず、`autonomy_node` が `/odom` で 0.10 m 下がり、空いている側へ 120° 回って走行を続ける（前後とも段差なら止まる）。
+
+床の補正: 車を平らな床に置いて、ダッシュボードの落下防止センサーのカードの「床の補正」を押す（`POST /api/cliff/floor_calibrate` → `cliff_node` の `/cliff/floor_calibrate`）。
+3 秒（`floor_calibration_s`）の中央値を前後の床の距離にして `~/.ros/cliff_floor_calibration.json` に保存し、次の起動でも使う（`dashboard.yaml` の値より優先）。
+設定の値から 3 cm より離れる・ゆれが 2 cm より大きい・測れない回があるときは使わず、カードに理由を出す。
 
 前後とも配線済み（`cliff_node.wired: true`・`front_wired: true`・`rear_wired: true`）。`wired: false` の間は I2C / GPIO に触らず
 「未配線」だけを配信し、`front_wired` / `rear_wired` を false にした側も「未配線」になる

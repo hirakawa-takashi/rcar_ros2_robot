@@ -495,6 +495,7 @@
       <tr><td class="k">ファン [rpm]</td><td class="v" id="cpu_fan">-</td></tr>
       <tr><td class="k">メモリ [GB]</td><td class="v" id="mem">-</td></tr>
       <tr><td class="k">Swap使用率</td><td class="v" id="swap">-</td></tr>
+      <tr><td class="k">ディスク [GB]</td><td class="v" id="pi_disk" title="SD カード（/）の使っている量 / 全体（GiB）">-</td></tr>
       <tr><td class="k">全体消費電力 [W]</td><td class="v" id="pwr_total">-</td></tr>
       <tr><td class="k">入力電圧 [V]</td><td class="v" id="pwr_input">-</td></tr>
       <tr><td class="k">入力電流 [A]</td><td class="v" id="pwr_amp">-</td></tr>
@@ -568,7 +569,7 @@
         <h3>更新・システム</h3>
         <table>
           <tr><td class="k">動いている時間</td><td class="v" id="jt_uptime">-</td></tr>
-          <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk">-</td></tr>
+          <tr><td class="k">ディスク [GB]</td><td class="v" id="jt_disk" title="SSD（/）の使っている量 / 全体">-</td></tr>
           <tr><td class="k" id="jt_l4t_k">JetPack（L4T）</td><td class="v" id="jt_l4t">-</td></tr>
           <tr><td class="k">IP アドレス</td><td class="v wrap" id="jt_ips">-</td></tr>
           <tr><td class="k">セキュリティ更新</td><td class="v" id="jt_security" title="apt-check で 1 時間に 1 回調べる">-</td></tr>
@@ -626,6 +627,7 @@
         <tr><td class="k">前 [mm]</td><td class="v" id="c_front">-</td></tr>
         <tr><td class="k">後 [mm]</td><td class="v" id="c_rear">-</td></tr>
         <tr><td class="k">しきい値 [mm]</td><td class="v" id="c_th">-</td></tr>
+        <tr><td class="k">床の基準</td><td class="v"><button id="c_cal_btn">床の補正</button> <span id="c_cal">-</span></td></tr>
       </table>
     </div>
   </div>
@@ -1153,6 +1155,12 @@ document.getElementById('jt_upgrade_btn').addEventListener('click', () => {
   }).catch(() => { msg.textContent = '送れませんでした'; });
 });
 
+function diskText(used, total) {
+  if (used == null || !total) return '-';
+  const pct = 100 * used / total;
+  const p = `${fmt(pct, 0)}%`;
+  return `${fmt(used, 0)} / ${fmt(total, 0)} (${pct >= 90 ? badge('warn', p) : p})`;
+}
 function badge(cls, text) {
   return `<span class="badge${cls ? ' ' + cls : ''}">${text}</span>`;
 }
@@ -1206,6 +1214,7 @@ function renderSystem(s) {
     : `${fmt(m.used_mb / 1024, 1)} / ${fmt(m.total_mb / 1024, 1)} (${fmt(m.percent, 0)}%)`;
   document.getElementById('swap').textContent =
     m.swap_percent == null ? '-' : fmt(m.swap_percent, 1) + ' %';
+  document.getElementById('pi_disk').innerHTML = diskText(m.disk_used_gb, m.disk_total_gb);
   const cores = document.getElementById('cores');
   cores.innerHTML = (c.per_core || [])
     .map(coreHtml)
@@ -1768,7 +1777,7 @@ function renderJetsonHost() {
   byId('jt_uptime').textContent = up == null ? '-'
     : up >= 86400 ? `${Math.floor(up / 86400)} 日 ${Math.floor(up % 86400 / 3600)} 時間`
     : `${Math.floor(up / 3600)} 時間 ${Math.floor(up % 3600 / 60)} 分`;
-  byId('jt_disk').textContent = v.disk_total_gb == null ? '-' : `${fmt(v.disk_used_gb, 0)} / ${fmt(v.disk_total_gb, 0)}`;
+  byId('jt_disk').innerHTML = diskText(v.disk_used_gb, v.disk_total_gb);
   byId('jt_l4t').textContent = v.l4t || '-';
   byId('jt_l4t').title = v.os || '';
   byId('jt_os').textContent = v.os || '-';
@@ -2537,7 +2546,24 @@ function renderCliff(c) {
   document.getElementById('c_th').textContent = alive && c.cliff_height_cm != null
     ? `${fmt(-c.cliff_height_cm * 10, 0)} 以下` +
       (c.bump_height_cm > 0 ? `・+${fmt(c.bump_height_cm * 10, 0)} 以上` : '') + 'で段差（床 0）' : '-';
+  const fc = alive ? c.floor_calibration : null;
+  const cal = document.getElementById('c_cal');
+  const failed = fc && fc.result && !fc.result.startsWith('補正しました');
+  cal.textContent = !fc ? '-' : fc.recording
+    ? `記録中 あと ${fmt(fc.remaining_s, 0)} 秒`
+    : (failed ? 'できませんでした' : (fc.calibrated_at ? `済 ${fc.calibrated_at.slice(5)}` : '設定の値'));
+  cal.className = failed ? 'badge warn' : '';
+  const floors = fc && c.sensors ? ['front', 'rear'].map(s => c.sensors[s]
+    ? `${c.sensors[s].label} ${fmt(c.sensors[s].floor_distance_m * 1000, 0)} mm` : '').join('・') : '';
+  cal.title = fc ? [fc.result, `床 ${floors}`].filter(Boolean).join('\n') : '';
+  document.getElementById('c_cal_btn').disabled = !fc || fc.recording || !c.connected;
 }
+document.getElementById('c_cal_btn').addEventListener('click', () => {
+  if (!confirm('落下防止センサーの床の補正をします。車を平らな床に置いて、3 秒のあいだ動かさないでください。始めますか？')) return;
+  apiPost('/api/cliff/floor_calibrate').then(r => r && r.json()).then(j => {
+    if (j && !j.ok) alert(j.reason);
+  }).catch(() => {});
+});
 
 function renderJoy(j) {
   const el = document.getElementById('joy_state');
@@ -4186,7 +4212,7 @@ function connect() {
     }
   };
 }
-const PI_VALUE_IDS = ['pi_os', 'cpu_pct', 'cpu_freq', 'cpu_fan', 'mem', 'swap', 'pwr_total', 'pwr_input',
+const PI_VALUE_IDS = ['pi_os', 'cpu_pct', 'cpu_freq', 'cpu_fan', 'mem', 'swap', 'pi_disk', 'pwr_total', 'pwr_input',
                      'pwr_amp', 'pwr_state', 'pwr_supply', 'pi_ips', 'pi_security', 'pi_reboot_req'];
 
 function blankPiCard() {

@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.2.0（2026-11-05）
+- バージョン: 2.4.0（2026-11-05）
 - 更新日: 2026-11-05
 - 更新概要: LiDAR を RPLIDAR A1M8 から RPLIDAR C1 に交換（dTOF・最大 12 m・CP2102N 460800bps）。driver を workspace の公式 rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` のポートを C1 の by-id・460800bps・`scan_mode: Standard` に更新。apt の 2.1.0 では C1 が `Cannot start scan: 80008002` で回らなかった。LiDAR の向き・高さの値は前と同じまま（C1 で測り直しが必要）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -36,6 +36,7 @@
 - 2026-11-01（v2.0.2）: Jetson実機の face_id（顔認識、jetson-face.service として稼働中）と voice_chat（Bluetooth声会話）をリポジトリ `jetson/` に取り込み。models（onnx 38MB）と data（顔ライブラリ）は `.gitignore` でgit外（owl_detector等と同運用）。READMEのJetson表・PROJECT_STATUS・CHANGELOGに反映
 - 2026-11-03（v2.0.3）: 電源をリポ 3S 11.1V 10000mAh 1 個にする予定の配線（`architecture.yaml` の `power_wiring` に点線の予定 2 つ）と部品一覧（HARDWARE_BOM）を追加。説明だけでコード変更なし。電圧センサー（INA226）と新しい箱は部品が届いてから別の PR。
 - 2026-11-05（v2.2.0）: LiDAR を RPLIDAR A1M8 → C1 に交換。driver を workspace の rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` を C1 の by-id・460800bps・`scan_mode: Standard` に更新。向き（`scan_angle_offset_deg` / URDF の `laser_yaw_deg`）は C1 で実測して −176.2°（C1 の 0° は後ろ向き。カメラの真ん前 50 cm の封筒が生の角度 176.2° に見えた）。高さは前の値のまま
+- 2026-11-05（v2.4.0）: ダッシュボードのラズパイのカードに「ディスク [GB]」（使っている量 / 全体・%）を足し、ミニコンのカードのディスクにも % を足した（90% 以上で黄色）
 - 2026-11-03（v2.1.2）: 配線図 PDF に充電するときの配線（充電器 X2 AC プラス 200、LiPo・Balance CHG・3S・5.0A）
 - 2026-11-03（v2.1.1）: リポ 1 個のくわしい配線図 `docs/power/lipo_wiring.pdf`。INA226 の GND はラズパイの pin 14 だけ（リポの−にはつながない）
 - 2026-11-03（v2.1.0）: 3D の部品どうしのぶつかりを自動で調べる `hardware/3d/check_interference.py`（STL を作り直したら 1 回実行。ぶつかりがあると終了コード 1）
@@ -99,7 +100,7 @@
   - ゲームパッド手動操作（`joy_teleop_node`）: Logitech F710（XInput モード、`/dev/input/js0`）を Linux joystick API で直接読み（追加の Python 依存なし）、正規化済み Twist を `/joy_cmd` に 10Hz で publish。`dashboard_node` が `/joy_cmd` を購読して Web 操作と同じ `publish_cmd_vel()` 経路で `/cmd_vel_manual` に出し、`drive_mode_node` が `/cmd_vel` にするため、最大速度×「出力」・360° の見張り・段差ガード・`cmd_timeout` 停止が同じようにかかる。割り当て: 左スティック上下=前後、左スティック左右=平行移動、右スティック左右=旋回、十字キー=前後・平行移動（デジタル）、RB=全速（`speed_scale` 1.0 = ダッシュボードの「出力」）、B=停止（押している間。自動中は STOP モード要求）、START 長押し 2 秒=手動 ⇄ 自動、BACK=STOP モード、`button_enable` でデッドマンボタンも設定可（既定は無効）。F710 未接続でも起動し、抜き差しを検出して再接続（切断時は指令を出さない）。画面の手動操作カードに接続状態（未接続／接続中／操作中）を表示。launch 引数 `use_joy` で無効化可
   - `motor_driver_node`（モーター制御）: `/cmd_vel` をメカナムの逆運動学で 4 輪に分け、Motor HAT（PCA9685 0x60）の M1〜M4 を PWM で回す（右側 2 輪は `reversed`）。`/cmd_vel` が `timeout` 届かないと止める。旋回 0 で動くあいだは IMU の向きを保つ（`heading_hold`、床で合わせた `heading_kp` 0.25・`heading_kd` 0.05・上限 0.05 rad/s・1° の遊び）。様子は `/motor_status`（JSON 5 Hz）
   - `encoder_odom_node`（オドメトリ）: 4 輪の A/B 相 8 本を GPIO v2 uAPI でまとめて両エッジで数え（別プロセス、イベントの取りこぼしと相のとび越しを数えて 10 秒ごとに記録）、メカナムの順運動学で `/odom` と TF `odom → base_footprint` を 20 Hz で出す（`counts_per_rev` 1408・`yaw_scale` 1.42、床で合わせた値）
-  - `cliff_node`（落下防止）: 前後バンパーの VL53L1X ×2 を XSHUT（前 GPIO17・後 GPIO27）で 1 個ずつ起こして 0x30 / 0x31 にし、`/cliff_status` を 20 Hz で出す。測った距離を床を 0 cm とした高さに直し、2.0 cm 以上低い（`cliff_height_cm`）と段差。ダッシュボードは高さを cm で出す。`front_wired` / `rear_wired` は両方 true（2026/10/17 配線済み）。前が段差なら前進、後ろなら後退を `drive_mode_node` が 0 にし、自動は STOP
+  - `cliff_node`（落下防止）: 前後バンパーの VL53L1X ×2 を XSHUT（前 GPIO17・後 GPIO27）で 1 個ずつ起こして 0x30 / 0x31 にし、`/cliff_status` を 20 Hz で出す。測った距離を床を 0 cm とした高さに直し、2.0 cm 以上低い（`cliff_height_cm`）と段差。ダッシュボードは高さを cm で出す。カードの「床の補正」で、平らな床の距離を 3 秒の中央値で測り直して `~/.ros/cliff_floor_calibration.json` に保存する（設定の値から 3 cm より離れる・ゆれが 2 cm より大きいときは使わない）。`front_wired` / `rear_wired` は両方 true（2026/10/17 配線済み）。前が段差なら前進、後ろなら後退を `drive_mode_node` が 0 にし、自動は STOP
   - スタックちゃんに話して走る: Jetson の `stackchan_bridge` が「前に 1 メートル進んで」「右に 90 度回って」「止まって」を聞き分け、ダッシュボードの `POST /api/cmd_vel` / `POST /api/stop` で動かす（言わなければ 0.5 m・90°。1 回の上限は 2 m・720°・10 秒。進んだ量は `/odom`、回った角度は IMU で見て、のこりが少ないと半分の速さにし、3 秒動かなければ止める）。ラズパイの安全ガード（360° の見張り・段差・指令の途絶）はそのまま効く
   - `seg_display_node`（旧表示器、既定では起動しない）: TM1637 4桁7セグメントLEDを libgpiod で駆動し、`/system_status`・`/obstacle_status`・`/joy_cmd`・`/cmd_vel` と `/drive_mode` から状態を判定して `/display_state`（std_msgs/String）へ publish。表示: boot / rdy / HAnd / AUto / StoP / ObSt / SLo / LoU / Err。`use_seg_display` で無効化可
   - パラメータ: `config/dashboard.yaml`（host/port/各トピック名/最大速度/タイムアウト/配信レート）
