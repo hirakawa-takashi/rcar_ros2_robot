@@ -9,7 +9,7 @@
 - LiDAR を RPLIDAR A1M8 から **RPLIDAR C1**（dTOF・最大 12 m・CP2102N）に交換。
   - apt の `ros-jazzy-rplidar-ros` 2.1.0（SDK 1.12）は C1 に対応せず、つながっても `Cannot start scan: 80008002` でスキャンが回らない。公式 rplidar_ros の ros2 ブランチ **コミット `24cc9b6dea97e045bda1408eaa867ce730fd3fc3`（2.1.4）** を `~/AI-CAR_ws/src/rplidar_ros` に clone して workspace 版を使う（README「LiDAR driver（RPLIDAR C1）」節）。パッケージ名・実行ファイル名（`rplidar_composition`）が apt 版と同名なので workspace 側が先に使われ、`dashboard.launch.py`・`lidar_watchdog_node` の `process_pattern` は変更不要。`src/rplidar_ros/` は `.gitignore` 済み（Pi で直接 clone する）。
   - `dashboard.yaml`: `serial_port` を C1 の by-id（CP2102N `7cd561565431f111820f935f30d20014`）・`serial_baudrate: 460800`・`scan_mode: "Standard"` に更新。`serial_port` が古い A1M8 のままだったため、watchdog が約 20 秒ごとに LiDAR の USB をつなぎ直し続けていた（ゲームパッドも数秒切れていた）。
-  - **LiDAR の向きの測り直しが要る**: `scan_angle_offset_deg` −1.7°・URDF の `laser_yaw_deg`・取りつけ高さは A1M8 の実測値。C1 は寸法（55.4 mm 角・高さ 33 mm）・内部光学が違うので前方方位がずれている可能性がある。当て推量で変えず前の値のまま（実測して決める）。
+  - **LiDAR の向き**: C1 の 0° は後ろ向きで、−1.7°（A1M8 の値）のままだとダッシュボードの LiDAR の図が 180° 回って、前の障害物が後ろに出ていた（前方の距離・停止の判断も後ろを見ていた）。カメラの真ん前 50 cm に置いた封筒が /scan の生の角度 176.2°（20 スキャンの平均、幅 163.5〜189.5°）・0.52 m に見えたので、`scan_angle_offset_deg`（dashboard / perception / autonomy の 3 か所）と URDF の `laser_yaw_deg` を **−176.2°** にした。取りつけ高さ・回転中心の位置は A1M8 の値のまま。
   - CAD（`battery_lidar_mount` の LiDAR 取付穴は A1M8 寸法）の作り直しは別作業。`slam_toolbox.yaml` の 12 m は C1 でもそのまま妥当。
   - `architecture.yaml`・README・`PROJECT_STATUS.md`・`HARDWARE_BOM.md` の「RPLIDAR A1M8」を C1 に更新。
   - 実機（2026-11-05 20:11 にダッシュボードを再起動）: workspace の `rplidar_composition` が動き、`/scan` は 10.0 Hz、1 回 720 点のうち 626 点が 0.15〜6.58 m を測れた。再起動のあと watchdog の USB のつなぎ直しは 0 回。

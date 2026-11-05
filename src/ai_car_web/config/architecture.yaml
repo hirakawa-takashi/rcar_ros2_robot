@@ -796,7 +796,7 @@ autonomy:
     - {id: tilted, label: 停止（かたむいた）, condition: /imu/data の roll / pitch が AUTO に入ったときより tilt_stop_deg 以上を tilt_hold_sec つづけた（落ちた・乗り上げた）, output: ゼロ速度（AUTO に入り直すまで）。かたむいた所（車のまん中）を段差の印にする（横の段差はセンサーで見えないため）}
     - {id: blocked, label: 待機（LiDAR なし）, condition: /scan が scan_max_age より古い, output: ゼロ速度}
   perception_flow:
-    - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −1.7°）→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
+    - LiDAR /scan → 取り付け向き補正（scan_angle_offset_deg、前方カメラの正面に合わせた −176.2°（RPLIDAR C1 の 0° は後ろ向き））→ 前方 ±30° を左 / 中央 / 右で最短距離 → stop / slow / clear / unknown
     - （10 回/秒）カメラ JPEG → 640×640 にレターボックス → Hailo-8 YOLOv8m（78.9 GOP）→ 元画像座標へ検出枠を復元 → camera_hfov_deg で方位角へ → LiDAR の点をカメラの位置（camera_offset_x_m / _y_m、前 63 mm・横 0 mm）から見た方位に直し、同方位クラスタ（cluster_gap）の中央値を距離として付与
     - LiDAR /scan → 360° を 5° ごとに車体の端からの空き（move）と左右に回れる角度（turn_free_deg）→ drive_mode_node が動く向き・回る向きごとに止める
     - /obstacle_status → drive_mode_node（最終ガード・AUTO 進入条件）、autonomy_node、dashboard_node（表示）
