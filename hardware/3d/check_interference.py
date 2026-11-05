@@ -68,7 +68,7 @@ GHOSTS = {
 
 # わざと重ねている組（順不同）: (重なりの上限 mm3, 理由)。形が変わって上限をこえたら x にする
 ALLOWED = {
-    frozenset(("lid", "lidar")): (360, "LiDAR の柱は LiDAR の下の穴に付く（ゴーストの下の 60x60 の四角は大まかな形）"),
+    frozenset(("lid", "lidar")): (360, "A1M8（lidar_model=\"a1m8\"）の柱は LiDAR の下の穴に付く（ゴーストの下の 60x60 の四角は大まかな形）。C1 は柱の上に載るだけで 0"),
     frozenset(("lipo", "lipo_path")): (260000, "通り道はリポ自身をふくむ"),
     frozenset(("cover", "lipo_path")): (3600, "リポはカバーを外して差し込む"),
     frozenset(("box", "cio_bat")): (90, "CIO の電池の右の端が、箱の右の口のふちに 0.7 mm かかる（いま使っている箱の形。ゴーストは公称の長さ）"),

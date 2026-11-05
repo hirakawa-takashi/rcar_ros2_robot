@@ -256,7 +256,7 @@ print3d:
       material: PLA / PETG
       orient: 板を下
       holds:
-        - RPLIDAR（今の CAD の取付穴は A1M8 の寸法。C1 は 55.4 mm 角・高さ 33 mm なので CAD 作り直しは別作業）
+        - RPLIDAR C1（43 x 43 mm の柱 4 本に M2.5 x 8 mm。ケーブルの出口を前）
         - カメラの板（cam_mount）を留める前端の柱 2 本（M3 の下穴）と、前の面のカメラの M2 のナット・ネジの先の逃げ穴（Ø6.5、深さ 4 mm ×2）
         - 加速度センサー（GY-BNO055、12 × 20 mm、ピン下向き。LiDAR のヘッドの下、右寄り。四方を壁で囲んだ高さ 25 mm の台の受けに両面テープ）
         - カメラのフラットケーブル（ふたの上の結束バンド用ブリッジ 2 か所）
@@ -452,6 +452,7 @@ print3d:
     - {file: side.png, label: 横から（高さの関係）}
     - {file: top.png, label: 真上から}
     - {file: sensors.png, label: IMU の取付（LiDAR の下）}
+    - {file: lidar_c1.png, label: RPLIDAR C1 の柱（43 mm 角、後ろ斜めから）}
     - {file: drok_holder.png, label: DROK の受け（Pi 側から）}
     - {file: bumper_under.png, label: バンパーを下から}
     - {file: bumper_spring.png, label: バンパーの板ばねとストッパー}
