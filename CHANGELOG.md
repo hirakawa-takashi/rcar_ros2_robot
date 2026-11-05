@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-11-05
+
+- Jetson のバックアップ（`scripts/ai-jetson-backup.sh`）から `open-webui-backup-0.6.14` を外した（バックアップの改善案 2 の半分、ユーザーの OK）。1.66 GB で、2026-10-04 から変わらない古い Open WebUI の控え（`webui.db`・`uploads`・`vector_db`・`cache`）。毎回同じものを入れていた。1 こ 3.41 GB → 約 1.75 GB。
+  - PC の `Strata/Workspace/jetson-extra/open-webui-backup-0.6.14.tar.zst` に 1 こだけ置いた（sha256 を `.sha256` に）。
+  - 聞き取りのモデル（`.cache/huggingface`、faster-whisper 約 2 GB）は残す。外すと、ネットがないときに戻せないため。
+
 ## [2.7.0] - 2026-11-05
 
 - ラズパイのバックアップ（`scripts/ai-car-backup.sh`）から `AI-CAR_ws/.git`・`videos`・`videos_old_*` を外した（バックアップの改善案 1、ユーザーの OK）。1 こ 1.83 GB → 0.14 GB、作る時間 約 2 分 → 12 秒（2026-11-05 の実機）。前は 9 割がこの 3 つだった（動画 1.49 GB・`.git` 0.59 GB）。

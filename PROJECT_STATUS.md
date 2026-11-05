@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.7.0（2026-11-05）
+- バージョン: 2.7.1（2026-11-05）
 - 更新日: 2026-11-05
 - 更新概要: LiDAR を RPLIDAR A1M8 から RPLIDAR C1 に交換（dTOF・最大 12 m・CP2102N 460800bps）。driver を workspace の公式 rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` のポートを C1 の by-id・460800bps・`scan_mode: Standard` に更新。apt の 2.1.0 では C1 が `Cannot start scan: 80008002` で回らなかった。LiDAR の向き・高さの値は前と同じまま（C1 で測り直しが必要）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -40,6 +40,7 @@
 - 2026-11-05（v2.4.1）: ダッシュボードの Jetson のカードの「ミニコン／パソコン」の切りかえボタンを削除。カードはいつもミニコン（Jetson）の様子を出す。パソコンの様子（温度・負荷率・更新）はダッシュボードに出さない（`POST /api/mypc/status` の受け取りは残す）
 - 2026-11-05（v2.6.0）: バックアップの PC ミラーを `scripts/ai-backup-mirror.sh pi|jetson` に。ラズパイから PC（WSL）へ直接送る（続きから・sha256 照合・`~/mirror-*.log`）。Devin の VM を通さないので、Devin を終えても続き、1 秒に約 7〜16 MB。ラズパイの公開鍵を PC の WSL に入れた
 - 2026-11-05（v2.7.0）: ラズパイのバックアップから `.git`・`videos`・`videos_old_*` を外した（1 こ 1.83 GB → 約 0.2 GB）。tierB に git のコミット・まだコミットしていない変更。動画は `ai-backup-mirror.sh videos` で PC の `ai-car-videos` へ
+- 2026-11-05（v2.7.1）: Jetson のバックアップから `open-webui-backup-0.6.14`（1.66 GB、10/04 から変わらない）を外した（3.41 GB → 約 1.75 GB）。PC の `jetson-extra` に 1 こ置いた
 - 2026-11-03（v2.1.2）: 配線図 PDF に充電するときの配線（充電器 X2 AC プラス 200、LiPo・Balance CHG・3S・5.0A）
 - 2026-11-03（v2.1.1）: リポ 1 個のくわしい配線図 `docs/power/lipo_wiring.pdf`。INA226 の GND はラズパイの pin 14 だけ（リポの−にはつながない）
 - 2026-11-03（v2.1.0）: 3D の部品どうしのぶつかりを自動で調べる `hardware/3d/check_interference.py`（STL を作り直したら 1 回実行。ぶつかりがあると終了コード 1）
