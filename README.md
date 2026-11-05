@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.6.1（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.7.0（2026-11-05。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -336,7 +336,9 @@ Jetson Orin Nano Super（`jetson@<Tailscale IP>`）で動かすもの。それ�
 - **Jetson系統**：Jetson NVMe 内 `~/jetson-backups/`（輪転30個、`JETSON_BACKUP_KEEP`。空き723GBで30個≈102GB収まる）。命名 `jetson-<日時>-v<L4T版>`（REVISION動的抽出）、manifest に `jetson_version`。
 - **作る（ラズパイ）**：Piのバージョンアップ時に作る（PRマージ前、strata側で自動化＝開発フック）。手動作成はSSHで `bash scripts/ai-car-backup.sh`（superで可、私に依頼）。定時timer（毎日04:00）は廃止（`ai-car-backup.timer` 除去。`install_service.sh` 再実行で古いtimer無効化＋ユニットファイル削除）。カードの作成ボタンはv1.31.7で削除（カードはドロップダウン＋復元ボタン）。
 - **作る（Jetson）**：Piのバージョンアップ反映時にPi経由SSHで作る（strata、約10分、シャットダウンしない）。手動作成はSSHで `bash ~/ai-jetson-backup.sh`（私に依頼）。定時crontab（毎日04:00）は削除。カードの作成ボタンはv1.31.8で削除。
-- **中身（ラズパイ）**：Tier A＝home一式（`AI-CAR_ws`（build/install/log/ai-car-backups除く）、calib、patrols、poselog・rotlog・heading_log、home直下のテストファイル、`.config/aicar`）、Tier B＝`/etc/systemd/system/ai-car-*`・udev rule・`/boot/firmware/config.txt`+`cmdline.txt`・aptマニフェスト・`tailscale status --json`・crontab。sudoers の中身はリポジトリの `systemd/*.sudoers` が正。
+- **中身（ラズパイ）**：Tier A＝home一式（`AI-CAR_ws`（build/install/log/ai-car-backups・`.git`・`videos`・`videos_old_*` 除く。v2.7.0）、calib、patrols、poselog・rotlog・heading_log、home直下のテストファイル、`.config/aicar`）、Tier B＝`/etc/systemd/system/ai-car-*`・udev rule・`/boot/firmware/config.txt`+`cmdline.txt`・aptマニフェスト・`tailscale status --json`・crontab。sudoers の中身はリポジトリの `systemd/*.sudoers` が正。
+  - v2.7.0 から `.git` と動画は入れない（1 こ 1.83 GB → 約 0.2 GB）。コードは GitHub にあり、tierB の `git-head.txt`（コミット）・`git-status.txt`・`git-uncommitted.diff`（まだコミットしていない変更）・`git-remote.txt` で、どのコードだったかがわかる。動画（解説動画）は `bash scripts/ai-backup-mirror.sh videos` で PC の `Strata/Workspace/ai-car-videos` へ送る（新しい・変わったものだけ、PC 側は消さない）。
+  - 稼働 Pi の復元（R2）では、今の `.git` はそのまま残る。古いバックアップを戻したあと `git status` に差が出たら、`git-head.txt` のコミットに `git checkout` する。新しい SD（R3）では、先に `git clone` してからバックアップを上に展開する。
 - **中身（Jetson）**：Tier A＝`/home/jetson` のサービスコード群（stackchan_bridge・face_id・object_finder・oled_panel・owl_detector・health_log・objects・fw_clear等）＋`.ollama/models`＋`.cache`＋home直下ファイル、Tier B＝`jetson-*`ユニット・sudoers内容記録・`extlinux.conf`・netplan・aptマニフェスト・tailscale・crontab。sudoersは440でjetsonが読めないため内容記録を同梱。
 - **復元（稼働Pi・R2）**：ダッシュボードカードでバックアップを選んで「選んだバックアップを復元」ボタン（`POST /api/restore`、sudoersホワイトリスト、バックアップ名正規表現検証、約5分・ダッシュボードが一度止まり自動再起動）。SSH手動は `sudo /usr/local/sbin/ai-car-restore <バックアップ名>`（同じ）。中身＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B units/udev/config.txt再導入→dashboard再起動。colcon buildは自動実行しない（必要時 `colcon build --symlink-install`）。復元スクリプトは発音元がダッシュボードでもダッシュボード停止に殺されないようcgroupから抜ける処理あり（root側反映には `install_service.sh` 再実行1回）。
 - **復元（Jetson）**：カードでJetsonバックアップを選んで「選んだJetsonバックアップを復元」ボタン（`POST /api/jetson_restore`＝Pi SSH→Jetson `sudo -n /usr/local/bin/ai-jetson-restore <名前>`。Jetson sudoersホワイトリスト `systemd/ai-jetson-restore.sudoers` をJetson側で1回導入、ユーザーパスワード必要。sha256照合→Tier A上書き→Tier B units/extlinux/netplan再導入→jetson-*・ollama再起動、約10分。netplan applyはSSH切断リスクのため手動）。SSH手動復元も私（strata）に依頼できる。

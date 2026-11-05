@@ -1,6 +1,6 @@
 #!/bin/bash
 # AI-CAR バックアップバックアップ（v1.0 仕様）
-# Tier A: homeデータ（AI-CAR_ws[build/install/log除く]、patrols、calib、poselog、設定、home直下のテストファイル）
+# Tier A: homeデータ（AI-CAR_ws[build/install/log・.git・videos* 除く。.git は GitHub、動画は ai-backup-mirror.sh videos で PC へ]、patrols、calib、poselog、設定、home直下のテストファイル）
 # Tier B: root不要で読める系設定（systemdユニット、udev、config.txt、aptマニフェスト、tailscale、crontab）
 #  sudoersの中身はリポジトリ systemd/*.sudoers が正（ファイル自体は440でsuperが読めない）
 # root（ai-car-backup.service）と super（手動実行）の両対応。
@@ -34,6 +34,12 @@ cp -p /boot/firmware/cmdline.txt "$B/" 2>/dev/null || true
 apt list --installed 2>/dev/null > "$B/apt-installed.txt" || true
 tailscale status --json 2>/dev/null > "$B/tailscale.json" || true
 crontab -l > "$B/crontab.txt" 2>/dev/null || true
+# .git は入れない（コードは GitHub にある）。どのコミットか・まだコミットしていない変更だけ残す
+G=(git -c safe.directory="$WS" -C "$WS")
+"${G[@]}" rev-parse HEAD > "$B/git-head.txt" 2>/dev/null || true
+"${G[@]}" remote get-url origin > "$B/git-remote.txt" 2>/dev/null || true
+"${G[@]}" status --porcelain > "$B/git-status.txt" 2>/dev/null || true
+"${G[@]}" diff HEAD --binary > "$B/git-uncommitted.diff" 2>/dev/null || true
 
 cd "$HOME_DIR"
 # home直下の散発ファイル（テストスクリプト・log・画像）をリスト化
@@ -47,6 +53,7 @@ done
 tar --zstd -cf "$TAR" \
   --exclude='AI-CAR_ws/build' --exclude='AI-CAR_ws/install' --exclude='AI-CAR_ws/log' \
   --exclude='AI-CAR_ws/ai-car-backups' \
+  --exclude='AI-CAR_ws/.git' --exclude='AI-CAR_ws/videos' --exclude='AI-CAR_ws/videos_old_*' \
   --exclude='libcamera' --exclude='libpisp' --exclude='hailort' --exclude='hailort-drivers' \
   --exclude='pyhailort_build' --exclude='opt' \
   -T "$WORK/homefiles.txt" \
@@ -65,7 +72,8 @@ cat > "$OUT/$NAME.manifest.json" <<EOF
   "kernel": "$(uname -r)",
   "tar_sha256": "$SHA256",
   "tar_bytes": $SIZE,
-  "tierB_items": $(ls "$B" | wc -l)
+  "tierB_items": $(ls "$B" | wc -l),
+  "excluded": [".git", "videos", "videos_old_*"]
 }
 EOF
 cd "$OUT"

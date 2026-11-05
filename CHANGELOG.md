@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-05
+
+- ラズパイのバックアップ（`scripts/ai-car-backup.sh`）から `AI-CAR_ws/.git`・`videos`・`videos_old_*` を外した（バックアップの改善案 1、ユーザーの OK）。1 こ 1.83 GB → 0.14 GB、作る時間 約 2 分 → 12 秒（2026-11-05 の実機）。前は 9 割がこの 3 つだった（動画 1.49 GB・`.git` 0.59 GB）。
+  - コードは GitHub にあるので、`.git` の代わりに tierB に `git-head.txt`（コミット）・`git-remote.txt`・`git-status.txt`・`git-uncommitted.diff`（`git diff HEAD --binary`、まだコミットしていない変更）を入れる。まだ git に入っていないファイル（`calib/`・`models/` など）は、前と同じく tar に入る。manifest に `"excluded"` を足した。
+  - 動画は `bash scripts/ai-backup-mirror.sh videos` で PC の `Strata/Workspace/ai-car-videos` へ送る（`rsync -a --partial`、新しい・変わったものだけ、PC 側は消さない。記録は `~/mirror-videos.log`）。
+  - 復元スクリプトは変えていない。稼働 Pi の復元（R2）では今の `.git` が残るので、古いバックアップを戻したあとは `git-head.txt` のコミットに `git checkout` する。新しい SD（R3）では先に `git clone` してから展開する（README に書いた）。
+
 ## [2.6.1] - 2026-11-05
 
 - README の「ラズパイ系統：Pi SSD 内 `~/ai-car-backups/`」を「Pi の SD カード内」に直した。ラズパイのバックアップは、システムと同じ SD カード（`/dev/mmcblk0p2`、117 GB）にある。SD がこわれたときに助かるのは PC ミラーだけ。説明だけの変更。

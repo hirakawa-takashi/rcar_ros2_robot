@@ -1,6 +1,7 @@
 #!/bin/bash
 # バックアップを Windows PC（WSL）へミラーする。ラズパイで super が手動で動かす（定時は禁止）。
 #   bash scripts/ai-backup-mirror.sh pi|jetson [ファイル名.tar.zst]
+#   bash scripts/ai-backup-mirror.sh videos   # AI-CAR_ws/videos・videos_old_* を PC の ai-car-videos へ（新しい・変わったものだけ、消さない）
 # ファイル名を省くと、manifest のある一番新しいバックアップ。PC にとちゅうまであれば続きから送り、
 # manifest もコピーして、PC で sha256 を manifest の tar_sha256 と照合する。
 # 記録は ~/mirror-pi.log・~/mirror-jetson.log。Devin を終えても続けるには setsid nohup で動かす。
@@ -11,12 +12,21 @@ F=${2:-}
 PC=${AI_CAR_MIRROR_PC:-super@100.86.172.21}
 W=${AI_CAR_MIRROR_DIR:-/mnt/c/Users/hirak/Documents/Strata/Workspace}
 O=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=8)
+if [ "$KIND" = videos ]; then
+  LOG=$HOME/mirror-videos.log
+  echo "$(date '+%F %T') start videos → $PC:$W/ai-car-videos" | tee -a "$LOG"
+  if rsync -a --partial -e "ssh ${O[*]}" "$HOME"/AI-CAR_ws/videos "$HOME"/AI-CAR_ws/videos_old_* \
+       "$PC:$W/ai-car-videos/" 2>&1 | tee -a "$LOG"; then
+    echo "$(date '+%F %T') OK videos" | tee -a "$LOG"; exit 0
+  fi
+  echo "$(date '+%F %T') NG videos" | tee -a "$LOG"; exit 1
+fi
 case "$KIND" in
   pi) SD=$HOME/ai-car-backups; D=$W/ai-car-backups; PFX=ai-car-
       src() { bash -c "$1"; } ;;
   jetson) SD=/home/jetson/jetson-backups; D=$W/jetson-backups; PFX=jetson-
       src() { ssh "${O[@]}" jetson@192.168.11.23 "$1"; } ;;
-  *) echo "使い方: $0 pi|jetson [ファイル名.tar.zst]" >&2; exit 2 ;;
+  *) echo "使い方: $0 pi|jetson [ファイル名.tar.zst] / $0 videos" >&2; exit 2 ;;
 esac
 pc() { ssh "${O[@]}" "$PC" "$1"; }
 LOG=$HOME/mirror-$KIND.log
