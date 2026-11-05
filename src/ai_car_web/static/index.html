@@ -291,6 +291,13 @@
   #jt_voice_btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .voicebtns .k { color: #9fb0c7; font-family: system-ui, sans-serif; font-size: 14px; }
   .voicebtns select { padding: 3px 6px; font-size: 13px; max-width: 100%; }
+  .bp_head { margin-top: 10px; font-weight: 600; }
+  table.bptable { table-layout: auto; font-size: 12px; margin-top: 4px; }
+  .bptable th { text-align: left; color: var(--muted); font-weight: 400; padding: 2px 4px; }
+  .bptable td { padding: 2px 4px; white-space: normal; font-variant-numeric: tabular-nums; }
+  .bptable td .badge { white-space: nowrap; }
+  #bp_chart { display: block; width: 100%; height: auto; margin-top: 6px; background: #0b1016; border-radius: 6px; }
+  #bp_chart[hidden], .bptable[hidden] { display: none; }
   #bk_list, #jb_list { padding: 3px 6px; font-size: 13px; width: 100%; background: #101418;
             color: #e8eaed; border: 1px solid #3a4657; border-radius: 6px; }
   .voicebtns select:disabled { opacity: .4; }
@@ -751,6 +758,13 @@
       <tr><td class="k">Jetsonバックアップを選ぶ（新しい順・30個まで）</td><td class="v"><select id="jb_list"><option>読み込み中…</option></select></td></tr>
       <tr><td class="k">Jetson 復元</td><td class="v"><button id="jr_restore">選んだJetsonバックアップを復元</button> <span id="jr_msg"></span></td></tr>
     </table>
+    <div class="bp_head">バックアップ中の様子 <span class="badge" id="bp_state">-</span></div>
+    <div id="bp_idle" class="note">いまはバックアップしていません（ラズパイは 5 秒、Jetson は 30 秒ごとに見ています）</div>
+    <table id="bp_table" class="bptable" hidden>
+      <thead><tr><th>機械</th><th>すること</th><th>進み [GB]</th><th>速さ [MB/s]</th><th>経過 / 残り</th><th>状態</th></tr></thead>
+      <tbody id="bp_rows"></tbody>
+    </table>
+    <canvas id="bp_chart" width="960" height="300" hidden title="上：進み [%]、下：速さ [MB/s]。色は表の ● と同じ"></canvas>
     <div class="note">ラズパイのバックアップはバージョンアップ時に作る（PRマージ前、私＝strataが自動化。開発フック）。手動作成はSSHで `bash ~/AI-CAR_ws/scripts/ai-car-backup.sh`（私に依頼）。定時timer（毎日04:00）は廃止。カードの作成ボタンは削除。ラズパイバックアップには車のプログラム・データ・地図・設定・AIモデルが入る。WindowsのPCにもコピーしてSSD故障にそなえる。同一ディスク内のバックアップは削除・暴走からの回復用。復元は「選んだバックアップを復元」ボタン（約5分・ダッシュボードが一度止まり自動再起動）。手動復元はSSHで `sudo /usr/local/sbin/ai-car-restore バックアップ名`（同じ）。<br>Jetsonバックアップ＝スタックちゃんのプログラム・AIモデル・ミニコン設定（L4T版名）。ラズパイ とは別系統で Jetson の SSD に保管（30個輪転）。Piのバージョンアップ反映時にPi経由SSHで作る（私＝strata、約10分）＋手動SSH依頼。定時crontab（毎日04:00）は削除。復元は「選んだJetsonバックアップを復元」ボタン（Pi経由SSHでJetsonのrootスクリプトを発動、約10分・Jetsonのサービスが一度止まる。Jetson sudoersの初回導入にJetson側のユーザーパスワード1回必要）。WindowsのPCにもコピーして照合（PCのフォルダ `jetson-backups`）。</div>
   </div>
 
@@ -4253,6 +4267,114 @@ document.getElementById('bk_restore').addEventListener('click', () => {
   });
 });
 
+const BP_KIND = {create: '作る', copy: 'PC へコピー（送り出し）', verify: 'sha256 の照合', restore: '中身を読む（復元）'};
+const BP_HOST = {pi: 'ラズパイ', jetson: 'Jetson'};
+const BP_STATE = {run: ['ok', '進んでいる'], stall: ['warn', '止まっている？'], done: ['ok', '終わった'], stopped: ['warn', '途中で終わった']};
+const BP_COLORS = ['#35e39a', '#5ab0ff', '#f5b942', '#ff6b8b', '#c38bff'];
+const bpActive = r => r.state === 'run' || r.state === 'stall';
+function hms(s) {
+  if (s == null) return '-';
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h}時間${m}分` : (m ? `${m}分${s % 60}秒` : `${s}秒`);
+}
+function bpSpeeds(r) {
+  const out = [];
+  const sm = r.samples || [];
+  for (let i = 1; i < sm.length; i++) {
+    const k = Math.max(0, i - 3);
+    const dt = sm[i][0] - sm[k][0];
+    if (dt > 0) out.push([r.start + sm[i][0], Math.max(0, (sm[i][1] - sm[k][1]) / dt / 1e6)]);
+  }
+  return out;
+}
+function drawBackupChart(cv, jobs, now) {
+  const g = cv.getContext('2d');
+  const W = cv.width, H = cv.height, L = 52, R = 10, T = 10, gap = 26;
+  const ph = (H - T - gap - 22) / 2;
+  g.clearRect(0, 0, W, H);
+  let t0 = Infinity, t1 = -Infinity;
+  for (const r of jobs) {
+    const sm = r.samples || [];
+    t0 = Math.min(t0, r.start);
+    t1 = Math.max(t1, bpActive(r) ? now : r.start + (sm.length ? sm[sm.length - 1][0] : 0));
+  }
+  if (!isFinite(t0)) return;
+  t1 = Math.max(t1, t0 + 60);
+  const speeds = jobs.map(bpSpeeds);
+  const vmax = Math.max(1, ...speeds.flat().map(p => p[1])) * 1.15;
+  const X = t => L + (W - L - R) * (t - t0) / (t1 - t0);
+  const panes = [{y: T, max: 100, unit: '%', label: '進み'}, {y: T + ph + gap, max: vmax, unit: 'MB/s', label: '速さ'}];
+  g.font = '12px sans-serif';
+  for (const p of panes) {
+    g.strokeStyle = '#26323f'; g.fillStyle = '#7a8fa6'; g.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = p.y + ph - ph * i / 4;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke();
+      g.fillText((p.max * i / 4).toFixed(p.max >= 10 ? 0 : 1), 4, y + 4);
+    }
+    g.fillText(`${p.label} [${p.unit}]`, L + 4, p.y + 12);
+  }
+  for (let i = 0; i <= 4; i++) {
+    const t = t0 + (t1 - t0) * i / 4;
+    const d = new Date(t * 1000);
+    g.textAlign = i === 0 ? 'left' : (i === 4 ? 'right' : 'center');
+    g.fillText(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, X(t), H - 6);
+    g.textAlign = 'left';
+  }
+  jobs.forEach((r, i) => {
+    g.strokeStyle = BP_COLORS[i % BP_COLORS.length]; g.lineWidth = 2;
+    const sm = r.samples || [];
+    if (r.total) {
+      g.beginPath();
+      sm.forEach(([t, b], k) => {
+        const y = panes[0].y + ph - ph * Math.min(1, b / r.total);
+        k ? g.lineTo(X(r.start + t), y) : g.moveTo(X(r.start + t), y);
+      });
+      g.stroke();
+    }
+    g.beginPath();
+    speeds[i].forEach(([t, v], k) => {
+      const y = panes[1].y + ph - ph * Math.min(1, v / vmax);
+      k ? g.lineTo(X(t), y) : g.moveTo(X(t), y);
+    });
+    g.stroke();
+  });
+}
+let bpWasActive = false;
+function renderBackupProgress(j) {
+  const jobs = j.jobs || [];
+  const run = jobs.filter(bpActive);
+  const st = document.getElementById('bp_state');
+  st.textContent = run.length ? `${run.length} 件 バックアップ中` : (jobs.length ? '終わった' : 'なし');
+  st.className = 'badge' + (jobs.some(r => r.state === 'stall' || r.state === 'stopped') ? ' warn' : (run.length ? ' ok' : ''));
+  const table = document.getElementById('bp_table'), cv = document.getElementById('bp_chart');
+  table.hidden = cv.hidden = !jobs.length;
+  document.getElementById('bp_idle').hidden = !!jobs.length;
+  document.getElementById('bp_rows').innerHTML = jobs.map((r, i) => {
+    const about = r.estimated ? '約 ' : '';
+    const [cls, word] = BP_STATE[r.state] || ['warn', r.state];
+    const m = /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(r.file);
+    const when = m ? `（${m[2]}-${m[3]} ${m[4]}:${m[5]} の分）` : '';
+    return `<tr title="${esc(r.file)}（${esc(r.comm || '-')}）">` +
+      `<td><span style="color:${BP_COLORS[i % BP_COLORS.length]}">●</span> ${esc(BP_HOST[r.host] || r.host)}</td>` +
+      `<td>${esc(BP_KIND[r.kind] || r.kind)}${esc(when)}</td>` +
+      `<td>${fmt(r.bytes / 1e9, 2)} / ${r.total ? about + fmt(r.total / 1e9, 2) : '?'}` +
+      `${r.pct == null ? '' : `（${about}${fmt(r.pct, 0)}%）`}</td>` +
+      `<td>${bpActive(r) ? fmt(r.speed_bps / 1e6, 2) : '-'}</td>` +
+      `<td>${hms(r.elapsed_s)} / ${hms(r.eta_s)}</td><td>${badge(cls, word)}</td></tr>`;
+  }).join('');
+  if (jobs.length) drawBackupChart(cv, jobs, j.now);
+  if (bpWasActive && !run.length) { loadBackup(); loadJetsonBackup(); }
+  bpWasActive = run.length > 0;
+  return run.length > 0;
+}
+function loadBackupProgress() {
+  if (document.hidden) { setTimeout(loadBackupProgress, 5000); return; }
+  fetch('/api/backup/progress').then(r => r.json()).then(renderBackupProgress).catch(() => false)
+    .then(active => { setTimeout(loadBackupProgress, active ? 5000 : 30000); });
+}
+
 function renderJetson(j) {
   const items = (j.items || []).slice(0, 30);
   const sel = document.getElementById('jb_list');
@@ -4267,6 +4389,7 @@ function loadJetsonBackup() {
   fetch('/api/jetson_backup').then(r => r.json()).then(renderJetson).catch(() => {});
 }
 loadJetsonBackup();
+loadBackupProgress();
 document.getElementById('jr_restore').addEventListener('click', () => {
   const name = document.getElementById('jb_list').value;
   const msg = document.getElementById('jr_msg');
