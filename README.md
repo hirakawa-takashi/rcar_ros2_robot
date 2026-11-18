@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.8.2（2026-11-06。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.8.3（2026-11-19。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -190,7 +190,9 @@ IMU が止まる。配線したら `dashboard.yaml` の `cliff_node.wired` と�
 
 ダッシュボードは `/camera/image_raw/compressed` を購読し、`/api/camera/stream` で MJPEG 配信する。カメラノードは `camera_ros`（libcamera）を使用し、`dashboard.launch.py` の `use_camera`（既定 true）で起動する。
 
-Ubuntu 24.04 の libcamera 0.7.2 は raspi カーネル 6.8 のメディアエンティティ名（`rp1-cfe-fe_image0` などアンダースコア形式）と一致せず `no cameras available` となるため、Raspberry Pi 版 libcamera / libpisp を `~/opt/rpicam` に導入する。
+Ubuntu 24.04 の libcamera は raspi カーネル 6.8 のメディアエンティティ名（`rp1-cfe-fe_image0` などアンダースコア形式）と一致せず `no cameras available` となるため、Raspberry Pi 版 libcamera / libpisp を `~/opt/rpicam` に導入する。
+
+`~/opt/rpicam` に入れる libcamera は、apt の `ros-jazzy-camera-ros` がリンクする soname（`libcamera.so.0.x`）と同じメジャーの `+rpt` タグでビルドする。apt で `camera_ros` が上がると soname も上がり、ずれると ROS 同梱の libcamera が読み込まれて `no cameras available` で `camera_node` が落ち続ける。必要な soname は `ldd /opt/ros/jazzy/lib/libcamera_component.so | grep libcamera` で確かめられる（camera_node 本体ではなく component 側がリンクしている）。2026-11-19、camera_ros 0.8.1 が `libcamera.so.0.8` を要求するようになったため、v0.7.2+rpt20260817 から v0.8.0+rpt20261104 に更新して復旧。現在導入: libcamera v0.8.0+rpt20261104 / libpisp v1.8.0。
 
 ```bash
 sudo apt install -y ros-jazzy-camera-ros

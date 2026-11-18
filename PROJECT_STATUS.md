@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.8.2（2026-11-06）
+- バージョン: 2.8.3（2026-11-19）
 - 更新日: 2026-11-05
 - 更新概要: LiDAR を RPLIDAR A1M8 から RPLIDAR C1 に交換（dTOF・最大 12 m・CP2102N 460800bps）。driver を workspace の公式 rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` のポートを C1 の by-id・460800bps・`scan_mode: Standard` に更新。apt の 2.1.0 では C1 が `Cannot start scan: 80008002` で回らなかった。LiDAR の向き・高さの値は前と同じまま（C1 で測り直しが必要）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
@@ -136,7 +136,7 @@
 - 検出物体の距離は LiDAR の方位角対応による概算で、カメラとLiDARの外部キャリブレーションは未実施（設置が同軸・同方向である前提）
 - `perception_node` の推論には HailoRT の Python バインディング（`hailo_platform`）が必要。apt には無いため HailoRT 4.24.0 のソースからビルドして導入する（手順は README 参照）。未導入の場合は LiDAR 判定のみで動作し、`/obstacle_status` の `note` に理由を表示する
 - 電源は PD なし（バッテリー PD 12V → DROK 5.2V/5A → USB-A → ラズパイの USB-C。USB-A には PD のやりとりがない）。ラズパイは 3 A の電源と見ている（device tree `chosen/power/max_current` 3000）。`usb_max_current_enable=1` で USB に 1.6 A まで流す。2026/09 の電圧低下・電源断（USB 2 眼カメラのころ）は、Camera Module 3 Wide にしてからは出ていない（2026/10 の 3 日間で `Undervoltage detected` 0 回、`get_throttled=0x0`、EXT5V 4.83V）
-- カメラは Ubuntu 標準の libcamera 0.7.2 だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）
+- カメラは Ubuntu 標準の libcamera だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）。さらに `~/opt/rpicam` 版の soname（`libcamera.so.0.x`）は `ros-jazzy-camera-ros`（apt）がリンクするものと同じメジャーにすること。apt 更新でずれると ROS 同梱版が読み込まれ `no cameras available` で `camera_node` が落ち続ける（2026-11-19、camera_ros 0.8.1 / `libcamera.so.0.8` に合わせ v0.8.0+rpt20261104・libpisp v1.8.0 を導入して復旧）
 - モーター M1〜M4・エンコーダーの割り付けと配線色（`motor_hat.yaml` / `gpio_pins.yaml`）は、Motor HAT 交換のとき実機で確かめた（下の「テスト結果」）。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）。AI HAT+ の ID EEPROM ピン（27/28）はヘッダー直挿しのため配線色は `PIN` 表記
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
 - 落下防止センサー（VL53L1X ×2）は前後とも配線済み（0x30 / 0x31 で距離が読める）。段差の前で本当に止まるかは、床でまだ確かめていない
@@ -167,7 +167,7 @@
 - `GET /api/status` に `system` フィールドが含まれることを確認
 - ブラウザ表示確認: CPU / メモリ / 電源 / AI HAT+ の各カードが実値で更新されることを確認（ポーリングフォールバック経由）
   - `/cmd_vel` トピック publish と指令タイムアウト停止のログを確認
-- カメラ（IMX708）: Raspberry Pi 版 libcamera v0.7.2+rpt20260817 / libpisp v1.7.0 を `~/opt/rpicam` にビルドし、`cam -l` でカメラ認識を確認
+- カメラ（IMX708）: Raspberry Pi 版 libcamera v0.8.0+rpt20261104 / libpisp v1.8.0 を `~/opt/rpicam` にビルドし、`cam -l` でカメラ認識を確認。apt の `camera_ros` 0.8.1（`libcamera.so.0.8` 要求）で映像が出なくなったのを、同じ soname の `+rpt` タグへの更新で復旧（2026-11-19、`camera.available: true`・`/api/camera/stream` の MJPEG 配信を確認）
 - `ros2 launch ai_car_web dashboard.launch.py`（カメラ含む）: `/camera/image_raw/compressed` 30Hz、`/api/status` の `camera.available: true`、`GET /api/camera/snapshot` → 200（約53KB JPEG）を確認
 - LiDAR（RPLIDAR, CP2102 USB）: `rplidar_composition` 起動で `/scan` を 約8Hz で受信。ダッシュボードの点群マップに最大720点（有効点は実測約477点）が描画されることをブラウザで確認
 - 障害物判定: `/obstacle_status` で `level: stop`（前方 0.177m）を確認。Hailo-8 推論は約 8ms、YOLOv8n で物体検出（例: bed 0.61 / sink 0.50）を確認。温度閾値を一時的に下げて warn（推論 40%）→ critical（推論停止、LiDAR 判定は継続）→ 復帰を確認

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [2.8.3] - 2026-11-19
+
+- ドキュメント: カメラの注意を今の状態に直した。apt の `ros-jazzy-camera-ros` が上がると要求する libcamera の soname（`libcamera.so.0.x`）も上がるので、`~/opt/rpicam` の Raspberry Pi 版は同じ soname の `+rpt` タグでビルドする必要がある。ずれると ROS 同梱の libcamera が読み込まれ、`no cameras available` で `camera_node` が落ち続けてダッシュボードに映像が出なくなる。2026-11-19、camera_ros 0.8.1（`libcamera.so.0.8`）に合わせ、実機の libcamera を v0.8.0+rpt20261104・libpisp を v1.8.0 に更新して復旧した
+
 ## [2.8.2] - 2026-11-06
 
 - 3D: ふたの LiDAR の柱 4 本を RPLIDAR C1 の取付穴（43 x 43 mm、データシート Figure 4-1）に合わせた（`lidar_model = "c1"`）。回転中心と取付面の高さ（天板から 90.4 mm）は今と同じ。C1 は M2.5 を 4 mm より深く入れられないので、柱の上端を 5 mm にして M2.5 x 8 mm で 3 mm 入るようにした。`lid.stl`・`lid_lipo.stl` だけが変わる（カバーの抜きは A1M8 の形のままで C1 の柱も入るので、`cover.stl` はそのまま）。前の A1M8 の形は `-D 'lidar_model="a1m8"'` で出せる
