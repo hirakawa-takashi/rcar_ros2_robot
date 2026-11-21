@@ -211,9 +211,10 @@ print3d:
     - 図とダウンロードする STL は、どれも印刷する向き（STL の向き）のまま。寸法は STL から計算した外形（mm）
     - 部品の寸法はデータシートと商品画像から読み取ったもので、実物ではまだ確かめていない
     - 「リポの形・予定」の 4 部品（lipo_tray / box_lipo / lid_lipo / cam_mount_lipo）は、リポ 3S を天板の右はしに置く予定の形（power = "lipo"）。箱の中はヒューズ・WAGO の場所になり、CC スイッチの箱は使わない
+    - リポ化で印刷するのは「リポの形・予定」の 4 部品だけ。ラズパイ台・前後バンパー・上面カバー・試験台は今のものをそのまま使う。付け替え後に外して使わなくなるのは: バッテリー箱（box）・ふた（lid）・カメラの板（cam_mount）・CC スイッチの箱と筒（cc_holder・cc_spacer）。IMU はリポの台の橋の上へ移す
   parts:
     - id: box
-      label: バッテリー箱
+      label: バッテリー箱（CIO の形・リポ化後は外す）
       file: box.stl
       qty: 1
       color: '#35d6ff'
@@ -225,7 +226,7 @@ print3d:
         - 底の前の 2 か所に、天板の上に 3 mm 出ているモーター取付ネジのくぼみ（29 × 29 × 3.5 mm。そのため床は 5 mm）
       mount: 天板の前側 4 穴に、今のネジより 3 mm 長いネジで留める
     - id: lid
-      label: ふた + LiDAR 台
+      label: ふた + LiDAR 台（CIO の形・リポ化後は外す）
       file: lid.stl
       qty: 1
       color: '#f0a040'
@@ -251,7 +252,7 @@ print3d:
         - 後ろ左の腕の底に、モーター取付ネジのくぼみ（29 × 29 × 3.5 mm）
       mount: 天板の後ろ側 4 穴に、今のネジより 3 mm 長いネジで留める
     - id: cam_mount
-      label: カメラの板（Camera Module 3 Wide）
+      label: カメラの板（CIO の形・リポ化後は外す）
       file: cam_mount.stl
       qty: 1
       color: '#f4f4f4'
@@ -290,7 +291,7 @@ print3d:
         - 手で触る縁（外側の角と稜線、壁の下端、充電口のふち）は 1 mm の面取り
       mount: 工具不要。フックの後ろは、左が天板の後ろの端から 54 mm（電源ボタンの穴をよける）、右が 44 mm（CC スイッチの切り欠きをよける）。前は左右とも前の端から 30 mm。右前のフック（充電口の下）は固定の爪なので、右側を先に斜めに入れて掛け、左側を押し下げると左の 2 個と右後ろのフックが外へたわんで天板の端の裏に掛かる。外すときは左の指かけを外へ引いて左側から持ち上げる
     - id: cc_holder
-      label: CC スイッチの箱 + IMU の台
+      label: CC スイッチの箱 + IMU の台（CIO の形・リポ化後は外す）
       file: cc_holder.stl
       qty: 1
       color: '#e07b00'
@@ -303,7 +304,7 @@ print3d:
         - 後ろの柱の上に IMU の台（今までと同じ位置・形）
       mount: 天板の右側の 2 穴（X 145 / Y 90 mm と X 143 / Y 11 mm）に、今の長い M4 で共締め。床の下に筒（cc_spacer、前 6 mm・後ろ 2 mm）を入れる
     - id: cc_spacer
-      label: CC スイッチの箱の下の筒
+      label: CC スイッチの箱の下の筒（CIO の形・リポ化後は外す）
       file: cc_spacer.stl
       qty: 1
       color: '#e07b00'
@@ -386,7 +387,7 @@ print3d:
       file: holders.stl
       color: '#2f3440'
   assembly_views:
-    - label: 組み立て図
+    - label: 組み立て図（CIO の形・いまの状態）
       note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 6 種類・7 個の部品を組み立てた位置で表示。天板の下に、車輪・モーター・モーターの台（購入品、OSOYOO の図面の寸法）も参考に表示（バッテリー・Pi・センサーなどほかの購入品は表示しない）
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
@@ -400,7 +401,7 @@ print3d:
         - {part: wheels}
         - {part: motors}
         - {part: holders}
-    - label: 組み立て図（カバー付き）
+    - label: 組み立て図（CIO の形・カバー付き）
       note: 上の組み立て図に上面カバーを付けた状態
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
@@ -415,7 +416,7 @@ print3d:
         - {part: motors}
         - {part: holders}
         - {part: cover, rotate_x: 180, translate: [0, 205.5, 82.4]}
-    - label: 組み立て図（カバー付き・試験台）
+    - label: 組み立て図（CIO の形・カバー付き・試験台）
       note: カバー付きの組み立て図を試験台に載せた状態（天板の下面が床から 80 mm）
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
