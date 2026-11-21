@@ -116,53 +116,17 @@ hardware:
     - {id: imu, label: 加速度センサー（GY-BNO055）, sub: 9 軸 IMU 20 Hz（AMG モード、向きはラズパイで計算）, bus: I2C バス 1 / 0x29, power: 3V3, jump: gpio, side: bottom}
     - {id: gamepad, label: Logitech F710, sub: XInput /dev/input/js0, bus: USB（無線レシーバー）, power: 5V, side: left}
     - {id: tof, label: 落下防止センサー（VL53L1X）×2, sub: Dovhmoh ToF 測距 / 前後バンパー 45° 前傾, bus: I2C バス 1 / 0x30（前）・0x31（後）＋ XSHUT GPIO17 / GPIO27, power: 3V3, jump: gpio, side: bottom}
-    - {id: battery_pi, label: バッテリー（Pi 5 用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
-    - {id: battery_motor, label: バッテリー（モーター用）, sub: CIO SMARTCOBY Pro SLIM 35W / PD 12V, bus: 12V → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
+    - {id: battery_pi, label: リポ 3S 11.1V（ラズパイ側）, sub: BILRC 10000mAh / XT60 → WAGO A・B → ヒューズ 5A → スイッチ, bus: → DROK（Pi 5・センサー用 5V）, power: 12V, feeds: drok, side: top}
+    - {id: battery_motor, label: 同じリポ（モーター側）, sub: WAGO A・B から分ける → ヒューズ 7.5A → スイッチ, bus: → Motor HAT のみ（Pi 側には接続しない）, power: 12V, feeds: motor_hat, side: top}
     - {id: drok, label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, bus: USB-A → Pi 5 USB-C（PD なし。ラズパイは 3 A の電源と見る）, power: 5V, side: top}
   power_wiring:
     summary:
-      - バッテリーは 2 個。1 個はラズパイ側（DROK で 5.2V にしてラズパイへ）、もう 1 個はモーター側（12V のまま Motor HAT へ）。2 つの 12V の線どうしはつながない
-      - バッテリーの USB-C 口は 2 つあり、1 つを車に、もう 1 つを充電に使う
-      - 12V は、USB-C のプラグの中の PD トリガー（小さな部品）が、CC（合図の線）でバッテリーと話して出してもらう。CC があるのは USB-C のところだけで、丸プラグや端子台の線は＋と−の 2 本だけ
-      - 線の色は 赤 = 12V、オレンジ = 5V、灰色 = CC（合図の線。電気はほとんど流れない）。点線は「予定（部品待ち）」
+      - バッテリーはリポ 3S 11.1V 1 個。XT60 の線を WAGO A（＋を 2 つに分ける）と WAGO B（−をまとめる）で、ラズパイ側（ヒューズ 5A → スイッチ → DROK で 5.2V にしてラズパイへ）とモーター側（ヒューズ 7.5A → スイッチ → 12V のまま Motor HAT へ）に分ける。2 つの 12V の線どうしはつながない
+      - 電圧（3 セルの合計）は 12.6V（満充電）→ 11.1V → 9.9V（ここで止める）
+      - 線の色は 赤 = 12V、オレンジ = 5V
       - 箱の下の「入」「出」は、その部品の端子の形。オス = 差しこむ側（プラグ）、メス = 差しこまれる側（口・ジャック）
     systems:
-      - title: ラズパイ側（バッテリー 1 → DROK → Raspberry Pi 5）
-        parts:
-          - {label: バッテリー 1, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD, out: USB-C メス（口）}
-          - {label: USB スイッチ（下）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る, in: USB-C オス, out: USB-C メス}
-          - {label: PD トリガーケーブル, sub: SZSL 12V 固定 3A / 1 m（B0D3QG33J7）, in: USB-C オス / （中に PD トリガー）, out: 丸プラグ オス / 5.5×2.5 mm・中が＋}
-          - {label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, in: DC ジャック メス / VIN+・VIN− ねじ端子台もある（基板の裏に印字）, out: USB-A メス}
-          - {label: USB ケーブル, sub: USB-A → USB-C / 30 cm くらい, in: USB-A オス, out: USB-C オス / （L 字がおすすめ）}
-          - {label: Raspberry Pi 5, sub: 電源の USB-C 口 / PD なし・3 A と見る, in: USB-C メス / （電源の口・5V だけ）}
-        wires:
-          - {power: 12V, joint: バッテリーの USB-C 口 ← スイッチの USB-C プラグ, desc: "VBUS（＋）・GND（−）・CC（合図）がそのまま通る。はじめは 5V で、PD トリガーとの話し合いのあと 12V になる"}
-          - {power: 12V, joint: スイッチの USB-C ← PD トリガーケーブルの USB-C プラグ（オス）, desc: プラグの中に PD トリガーがある。ここで「12V ください」とたのむ}
-          - {power: 12V, joint: 丸プラグ（オス、5.5 × 2.5 mm、中が＋）→ DROK の DC ジャック（メス）, desc: "ケーブルの中は＋（赤）と−（黒）の 2 本だけ。中が−（センターマイナス）のケーブルは使わない。DROK のジャックの穴の大きさはまだ実物で測っていない（3D の説明では 5.5 × 2.1 mm と読んでいる）。なお DROK には VIN+・VIN− のねじ端子台もあり（2026-11-22 確認）、リポ化ではそちらを使う"}
-          - {power: 5V, joint: DROK の USB-A 口（メス）← USB-A → USB-C ケーブルの USB-A プラグ, desc: "5.2V / 最大 5A。30 cm くらい（ラズパイ側は L 字がおすすめ）"}
-          - {power: 5V, joint: ケーブルの USB-C プラグ → Raspberry Pi 5 の電源の USB-C 口, desc: "PD のやりとりはないので、ラズパイは「3 A の電源」と見る（usb_max_current_enable=1 で USB 機器に 1.6 A まで）。AI HAT+・カメラ・LiDAR・IMU・落下防止センサー・エンコーダーの電気もここから"}
-        notes:
-          - 12V の PD トリガーケーブルを、ラズパイの USB-C 口に直接さすと、ラズパイがこわれる。② と ⑤ は同じ USB-C の形なので、まちがえないようにする
-          - DROK の USB-A（出力）に 12V を入れない
-          - いまの困りごと：スイッチは＋（VBUS）だけを切って CC はつないだまま。充電のあと OFF → ON にしても、バッテリーが「新しくつながった」と気づかず、12V を出しなおさないことがある（USB-C を抜いて差すと直る）。下の「予定」で直す
-      - title: モーター側（バッテリー 2 → Motor HAT → モーター ×4）
-        parts:
-          - {label: バッテリー 2, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD, out: USB-C メス（口）}
-          - {label: USB スイッチ（上）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る, in: USB-C オス, out: USB-C メス}
-          - {label: PD トリガーケーブル, sub: 12V 固定 / USB-C プラグの中で 12V をたのむ, in: USB-C オス / （中に PD トリガー）, out: ＋ 赤・− 黒 / （先の形 未確認）}
-          - {label: Adafruit Motor HAT, sub: PCA9685 + TB6612 ×2 / I2C 0x60, in: 電源の端子台 / ＋・−（ねじ）, out: M1〜M4 の端子台 / 各 2 本（ねじ）}
-          - {label: モーター ×4, sub: 520 エンコーダー付き / M1〜M4, in: モーター線 / 黒 Motor+・赤 Motor−}
-        wires:
-          - {power: 12V, joint: バッテリーの USB-C 口 ← スイッチの USB-C プラグ, desc: ラズパイ側と同じ。VBUS・GND・CC がそのまま通る}
-          - {power: 12V, joint: スイッチの USB-C ← PD トリガーケーブルの USB-C プラグ（オス）, desc: プラグの中の PD トリガーが 12V をたのむ}
-          - {power: 12V, joint: ケーブルの＋（赤）・−（黒）→ Motor HAT の電源の端子台, desc: "＋と−を逆にしない。Motor HAT のモーターの電気は 4.5〜13.5V まで（12V は入る）。ケーブルの先の形（丸プラグか、線のままか）は、まだ写真で確かめていない"}
-          - {power: 12V, joint: Motor HAT の M1〜M4 の端子台 → 各モーター, desc: "黒 = Motor+、赤 = Motor−（6 本の線の内わけは「配線詳細」の Motor HAT の図）。速さは PWM（電気を細かく入れたり切ったり）で変える"}
-        notes:
-          - 12V はモーターを回すためだけ。ラズパイにはつながない
-          - Motor HAT の PCA9685（モーターに命令を出す IC）の電気は、ラズパイの 40 ピンの 3V3 からもらう。なので、モーター側のスイッチが OFF でも、ラズパイからは Motor HAT が見える（I2C 0x60）が、車輪は回らない
-          - モーターのエンコーダー（回った量を数える部品）の電気も、ラズパイの 3V3 から
-      - title: 予定：リポ 1 個 → ラズパイ側（11.1V 3S 10000mAh、部品は届いた）
-        state: plan
+      - title: ラズパイ側（リポ 3S → ヒューズ 5A → スイッチ → DROK → Raspberry Pi 5）
         parts:
           - {label: リポバッテリー, sub: 3S 11.1V 10000mAh / 170×47×31 mm・580 g, out: XT60 / （放電の口）}
           - {label: XT60 線つき, sub: Amass 5 ペアのピン側 1 本 / 太い線 14AWG, in: XT60, out: ＋ 赤・− 黒}
@@ -170,35 +134,34 @@ hardware:
           - {label: ヒューズ 5A, sub: 平型（ミニ）ヒューズ / 線つきホルダー（エーモン 3367）, in: ＋ 赤, out: ＋ 赤}
           - {label: スイッチ（ラズパイ）, sub: ミニロッカー 2 ピン / 配線済み 12V 20A, in: ＋ 赤, out: ＋ 赤}
           - {label: DROK 降圧コンバーター, sub: 9〜36V → 5.2V / 5A（いまのもの）, in: VIN+・VIN− ねじ端子台（基板の裏に印字）, out: USB-A メス}
-          - {label: Raspberry Pi 5, sub: いまと同じ / USB-A → USB-C, in: USB-C メス}
+          - {label: Raspberry Pi 5, sub: 電源の USB-C 口 / PD なし・3 A と見る, in: USB-C メス}
         wires:
           - {power: 12V, joint: リポの XT60 → XT60 線つきの XT60, desc: "リポ側はソケット（穴が 2 つ）と確認済み（2026-11-22）→ 線つきはピンが出ている側を使う。電圧（3 セルの合計）は 12.6V（満充電）→ 11.1V → 9.9V（ここで止める）"}
           - {power: 12V, joint: XT60 線の＋（赤）→ WAGO A、−（黒）→ WAGO B, desc: "皮を 11 mm むいて奥までさしレバーを下げる。WAGO A で＋をラズパイ側とモーター側に分け、WAGO B に−をまとめる"}
-          - {power: 12V, joint: WAGO A → ヒューズ → スイッチ → WAGO D, desc: "ヒューズは＋の線だけに入れる（線つきホルダー）。DROK に流れる電気は 3A くらい（ラズパイ 約 6〜10W）。スイッチはいまの USB スイッチ（下）のかわり。切る前にラズパイをシャットダウンする"}
-          - {power: 12V, joint: WAGO D → DROK の VIN+、WAGO B → DROK の VIN−, desc: "＋と−を逆にしない。DROK の VIN+・VIN− ねじ端子台に 18AWG でつなぐ（基板の裏に印字。DC ジャック・丸プラグは使わないので、PD トリガーケーブルは切らずに予備へ）"}
-          - {power: 5V, joint: DROK の USB-A → ラズパイの USB-C, desc: いまと同じ}
+          - {power: 12V, joint: WAGO A → ヒューズ → スイッチ → WAGO D, desc: "ヒューズは＋の線だけに入れる（線つきホルダー）。DROK に流れる電気は 3A くらい（ラズパイ 約 6〜10W）。切る前にラズパイをシャットダウンする"}
+          - {power: 12V, joint: WAGO D → DROK の VIN+、WAGO B → DROK の VIN−, desc: "＋と−を逆にしない。DROK の VIN+・VIN− ねじ端子台に 18AWG でつなぐ（基板の裏に印字。DC ジャック・丸プラグは使わない）"}
+          - {power: 5V, joint: DROK の USB-A 口 ← USB-A → USB-C ケーブル → ラズパイの USB-C 口, desc: "PD のやりとりはないので、ラズパイは「3 A の電源」と見る（usb_max_current_enable=1 で USB 機器に 1.6 A まで）。AI HAT+・カメラ・LiDAR・IMU・落下防止センサー・エンコーダーの電気もここから"}
         notes:
-          - PD トリガーケーブル 2 本と LOYELEY の USB スイッチ 2 個は使わなくなる。CC スイッチの予定の部品（基板 4 枚・6 ピンスイッチ 2 個・C-C ケーブル 2 本）も、USB-C と PD トリガーを使わなくなるので使わない
-          - リポには、いまのモバイルバッテリーのような守る回路がない。1 つのセルでも 3.3V より下まで使うとこわれる。電圧センサー（INA226）は 3 セルの合計しか測れないので、1 セルずつはバランスの口にさすブザー（3.5V で鳴る）で見張り、INA226 の 9.9V は最後の守りにする
-      - title: 予定：リポ 1 個 → モーター側（ラズパイ側と同じ WAGO A・B から分ける）
-        state: plan
+          - DROK の USB-A（出力）に 12V を入れない
+          - リポには、前のモバイルバッテリー（CIO SMARTCOBY）のような守る回路がない。1 つのセルでも 3.3V より下まで使うとこわれる。電圧センサー（INA226）は 3 セルの合計しか測れないので、1 セルずつはバランスの口にさすブザー（3.5V で鳴る）で見張り、INA226 の 9.9V は最後の守りにする
+      - title: モーター側（ラズパイ側と同じ WAGO A・B から分ける → ヒューズ 7.5A → スイッチ → Motor HAT）
         parts:
           - {label: WAGO A・B, sub: 上のラズパイ側と同じ / ＋ A・− B, out: ＋ 赤・− 黒}
           - {label: ヒューズ 7.5A, sub: 平型（ミニ）ヒューズ / 線つきホルダー（エーモン 3367）, in: ＋ 赤, out: ＋ 赤}
           - {label: スイッチ（モーター）, sub: ミニロッカー 2 ピン / 配線済み 12V 20A, in: ＋ 赤, out: ＋ 赤}
           - {label: Adafruit Motor HAT, sub: 4.5〜13.5V まで / （12.6V は入る）, in: 電源の端子台 / ＋・−（ねじ）, out: M1〜M4 の端子台}
-          - {label: モーター ×4, sub: 520 エンコーダー付き / いまと同じ, in: モーター線 / 黒 Motor+・赤 Motor−}
+          - {label: モーター ×4, sub: 520 エンコーダー付き / M1〜M4, in: モーター線 / 黒 Motor+・赤 Motor−}
         wires:
-          - {power: 12V, joint: WAGO A → ヒューズ → スイッチ → WAGO F, desc: "ヒューズは＋の線だけ（線つきホルダー）。スイッチはいまの USB スイッチ（上）のかわり。ラズパイを動かしたまま、モーターだけ止められる"}
+          - {power: 12V, joint: WAGO A → ヒューズ → スイッチ → WAGO F, desc: "ヒューズは＋の線だけ（線つきホルダー）。ラズパイを動かしたまま、モーターだけ止められる"}
           - {power: 12V, joint: WAGO F → Motor HAT の端子台 ＋、WAGO B → Motor HAT の端子台 −, desc: "＋と−を逆にしない。電池が減ると電圧が 12.6V → 9.9V に下がるので、同じ PWM でも空に近いと 2 割くらい遅くなる"}
-          - {power: 12V, joint: Motor HAT → 各モーター, desc: いまと同じ}
+          - {power: 12V, joint: Motor HAT の M1〜M4 の端子台 → 各モーター, desc: "黒 = Motor+、赤 = Motor−（6 本の線の内わけは「配線詳細」の Motor HAT の図）。速さは PWM（電気を細かく入れたり切ったり）で変える"}
         notes:
           - 電圧センサー INA226（I2C 0x40。いまの 0x29・0x30・0x31・0x60・0x70 と重ならない）は、電圧だけ測る。VBUS・IN+・IN− を、ラズパイ側のスイッチのあとの＋（DROK の＋と同じ所）につなぎ、大きな電気はセンサーに通さない。センサーの電気（3V3）は pin 17、GND は pin 14、SDA・SCL は pin 3・5（I2C バス 1）。GND はリポの−にはつながない（ラズパイの GND は DROK と Motor HAT を通してもうリポの−につながっているので、両方につなぐと DROK の−の線がぬけたとき細い線に約 3A 流れる）
           - VBUS の線は細いジャンパー線にしない（ショートしたとき 5A ヒューズが切れるまで大きな電気が流れる）。18AWG にする
           - リポ 1 個では DROK の−と Motor HAT の−が同じ所につながり、Motor HAT はラズパイの GND ともつながっている。DROK の−の線がぬけるとラズパイの電気が Motor HAT の端子台とラズパイの GND ピンを通るので、DROK と Motor HAT の−の線は、ぬけないことを確かめる
-          - くわしい配線図（線の番号・WAGO A〜F・つなぐ順番とテスターの値）は docs/power/lipo_wiring.pdf
+          - くわしい配線図（線の番号・WAGO A〜F・つなぐ順番とテスターの値）は docs/power/lipo_wiring.html（PDF は Chrome の「PDF に保存」で作る）
           - 充電はリポ用の充電器（ハイテック X2 AC プラス 200）の A の口で、XT60 とバランスの口（XH 4 ピン、黒い線を右はしの − に合わせる）の両方をさして、燃えにくい袋の中でする。設定は LiPo・Balance CHG・3S・5.0A（63W、AC の 100W に入る）。リポ アラームは外し、車の XT60 はぬいておく。何日も使わないときは 1 セル 3.8V（11.4V）にしてしまう
-          - 箱は、いまの箱（中 96.8×67.6 mm）に入らないので作りなおす。170 mm の長い辺は天板（154×200 mm）の前後の向きにしか入らない
+          - リポ（170 mm の長い辺）は箱に入らないので、天板の右はしのリポの台（lipo_tray）に前後に長く置く。箱（box_lipo）は右を縮め、中はヒューズ・WAGO
 
 print3d:
   dir: hardware/3d/battery_lidar_mount
@@ -210,8 +173,8 @@ print3d:
     - 前側に縮めた箱（中はヒューズ・WAGO、後ろの壁に DROK）とふた（RPLIDAR C1・Camera Module 3 Wide）、天板の右はしにリポ 3S の台（IMU は橋の上）、後ろ側に Pi 5 の 3 段（高さ 45 mm）、前後に衝撃を逃がすバンパー（落下防止センサー VL53L1X 付き）。全体を上面カバーで覆い、左右のフックで天板の端の裏に引っかける（工具不要）
     - 図とダウンロードする STL は、どれも印刷する向き（STL の向き）のまま。寸法は STL から計算した外形（mm）
     - 部品の寸法はデータシートと商品画像から読み取ったもので、実物ではまだ確かめていない
-    - 印刷するのは「リポの形・予定」の 4 部品（lipo_tray / box_lipo / lid_lipo / cam_mount_lipo）だけ。ラズパイ台・前後バンパー・上面カバー・試験台は今のものをそのまま使う
-    - CIO の形の部品（箱・ふた・カメラの板・CC スイッチの箱と筒）はリポ化で使わなくなったため一覧から削除した（v2.10.7。SCAD から `power="cio"` で再生成できる。古い STL は Git の履歴にある）
+    - 印刷するのはリポの形の 4 部品（lipo_tray / box_lipo / lid_lipo / cam_mount_lipo）だけ。ラズパイ台・前後バンパー・上面カバー・試験台は今のものをそのまま使う
+    - 前の形（CIO バッテリー 2 個）の部品（箱・ふた・カメラの板・CC スイッチの箱と筒）はリポ化で使わなくなったため削除した（SCAD から `power="cio"` で再生成できる。古い STL は Git の履歴にある）
   parts:
     - id: pi_base
       label: ラズパイ台
@@ -246,10 +209,10 @@ print3d:
       orient: 上面を下（STL の向きのまま）
       holds:
         - 天板の上の部品全体を覆う（高さ 82.4 mm、上面は Pi 3 段の上端から 26 mm 上）。LiDAR は高さ 48 mm の柱に載り、取付面（90.4 mm）がカバーの上面より 8 mm 上なので、ヘッドは全部カバーの上に出る
-        - 右側面の充電口（72 × 33 mm）から、カバーを付けたままバッテリーの USB-C に差せる
+        - 右側面の充電口（72 × 33 mm。前のバッテリーの USB-C 用。リポでは使わないが開いたまま残る）
         - 前面にカメラの切り欠き（Camera Module 3 Wide の下。幅 40 mm で、壁の下の端から 40.4 mm まで（レンズの中心は 28.1 mm）。その上は壁）、後ろの壁の下に線の出口の切り欠き（24 × 10 mm）、Pi の上に六角の通気口、左の壁に Pi 5 の電源ボタンを押す穴（18 × 11 mm）、上面に「AI-CAR」の文字
-        - LiDAR の右隣に、上のバッテリーの残量表示の窓（17 × 16 mm。ほぼ真上から見る）
-        - 右の壁の Pi の横に、CC スイッチ 2 個のボタンの切り欠き（幅 9.6 mm、下の端から高さ 30.3 mm まで。Y 59〜68.6 と 76.2〜85.8 mm）。下が開いているので、カバーを真上から被せられ、スイッチの白い箱の面はカバーの外の面とそろう。上に「Pi」「M」の文字
+        - LiDAR の右隣に、前のバッテリーの残量表示の窓（17 × 16 mm。リポでは使わない）
+        - 右の壁の Pi の横に、前の CC スイッチ 2 個のボタンの切り欠き（幅 9.6 mm、下の端から高さ 30.3 mm まで。Y 59〜68.6 と 76.2〜85.8 mm。使わないが開いたまま残る）。上に「Pi」「M」の文字
         - 手で触る縁（外側の角と稜線、壁の下端、充電口のふち）は 1 mm の面取り
       mount: 工具不要。フックの後ろは、左が天板の後ろの端から 54 mm（電源ボタンの穴をよける）、右が 44 mm（CC スイッチの切り欠きをよける）。前は左右とも前の端から 30 mm。右前のフック（充電口の下）は固定の爪なので、右側を先に斜めに入れて掛け、左側を押し下げると左の 2 個と右後ろのフックが外へたわんで天板の端の裏に掛かる。外すときは左の指かけを外へ引いて左側から持ち上げる
     - id: test_stand
@@ -266,7 +229,7 @@ print3d:
         - 車輪は直径 80.59 mm・幅 39.1 mm、車軸は天板の前後の端から 52 mm（OSOYOO の図面）。車輪の内側の面（カバーの壁の外側から 4 mm）は仮の値
       mount: 床に置き、車体を上から下ろして左右の壁の間に入れる（前後は摩擦で保持）
     - id: lipo_tray
-      label: リポの台 + IMU の台（リポの形・予定）
+      label: リポの台 + IMU の台
       file: lipo_tray.stl
       qty: 1
       color: '#d9a441'
@@ -279,7 +242,7 @@ print3d:
         - 前は前のバンパーの腕の下に入る舌（高さ 3 mm、箱のフランジのかわり）
       mount: 天板の右の 2 穴（X 145 / Y 110・90 mm、90 はラズパイ台の腕の上）に共締め
     - id: box_lipo
-      label: バッテリー箱（リポの形・予定）
+      label: 電源箱（ヒューズ・WAGO・DROK）
       file: box_lipo.stl
       qty: 1
       color: '#35d6ff'
@@ -287,30 +250,30 @@ print3d:
       orient: フランジ（天板に当たる面）を下
       holds:
         - 右を 34.5 mm 縮めた箱。中はヒューズと WAGO を入れる場所
-        - DROK 降圧コンバーター（後ろの壁、結束バンド 1 本。受けは CIO の形と同じ）
+        - DROK 降圧コンバーター（後ろの壁、結束バンド 1 本。受けは前の形と同じ）
       mount: 天板の前側の左の 2 穴（X 11 / Y 189・X 9 / Y 110 mm）に留める（右の 2 穴はリポの台が使う）
     - id: lid_lipo
-      label: ふた + LiDAR 台（リポの形・予定）
+      label: ふた + LiDAR 台
       file: lid_lipo.stl
       qty: 1
       color: '#f0a040'
       material: PLA / PETG
       orient: 板を下
       holds:
-        - RPLIDAR C1（43 × 43 mm の柱 4 本に M2.5 × 8 mm。CIO の形と同じ取付面）
+        - RPLIDAR C1（43 × 43 mm の柱 4 本に M2.5 × 8 mm。前の形と同じ取付面）
         - カメラの板（cam_mount_lipo）を留める前端の柱 2 本と、前の面のカメラの M2 のナット・ネジの先の逃げ穴（Ø6.5、深さ 4 mm ×2）
         - 右前のネジは 4 mm 後ろへずらした（カメラの板の右の耳の柱とぶつからないように）
-        - LiDAR の位置は CIO の形より左へ寄せてある（lidar_dx = 9.25。URDF の laser_y・dashboard.yaml のカメラの位置の差も付け替え時に直す）
+        - LiDAR の回転中心は変わらない（lidar_dx は箱の中心からの差で、箱が左へ縮んだ分 −8 → 9.25 に変わった。URDF の laser_y・dashboard.yaml の camera_offset_* は変えなくてよい）
       mount: 縮めた箱のボスに M3 × 12 ×4（LiDAR を先にふたへ留める）
     - id: cam_mount_lipo
-      label: カメラの板（リポの形・予定、22 mm 細い）
+      label: カメラの板（22 mm 細い）
       file: cam_mount_lipo.stl
       qty: 1
       color: '#f4f4f4'
       material: PLA / PETG
       orient: 裏を下（STL の向きのまま）
       holds:
-        - Camera Module 3 Wide（基板 25 × 23.9 mm、フラットケーブルの端子を下。四隅の穴に前から M2 × 6 ×4。板の裏に M2 ナットの六角のくぼみ ×4。CIO の形の板を 22 mm 細くして、右の耳がリポの台に当たらないようにした）
+        - Camera Module 3 Wide（基板 25 × 23.9 mm、フラットケーブルの端子を下。四隅の穴に前から M2 × 6 ×4。板の裏に M2 ナットの六角のくぼみ ×4。前の形の板を 22 mm 細くして、右の耳がリポの台に当たらないようにした）
       mount: 裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 ×2
   refs:
     - id: wheels
@@ -326,8 +289,8 @@ print3d:
       file: holders.stl
       color: '#2f3440'
   assembly_views:
-    - label: 組み立て図（リポの形・予定）
-      note: リポ 1 個の形に付け替えた状態。リポの台は天板の右はし、箱は右を縮めて中にヒューズ・WAGO。CC スイッチの箱は付けない（リポの青い直方体は購入品の参考の形。カバーは CIO の形と同じものを使う予定）
+    - label: 組み立て図
+      note: リポ 1 個の形。リポの台は天板の右はし、箱は右を縮めて中にヒューズ・WAGO。CC スイッチの箱は付けない（リポの青い直方体は購入品の参考の形。カバーは今のものをそのまま使う）
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
       items:
         - {part: box_lipo}
@@ -370,18 +333,17 @@ print3d:
     - 落下防止センサー（VL53L1X）をバンパーの受けに入れ、バンパーを前後に重ねて共締めする
     - 上面カバーを、充電口が右（バッテリーのポート側）に来る向きで被せる。右側を先に斜めに入れて右前の固定の爪を天板の裏に掛け、左側をフックがカチッと掛かるまで押し下げる。外すときは左の指かけを外へ引きながら左側から持ち上げる
   gallery:
-    - {file: assembly.png, label: 組み立てイメージ（CIO の形）}
+    - {file: assembly_lipo.png, label: 組み立てイメージ}
+    - {file: top_lipo.png, label: 真上から}
+    - {file: side_lipo.png, label: 横から（高さの関係）}
+    - {file: lipo_tray.png, label: リポの台 + IMU の橋}
     - {file: cover_assembly.png, label: 上面カバーを付けた状態}
-    - {file: cover_right.png, label: カバーの右側面（CC スイッチの切り欠き）}
+    - {file: cover_right.png, label: カバーの右側面（充電口・CC スイッチの切り欠きは開いたまま使わない）}
     - {file: cover_rear.png, label: カバーの後ろ（通気口と下の線の出口）}
     - {file: cover_hook.png, label: カバーのフック（天板の端の裏に掛かる）}
-    - {file: battery_display.png, label: バッテリーの残量表示の窓（CIO の形・右後ろ上から）}
     - {file: camera_mount.png, label: Camera Module 3 Wide の取付（前から）}
     - {file: cam_mount_back.png, label: カメラの板の裏（M2 ナットの六角のくぼみ）}
     - {file: cam_nut_relief.png, label: ふた・箱の前の面のカメラのナットの逃げ穴（M2 × 10 とナットを入れた状態）}
-    - {file: side.png, label: 横から（高さの関係）}
-    - {file: top.png, label: 真上から}
-    - {file: sensors.png, label: IMU の取付（LiDAR の下）}
     - {file: lidar_c1.png, label: RPLIDAR C1 の柱（43 mm 角、後ろ斜めから）}
     - {file: drok_holder.png, label: DROK の受け（Pi 側から）}
     - {file: bumper_under.png, label: バンパーを下から}
@@ -817,7 +779,7 @@ api:
 
 status:
   known_issues:
-    - 電源は PD なし（バッテリー PD 12V → DROK 5.2V → USB-A → ラズパイ）。ラズパイは 3 A の電源と見ている（usb_max_current_enable=1 で USB に 1.6 A まで）。Camera Module 3 Wide にしてからは電圧低下 0 回だが、余裕は少ない
+    - 電源は PD なし（リポ 3S → DROK 5.2V → USB-A → ラズパイ）。ラズパイは 3 A の電源と見ている（usb_max_current_enable=1 で USB に 1.6 A まで）。Camera Module 3 Wide にしてからは電圧低下 0 回だが、余裕は少ない
     - 落下防止センサー（VL53L1X ×2）は前後とも配線済み（0x30 / 0x31 で距離が読める）。段差の前で本当に止まるかは、床でまだ確かめていない
     - LiDAR は床から約 17.5 cm の高さだけを見る。それより低い物・細い物は 360° の見張りで止まらないことがある
     - LiDAR のレンズがよごれると、遠くが見えなくなる（2026-10-23、どの方向も 1.4〜1.8 m まで。1 m の通路が 36 cm に見えた。ふくと 3.8 m にもどった）。よごれチェックのしきい値（65%・2.5 m）は、2 回の数字から決めた仮の値
