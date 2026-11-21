@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [2.10.7] - 2026-11-22
+
+- 説明: 3D プリントから CIO の形の部品を削除（最終版はリポの形）。`box.stl`・`lid.stl`・`cam_mount.stl`・`cc_holder.stl`・`cc_spacer.stl` を削除し、`architecture.yaml` の部品一覧と組み立て図（CIO の形の 3 図）・組み立て手順をリポの形に書き直した。部品一覧はリポの形の 4 部品 + 使い回す 4 部品（ラズパイ台・バンパー・カバー・試験台）だけになる。STL は SCAD から `power="cio"` で再生成でき、古い STL は Git の履歴にある
+- `hardware/3d/battery_lidar_mount/README.md` のファイル表・STL 再生成コマンドを最終版に更新。冒頭に「前半は CIO の形の記録」と注記
+
 ## [2.10.6] - 2026-11-22
 
 - 説明: 3D プリントの情報を「最終版」に更新。リポ化で印刷するのは「リポの形・予定」の 4 部品（`lipo_tray` / `box_lipo` / `lid_lipo` / `cam_mount_lipo`）だけで、ラズパイ台・前後バンパー・上面カバー・試験台は今のものを使うこと、付け替え後に外して使わなくなるのは箱（`box`）・ふた（`lid`）・カメラの板（`cam_mount`）・CC スイッチの箱と筒（`cc_holder`・`cc_spacer`、IMU はリポの台の橋へ移す）ことを、`architecture.yaml`（print3d の概要・部品ラベル・組み立て図の名前）、`HARDWARE_BOM.md`、`hardware/3d/battery_lidar_mount/README.md` に明記した。CIO の形の部品ラベルには「（CIO の形・リポ化後は外す）」を付けた
