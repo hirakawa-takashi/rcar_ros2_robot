@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [2.10.4] - 2026-11-22
+
+- 説明: ダッシュボードの「3D プリント」タブに、**リポの形（予定）の 4 部品**を追加。リポ化部品が届いたのに、タブには CIO の形（`box.stl` など）しか出ていなかったため。
+  - `lipo_tray.stl`（リポの台 + IMU の台。床の下と IMU の橋の下はサポートが要る）、`box_lipo.stl`（右を 34.5 mm 縮めた箱。中はヒューズ・WAGO の場所）、`lid_lipo.stl`（C1 の 43 × 43 mm 柱つき。右前のネジは 4 mm 後ろ）、`cam_mount_lipo.stl`（22 mm 細い板）
+  - `assembly_views` に「組み立て図（リポの形・予定）」、ギャラリーに `assembly_lipo.png`・`top_lipo.png`・`side_lipo.png`・`lipo_tray.png` を追加
+  - 注意書き: リポの形では LiDAR の位置が左へ変わる（`lidar_dx` −8 → 9.25）ので、付け替え時に URDF の `laser_y` と `dashboard.yaml` のカメラ位置の差（`camera_offset_*`）も直す
+
 ## [2.10.3] - 2026-11-22
 
 - 説明: リポ化の配線を、DROK の DC ジャック（丸プラグ流用）から **VIN+/VIN− のねじ端子台**に変えた（部品到着・実機写真で端子台と裏面の印字を確認。DC ジャックと同じ入力）。`docs/power/lipo_wiring.html` の線⑧⑨⑩・つなぐ順番・「買った部品との対応」、`HARDWARE_BOM.md`・`architecture.yaml` を更新。PD トリガーケーブルは切らずに予備へ。あわせて、リポ側の XT60 がソケット（穴が 2 つ）側であることも写真で確かめ、分ける線にはピンが出ている側を使うと記した。`lipo_wiring.pdf` は実機配線の前に Chrome の「PDF に保存」で作りなおす

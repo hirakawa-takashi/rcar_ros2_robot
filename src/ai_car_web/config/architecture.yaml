@@ -235,6 +235,7 @@ print3d:
     - 前側にバッテリー 2 個の箱とふた（LiDAR・Camera Module 3 Wide・IMU・DROK を取り付け）、後ろ側に Pi 5 の 3 段（高さ 45 mm）、前後に衝撃を逃がすバンパー（落下防止センサー VL53L1X 付き）。全体を上面カバーで覆い、左右のフックで天板の端の裏に引っかける（工具不要）
     - 図とダウンロードする STL は、どれも印刷する向き（STL の向き）のまま。寸法は STL から計算した外形（mm）
     - 部品の寸法はデータシートと商品画像から読み取ったもので、実物ではまだ確かめていない
+    - 「リポの形・予定」の 4 部品（lipo_tray / box_lipo / lid_lipo / cam_mount_lipo）は、リポ 3S を天板の右はしに置く予定の形（power = "lipo"）。箱の中はヒューズ・WAGO の場所になり、CC スイッチの箱は使わない
   parts:
     - id: box
       label: バッテリー箱
@@ -349,6 +350,53 @@ print3d:
         - 4 隅の柱を厚さ 10 mm の床板でつないだ 1 個の部品（167.4 × 202 × 88 mm）。床板は外周の枠 8 mm と、斜めの格子のリブ 5 mm の中抜き。柱の内側に三角の補強
         - 車輪は直径 80.59 mm・幅 39.1 mm、車軸は天板の前後の端から 52 mm（OSOYOO の図面）。車輪の内側の面（カバーの壁の外側から 4 mm）は仮の値
       mount: 床に置き、車体を上から下ろして左右の壁の間に入れる（前後は摩擦で保持）
+    - id: lipo_tray
+      label: リポの台 + IMU の台（リポの形・予定）
+      file: lipo_tray.stl
+      qty: 1
+      color: '#d9a441'
+      material: PLA / PETG
+      orient: STL の向きのまま。床の下（天板から 4 mm のすき間）と IMU の橋の下にサポートが要る
+      holds:
+        - リポ 3S 10000mAh（170 × 47 × 31 mm、商品ページの寸法）。天板の右はしに前後に長く置き、前の開いた側から差し込む
+        - 面ファスナー（幅 16 mm まで）を左右の壁の切り欠きと床の下（4 mm のすき間）に通して、リポの上へ回して留める
+        - IMU（GY-BNO055）の台は、リポの上をまたぐ橋の上（いまと同じ位置・向き）
+        - 前は前のバンパーの腕の下に入る舌（高さ 3 mm、箱のフランジのかわり）
+      mount: 天板の右の 2 穴（X 145 / Y 110・90 mm、90 はラズパイ台の腕の上）に共締め
+    - id: box_lipo
+      label: バッテリー箱（リポの形・予定）
+      file: box_lipo.stl
+      qty: 1
+      color: '#35d6ff'
+      material: PLA / PETG
+      orient: フランジ（天板に当たる面）を下
+      holds:
+        - 右を 34.5 mm 縮めた箱。中はヒューズと WAGO を入れる場所
+        - DROK 降圧コンバーター（後ろの壁、結束バンド 1 本。受けは CIO の形と同じ）
+      mount: 天板の前側の左の 2 穴（X 11 / Y 189・X 9 / Y 110 mm）に留める（右の 2 穴はリポの台が使う）
+    - id: lid_lipo
+      label: ふた + LiDAR 台（リポの形・予定）
+      file: lid_lipo.stl
+      qty: 1
+      color: '#f0a040'
+      material: PLA / PETG
+      orient: 板を下
+      holds:
+        - RPLIDAR C1（43 × 43 mm の柱 4 本に M2.5 × 8 mm。CIO の形と同じ取付面）
+        - カメラの板（cam_mount_lipo）を留める前端の柱 2 本と、前の面のカメラの M2 のナット・ネジの先の逃げ穴（Ø6.5、深さ 4 mm ×2）
+        - 右前のネジは 4 mm 後ろへずらした（カメラの板の右の耳の柱とぶつからないように）
+        - LiDAR の位置は CIO の形より左へ寄せてある（lidar_dx = 9.25。URDF の laser_y・dashboard.yaml のカメラの位置の差も付け替え時に直す）
+      mount: 縮めた箱のボスに M3 × 12 ×4（LiDAR を先にふたへ留める）
+    - id: cam_mount_lipo
+      label: カメラの板（リポの形・予定、22 mm 細い）
+      file: cam_mount_lipo.stl
+      qty: 1
+      color: '#f4f4f4'
+      material: PLA / PETG
+      orient: 裏を下（STL の向きのまま）
+      holds:
+        - Camera Module 3 Wide（取付は cam_mount と同じ。22 mm 細くして、右の耳がリポの台に当たらないようにした）
+      mount: cam_mount と同じ（裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 ×2）
   refs:
     - id: wheels
       label: メカナムホイール ×4（購入品）
@@ -408,6 +456,20 @@ print3d:
         - {part: holders}
         - {part: cover, rotate_x: 180, translate: [0, 205.5, 82.4]}
         - {part: test_stand, translate: [0, 0, -82]}
+    - label: 組み立て図（リポの形・予定）
+      note: リポ 1 個の形に付け替えた状態。リポの台は天板の右はし、箱は右を縮めて中にヒューズ・WAGO。CC スイッチの箱は付けない（リポの青い直方体は購入品の参考の形。カバーは CIO の形と同じものを使う予定）
+      plate: {size: [154, 200, 3], color: '#8fa3b8'}
+      items:
+        - {part: box_lipo}
+        - {part: lid_lipo, translate: [0, 0, 38.4]}
+        - {part: lipo_tray}
+        - {part: pi_base}
+        - {part: cam_mount_lipo, rotate_x: -90, translate: [0, 189.6, 0]}
+        - {part: bumper, flip_z: true, translate: [0, 0, 7]}
+        - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
+        - {part: wheels}
+        - {part: motors}
+        - {part: holders}
   settings:
     - {name: 材料, value: 全部品 PLA で印刷できる（バンパーの板ばねのひずみ約 1.1 %、カバーのフック約 0.9 %。どちらも PLA の降伏ひずみ約 2 % の半分ほど）。PLA は 55〜60 ℃ で柔らかくなるので、夏の車内など熱いところに置かない。カバーを付けて長く動かすときは、Pi の上のラズパイ台とカバーが熱で変形しないか確かめる}
     - {name: ノズル / 積層ピッチ, value: 0.4 mm / 0.2 mm（目安）}
@@ -468,6 +530,10 @@ print3d:
     - {file: test_stand_side.png, label: 試験台（横から。車輪は約 10 mm 浮く）}
     - {file: test_stand_part.png, label: 試験台（印刷する向き）}
     - {file: test_stand_top.png, label: 試験台の床板（真上から。斜めの格子の中抜き）}
+    - {file: assembly_lipo.png, label: リポの形（斜め。青い直方体がリポ）}
+    - {file: top_lipo.png, label: リポの形（真上から）}
+    - {file: side_lipo.png, label: リポの形（横から）}
+    - {file: lipo_tray.png, label: リポの台だけ（IMU の橋つき）}
   unverified:
     - 寸法はデータシート・商品画像からの読み取りで、実物に合わせていない（VL53L1X・IMU のピン位置、LiDAR の USB 変換基板の大きさ、DROK の部品の高さ、Camera Module 3 Wide のレンズの長さ・裏の端子の厚さ）
     - LiDAR 底面のねじ穴の深さと、ねじ込み穴（下穴）のきつさ
