@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.10.1（2026-11-21。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.10.2（2026-11-22。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -223,6 +223,21 @@ LD_LIBRARY_PATH=$HOME/opt/rpicam/lib/$(uname -m)-linux-gnu $HOME/opt/rpicam/bin/
 `dashboard.launch.py` は `~/opt/rpicam` があればカメラノードの `LD_LIBRARY_PATH` に自動で追加する（apt 版 `camera_ros` をそのまま利用できる）。
 
 カメラ映像の見張りは `camera_watchdog_node`（`dashboard.yaml` の `camera_watchdog_node`）。2026-11-20 実機で、`camera_node` は動いたまま `/camera/image_raw/compressed` を出さなくなり（libcamera の `request cancelled`）、プロセスが生きているので `respawn` も起きず、ダッシュボードの映像が約 14 時間消えた。`camera_watchdog_node` は `image_timeout`（既定 20 秒）映像が来ないと `camera_node` に SIGTERM（`kill_wait` 秒で終わらなければ SIGKILL）を送り、launch の `respawn` が起動し直す。起こし直しが `warn_after`（既定 3）回続いて戻らないときは、`retry_gap`（既定 300 秒）あけて起こす（止まった `camera_node` は 1 秒に約 200 行 out して、14 時間で 13 GB のログになった）。映像が消えたときの確認は `ros2 topic hz /camera/image_raw/compressed` と `/api/status` の `camera.available`。
+
+### 映像が真っ黒なときの切り分け
+
+2026-11-22 03:20 実機。ダッシュボードの映像が真っ黒という報告。`/api/status` の `camera` は `available: true`・29.9 fps・17 KB/枚で配信は正常、画素を測ると**平均輝度 1.7・最大 5・平均 RGB (1.7, 1.0, 5.7)**（青に振れる）で 20 枚すべて同じ値。原因は部屋の電気が消えていて自動露出が上限まで利いた状態（ノイズだけの黒）。電気をつけたら**平均輝度 140・最大 217・平均 RGB (138, 141, 136)** になり、AI HAT+ の YOLO も `テレビ 0.889`（LiDAR 距離 0.516 m）を出した。暗いあいだ `detections` が空なのは写らないので正常。
+
+見張りは `scripts/cam_brightness.py`（`/camera/image_raw/compressed` から 20 枚の平均輝度・最大・RGB 平均を出す。`--save` で最後の 1 枚を保存）。
+
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 scripts/cam_brightness.py --frames 20 --save /tmp/frame.jpg
+```
+
+平均輝度が 100 をこえなければ、まず部屋の明るさを確かめる。明るいのに 2 前後なら露出が利いていないので、`camera_node` を起こし直し、`~/opt/rpicam` の libcamera が `camera_ros` の要求する soname（上の節）と合っているかを順に確かめる。
+
+`cam`（`~/opt/rpicam/bin/cam`）でのスナップショット撮影は当てにしない。v0.8.0+rpt20261104 で `-t` が無くなり、`-C`・`-F`・`--metadata` の組合せ（`cam -c 1 -C=1 -F /tmp/x.jpg --metadata`、`cam --capture=1 --file /tmp/x.jpg --metadata --camera 1`）を SSH からのヘッドレスで 5 通り試して、すべてヘルプが出て 1 枚も書かれなかった（`cam -l` は動く）。映像の確認は上のトピック見張りを使う。
 
 ## AI HAT+ (Hailo-8) のセットアップ（Ubuntu 24.04）
 
