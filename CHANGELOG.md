@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-11-21
+
+- 文書: `camera_watchdog_node` を実機で確かめた結果を書いた（コードの変更はない）。
+  - 2026-11-21 16:43 実機（ラズパイ・v2.9.0 を反映後）: `camera_node`（pid 322555）を SIGSTOP で固めて映像を止めた。20.3 秒後に `camera_watchdog_node` が「カメラ映像が 20.3 秒来ないので camera_node を起動し直します（1 回目）」、SIGTERM に応答できないので 3 秒後に SIGKILL、launch の respawn が `camera_node`（pid 323701）を起動。`/camera/image_raw/compressed` は 29.9 fps にもどり、`/api/status` の `camera` は `available: true`・`age_s: 0.02`・`kb: 51.9`。
+  - 止まった `camera_node` の出していたログ（1 秒に約 200 行）は、見張りが 20 秒で起こすので、監視がないときのように 10 GB 台へ膨らまない。
+
 ## [2.9.0] - 2026-11-21
 
 - カメラ映像の見張り `camera_watchdog_node` を足した（LiDAR の `lidar_watchdog_node` と同じ形）。
