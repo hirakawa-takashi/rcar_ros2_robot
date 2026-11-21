@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.10.2（2026-11-22）
+- バージョン: 2.10.3（2026-11-22）
 - 更新日: 2026-11-22
-- 更新概要: カメラ映像が「真っ黒」となったときの切り分けを文書化（v2.10.2）。`scripts/cam_brightness.py` を追加し、`/camera/image_raw/compressed` から平均輝度・最大・RGB 平均を出す（2026-11-22 実機で消灯 1.7／点灯 140 を実測）。`~/opt/rpicam` の `cam` は v0.8 で `-t` が消え、ヘッドレスでのスナップショットは 5 通り試して書けなかったことも書いた。これまでの変更の中身は CHANGELOG.md
-- 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
+- 更新概要: リポ化の部品到着を受けて、DROK の入力を DC ジャックから VIN+/VIN− ねじ端子台に変更（v2.10.3）。リポの XT60 はソケット（穴）側と確認。これまでの変更の中身は CHANGELOG.md
+- 更新担当: Devin（AGENTS.md準拠）
+- 2026-11-22（v2.10.3）: リポ化部品が到着。実機写真で DROK に VIN+/VIN− のねじ端子台（基板裏に印字、DC ジャックと同じ入力）を確認し、配線を丸プラグ流用から端子台直結に変更。リポの XT60 はソケット側と確認（分岐はピン側）。`lipo_wiring.html`・`HARDWARE_BOM.md`・`architecture.yaml` を更新。PDF は配線前に作りなおす。
 - 2026-11-22（v2.10.2）: カメラの「真っ黒」切り分けを README に追記、`scripts/cam_brightness.py` を追加。実測: 消灯 平均輝度 1.7・最大 5・RGB (1.7,1.0,5.7)/20枚固定 → 点灯 140・217・(138,141,136)、YOLO は `テレビ 0.889`（0.516 m）を検出。
 - 2026-11-21（v2.10.1）: ログ見張りのタマーを 60 秒ごとに回し、中で `log_cleanup_interval` まで待つようにした（v2.10.0 は最初の動きが 1 時間後だった）。
 - 2026-11-21（v2.10.0）: `system_monitor_node` のログ見張り（`ros_log_dir` / `enable_log_cleanup` / `log_cleanup_interval` 3600 秒 / `log_keep_per_node` 5 / `log_max_total_mb` 200 / `log_empty_age_h` 24）。`/proc/<pid>/fd` を見て開いているログは消さない。
