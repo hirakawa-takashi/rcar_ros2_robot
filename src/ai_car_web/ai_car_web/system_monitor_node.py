@@ -402,7 +402,9 @@ class SystemMonitorNode(Node):
         self._log_cap = float(self.get_parameter('log_max_total_mb').value)
         self._log_empty_age_h = float(self.get_parameter('log_empty_age_h').value)
         self._logs = {}
-        self.create_timer(max(self._log_interval, 60.0), self._log_cleanup_cb)
+        self._log_next = time.monotonic() + 60.0   # 起動 60 秒後に 1 回目（むりに重ねない）
+        # 見張りの間隔（既定 3600 秒）ごとに働かせる。タマーは 60 秒ごとに回して中で待つ
+        self.create_timer(min(self._log_interval, 60.0), self._log_cleanup_cb)
         self.create_timer(1.0 / max(rate, 0.1), self._publish_cb)
 
     # --- ROS 2 のログ ---
@@ -410,6 +412,10 @@ class SystemMonitorNode(Node):
         """~/.ros/log を間引く。ノードごとに新しいものと同、動き中のノードの開いているログは残す。"""
         if not self.enable_log_cleanup:
             return
+        now = time.monotonic()
+        if now < self._log_next:
+            return
+        self._log_next = now + max(self._log_interval, 60.0)
         result = _ros_log_cleanup(self._log_dir, self._log_keep, self._log_cap,
                                   self._log_empty_age_h)
         if result is None:

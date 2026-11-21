@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.10.0（2026-11-21）
+- バージョン: 2.10.1（2026-11-21）
 - 更新日: 2026-11-21
-- 更新概要: `system_monitor_node` に ROS 2 のログ（`~/.ros/log`）の見張りを追加。1 時間ごとに、ノードごとに新しい 5 個と動き中のノードの開いているログを残し、0 バイトの古いログと合計 200 MB をこえる古いものから消す（2026-11-20 実機で止まった camera_node のログが 14 時間で 13.5 GB、11-19 の落ち続けた残骸が 0 バイト 7150 個）。結果は `/api/status` の `logs` に出す。これまでの変更の中身は CHANGELOG.md
+- 更新概要: `system_monitor_node` に ROS 2 のログ（`~/.ros/log`）の見張りを追加（v2.10.0）。ノードごとに新しい 5 個と動き中のノードの開いているログを残し、0 バイトの古いログと合計 200 MB をこえる古いものから消す（2026-11-20 実機で止まった camera_node のログが 14 時間で 13.5 GB、11-19 の落ち続けた残骸が 0 バイト 7150 個）。結果は `/api/status` の `logs` に出す。v2.10.1 で「1 時間後にしか動かない」を直し、起動 60 秒後に 1 回目、そのあと 1 時間ごとにした。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
+- 2026-11-21（v2.10.1）: ログ見張りのタマーを 60 秒ごとに回し、中で `log_cleanup_interval` まで待つようにした（v2.10.0 は最初の動きが 1 時間後だった）。
 - 2026-11-21（v2.10.0）: `system_monitor_node` のログ見張り（`ros_log_dir` / `enable_log_cleanup` / `log_cleanup_interval` 3600 秒 / `log_keep_per_node` 5 / `log_max_total_mb` 200 / `log_empty_age_h` 24）。`/proc/<pid>/fd` を見て開いているログは消さない。
 - 2026-11-21（v2.9.1）: `camera_watchdog_node` の実機確認を文書に書いた（コード変更なし）。camera_node を SIGSTOP で固めたテスト（16:43）→ 20.3 秒後に見張りが起動し直し（SIGTERM→3 秒後 SIGKILL）→ respawn が camera_node を起こし 29.9 fps・`camera.available: true`・age 0.02 秒で復帰。
 - 2026-11-21（v2.9.0）: `camera_watchdog_node` 追加（`ai_car_web/camera_watchdog_node.py`、launch は `use_camera` で一緒に起動、`dashboard.yaml` の `camera_watchdog_node`）。`image_timeout` 20 秒で SIGTERM→`kill_wait` 3 秒で SIGKILL→launch の respawn が起こす。`warn_after` 3 回で警告して `retry_gap` 300 秒あける。実機で止まった camera_node を起こして 30fps 復帰、`~/.ros/log` の 13.5 GB を削除（72%→60%）。
