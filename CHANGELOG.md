@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-21
+
+- カメラ映像の見張り `camera_watchdog_node` を足した（LiDAR の `lidar_watchdog_node` と同じ形）。
+  - 2026-11-20 実機：21 時すぎに `camera_node` は動いたまま `/camera/image_raw/compressed` を出さなくなり（libcamera の `request cancelled`）、ダッシュボードのカメラ映像が消えた。プロセスが生きたままなので launch の `respawn` は起きず、映像が消え続けていることを誰も言わなかった（約 14 時間）。`camera_node` を起こすと 30fps で復帰した。
+  - `image_timeout`（既定 20 秒）そのトピックが来ないと `camera_node` に SIGTERM、`kill_wait`（3 秒）たっても残っていれば SIGKILL。launch の `respawn`（5 秒おき）が起動し直す。`startup_grace`（20 秒）は起動直後と起動し直した後に待つ。
+  - 起こし直しが `warn_after`（既定 3）回続いて映像が戻らないと、エラーで libcamera の soname・CMA・`~/.ros/log` の camera_node のログの大きさを伝え、起こす間隔を `retry_gap`（既定 300 秒）あける。止まった `camera_node` は 1 秒に約 200 行 out するので、監視がないと 14 時間で 13 GB のログになった。
+  - `dashboard.launch.py` の `use_camera`（既定 true）でカメラと一緒に起動する（カメラのない機械では起動しない）。`camera_watchdog_node` による再起動はダッシュボードの「ノードと Topic」にもノードとして出る。
+  - 実機確認（2026-11-21・ラズパイ）: 止まっていた `camera_node` を SIGTERM で起こし、`ros2 topic hz` が 30.0fps、`/api/status` の `camera.available: true`・`age_s: 0.02`・`kb: 45.9`、`/api/camera/snapshot` が 46.9 KB の新しい JPEG になることを確認。13.5 GB の `~/.ros/log/camera_node_1145_*.log` を消してディスク 72% → 60%。
+
 ## [2.8.3] - 2026-11-19
 
 - ドキュメント: カメラの注意を今の状態に直した。apt の `ros-jazzy-camera-ros` が上がると要求する libcamera の soname（`libcamera.so.0.x`）も上がるので、`~/opt/rpicam` の Raspberry Pi 版は同じ soname の `+rpt` タグでビルドする必要がある。ずれると ROS 同梱の libcamera が読み込まれ、`no cameras available` で `camera_node` が落ち続けてダッシュボードに映像が出なくなる。2026-11-19、camera_ros 0.8.1（`libcamera.so.0.8`）に合わせ、実機の libcamera を v0.8.0+rpt20261104・libpisp を v1.8.0 に更新して復旧した

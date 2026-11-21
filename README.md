@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.8.3（2026-11-19。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.9.0（2026-11-21。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -88,6 +88,7 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 | Nav2（`nav2.launch.py`） | `controller_server`（Regulated Pure Pursuit）・`planner_server`（NavFn）・`behavior_server`・`bt_navigator`。slam_toolbox の `/map` と map → odom の TF を使い、速度は `/cmd_vel_nav`。`use_nav2`（既定 true、`use_slam:=true` のとき 40 秒後に起動） |
 | `joy_teleop_node` | Logitech F710 → `/joy_cmd` |
 | `lidar_watchdog_node` | `/scan` が止まったら rplidar を起動し直し、だめなら USB の電気を入れ直す |
+| `camera_watchdog_node` | `/camera/image_raw/compressed` が 20 秒止まったら camera_node を起動し直す（`use_camera` が true のとき一緒に起動） |
 | `system_monitor_node` | 下を参照 |
 | SLAM（`slam_toolbox`） | `/scan` + `/odom` → `/map`・`/pose`（`use_slam`、既定 true） |
 
@@ -219,6 +220,8 @@ LD_LIBRARY_PATH=$HOME/opt/rpicam/lib/$(uname -m)-linux-gnu $HOME/opt/rpicam/bin/
 ```
 
 `dashboard.launch.py` は `~/opt/rpicam` があればカメラノードの `LD_LIBRARY_PATH` に自動で追加する（apt 版 `camera_ros` をそのまま利用できる）。
+
+カメラ映像の見張りは `camera_watchdog_node`（`dashboard.yaml` の `camera_watchdog_node`）。2026-11-20 実機で、`camera_node` は動いたまま `/camera/image_raw/compressed` を出さなくなり（libcamera の `request cancelled`）、プロセスが生きているので `respawn` も起きず、ダッシュボードの映像が約 14 時間消えた。`camera_watchdog_node` は `image_timeout`（既定 20 秒）映像が来ないと `camera_node` に SIGTERM（`kill_wait` 秒で終わらなければ SIGKILL）を送り、launch の `respawn` が起動し直す。起こし直しが `warn_after`（既定 3）回続いて戻らないときは、`retry_gap`（既定 300 秒）あけて起こす（止まった `camera_node` は 1 秒に約 200 行 out して、14 時間で 13 GB のログになった）。映像が消えたときの確認は `ros2 topic hz /camera/image_raw/compressed` と `/api/status` の `camera.available`。
 
 ## AI HAT+ (Hailo-8) のセットアップ（Ubuntu 24.04）
 

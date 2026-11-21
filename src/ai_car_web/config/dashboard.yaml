@@ -454,6 +454,21 @@ lidar_watchdog_node:
     reboot_after: 7
     reboot_min_uptime: 1800.0
 
+# カメラ映像の見張り。dashboard.launch.py の use_camera が true のとき一緒に起動する
+camera_watchdog_node:
+  ros__parameters:
+    image_topic: "/camera/image_raw/compressed"
+    # 2026-11-20 実機：camera_node は生きたまま /camera/image_raw/compressed を出さなくなり、
+    # 約 14 時間ダッシュボードの映像が消えた（libcamera の request cancelled）
+    image_timeout: 20.0
+    startup_grace: 20.0
+    kill_wait: 3.0
+    process_pattern: "camera_ros/camera_node"
+    # 起こし直しがこの回数続いて映像が戻らないと、ログを膨らませないよう起こす間隔を空ける
+    # （止まった camera_node は 1 秒に約 200 行 out する。14 時間で 13 GB のログになった）
+    warn_after: 3
+    retry_gap: 300.0
+
 # Camera Module 3 Wide（camera_ros）。dashboard.launch.py の use_camera で起動
 camera:
   ros__parameters:
