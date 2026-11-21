@@ -367,6 +367,16 @@ system_monitor_node:
     enable_pmic: true
     enable_hailo: true
     update_check_interval: 3600.0   # セキュリティ更新の数（apt-check）を調べる間隔 [秒]
+    # ROS 2 のログ（~/.ros/log）の見張り。止まった camera_node は 1 秒に約 200 行 out して
+    # 14 時間で 13 GB になった（2026-11-20 実機）。ノードごとに新しい log_keep_per_node 個と
+    # 動き中のノードの開いているログは残し、0 バイトの古いログと合計が log_max_total_mb を
+    # こえる古いものから消す
+    ros_log_dir: "~/.ros/log"
+    enable_log_cleanup: true
+    log_cleanup_interval: 3600.0
+    log_keep_per_node: 5
+    log_max_total_mb: 200.0
+    log_empty_age_h: 24.0
 
 perception_node:
   ros__parameters:

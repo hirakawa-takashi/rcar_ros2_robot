@@ -144,6 +144,111 @@ def _run(cmd, timeout=3.0):
 
 _IP_SKIP = ('lo', 'docker', 'br-', 'veth', 'l4tbr')
 
+# ROS 2 のログ（~/.ros/log/<名前>_<pid>_<起動時刻>.log）。rcutils がノードごとに作る
+_LOG_NAME = re.compile(r'^(?P<node>[A-Za-z0-9_.+-]+)_\d+_\d+\.log$')
+
+
+def _open_files_in(dirpath):
+    """動作中のプロセスが開いている dirpath 内のログの絶対パスの集合。"""
+    target = os.path.realpath(dirpath) + os.sep
+    opened = set()
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        fd_dir = f'/proc/{pid}/fd'
+        try:
+            fds = os.listdir(fd_dir)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                link = os.readlink(f'{fd_dir}/{fd}')
+            except OSError:
+                continue
+            if link.startswith(target):
+                opened.add(os.path.realpath(link))
+    return opened
+
+
+def _ros_log_cleanup(dirpath, keep_per_node, max_total_mb, empty_age_h):
+    """ROS 2 のログ（~/.ros/log）を片付ける。
+
+    ノードごとに新しい keep_per_node 個と、開いているファイル（動き中のノードのログ）は残す。
+    0 バイトのログ（起動だけして何も出さなかったもの）は empty_age_h 時間たったら消す。
+    残りの合計が max_total_mb をこえたら、古いものから消す。
+    止まった camera_node は 1 秒に約 200 行 out して 14 時間で 13 GB になった（2026-11-20 実機）。
+    """
+    if not dirpath or not os.path.isdir(dirpath):
+        return None
+    opened = _open_files_in(dirpath)
+    now = time.time()
+    entries = []
+    for entry in os.scandir(dirpath):
+        try:
+            if not entry.is_file():
+                continue
+        except OSError:
+            continue
+        m = _LOG_NAME.match(entry.name)
+        if not m:
+            continue
+        try:
+            st = entry.stat()
+        except OSError:
+            continue
+        entries.append((entry.path, entry.name, m.group('node'), st.st_size, st.st_mtime))
+
+    groups = collections.defaultdict(list)
+    for path, name, node, size, mtime in entries:
+        groups[node].append((mtime, path, size))
+
+    deleted = 0
+    freed = 0.0
+    keep = []   # (path, size, mtime) 残したものの候補（グループ見張りのあと）
+
+    for node, items in groups.items():
+        items.sort(reverse=True)   # 新しい順
+        for i, (mtime, path, size) in enumerate(items):
+            if path in opened:
+                keep.append((path, size, mtime))
+                continue
+            empty_old = size == 0 and now - mtime > empty_age_h * 3600.0
+            if i < keep_per_node and not empty_old:
+                keep.append((path, size, mtime))
+                continue
+            try:
+                os.remove(path)
+            except OSError:
+                keep.append((path, size, mtime))
+                continue
+            deleted += 1
+            freed += size
+
+    keep.sort(key=lambda x: x[2])   # 古い順
+    total = sum(size for _p, size, _m in keep)
+    cap = int(max_total_mb * 1024 * 1024)
+    gone_cap = 0
+    for path, size, _mtime in keep:
+        if total <= cap or path in opened:
+            continue
+        try:
+            os.remove(path)
+        except OSError:
+            continue
+        gone_cap += 1
+        total -= size
+        deleted += 1
+        freed += size
+
+    return {
+        'dir': dirpath,
+        'files': len(keep) - gone_cap,
+        'total_mb': round(total / 1024 / 1024, 1),
+        'deleted': deleted,
+        'freed_mb': round(freed / 1024 / 1024, 1),
+        'at': round(now),
+    }
+
 
 def _ip_addresses():
     """IPv4 アドレスを [{'iface': 'wlan0', 'addr': '192.168.11.18'}, ...] で返す（lo・Docker は除く）。"""
@@ -253,6 +358,13 @@ class SystemMonitorNode(Node):
         self.declare_parameter('enable_hailo', True)
         self.declare_parameter('update_check_interval', 3600.0)
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
+        # ROS 2 のログ（~/.ros/log）の見張り。止まったノードのログが 10 GB 台へ膨らんだため
+        self.declare_parameter('ros_log_dir', '~/.ros/log')
+        self.declare_parameter('enable_log_cleanup', True)
+        self.declare_parameter('log_cleanup_interval', 3600.0)
+        self.declare_parameter('log_keep_per_node', 5)
+        self.declare_parameter('log_max_total_mb', 200.0)
+        self.declare_parameter('log_empty_age_h', 24.0)
 
         rate = float(self.get_parameter('publish_rate').value)
         self.enable_pmic = bool(self.get_parameter('enable_pmic').value)
@@ -283,7 +395,30 @@ class SystemMonitorNode(Node):
         self._uv_last = None
         self._uv_events = collections.deque()
         self._supply = _supply_info()
+        self.enable_log_cleanup = bool(self.get_parameter('enable_log_cleanup').value)
+        self._log_dir = os.path.expanduser(str(self.get_parameter('ros_log_dir').value))
+        self._log_interval = float(self.get_parameter('log_cleanup_interval').value)
+        self._log_keep = max(1, int(self.get_parameter('log_keep_per_node').value))
+        self._log_cap = float(self.get_parameter('log_max_total_mb').value)
+        self._log_empty_age_h = float(self.get_parameter('log_empty_age_h').value)
+        self._logs = {}
+        self.create_timer(max(self._log_interval, 60.0), self._log_cleanup_cb)
         self.create_timer(1.0 / max(rate, 0.1), self._publish_cb)
+
+    # --- ROS 2 のログ ---
+    def _log_cleanup_cb(self):
+        """~/.ros/log を間引く。ノードごとに新しいものと同、動き中のノードの開いているログは残す。"""
+        if not self.enable_log_cleanup:
+            return
+        result = _ros_log_cleanup(self._log_dir, self._log_keep, self._log_cap,
+                                  self._log_empty_age_h)
+        if result is None:
+            return
+        self._logs = result
+        if result['deleted']:
+            self.get_logger().warn(
+                f'ROS のログを {result["deleted"]} 個（{result["freed_mb"]} MB）片付けました'
+                f'（残り {result["files"]} 個・{result["total_mb"]} MB）')
 
     # --- CPU / メモリ ---
     def _cpu(self):
@@ -553,6 +688,7 @@ class SystemMonitorNode(Node):
             'hailo': self._hailo(),
             'ips': self._ips_cached(now),
             'updates': self._updates(),
+            'logs': self._logs,
         }
         msg = String()
         msg.data = json.dumps(payload)

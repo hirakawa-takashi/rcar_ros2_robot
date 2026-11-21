@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-11-21
+
+- `system_monitor_node` に ROS 2 のログ（`~/.ros/log`）の見張りを足した。
+  - 2026-11-20 実機で、止まった `camera_node` のログが 14 時間で 13.5 GB になった（1 秒に約 200 行 out していた）。v2.9.0 の `camera_watchdog_node` で勢いは止まるが、古い残骸（11-19 に落ち続けた camera_node の 0 バイトのログ 7150 個など）は片付かない。
+  - `log_cleanup_interval`（既定 3600 秒）ごとに、ノード名ごとに新しい `log_keep_per_node`（既定 5）個と、動き中のノードが開いているログ（`/proc/<pid>/fd` を見て判定）を残し、0 バイトで `log_empty_age_h`（既定 24 時間）以上前のものと、合計が `log_max_total_mb`（既定 200 MB）をこえる古いものから消す。`enable_log_cleanup: false` で止められる。
+  - 結果は `/system_status` と `/api/status` の `logs` に出す（`files`・`total_mb`・`deleted`・`freed_mb`・`at`）。画面のカードには出さない。
+
 ## [2.9.1] - 2026-11-21
 
 - 文書: `camera_watchdog_node` を実機で確かめた結果を書いた（コードの変更はない）。
