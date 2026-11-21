@@ -132,13 +132,13 @@ hardware:
           - {label: バッテリー 1, sub: CIO SMARTCOBY Pro SLIM 35W / USB-C PD, out: USB-C メス（口）}
           - {label: USB スイッチ（下）, sub: LOYELEY 28 cm / ＋（VBUS）だけ切る, in: USB-C オス, out: USB-C メス}
           - {label: PD トリガーケーブル, sub: SZSL 12V 固定 3A / 1 m（B0D3QG33J7）, in: USB-C オス / （中に PD トリガー）, out: 丸プラグ オス / 5.5×2.5 mm・中が＋}
-          - {label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, in: DC ジャック メス / （穴の大きさ 未確認）, out: USB-A メス}
+          - {label: DROK 降圧コンバーター, sub: 12V → 5.2V / 5A（B09JKHD3SH）, in: DC ジャック メス / VIN+・VIN− ねじ端子台もある（基板の裏に印字）, out: USB-A メス}
           - {label: USB ケーブル, sub: USB-A → USB-C / 30 cm くらい, in: USB-A オス, out: USB-C オス / （L 字がおすすめ）}
           - {label: Raspberry Pi 5, sub: 電源の USB-C 口 / PD なし・3 A と見る, in: USB-C メス / （電源の口・5V だけ）}
         wires:
           - {power: 12V, joint: バッテリーの USB-C 口 ← スイッチの USB-C プラグ, desc: "VBUS（＋）・GND（−）・CC（合図）がそのまま通る。はじめは 5V で、PD トリガーとの話し合いのあと 12V になる"}
           - {power: 12V, joint: スイッチの USB-C ← PD トリガーケーブルの USB-C プラグ（オス）, desc: プラグの中に PD トリガーがある。ここで「12V ください」とたのむ}
-          - {power: 12V, joint: 丸プラグ（オス、5.5 × 2.5 mm、中が＋）→ DROK の DC ジャック（メス）, desc: "ケーブルの中は＋（赤）と−（黒）の 2 本だけ。中が−（センターマイナス）のケーブルは使わない。DROK のジャックの穴の大きさはまだ実物で測っていない（3D の説明では 5.5 × 2.1 mm と読んでいる）"}
+          - {power: 12V, joint: 丸プラグ（オス、5.5 × 2.5 mm、中が＋）→ DROK の DC ジャック（メス）, desc: "ケーブルの中は＋（赤）と−（黒）の 2 本だけ。中が−（センターマイナス）のケーブルは使わない。DROK のジャックの穴の大きさはまだ実物で測っていない（3D の説明では 5.5 × 2.1 mm と読んでいる）。なお DROK には VIN+・VIN− のねじ端子台もあり（2026-11-22 確認）、リポ化ではそちらを使う"}
           - {power: 5V, joint: DROK の USB-A 口（メス）← USB-A → USB-C ケーブルの USB-A プラグ, desc: "5.2V / 最大 5A。30 cm くらい（ラズパイ側は L 字がおすすめ）"}
           - {power: 5V, joint: ケーブルの USB-C プラグ → Raspberry Pi 5 の電源の USB-C 口, desc: "PD のやりとりはないので、ラズパイは「3 A の電源」と見る（usb_max_current_enable=1 で USB 機器に 1.6 A まで）。AI HAT+・カメラ・LiDAR・IMU・落下防止センサー・エンコーダーの電気もここから"}
         notes:
@@ -193,13 +193,13 @@ hardware:
           - {label: 分けるケーブル, sub: XT60 → 2 本 / 太い線 14AWG, in: XT60, out: ＋ 赤・− 黒 ×2}
           - {label: ヒューズ 5A, sub: 平型（ミニ）ヒューズ / 線つきホルダー, in: ＋ 赤, out: ＋ 赤}
           - {label: スイッチ（ラズパイ）, sub: 12V 10A 以上 / ロッカーかトグル, in: ＋ 赤, out: ＋ 赤}
-          - {label: DROK 降圧コンバーター, sub: 9〜36V → 5.2V / 5A（いまのもの）, in: DC ジャック メス / または 端子, out: USB-A メス}
+          - {label: DROK 降圧コンバーター, sub: 9〜36V → 5.2V / 5A（いまのもの）, in: VIN+・VIN− ねじ端子台（基板の裏に印字）, out: USB-A メス}
           - {label: Raspberry Pi 5, sub: いまと同じ / USB-A → USB-C, in: USB-C メス}
         wires:
-          - {power: 12V, joint: リポの XT60 → 分けるケーブルの XT60, desc: "電圧（3 セルの合計）は 12.6V（満充電）→ 11.1V → 9.9V（ここで止める）。12V の線はここから 2 つに分かれる"}
+          - {power: 12V, joint: リポの XT60 → 分けるケーブルの XT60, desc: "リポ側はソケット（穴が 2 つ）と確認済み（2026-11-22）→ 分ける側はピンが出ている XT60。電圧（3 セルの合計）は 12.6V（満充電）→ 11.1V → 9.9V（ここで止める）。12V の線はここから 2 つに分かれる"}
           - {power: 12V, joint: 分けるケーブルの＋（赤）→ ヒューズ, desc: "線 18AWG。ヒューズは＋の線だけに入れる。DROK に流れる電気は 3A くらい（ラズパイ 約 6〜10W）"}
           - {power: 12V, joint: ヒューズ → スイッチ, desc: いまの USB スイッチ（下）のかわり。切る前にラズパイをシャットダウンする}
-          - {power: 12V, joint: スイッチ → DROK の入力, desc: "＋と−を逆にしない。丸プラグは、今の PD トリガーケーブル（ラズパイ側）の丸プラグの側を切って使う（今 DROK にささっているので形が合う。中が＋）"}
+          - {power: 12V, joint: スイッチ → DROK の入力, desc: "＋と−を逆にしない。DROK の VIN+・VIN− ねじ端子台に 18AWG でつなぐ（基板の裏に印字。DC ジャック・丸プラグは使わないので、PD トリガーケーブルは切らずに予備へ）"}
           - {power: 5V, joint: DROK の USB-A → ラズパイの USB-C, desc: いまと同じ}
         notes:
           - PD トリガーケーブル 2 本と LOYELEY の USB スイッチ 2 個は使わなくなる

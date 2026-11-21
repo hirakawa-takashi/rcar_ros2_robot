@@ -27,8 +27,8 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 
 <!-- ================= 1 ページ目：全体の図 ================= -->
 <div class="page">
-<h1>AI-CAR リポ 1 個の配線図（くわしい版）　予定・部品待ち</h1>
-<div class="sub">リポ 3S 11.1V 10000mAh（XT60）1 個で、ラズパイ側とモーター側の両方に電気を送る。丸の数字 ①〜㉔ は 2 ページ目の「線の表」の番号。WAGO は A〜F。　2026-11-03 作成（AI-CAR の HARDWARE_BOM.md・architecture.yaml の記録をもとに）</div>
+<h1>AI-CAR リポ 1 個の配線図（くわしい版）　予定・部品は届いた</h1>
+<div class="sub">リポ 3S 11.1V 10000mAh（XT60）1 個で、ラズパイ側とモーター側の両方に電気を送る。丸の数字 ①〜㉔ は 2 ページ目の「線の表」の番号。WAGO は A〜F。　2026-11-03 作成、2026-11-22 改訂（部品が届いたので DROK は DC ジャックではなく VIN+/VIN− のねじ端子台につなぐことにした。リポの XT60 はソケット＝穴側と確認）</div>
 <svg viewBox="0 0 1120 600" width="100%" height="160mm">
  <defs>
   <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker>
@@ -93,7 +93,7 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
  <rect class="wago" x="670" y="70" width="34" height="40" rx="4"/><text class="tb" x="680" y="96">D</text>
  <path class="p18" d="M704,84 L760,84"/>
  <rect class="part" x="760" y="55" width="140" height="80" rx="6"/>
- <text class="tb" x="770" y="78">DROK</text><text class="ts" x="770" y="96">9〜36V → 5.2V 5A</text><text class="ts" x="770" y="112">入: 丸い口（DC ジャック）</text><text class="ts" x="770" y="127">出: USB-A</text>
+ <text class="tb" x="770" y="78">DROK</text><text class="ts" x="770" y="96">9〜36V → 5.2V 5A</text><text class="ts" x="770" y="112">入: VIN+/VIN− 端子台</text><text class="ts" x="770" y="127">出: USB-A（DCジャック不使用）</text>
  <path class="v5" d="M900,95 L960,95"/>
  <text class="ts" x="904" y="88">5.2V</text>
  <rect class="part" x="960" y="40" width="140" height="150" rx="6"/>
@@ -190,7 +190,7 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <h2>線の表（①〜㉔、図の番号と同じ）</h2>
 <table>
 <tr><th>番号</th><th>どこから</th><th>どこへ</th><th>線</th><th>気をつけること</th></tr>
-<tr><td class="n">1</td><td>リポの XT60</td><td>XT60 線つき（Amass、オス・メスの合うほう）</td><td>XT60</td><td>いちばん<b>最後に</b>さして、いちばん<b>最初に</b>ぬく。リポがオスかメスかは届いてから見る（5 ペアに両方ある）</td></tr>
+<tr><td class="n">1</td><td>リポの XT60</td><td>XT60 線つき（Amass、ピンの出ているほう）</td><td>XT60</td><td>いちばん<b>最後に</b>さして、いちばん<b>最初に</b>ぬく。リポ側はソケット（穴が 2 つ）と確認済み（2026-11-22）。5 ペアの中から<b>ピン（棒）が出ている側</b>を使う</td></tr>
 <tr><td class="n">2</td><td>XT60 線の＋（赤）</td><td>WAGO A</td><td>赤 14AWG</td><td>線の先の皮を 11 mm むいて、奥までさしてレバーを下げる</td></tr>
 <tr><td class="n">3</td><td>XT60 線の−（黒）</td><td>WAGO B</td><td>黒 14AWG</td><td>赤と黒の先が、ぜったいにふれないようにする</td></tr>
 <tr><th colspan="5" style="text-align:left">ラズパイ側（ヒューズ 5A）</th></tr>
@@ -198,9 +198,9 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <tr><td class="n">5</td><td>ヒューズホルダー①の線のもう片方</td><td>WAGO C</td><td>ホルダーの線</td><td>ホルダーの線はどちら向きでもよい</td></tr>
 <tr><td class="n">6</td><td>WAGO C</td><td>スイッチ（ラズパイ）の線の片方</td><td>スイッチの線</td><td>スイッチの 2 本はどちら向きでもよい</td></tr>
 <tr><td class="n">7</td><td>スイッチ（ラズパイ）の線のもう片方</td><td>WAGO D</td><td>スイッチの線</td><td>WAGO D は 3 つ穴（DROK の＋と電圧センサーもさす）</td></tr>
-<tr><td class="n">8</td><td>WAGO D</td><td>DROK の丸プラグの<b>＋</b></td><td>赤</td><td>丸プラグは、今つかっている PD トリガーケーブルの丸プラグの側を約 15 cm 残して切って使う（今 DROK にささっているので形が合う）。<b>中が＋</b>。切ったあとテスターで、どちらの線が中か確かめる</td></tr>
-<tr><td class="n">9</td><td>WAGO B</td><td>DROK の丸プラグの<b>−</b></td><td>黒</td><td>丸プラグの外がわ</td></tr>
-<tr><td class="n">10</td><td>丸プラグ</td><td>DROK の丸い口</td><td>—</td><td>今と同じ</td></tr>
+<tr><td class="n">8</td><td>WAGO D</td><td>DROK の端子台 <b>VIN+</b></td><td>赤 18AWG</td><td>DROK のねじ端子台（基板の裏に VIN+・VIN− の印字、DC ジャックと同じ入力）。ねじをゆるめて線を入れてしめる。<b>＋と−を逆にしない</b>。端子台に入れるのは電圧を確かめたあと（つなぐ順番を見る）</td></tr>
+<tr><td class="n">9</td><td>WAGO B</td><td>DROK の端子台 <b>VIN−</b></td><td>黒 18AWG</td><td>しめたあと軽く引いて、ぬけないことを確かめる</td></tr>
+<tr><td class="n">10</td><td>（線はない）</td><td>DROK の DC ジャック（丸い口）</td><td>—</td><td><b>使わない</b>。何もささない。PD トリガーケーブルは切らず、そのまま外して予備にとっておく</td></tr>
 <tr><td class="n">11</td><td>DROK の USB-A</td><td>ラズパイの電源 USB-C</td><td>USB-A→USB-C</td><td>今と同じ（5.2V）。12V の線をラズパイにさわらせない</td></tr>
 <tr><th colspan="5" style="text-align:left">モーター側（ヒューズ 7.5A）</th></tr>
 <tr><td class="n">12</td><td>WAGO A</td><td>ヒューズホルダー②の線の片方</td><td>ホルダーの線</td><td>ヒューズ <b>7.5A</b>（色はふつう<b>茶色</b>）</td></tr>
@@ -300,14 +300,14 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <div>
 <ol>
 <li><b>準備</b>：リポは<b>まだつながない</b>。スイッチ 2 個を <b>OFF</b> にする。今の CIO の線（PD トリガーケーブル 2 本・USB スイッチ 2 個）を外す。</li>
-<li>切った丸プラグの 2 本の線のうち、どちらが「中の金具」とつながっているか、テスターのピーと鳴るモードで確かめる → その線を＋（⑧、WAGO D）にする。</li>
+<li>DROK のねじ端子台の <b>VIN+ と VIN−</b> の位置を、基板の裏の印字で確かめる（できればテスターのピーと鳴るモードで、VIN+ が DC ジャックの中の金具・VIN− が外がわにつながることも見る＝同じ入力の確認）。</li>
 <li>表の ②〜⑨、⑫〜⑰、⑲ をつなぐ（WAGO は皮を 11 mm むいて、奥までさしてレバーを下げる。軽く引いてぬけなければ OK）。</li>
 <li><b>テスター（ピーと鳴るモード）</b>：XT60 線の先の＋と−の金具にあてる → <b>鳴らなければ OK</b>。鳴ったら、どこかで＋と−がふれています。つながずに AI さんに写真を送ってください。</li>
-<li>DROK の丸プラグを DROK から<b>ぬいておく</b>。Motor HAT の端子台の⑯（赤）を<b>まだ入れない</b>（線の先にテープ）。</li>
+<li>DROK の端子台につなぐ ⑧・⑨ の端子台側は<b>まだ入れない</b>（線の先にテープ）。DROK の DC ジャックには<b>何もささない</b>。Motor HAT の端子台の⑯（赤）も<b>まだ入れない</b>（線の先にテープ）。</li>
 <li>リポの XT60 を ① にさす（スイッチは 2 個とも OFF のまま）。</li>
 <li><b>テスター（直流 V、20V の所）</b>：WAGO の横の小さな四角い穴（テスターの棒を入れる穴）に、赤い棒を WAGO D、黒い棒を WAGO B に入れる → <b>0V</b> なら OK。</li>
 <li>スイッチ（ラズパイ）を <b>ON</b> → 同じ所（D と B）が <b>11〜12.6V</b> なら OK。<b>マイナス（−11V など）が出たら XT60 の＋と−が逆</b>。すぐ XT60 をぬいて、AI さんに写真を送ってください。</li>
-<li>スイッチ（ラズパイ）を OFF。丸プラグを DROK にさす。ラズパイの USB-C もさす。スイッチを ON → ラズパイが動く（赤と緑のランプ）。「つけた」と AI さんに教えてください。AI さんが電圧低下（Undervoltage）がないか見ます。</li>
+<li>スイッチ（ラズパイ）を OFF。⑧ の赤を DROK の端子台 <b>VIN+</b>、⑨ の黒を <b>VIN−</b> に入れてしめる（<b>＋と−を逆にしない</b>）。ラズパイの USB-C を DROK の USB-A にさす。スイッチを ON → ラズパイが動く（赤と緑のランプ）。「つけた」と AI さんに教えてください。AI さんが電圧低下（Undervoltage）がないか見ます。</li>
 <li>スイッチ（モーター）を ON → 赤い棒を WAGO F、黒い棒を WAGO B の四角い穴に入れて <b>11〜12.6V</b> なら OK。OFF にして、⑯ の赤を Motor HAT の端子台の＋に入れてしめる。</li>
 <li>INA226 の ⑳〜㉓ は、<b>ラズパイを止めて、スイッチ（ラズパイ）を OFF にしてから</b>さす。ON にしたら、AI さんが I2C で 0x40 が見えるか確かめます。</li>
 <li>リポ アラームを ㉔ にさして、3.5V に合わせる。</li>
@@ -323,14 +323,14 @@ svg text { font-family: "Noto Sans CJK JP", sans-serif; }
 <li>ラズパイを止めるときは、シャットダウンしてからスイッチ（ラズパイ）を OFF。</li>
 </ol></div>
 <div class="note"><b>まだ確かめていないこと（届いてから）</b><ol>
-<li>リポの XT60 がオスかメスか、長さ・はば・厚さ（定規で測る）</li>
+<li>リポの長さ・はば・厚さ（定規で測る。XT60 はソケット＝穴側と確認済み）</li>
 <li>INA226 のピンの印字（VBUS が別にあるか）・ピンのはんだ付けがいるか → 写真</li>
 <li>ヒューズホルダーとスイッチの線の太さ・長さ</li>
 <li>pin 3・5 の 3 又を 4 又にする方法（今の 3 又の写真を送ってください）</li>
 <li>スイッチ 2 個の置き場所（台に穴をあけるか、外に出すか）</li>
 <li>線の長さ（車の上で、WAGO の場所から各部品まで測る。目安 10〜25 cm）</li>
 </ol></div>
-<div class="note"><b>買った部品との対応</b>：XT60 線つき＝Amass 5 ペア（14AWG）、WAGO 221＝12 個入り、ヒューズホルダー＝エーモン 3367 ×2、ヒューズ＝ミニ平型セット（5A・7.5A）、スイッチ＝ミニロッカー 2 ピン 配線済み 12V 20A、INA226＝Alinan、アラーム＝yueton 1-8S、赤黒の線＝BNTECHGO 18AWG。新しく買わないもの：丸プラグ（今の PD トリガーケーブルを切って使う）、ジャンパー線（家にあるもの）。</div>
+<div class="note"><b>買った部品との対応</b>：XT60 線つき＝Amass 5 ペア（14AWG）、WAGO 221＝12 個入り、ヒューズホルダー＝エーモン 3367 ×2、ヒューズ＝ミニ平型セット（5A・7.5A）、スイッチ＝ミニロッカー 2 ピン 配線済み 12V 20A、INA226＝Alinan、アラーム＝yueton 1-8S、赤黒の線＝BNTECHGO 18AWG。新しく買わないもの：ジャンパー線（家にあるもの）。PD トリガーケーブルは切らず、そのまま外して予備にする（DROK は VIN+/VIN− のねじ端子台につなぐので、丸プラグは使わない）。</div>
 </div>
 </div>
 </div>
