@@ -664,6 +664,20 @@ nodes:
       - {name: reboot_after, ref: lidar_watchdog_node.reboot_after, unit: 回, desc: この回数続くと、ラズパイを再起動する（この起動で /scan が来ていたときだけ。0 でしない）}
       - {name: reboot_min_uptime, ref: lidar_watchdog_node.reboot_min_uptime, unit: s, desc: 起動からこの秒数たつまでは再起動しない（くり返さないため）}
     layer: sensor
+  - id: camera_watchdog_node
+    label: camera_watchdog_node
+    file: ai_car_web/camera_watchdog_node.py
+    role: /camera/image_raw/compressed が途絶えたら camera_node を終了させ、launch の respawn で起動し直させる（libcamera が動いたまま映像を出さなくなるため。use_camera が true のとき一緒に起動）
+    publishes: []
+    subscribes: [/camera/image_raw/compressed]
+    params:
+      - {name: image_topic, ref: camera_watchdog_node.image_topic, unit: '', desc: 見張るカメラ映像のトピック}
+      - {name: image_timeout, ref: camera_watchdog_node.image_timeout, unit: s, desc: この秒数カメラ映像が来ないと camera_node を起動し直す}
+      - {name: startup_grace, ref: camera_watchdog_node.startup_grace, unit: s, desc: 起動直後と起動し直した後に待つ秒数}
+      - {name: kill_wait, ref: camera_watchdog_node.kill_wait, unit: s, desc: SIGTERM で終わらなければ SIGKILL を送るまでの秒数}
+      - {name: warn_after, ref: camera_watchdog_node.warn_after, unit: 回, desc: 起動し直しがこの回数続いて映像が戻らないと警告し、起こす間隔を retry_gap 秒あける（0 でしない）}
+      - {name: retry_gap, ref: camera_watchdog_node.retry_gap, unit: s, desc: 何度でも起こし直しの間隔（ログを膨らませないため）}
+    layer: sensor
   - id: camera
     label: camera（camera_ros）
     file: 外部パッケージ camera_ros + Raspberry Pi 版 libcamera
@@ -900,6 +914,7 @@ programs:
   - {place: ラズパイ, name: perception_node, file: src/ai_car_web/ai_car_web/perception_node.py, role: LiDAR と AI HAT+ の YOLO で障害物を判定, video: perception_node_yukkuri.mp4}
   - {place: ラズパイ, name: seg_display_node, file: src/ai_car_web/ai_car_web/seg_display_node.py, role: TM1637 の 7 セグ LED に状態を出す（既定は使わない）, video: seg_display_node_yukkuri.mp4}
   - {place: ラズパイ, name: lidar_watchdog_node, file: src/ai_car_web/ai_car_web/lidar_watchdog_node.py, role: /scan が止まったら rplidar・USB をつなぎ直す, video: lidar_watchdog_node_yukkuri.mp4}
+  - {place: ラズパイ, name: camera_watchdog_node, file: src/ai_car_web/ai_car_web/camera_watchdog_node.py, role: カメラ映像が止まったら camera_node を起動し直す, video: camera_watchdog_node_yukkuri.mp4}
   - {place: ラズパイ, name: imu_node, file: src/ai_car_web/ai_car_web/imu_node.py, role: BNO055 → /imu/data・/imu/mag, video: imu_node_yukkuri.mp4}
   - {place: ラズパイ, name: cliff_node, file: src/ai_car_web/ai_car_web/cliff_node.py, role: VL53L1X で段差（落下）を見張る, video: cliff_node_yukkuri.mp4}
   - {place: ラズパイ, name: system_monitor_node, file: src/ai_car_web/ai_car_web/system_monitor_node.py, role: CPU・温度・電圧・AI HAT+ の状態, video: system_monitor_node_yukkuri.mp4}

@@ -64,6 +64,16 @@ def generate_launch_description():
             respawn_delay=5.0,
             condition=IfCondition(use_camera),
         ),
+        Node(
+            package='ai_car_web',
+            executable='camera_watchdog_node',
+            name='camera_watchdog_node',
+            output='screen',
+            parameters=[params_file],
+            respawn=True,
+            respawn_delay=2.0,
+            condition=IfCondition(use_camera),
+        ),
     ] if camera_available else []
 
     try:

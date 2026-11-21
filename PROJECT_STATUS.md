@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.8.3（2026-11-19）
-- 更新日: 2026-11-05
-- 更新概要: LiDAR を RPLIDAR A1M8 から RPLIDAR C1 に交換（dTOF・最大 12 m・CP2102N 460800bps）。driver を workspace の公式 rplidar_ros 2.1.4（コミット 24cc9b6 固定）にし、`dashboard.yaml` のポートを C1 の by-id・460800bps・`scan_mode: Standard` に更新。apt の 2.1.0 では C1 が `Cannot start scan: 80008002` で回らなかった。LiDAR の向き・高さの値は前と同じまま（C1 で測り直しが必要）。これまでの変更の中身は CHANGELOG.md
+- バージョン: 2.9.0（2026-11-21）
+- 更新日: 2026-11-21
+- 更新概要: カメラ映像の見張り `camera_watchdog_node` を追加。2026-11-20 実機で `camera_node` が動いたまま `/camera/image_raw/compressed` を出さなくなり（libcamera の `request cancelled`）、プロセスが生きているので `respawn` も起きず、ダッシュボードのカメラ映像が約 14 時間消えた。20 秒映像が来なければ camera_node を起こし直す。実機で復帰を確認（30fps・`camera.available: true`）、13.5 GB の camera_node のログを消してディスク 72%→60%。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
+- 2026-11-21（v2.9.0）: `camera_watchdog_node` 追加（`ai_car_web/camera_watchdog_node.py`、launch は `use_camera` で一緒に起動、`dashboard.yaml` の `camera_watchdog_node`）。`image_timeout` 20 秒で SIGTERM→`kill_wait` 3 秒で SIGKILL→launch の respawn が起こす。`warn_after` 3 回で警告して `retry_gap` 300 秒あける。実機で止まった camera_node を起こして 30fps 復帰、`~/.ros/log` の 13.5 GB を削除（72%→60%）。
 - 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（バックアップ491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
 - 2026-10-28（v1.30.2、PR #326）: Jetsonバックアップ `scripts/ai-jetson-backup.sh`（Pi仕様と同設計、輪転7）。T1実測成功（バックアップ3.41GB、sha256一致、PCミラー照合）。Jetson側crontab毎日04:00導入済み。
 - 2026-10-28（v1.30.3、PR #327）: ダッシュボード「バックアップ」カード（`GET/POST /api/backup`、`sudo -n` 発動、最新＋作成ボタン＋一覧7個）。sudoersにダッシュボード再起動を追加（デプロイがパスワードなしで完結）。
