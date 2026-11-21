@@ -731,10 +731,18 @@ nodes:
   - id: system_monitor_node
     label: system_monitor_node
     file: ai_car_web/system_monitor_node.py
-    role: CPU / メモリ / PMIC 電圧・電流 / スロットリング / Hailo-8 温度を 1 Hz で /system_status に publish（読み取りのみ）
+    role: CPU / メモリ / PMIC 電圧・電流 / スロットリング / Hailo-8 温度を 1 Hz で /system_status に publish（読み取りのみ）。ROS 2 のログ（~/.ros/log）の見張りも兼ねる
     publishes: [/system_status]
     subscribes: []
-    params: []
+    params:
+      - {name: publish_rate, ref: system_monitor_node.publish_rate, unit: Hz, desc: /system_status の配信レート}
+      - {name: update_check_interval, ref: system_monitor_node.update_check_interval, unit: s, desc: セキュリティ更新の数を調べる間隔}
+      - {name: ros_log_dir, ref: system_monitor_node.ros_log_dir, unit: '', desc: 間引く ROS 2 のログの場所}
+      - {name: enable_log_cleanup, ref: system_monitor_node.enable_log_cleanup, unit: '', desc: ログを間引くか（false で止める）}
+      - {name: log_cleanup_interval, ref: system_monitor_node.log_cleanup_interval, unit: s, desc: ログを間引く間隔}
+      - {name: log_keep_per_node, ref: system_monitor_node.log_keep_per_node, unit: 個, desc: ノード名ごとに残す新しいログの数}
+      - {name: log_max_total_mb, ref: system_monitor_node.log_max_total_mb, unit: MB, desc: この合計を超える古いログから消す}
+      - {name: log_empty_age_h, ref: system_monitor_node.log_empty_age_h, unit: h, desc: 0 バイトのログを消すまでの時間}
     layer: sensor
 
 topics:

@@ -2,7 +2,7 @@
 
 Raspberry Pi 5 + ROS2 Jazzy で動作するメカナム4輪自律走行ロボット AI-CAR のワークスペース。
 
-- バージョン: 2.9.1（2026-11-21。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
+- バージョン: 2.10.0（2026-11-21。変更は `CHANGELOG.md`、上げ方は `AGENTS.md`）
 
 ## パッケージ
 
@@ -95,8 +95,9 @@ sudo systemctl enable --now ai-car-fan.service   # 45/50/55/62℃ を設定（�
 `system_monitor_node`
 
 - Publish: `/system_status` (`std_msgs/String`, JSON, 既定 1Hz)
-- 内容: CPU 使用率（全体・コア別）・クロック・温度・ロードアベレージ、メモリ/Swap/ディスク、PMIC レール別の電圧・電流・電力と合計消費電力、スロットリング状態、AI HAT+ (Hailo-8) 検出状態
-- パラメータ: `publish_rate` / `topic` / `enable_pmic` / `enable_hailo`
+- 内容: CPU 使用率（全体・コア別）・クロック・温度・ロードアベレージ、メモリ/Swap/ディスク、PMIC レール別の電圧・電流・電力と合計消費電力、スロットリング状態、AI HAT+ (Hailo-8) 検出状態、ROS 2 のログの片付けの結果（`logs`）
+- パラメータ: `publish_rate` / `topic` / `enable_pmic` / `enable_hailo` / `ros_log_dir` / `enable_log_cleanup` / `log_cleanup_interval` / `log_keep_per_node` / `log_max_total_mb` / `log_empty_age_h`
+- ROS 2 のログ（`~/.ros/log`）の見張りをする（既定 true、`log_cleanup_interval` 3600 秒ごと）。ノード名ごとに新しい `log_keep_per_node`（既定 5）個と、動き中のノードが開いているログは残し、0 バイトで `log_empty_age_h`（既定 24 時間）以上前のもの、合計が `log_max_total_mb`（既定 200 MB）をこえる古いものから消す。止まった `camera_node` は 1 秒に約 200 行 out して 14 時間で 13 GB のログになった（2026-11-20 実機）。結果は `/system_status` と `/api/status` の `logs` に出る（ログの個数・合計・片付けた個数と容量）。
 - 依存: `python3-psutil`、`vcgencmd`（Raspberry Pi）、`lspci`
 - AI HAT+ の情報は `/dev/hailo0`（`hailo_pci` ドライバ）と `hailortcli` の有無に応じて段階的に表示する。ドライバ未導入時は PCIe 検出状態のみ。
 - AI HAT+ の温度は HailoRT の C API `hailo_get_chip_temperature()` を ctypes で直接呼び出して取得する（ts0/ts1 の平均。`hailortcli` 4.24 に温度サブコマンドは無い）。

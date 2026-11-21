@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.9.1（2026-11-21）
+- バージョン: 2.10.0（2026-11-21）
 - 更新日: 2026-11-21
-- 更新概要: カメラ映像の見張り `camera_watchdog_node` を追加。2026-11-20 実機で `camera_node` が動いたまま `/camera/image_raw/compressed` を出さなくなり（libcamera の `request cancelled`）、プロセスが生きているので `respawn` も起きず、ダッシュボードのカメラ映像が約 14 時間消えた。20 秒映像が来なければ camera_node を起こし直す。実機で復帰を確認（30fps・`camera.available: true`）、13.5 GB の camera_node のログを消してディスク 72%→60%。これまでの変更の中身は CHANGELOG.md
+- 更新概要: `system_monitor_node` に ROS 2 のログ（`~/.ros/log`）の見張りを追加。1 時間ごとに、ノードごとに新しい 5 個と動き中のノードの開いているログを残し、0 バイトの古いログと合計 200 MB をこえる古いものから消す（2026-11-20 実機で止まった camera_node のログが 14 時間で 13.5 GB、11-19 の落ち続けた残骸が 0 バイト 7150 個）。結果は `/api/status` の `logs` に出す。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
+- 2026-11-21（v2.10.0）: `system_monitor_node` のログ見張り（`ros_log_dir` / `enable_log_cleanup` / `log_cleanup_interval` 3600 秒 / `log_keep_per_node` 5 / `log_max_total_mb` 200 / `log_empty_age_h` 24）。`/proc/<pid>/fd` を見て開いているログは消さない。
 - 2026-11-21（v2.9.1）: `camera_watchdog_node` の実機確認を文書に書いた（コード変更なし）。camera_node を SIGSTOP で固めたテスト（16:43）→ 20.3 秒後に見張りが起動し直し（SIGTERM→3 秒後 SIGKILL）→ respawn が camera_node を起こし 29.9 fps・`camera.available: true`・age 0.02 秒で復帰。
 - 2026-11-21（v2.9.0）: `camera_watchdog_node` 追加（`ai_car_web/camera_watchdog_node.py`、launch は `use_camera` で一緒に起動、`dashboard.yaml` の `camera_watchdog_node`）。`image_timeout` 20 秒で SIGTERM→`kill_wait` 3 秒で SIGKILL→launch の respawn が起こす。`warn_after` 3 回で警告して `retry_gap` 300 秒あける。実機で止まった camera_node を起こして 30fps 復帰、`~/.ros/log` の 13.5 GB を削除（72%→60%）。
 - 2026-10-28（v1.30.0・v1.30.1、PR #324/#325）: バックアップと復元機能追加。`scripts/ai-car-backup.sh`＝homeデータ（Tier A）＋root不要で読める系設定（Tier B）＋manifestをzstdで`~/ai-car-backups/`に保存（輪転7、毎日04:00 timer＋rootサービス、sudoersホワイトリストでダッシュボード発動）。`scripts/ai-car-restore.sh`＝sha256照合→dashboard停止→Tier A rsync上書き→Tier B再導入→dashboard再起動（R2）。T1/T4実測成功（バックアップ491MB、sha256一致、PCミラー照合済み）。PROJECT_RULES.mdの混入行を削除。
