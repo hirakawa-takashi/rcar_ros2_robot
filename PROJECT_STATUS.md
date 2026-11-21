@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.10.1（2026-11-21）
-- 更新日: 2026-11-21
-- 更新概要: `system_monitor_node` に ROS 2 のログ（`~/.ros/log`）の見張りを追加（v2.10.0）。ノードごとに新しい 5 個と動き中のノードの開いているログを残し、0 バイトの古いログと合計 200 MB をこえる古いものから消す（2026-11-20 実機で止まった camera_node のログが 14 時間で 13.5 GB、11-19 の落ち続けた残骸が 0 バイト 7150 個）。結果は `/api/status` の `logs` に出す。v2.10.1 で「1 時間後にしか動かない」を直し、起動 60 秒後に 1 回目、そのあと 1 時間ごとにした。これまでの変更の中身は CHANGELOG.md
+- バージョン: 2.10.2（2026-11-22）
+- 更新日: 2026-11-22
+- 更新概要: カメラ映像が「真っ黒」となったときの切り分けを文書化（v2.10.2）。`scripts/cam_brightness.py` を追加し、`/camera/image_raw/compressed` から平均輝度・最大・RGB 平均を出す（2026-11-22 実機で消灯 1.7／点灯 140 を実測）。`~/opt/rpicam` の `cam` は v0.8 で `-t` が消え、ヘッドレスでのスナップショットは 5 通り試して書けなかったことも書いた。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Strata（Devinから引き継ぎ、AGENTS.md準拠）
+- 2026-11-22（v2.10.2）: カメラの「真っ黒」切り分けを README に追記、`scripts/cam_brightness.py` を追加。実測: 消灯 平均輝度 1.7・最大 5・RGB (1.7,1.0,5.7)/20枚固定 → 点灯 140・217・(138,141,136)、YOLO は `テレビ 0.889`（0.516 m）を検出。
 - 2026-11-21（v2.10.1）: ログ見張りのタマーを 60 秒ごとに回し、中で `log_cleanup_interval` まで待つようにした（v2.10.0 は最初の動きが 1 時間後だった）。
 - 2026-11-21（v2.10.0）: `system_monitor_node` のログ見張り（`ros_log_dir` / `enable_log_cleanup` / `log_cleanup_interval` 3600 秒 / `log_keep_per_node` 5 / `log_max_total_mb` 200 / `log_empty_age_h` 24）。`/proc/<pid>/fd` を見て開いているログは消さない。
 - 2026-11-21（v2.9.1）: `camera_watchdog_node` の実機確認を文書に書いた（コード変更なし）。camera_node を SIGSTOP で固めたテスト（16:43）→ 20.3 秒後に見張りが起動し直し（SIGTERM→3 秒後 SIGKILL）→ respawn が camera_node を起こし 29.9 fps・`camera.available: true`・age 0.02 秒で復帰。
