@@ -1,5 +1,7 @@
 # バッテリー 2 個 + RPLIDAR C1 + ラズパイ + 前カメラ マウント
 
+> **注（v2.10.7）**: このファイルの前半（ネジ穴・主な寸法・組み立て・CC スイッチの箱）は、いま車に付いている CIO 2 個の形の記録。リポ 1 個の形（最終版）は「リポ 1 個の形」の節。CIO の形の STL（`box` / `lid` / `cam_mount` / `cc_holder` / `cc_spacer`）はリポ化で使わなくなったため削除した（`power="cio"` で再生成できる。古い STL は Git の履歴）。
+
 天板（154 x 200 mm）に載せる部品。
 - 前側: CIO SMARTCOBY Pro SLIM を 2 個重ねて収める箱（後ろの壁に DROK 降圧コンバーターの受け）と、その上に RPLIDAR C1・前カメラ（Raspberry Pi Camera Module 3 Wide SC0874）・IMU（GY-BNO055）を載せるふた
 - 後ろ側: Raspberry Pi 5 台（AI HAT+ / Motor HAT はこれまでどおり Pi の上に重ねる）。Pi のまわりにはほかの部品を置かない（液晶は外した。IMU は CC スイッチの箱の後ろの柱の上）。Pi は左に寄せ、電源ボタンはカバーの左の穴から押せる。右の USB / LAN 側はカバーの壁まで約 61 mm あき、ストレートの USB プラグも入る
@@ -7,10 +9,7 @@
 | ファイル | 内容 |
 |---|---|
 | `battery_lidar_mount.scad` | OpenSCAD ソース（寸法はすべて先頭のパラメーター） |
-| `box.stl` | バッテリー箱 + DROK の受け（フランジを下にして印刷、サポート不要） |
-| `lid.stl` | ふた + LiDAR 台（板を下にして印刷、サポート不要） |
 | `pi_base.stl` | ラズパイ台（板を下にして印刷、サポート不要） |
-| `cam_mount.stl` | Camera Module 3 Wide の板（裏を下にした向きで出力済み、サポート不要） |
 | `bumper.stl` | 前後バンパー（前後共通、2 個印刷。上面を下にした向きで出力済み、サポート不要） |
 | `assembly.png` / `top.png` / `side.png` / `motor_recess.png` / `sensors.png` / `bumper_under.png` / `bumper_spring.png` / `bumper_hook.png` / `tof_view.png` / `screw_holes.png` / `cam_post_nut.png` | 組み立てイメージ / 真上 / 横 / モーターのネジのくぼみ（下から見た図、左右が反転。赤がネジの範囲） / センサーの位置 / バンパーを下から / バンパーのばね / バンパーの爪（断面） / 落下防止センサーの視野（横から） / ネジ穴の断面 / ふたの前端の左の柱（M3 の貫通穴と M2 のナットのくぼみ） |
 | `wiring.png` / `wiring_front.png` / `wiring_top.png` | 配線経路の目安（後ろ斜め / 前斜め / 真上。`-D show_cables=true` で描画） |
@@ -21,7 +20,7 @@
 | `drok_holder.png` | DROK の受け（箱の後ろの壁、Pi 側から見た図） |
 | `cover.stl` | 上面カバー（Camera Module 3 Wide 用。上面を下にした向きで出力済み、サポート不要） |
 | `cover_assembly.png` / `cover_right.png` / `cover_rear.png` / `cover_hook.png` / `battery_display.png` | カバーを付けた状態（前のカメラの切り欠き） / 右側面の充電口 / 後ろ斜め（通気口と下の線の出口） / フックの断面 / バッテリーの残量表示の窓（`-D show_cover=true` で組立図に描画） |
-| `cc_holder.stl` / `cc_spacer.stl` / `cc_switch.png` / `cc_switch_back.png` | CC スイッチの箱 + IMU の台（床を下にした向きで出力済み、サポート不要） / 床の下の筒 2 個 / 右うしろから見た図 / USB-C の口の側から見た図 |
+| `cc_switch.png` / `cc_switch_back.png` | （参考）今の車に付いている CC スイッチの箱 + IMU の台。リポ化で外すため `cc_holder.stl` / `cc_spacer.stl` は v2.10.7 で削除（SCAD の `power="cio"` で再生成できる。古い STL は Git の履歴） / 右うしろから見た図 / USB-C の口の側から見た図 |
 
 ## ネジ穴
 
@@ -219,12 +218,14 @@ python3 hardware/3d/check_interference.py --power lipo # リポの形だけ
 - `cov_hook_lip`、`cov_hook_root`: カバーのフックの掛かり（深さ）と、たわむ長さ（きつい・ゆるいときに変える）
 - `cov_chg`: カバーの充電口の位置と大きさ（バッテリーの USB-C の口に合わせる）
 
-STL の再生成:
+STL の再生成（リポの形・最終版。CIO の形の `box` / `lid` / `cam_mount` / `cc_holder` / `cc_spacer` は v2.10.7 で削除したが、`-D 'power="cio"'` を足せば同じソースから出せる）:
 
 ```
-openscad -D 'part="box"' -o box.stl battery_lidar_mount.scad
-openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
+openscad -D 'part="lipo_tray" power="lipo"' -o lipo_tray.stl battery_lidar_mount.scad
+openscad -D 'part="box" power="lipo"' -o box_lipo.stl battery_lidar_mount.scad
+openscad -D 'part="lid" power="lipo"' -o lid_lipo.stl battery_lidar_mount.scad
+openscad -D 'part="cam_mount" power="lipo"' -o cam_mount_lipo.stl battery_lidar_mount.scad
 openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
-openscad -D 'part="cam_mount"' -o cam_mount.stl battery_lidar_mount.scad
+openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad
 openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad
 ```

@@ -204,42 +204,15 @@ print3d:
   dir: hardware/3d/battery_lidar_mount
   source: battery_lidar_mount.scad
   summary:
-    - 天板（154 × 200 mm）の上に載せる 6 種類・8 個の部品。底板にはモーターが付いているので使わない
+    - 天板（154 × 200 mm）の上に載せる部品（リポの形・最終版）。底板にはモーターが付いているので使わない
     - 試験台（test_stand）は車体に付けない治具。カバーとバンパーを付けたまま車体を載せ、車輪を浮かせて試す
     - 組み立て図の車輪・モーター・モーターの台は印刷しない購入品の参考の形（hardware/3d/drivetrain/drivetrain.scad、OSOYOO の図面の寸法）
-    - 前側にバッテリー 2 個の箱とふた（LiDAR・Camera Module 3 Wide・IMU・DROK を取り付け）、後ろ側に Pi 5 の 3 段（高さ 45 mm）、前後に衝撃を逃がすバンパー（落下防止センサー VL53L1X 付き）。全体を上面カバーで覆い、左右のフックで天板の端の裏に引っかける（工具不要）
+    - 前側に縮めた箱（中はヒューズ・WAGO、後ろの壁に DROK）とふた（RPLIDAR C1・Camera Module 3 Wide）、天板の右はしにリポ 3S の台（IMU は橋の上）、後ろ側に Pi 5 の 3 段（高さ 45 mm）、前後に衝撃を逃がすバンパー（落下防止センサー VL53L1X 付き）。全体を上面カバーで覆い、左右のフックで天板の端の裏に引っかける（工具不要）
     - 図とダウンロードする STL は、どれも印刷する向き（STL の向き）のまま。寸法は STL から計算した外形（mm）
     - 部品の寸法はデータシートと商品画像から読み取ったもので、実物ではまだ確かめていない
-    - 「リポの形・予定」の 4 部品（lipo_tray / box_lipo / lid_lipo / cam_mount_lipo）は、リポ 3S を天板の右はしに置く予定の形（power = "lipo"）。箱の中はヒューズ・WAGO の場所になり、CC スイッチの箱は使わない
-    - リポ化で印刷するのは「リポの形・予定」の 4 部品だけ。ラズパイ台・前後バンパー・上面カバー・試験台は今のものをそのまま使う。付け替え後に外して使わなくなるのは: バッテリー箱（box）・ふた（lid）・カメラの板（cam_mount）・CC スイッチの箱と筒（cc_holder・cc_spacer）。IMU はリポの台の橋の上へ移す
+    - 印刷するのは「リポの形・予定」の 4 部品（lipo_tray / box_lipo / lid_lipo / cam_mount_lipo）だけ。ラズパイ台・前後バンパー・上面カバー・試験台は今のものをそのまま使う
+    - CIO の形の部品（箱・ふた・カメラの板・CC スイッチの箱と筒）はリポ化で使わなくなったため一覧から削除した（v2.10.7。SCAD から `power="cio"` で再生成できる。古い STL は Git の履歴にある）
   parts:
-    - id: box
-      label: バッテリー箱（CIO の形・リポ化後は外す）
-      file: box.stl
-      qty: 1
-      color: '#35d6ff'
-      material: PLA / PETG
-      orient: フランジ（天板に当たる面）を下
-      holds:
-        - CIO SMARTCOBY Pro SLIM ×2（重ねて収納、ふたを外して上から出し入れ。右の開口は充電口とケーブル用）
-        - DROK 降圧コンバーター（後ろの壁、結束バンド 1 本）
-        - 底の前の 2 か所に、天板の上に 3 mm 出ているモーター取付ネジのくぼみ（29 × 29 × 3.5 mm。そのため床は 5 mm）
-      mount: 天板の前側 4 穴に、今のネジより 3 mm 長いネジで留める
-    - id: lid
-      label: ふた + LiDAR 台（CIO の形・リポ化後は外す）
-      file: lid.stl
-      qty: 1
-      color: '#f0a040'
-      material: PLA / PETG
-      orient: 板を下
-      holds:
-        - RPLIDAR C1（43 x 43 mm の柱 4 本に M2.5 x 8 mm。ケーブルの出口を前）
-        - カメラの板（cam_mount）を留める前端の柱 2 本（M3 の下穴）と、前の面のカメラの M2 のナット・ネジの先の逃げ穴（Ø6.5、深さ 4 mm ×2）
-        - 加速度センサー（GY-BNO055、12 × 20 mm、ピン下向き。LiDAR のヘッドの下、右寄り。四方を壁で囲んだ高さ 25 mm の台の受けに両面テープ）
-        - カメラのフラットケーブル（ふたの上の結束バンド用ブリッジ 2 か所）
-        - 上のバッテリーの残量表示の窓（15 × 14 mm）
-        - LiDAR のハーネス（後ろ端の結束バンド用ブリッジ）
-      mount: 箱のボスに M3 × 12 ×4（LiDAR を先にふたへ留める）
     - id: pi_base
       label: ラズパイ台
       file: pi_base.stl
@@ -251,17 +224,6 @@ print3d:
         - Raspberry Pi 5 + AI HAT+ + Motor HAT（3 段 45 mm、M2.5 ×4）
         - 後ろ左の腕の底に、モーター取付ネジのくぼみ（29 × 29 × 3.5 mm）
       mount: 天板の後ろ側 4 穴に、今のネジより 3 mm 長いネジで留める
-    - id: cam_mount
-      label: カメラの板（CIO の形・リポ化後は外す）
-      file: cam_mount.stl
-      qty: 1
-      color: '#f4f4f4'
-      material: PLA / PETG
-      orient: 裏を下（STL の向きのまま）
-      holds:
-        - Camera Module 3 Wide（基板 25 × 23.9 mm、フラットケーブルの端子を下。ケーブルは折り返して基板の裏を上へ。四隅の穴に前から M2 × 6 ×4）
-        - 板の裏に M2 ナットの六角のくぼみ ×4（二面幅 4.4 mm、深さ 1.8 mm。ナットが裏から出ない）
-      mount: 裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 ×2
     - id: bumper
       label: 前後バンパー（前後共通）
       file: bumper.stl
@@ -290,29 +252,6 @@ print3d:
         - 右の壁の Pi の横に、CC スイッチ 2 個のボタンの切り欠き（幅 9.6 mm、下の端から高さ 30.3 mm まで。Y 59〜68.6 と 76.2〜85.8 mm）。下が開いているので、カバーを真上から被せられ、スイッチの白い箱の面はカバーの外の面とそろう。上に「Pi」「M」の文字
         - 手で触る縁（外側の角と稜線、壁の下端、充電口のふち）は 1 mm の面取り
       mount: 工具不要。フックの後ろは、左が天板の後ろの端から 54 mm（電源ボタンの穴をよける）、右が 44 mm（CC スイッチの切り欠きをよける）。前は左右とも前の端から 30 mm。右前のフック（充電口の下）は固定の爪なので、右側を先に斜めに入れて掛け、左側を押し下げると左の 2 個と右後ろのフックが外へたわんで天板の端の裏に掛かる。外すときは左の指かけを外へ引いて左側から持ち上げる
-    - id: cc_holder
-      label: CC スイッチの箱 + IMU の台（CIO の形・リポ化後は外す）
-      file: cc_holder.stl
-      qty: 1
-      color: '#e07b00'
-      material: PLA / PETG
-      orient: 床を下（STL の向きのまま）。サポート不要
-      holds:
-        - PENGLIN の USB-C 基板（21.8 × 12.6 × 1.5 mm、実測）4 枚を立てて、10.5 mm おきに前後にならべる。後ろから Pi の A（電池から）・B（PD トリガーへ）、モーターの A・B。上から差しこみ、下の辺は床のみぞ、後ろの辺は壁のみぞに入る。USB-C の口は Pi の側（-X）
-        - 6 ピンのロック付きスイッチ（白い箱 5.8 × 5.8 × 5.2 mm、実測）2 個を、前の面の受けに入れる。ボタンはカバーの右の壁の切り欠きから出る（後ろが Pi、前がモーター）
-        - 基板とスイッチは瞬間接着剤で留める。プラグを差す力はみぞの前の土手、抜く力は後ろの壁で受ける。上が開いているので、上からはんだ付けできる
-        - 後ろの柱の上に IMU の台（今までと同じ位置・形）
-      mount: 天板の右側の 2 穴（X 145 / Y 90 mm と X 143 / Y 11 mm）に、今の長い M4 で共締め。床の下に筒（cc_spacer、前 6 mm・後ろ 2 mm）を入れる
-    - id: cc_spacer
-      label: CC スイッチの箱の下の筒（CIO の形・リポ化後は外す）
-      file: cc_spacer.stl
-      qty: 1
-      color: '#e07b00'
-      material: PLA / PETG
-      orient: STL の向きのまま（高さ 6 mm と 2 mm の 2 個）。サポート不要
-      holds:
-        - 外径 9 mm・内径 4.6 mm。6 mm の方はラズパイ台の腕（X 145 / Y 90 mm）、2 mm の方は後ろのバンパーの腕（X 143 / Y 11 mm）の上に置き、M4 を通す
-      mount: CC スイッチの箱の床の下
     - id: test_stand
       label: 試験台（車輪を浮かせる台）
       file: test_stand.stl
@@ -371,8 +310,8 @@ print3d:
       material: PLA / PETG
       orient: 裏を下（STL の向きのまま）
       holds:
-        - Camera Module 3 Wide（取付は cam_mount と同じ。22 mm 細くして、右の耳がリポの台に当たらないようにした）
-      mount: cam_mount と同じ（裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 ×2）
+        - Camera Module 3 Wide（基板 25 × 23.9 mm、フラットケーブルの端子を下。四隅の穴に前から M2 × 6 ×4。板の裏に M2 ナットの六角のくぼみ ×4。CIO の形の板を 22 mm 細くして、右の耳がリポの台に当たらないようにした）
+      mount: 裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 ×2
   refs:
     - id: wheels
       label: メカナムホイール ×4（購入品）
@@ -387,51 +326,6 @@ print3d:
       file: holders.stl
       color: '#2f3440'
   assembly_views:
-    - label: 組み立て図（CIO の形・いまの状態）
-      note: 天板（154 × 200 × 2 mm）の上に、カバー以外の 6 種類・7 個の部品を組み立てた位置で表示。天板の下に、車輪・モーター・モーターの台（購入品、OSOYOO の図面の寸法）も参考に表示（バッテリー・Pi・センサーなどほかの購入品は表示しない）
-      plate: {size: [154, 200, 3], color: '#8fa3b8'}
-      items:
-        - {part: box}
-        - {part: lid, translate: [0, 0, 38.4]}
-        - {part: pi_base}
-        - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
-        - {part: bumper, flip_z: true, translate: [0, 0, 7]}
-        - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
-        - {part: cc_holder, translate: [0, 0, 9]}
-        - {part: wheels}
-        - {part: motors}
-        - {part: holders}
-    - label: 組み立て図（CIO の形・カバー付き）
-      note: 上の組み立て図に上面カバーを付けた状態
-      plate: {size: [154, 200, 3], color: '#8fa3b8'}
-      items:
-        - {part: box}
-        - {part: lid, translate: [0, 0, 38.4]}
-        - {part: pi_base}
-        - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
-        - {part: bumper, flip_z: true, translate: [0, 0, 7]}
-        - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
-        - {part: cc_holder, translate: [0, 0, 9]}
-        - {part: wheels}
-        - {part: motors}
-        - {part: holders}
-        - {part: cover, rotate_x: 180, translate: [0, 205.5, 82.4]}
-    - label: 組み立て図（CIO の形・カバー付き・試験台）
-      note: カバー付きの組み立て図を試験台に載せた状態（天板の下面が床から 80 mm）
-      plate: {size: [154, 200, 3], color: '#8fa3b8'}
-      items:
-        - {part: box}
-        - {part: lid, translate: [0, 0, 38.4]}
-        - {part: pi_base}
-        - {part: cam_mount, rotate_x: -90, translate: [0, 189.6, 0]}
-        - {part: bumper, flip_z: true, translate: [0, 0, 7]}
-        - {part: bumper, flip_z: true, rotate_z: 180, translate: [154, 200, 7]}
-        - {part: cc_holder, translate: [0, 0, 9]}
-        - {part: wheels}
-        - {part: motors}
-        - {part: holders}
-        - {part: cover, rotate_x: 180, translate: [0, 205.5, 82.4]}
-        - {part: test_stand, translate: [0, 0, -82]}
     - label: 組み立て図（リポの形・予定）
       note: リポ 1 個の形に付け替えた状態。リポの台は天板の右はし、箱は右を縮めて中にヒューズ・WAGO。CC スイッチの箱は付けない（リポの青い直方体は購入品の参考の形。カバーは CIO の形と同じものを使う予定）
       plate: {size: [154, 200, 3], color: '#8fa3b8'}
@@ -465,25 +359,23 @@ print3d:
     - {place: 上面カバー → 天板, screw: ネジなし（左右 4 個のフック。右前は固定の爪）, hole: 天板の左右の端の裏（後ろの端から 54 mm・前の端から 30 mm）に、フックの爪（奥行き 2.3 mm）が掛かる。フックの両隣の受けが天板の上面に載る}
   screw_note: ねじ込み穴は下穴（M2 Ø1.7 / M2.5 Ø2.1 / M3 Ø2.5）。普通の小ネジをねじ込むと、ネジ自身が樹脂にねじ山を切る。きつい・ゆるいときは SCAD の tap_d を 0.1 mm ずつ変える。screw_mode="insert" で熱圧入インサート用の穴にも切り替えられる
   assembly:
-    - 天板の前側 4 本のネジを外し、フランジの厚さ（3 mm）ぶん長いネジで箱ごと留め直す
-    - バッテリーを、ポートのある短辺を右の開口に向けて 2 個重ねて差し込み、左右のスロットに面ファスナーか結束バンドを通して固定する
+    - 天板の前側のネジを外し、縮めた箱（box_lipo）を左の 2 穴に、リポの台（lipo_tray）を右の 2 穴に、長いネジで留める（リポの台の前は前のバンパーの腕の下に舌が入る。リポの下に来るネジは M4 の低頭ネジにする。台を留める前に、面ファスナーを床の下のすき間に通しておく）
     - LiDAR をふたの柱に載せ、ふたの裏から M2.5 × 8 mm のネジ 4 本で留める（ふたを箱に付ける前に行う）
     - DROK を部品面を Pi 側に向けて箱の後ろの棚に立て、中央のリブの穴に結束バンドを通して締める（ふたを付ける前のほうが通しやすい）
     - ふたを M3 × 12 mm のネジ 4 本で箱のボスに留める
-    - Camera Module 3 Wide を端子を下にして、先にフラットケーブルの 15 ピン側（太いほう）を差してから、板（cam_mount）の支柱に前から M2 × 6 mm で 4 本留める（ナットで留めるときは M2 × 8〜10 mm にして、ナットを板の裏の六角のくぼみに入れる。ナットとネジの先は、ふた・箱の前の面の逃げ穴 Ø6.5・深さ 4 mm に入るので、ふたの組み上げに当たらない）。板の裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 mm で留める。ケーブルを LiDAR の前の柱の間からふたの上の結束バンド用ブリッジで通し、22 ピン側（細いほう）を Pi の CAM の口へ
+    - Camera Module 3 Wide を端子を下にして、先にフラットケーブルの 15 ピン側（太いほう）を差してから、板（cam_mount_lipo）の支柱に前から M2 × 6 mm で 4 本留める（ナットで留めるときは M2 × 8〜10 mm にして、ナットを板の裏の六角のくぼみに入れる。ナットとネジの先は、ふた・箱の前の面の逃げ穴 Ø6.5・深さ 4 mm に入るので、ふたの組み上げに当たらない）。板の裏をふたの前端の面に当て、左右の耳をふたの前端の柱に M3 × 8 mm で留める。ケーブルを LiDAR の前の柱の間からふたの上の結束バンド用ブリッジで通し、22 ピン側（細いほう）を Pi の CAM の口へ
     - Pi 5 に付けた M2.5 の六角支柱 4 本をラズパイ台のボスの丸い穴に 5 mm 差し込み、台の裏から M2.5 × 6 mm のネジで留める（台を天板に付ける前に行う）。ラズパイ台を天板の後ろ側 4 穴に長いネジで留める
-    - IMU はピン下向き・ピンヘッダーの長辺を後ろ（Pi 側）にして、ジャンパー線を差したまま、後ろの開いた側から斜めに入れ、前の縁を前の壁の出っ張りの下に差し込んでから 3 辺の段に載せる（後ろの縁が浮く場合はテープかホットボンドで留める）。台はふたの上、LiDAR のヘッドの下の後ろの柱 2 本の間にあるので、LiDAR を付ける前に入れると楽
+    - IMU はピン下向きで、リポの台の橋の上の台に入れる（位置・向きは今と同じ）
+    - リポを台の前の開いた側から差し込み、床の下に通した面ファスナーをリポの上で留める。線（XT60・バランス）は前の面から出し、左の箱の右の開口（ヒューズ・WAGO）へ回す
     - 落下防止センサー（VL53L1X）をバンパーの受けに入れ、バンパーを前後に重ねて共締めする
     - 上面カバーを、充電口が右（バッテリーのポート側）に来る向きで被せる。右側を先に斜めに入れて右前の固定の爪を天板の裏に掛け、左側をフックがカチッと掛かるまで押し下げる。外すときは左の指かけを外へ引きながら左側から持ち上げる
   gallery:
-    - {file: assembly.png, label: 組み立てイメージ}
+    - {file: assembly.png, label: 組み立てイメージ（CIO の形）}
     - {file: cover_assembly.png, label: 上面カバーを付けた状態}
     - {file: cover_right.png, label: カバーの右側面（CC スイッチの切り欠き）}
-    - {file: cc_switch.png, label: CC スイッチの箱（右うしろから、カバーなし）}
-    - {file: cc_switch_back.png, label: CC スイッチの箱の USB-C の口（Pi の側から。灰色は差したプラグ）}
     - {file: cover_rear.png, label: カバーの後ろ（通気口と下の線の出口）}
     - {file: cover_hook.png, label: カバーのフック（天板の端の裏に掛かる）}
-    - {file: battery_display.png, label: バッテリーの残量表示の窓（右後ろ上から）}
+    - {file: battery_display.png, label: バッテリーの残量表示の窓（CIO の形・右後ろ上から）}
     - {file: camera_mount.png, label: Camera Module 3 Wide の取付（前から）}
     - {file: cam_mount_back.png, label: カメラの板の裏（M2 ナットの六角のくぼみ）}
     - {file: cam_nut_relief.png, label: ふた・箱の前の面のカメラのナットの逃げ穴（M2 × 10 とナットを入れた状態）}
