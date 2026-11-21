@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [2.10.6] - 2026-11-22
+
+- 説明: 3D プリントの情報を「最終版」に更新。リポ化で印刷するのは「リポの形・予定」の 4 部品（`lipo_tray` / `box_lipo` / `lid_lipo` / `cam_mount_lipo`）だけで、ラズパイ台・前後バンパー・上面カバー・試験台は今のものを使うこと、付け替え後に外して使わなくなるのは箱（`box`）・ふた（`lid`）・カメラの板（`cam_mount`）・CC スイッチの箱と筒（`cc_holder`・`cc_spacer`、IMU はリポの台の橋へ移す）ことを、`architecture.yaml`（print3d の概要・部品ラベル・組み立て図の名前）、`HARDWARE_BOM.md`、`hardware/3d/battery_lidar_mount/README.md` に明記した。CIO の形の部品ラベルには「（CIO の形・リポ化後は外す）」を付けた
+
 ## [2.10.5] - 2026-11-22
 
 - 説明: リポ化の部品リストを、届いた部品・実際に使う部品だけにそろえた。`HARDWARE_BOM.md` の表に、買ったものの名前（XT60 線つき Amass 5 ペア・WAGO 221・エーモン 3367・ミニロッカー 12V 20A・Alinan INA226・yueton 1-8S・BNTECHGO 18AWG）を記し、表題を「部品待ち」から「部品は届いた」にした。
