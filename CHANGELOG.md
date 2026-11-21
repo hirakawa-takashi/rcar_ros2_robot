@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.10.8] - 2026-11-22
+
+- 説明: ドキュメントをすべてリポの形の最終版に更新。`architecture.yaml` の「電源の配線」はリポ 1 個のラズパイ側・モーター側 2 系統のみにし、CIO バッテリー + USB スイッチ + PD トリガーの図 2 つを削除（ハードウェア構成図のバッテリー 2 箱もリポ 1 個の 2 系統に）。`HARDWARE_BOM.md` の部品表をリポ・ロッカースイッチ・ヒューズ・WAGO・INA226・アラーム・充電器・セーフティバッグの最終構成に、電源構成表をリポ配線に更新。`hardware/3d/battery_lidar_mount/README.md` の前半（CIO 形の記録・CC スイッチの箱の節）を削除してリポの形の説明に書き直し
+- CIO 形のギャラリー画像（`assembly.png`・`top.png`・`side.png`・`battery_display.png`・`sensors.png`・`cc_switch.png`・`cc_switch_back.png`・`imu_mast.png`）と、VIN 端子台変更前の古い `docs/power/lipo_wiring.pdf` を削除（PDF は `lipo_wiring.html` を Chrome の「PDF に保存」で作り直す）
+- 訂正: LiDAR の回転中心は前の形と同じ X 69 mm（`lidar_dx` は箱の中心からの差で、箱が左へ縮んだ分 −8 → 9.25 に変わっただけ）。従来の「付け替え時に laser_y・camera_offset_* を直す」記述を「変えなくてよい」に訂正
+
 ## [2.10.7] - 2026-11-22
 
 - 説明: 3D プリントから CIO の形の部品を削除（最終版はリポの形）。`box.stl`・`lid.stl`・`cam_mount.stl`・`cc_holder.stl`・`cc_spacer.stl` を削除し、`architecture.yaml` の部品一覧と組み立て図（CIO の形の 3 図）・組み立て手順をリポの形に書き直した。部品一覧はリポの形の 4 部品 + 使い回す 4 部品（ラズパイ台・バンパー・カバー・試験台）だけになる。STL は SCAD から `power="cio"` で再生成でき、古い STL は Git の履歴にある

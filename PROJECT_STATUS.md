@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md
 
 ## 最終更新
-- バージョン: 2.10.7（2026-11-22）
+- バージョン: 2.10.8（2026-11-22）
 - 更新日: 2026-11-22
-- 更新概要: 3D プリントから CIO の形の部品（box・lid・cam_mount・cc_holder・cc_spacer）を削除し、リポの形を最終版に（v2.10.7）。これまでの変更の中身は CHANGELOG.md
+- 更新概要: 配線図・部品表・3D ドキュメントをすべてリポの形の最終版に（電源の配線図はリポ 1 個の 2 系統のみ、CIO 形の画像・配線 PDF を削除）（v2.10.8）。これまでの変更の中身は CHANGELOG.md
 - 更新担当: Devin（AGENTS.md準拠）
+- 2026-11-22（v2.10.8）: ドキュメントをすべてリポの形の最終版に。architecture.yaml の電源の配線はリポ 1 個のラズパイ側・モーター側 2 系統だけ（CIO の図は削除）。HARDWARE_BOM.md の部品表・電源構成をリポ配線に。3D README の前半（CIO 形の記録・CC スイッチの箱）を削除してリポの形の説明に。CIO 形のギャラリー画像・古い lipo_wiring.pdf を削除（PDF は lipo_wiring.html を Chrome で「PDF に保存」して作り直す）。LiDAR の回転中心は変わらないので TF・camera_offset_* は変更不要と明記（従来の「付け替え時に直す」記述を訂正）。
 - 2026-11-22（v2.10.7）: CIO の形の 5 STL を削除（SCAD の power="cio" で再生成可）。部品一覧はリポの形 4 部品 + 使い回し 4 部品のみ。組み立て図は「リポの形・予定」だけ、組み立て手順もリポの形に書き直した。
 - 2026-11-22（v2.10.6）: 3D プリントタブを最終版に。印刷する部品＝リポの形の 4 部品、使い回す＝ラズパイ台・バンパー・カバー・試験台、外して使わなくなる＝箱・ふた・カメラの板・CC スイッチの箱と筒を明記。CIO 部品のラベルに「（CIO の形・リポ化後は外す）」、組み立て図の名前に「（CIO の形）」を付けた。
 - 2026-11-22（v2.10.5）: リポ化部品の表を届いた部品の名前（Amass XT60 線つき・WAGO 221・エーモン 3367・ミニロッカー 12V 20A・Alinan・yueton 1-8S・BNTECHGO）に合わせた。使わない XT60 分岐ケーブル（分けは WAGO A/B でする）と CC スイッチ予定（リポ化で USB-C/PD を使わない）を整理し、architecture.yaml の予定図を実配線に更新。
@@ -145,7 +146,7 @@
 - AI HAT+ は `hailo_pci` 4.24.0 と HailoRT 4.24.0 をソース導入済み（Ubuntu 24.04 に `hailo-all` は存在しない。手順は README 参照）。温度は HailoRT C API `hailo_get_chip_temperature()` で取得済み。NPU 使用率と電力はダッシュボードでは扱わない（使用率は `HAILO_MONITOR=1` の推論アプリがある間のみ `hailortcli monitor` で参照可）。電力は未取得（`measure-power` は `UNSUPPORTED_OPCODE`、`query_health_stats()`/`query_performance_stats()` は HAILO8 非対応、`hatctl` は Ubuntu に存在せず Hailo 専用 hwmon も無し、PMIC に HAT 専用レール無し。外付け INA219 等が必要）
 - 検出物体の距離は LiDAR の方位角対応による概算で、カメラとLiDARの外部キャリブレーションは未実施（設置が同軸・同方向である前提）
 - `perception_node` の推論には HailoRT の Python バインディング（`hailo_platform`）が必要。apt には無いため HailoRT 4.24.0 のソースからビルドして導入する（手順は README 参照）。未導入の場合は LiDAR 判定のみで動作し、`/obstacle_status` の `note` に理由を表示する
-- 電源は PD なし（バッテリー PD 12V → DROK 5.2V/5A → USB-A → ラズパイの USB-C。USB-A には PD のやりとりがない）。ラズパイは 3 A の電源と見ている（device tree `chosen/power/max_current` 3000）。`usb_max_current_enable=1` で USB に 1.6 A まで流す。2026/09 の電圧低下・電源断（USB 2 眼カメラのころ）は、Camera Module 3 Wide にしてからは出ていない（2026/10 の 3 日間で `Undervoltage detected` 0 回、`get_throttled=0x0`、EXT5V 4.83V）
+- 電源は PD なし（リポ 3S 11.1V → WAGO・ヒューズ・スイッチ → DROK 5.2V/5A → USB-A → ラズパイの USB-C。USB-A には PD のやりとりがない）。ラズパイは 3 A の電源と見ている（device tree `chosen/power/max_current` 3000）。`usb_max_current_enable=1` で USB に 1.6 A まで流す。2026/09 の電圧低下・電源断（USB 2 眼カメラのころ）は、Camera Module 3 Wide にしてからは出ていない（2026/10 の 3 日間で `Undervoltage detected` 0 回、`get_throttled=0x0`、EXT5V 4.83V）
 - カメラは Ubuntu 標準の libcamera だと raspi カーネル 6.8 のエンティティ名不一致で `no cameras available` となる。`~/opt/rpicam` の Raspberry Pi 版 libcamera を使う必要がある（手順は README 参照）。さらに `~/opt/rpicam` 版の soname（`libcamera.so.0.x`）は `ros-jazzy-camera-ros`（apt）がリンクするものと同じメジャーにすること。apt 更新でずれると ROS 同梱版が読み込まれ `no cameras available` で `camera_node` が落ち続ける（2026-11-19、camera_ros 0.8.1 / `libcamera.so.0.8` に合わせ v0.8.0+rpt20261104・libpisp v1.8.0 を導入して復旧）
 - モーター M1〜M4・エンコーダーの割り付けと配線色（`motor_hat.yaml` / `gpio_pins.yaml`）は、Motor HAT 交換のとき実機で確かめた（下の「テスト結果」）。TM1637 の配線色は実配線を反映済み（オレンジ・黒・黄・緑）。AI HAT+ の ID EEPROM ピン（27/28）はヘッダー直挿しのため配線色は `PIN` 表記
 - WebSocket は `pip install --user --break-system-packages "websockets>=13"` で有効化済み（apt の python3-websockets 10.4 は uvicorn が要求する `ServerProtocol` を持たず、入れると dashboard_node が ImportError で起動しない）。未導入環境では `/api/status` の 250ms ポーリングへ自動フォールバックする
