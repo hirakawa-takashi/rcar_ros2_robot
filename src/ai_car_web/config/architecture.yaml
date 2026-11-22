@@ -292,6 +292,43 @@ print3d:
       label: モーターの台 ×4（購入品）
       file: holders.stl
       color: '#2f3440'
+    # 組み立て図に重ねる購入品・電子部品（battery_lidar_mount.scad のゴーストを STL 化。印刷しない）
+    - id: g_pi
+      label: Raspberry Pi 5 + HAT（簡略の形）
+      file: g_pi.stl
+      color: '#3aa655'
+    - id: g_lidar
+      label: RPLIDAR C1
+      file: g_lidar.stl
+      color: '#262c36'
+    - id: g_camera
+      label: Camera Module 3 Wide
+      file: g_camera.stl
+      color: '#2f7d46'
+    - id: g_imu
+      label: IMU（GY-BNO055）
+      file: g_imu.stl
+      color: '#8a5fd0'
+    - id: g_lipo
+      label: リポバッテリー（購入品）
+      file: g_lipo.stl
+      color: '#4a6fd0'
+    - id: g_drok
+      label: DROK 降圧コンバーター（箱の中）
+      file: g_drok.stl
+      color: '#23723d'
+    - id: g_sw
+      label: 電源スイッチ ×2（箱の左の端の壁）
+      file: g_sw.stl
+      color: '#3a3f47'
+    - id: g_tof
+      label: ToF センサー ×2（バンパーの下）
+      file: g_tof.stl
+      color: '#2a4a6d'
+    - id: g_cover
+      label: 上面カバー（cover.stl を組み立てた向き）
+      file: cover_asm.stl
+      color: '#3c4452'
   assembly_views:
     - label: 組み立て図
       note: リポ 1 個の形。リポの台は天板の右はし、箱は右を縮めて中に DROK・ヒューズ・WAGO。左の端の壁に電源スイッチ 2 個（カバーの切り欠きから外から押せる）。CC スイッチの箱は付けない（リポの青い直方体は購入品の参考の形。カバーは v2.10.9 の新しい形に印刷し直し）
@@ -307,6 +344,15 @@ print3d:
         - {part: wheels}
         - {part: motors}
         - {part: holders}
+        - {part: g_pi, optional: true}
+        - {part: g_lidar, optional: true}
+        - {part: g_camera, optional: true}
+        - {part: g_imu, optional: true}
+        - {part: g_lipo, optional: true}
+        - {part: g_drok, optional: true}
+        - {part: g_sw, optional: true}
+        - {part: g_tof, optional: true}
+        - {part: g_cover, optional: true, on: false}
   settings:
     - {name: 材料, value: 全部品 PLA で印刷できる（バンパーの板ばねのひずみ約 1.1 %、カバーのフック約 0.9 %。どちらも PLA の降伏ひずみ約 2 % の半分ほど）。PLA は 55〜60 ℃ で柔らかくなるので、夏の車内など熱いところに置かない。カバーを付けて長く動かすときは、Pi の上のラズパイ台とカバーが熱で変形しないか確かめる}
     - {name: ノズル / 積層ピッチ, value: 0.4 mm / 0.2 mm（目安）}

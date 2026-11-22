@@ -1240,6 +1240,15 @@ else if (part == "none") {}   // ほかの .scad から include して部品ど�
 else if (part == "lipo_tray") lipo_tray();
 else if (part == "cc_holder") translate([0, 0, -sw_floor[0]]) cc_holder();
 else if (part == "cc_spacer") for (i = [0, 1]) translate([i * 14, 0, 0]) cc_spacer_at(i);
+// 組み立て座標の購入品ゴースト（ダッシュボードの組み立て図に重ねる STL）
+else if (part == "g_pi") pi_ghost();
+else if (part == "g_lidar") lidar_ghost();
+else if (part == "g_camera") wcam_ghost();
+else if (part == "g_imu") sensor_ghost();
+else if (part == "g_drok") drok_ghost();
+else if (part == "g_sw") sw2_ghost();
+else if (part == "g_lipo") lipo_ghost();
+else if (part == "g_tof") tof_ghost();
 else {
     plate();
     color("royalblue") box();

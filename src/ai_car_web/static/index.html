@@ -208,6 +208,10 @@
   .p3dparts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .p3dparts button { padding: 6px 12px; font-size: 12px; }
   .p3dparts button.active { background: #2e7d4f; border-color: #43c47a; color: #fff; }
+  .p3dtoggles { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; align-items: center; }
+  .p3dtoggles .p3dtoglbl { color: #7f98ba; font-size: 12px; margin-right: 2px; }
+  .p3dtog { padding: 4px 10px; font-size: 12px; opacity: .45; display: inline-flex; align-items: center; gap: 5px; }
+  .p3dtog.active { opacity: 1; border-color: #4a90d9; }
   .p3dcanvas { width: 100%; height: auto; display: block; background: #060b14; border-radius: 8px; cursor: grab; touch-action: none; }
   .p3dcanvas:active { cursor: grabbing; }
   .p3dsteps { margin: 6px 0 12px 22px; padding: 0; }
@@ -3484,7 +3488,7 @@ function renderAboutTab(id) {
     });
   });
 }
-const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, asm: {}, live: {part: null, az: 0.6, el: 0.5, zoom: 1, pan: [0, 0, 0], view: null}};
+const P3D = {meshes: {}, loading: {}, errors: {}, views: {}, gl: null, asm: {}, live: {part: null, az: 0.6, el: 0.5, zoom: 1, pan: [0, 0, 0], view: null, hidden: {}}};
 function p3dParts(a) { return ((a && a.print3d) || {}).parts || []; }
 // 印刷しない購入品（車輪・モーターなど）。組み立て図に重ねて表示するだけ
 function p3dRefs(a) { return ((a && a.print3d) || {}).refs || []; }
@@ -3769,19 +3773,27 @@ function p3dPlace(mesh, item) {
   }
   return p3dMesh(pos);
 }
+// 組み立て図で隠す項目（'plate' または 'i<items の番号>'）。on: false の項目は最初から隠す
+function p3dAsmHidden(id, av) {
+  const h = P3D.live.hidden;
+  if (!h[id]) h[id] = new Set((av.items || []).map((it, i) => it.on === false ? 'i' + i : null).filter(Boolean));
+  return h[id];
+}
 function p3dAssembly(a, id) {
   const av = p3dAsmView(a, id);
   if (!av) return null;
-  if (P3D.asm[id]) return P3D.asm[id];
+  const hidden = p3dAsmHidden(id, av);
+  const key = `${id}|${[...hidden].sort().join(',')}`;
+  if (P3D.asm[key]) return P3D.asm[key];
   const parts = [...p3dParts(a), ...p3dRefs(a)];
   const items = av.items || [];
   const src = items.map(it => parts.find(x => x.id === it.part));
-  if (src.some(x => !x || !P3D.meshes[x.id])) return null;
-  const list = items.map((it, i) => ({mesh: p3dPlace(P3D.meshes[src[i].id], it), color: src[i].color}));
-  if (av.plate && av.plate.size) list.unshift({mesh: p3dMesh(p3dBoxPos(av.plate.size)), color: av.plate.color || '#8fa3b8'});
+  if (src.filter((p, i) => !hidden.has('i' + i)).some(x => !x || !P3D.meshes[x.id])) return null;
+  const list = items.map((it, i) => hidden.has('i' + i) ? null : {mesh: p3dPlace(P3D.meshes[src[i].id], it), color: src[i].color}).filter(Boolean);
+  if (av.plate && av.plate.size && !hidden.has('plate')) list.unshift({mesh: p3dMesh(p3dBoxPos(av.plate.size)), color: av.plate.color || '#8fa3b8'});
   const min = [0, 1, 2].map(j => Math.min(...list.map(x => x.mesh.min[j])));
   const max = [0, 1, 2].map(j => Math.max(...list.map(x => x.mesh.max[j])));
-  return (P3D.asm[id] = {parts: list, min, max});
+  return (P3D.asm[key] = {parts: list, min, max});
 }
 function p3dDrawLive() {
   const cv = document.getElementById('p3d_canvas');
@@ -3790,7 +3802,8 @@ function p3dDrawLive() {
   const asm = p3dAsmView(architectureData, L.part);
   const part = asm ? {id: asm.id, label: asm.label || '組み立て図'} : p3dParts(architectureData).find(x => x.id === L.part);
   const mesh = asm ? p3dAssembly(architectureData, asm.id) : part && P3D.meshes[part.id];
-  const err = asm ? (asm.items || []).map(it => P3D.errors[it.part]).find(Boolean) : part && P3D.errors[part.id];
+  const hidden = asm ? p3dAsmHidden(asm.id, asm) : null;
+  const err = asm ? (asm.items || []).map((it, i) => hidden.has('i' + i) ? null : P3D.errors[it.part]).find(Boolean) : part && P3D.errors[part.id];
   const g = cv.getContext('2d');
   g.fillStyle = '#060b14'; g.fillRect(0, 0, cv.width, cv.height);
   g.fillStyle = '#9fb0c7'; g.font = '16px system-ui, sans-serif'; g.textAlign = 'left';
@@ -3812,12 +3825,19 @@ function p3dDrawLive() {
   if (asm) {
     let x = 20, y = 66;
     g.font = '13px system-ui, sans-serif';
-    [...(asm.plate ? [{label: '天板', color: asm.plate.color || '#8fa3b8'}] : []),
-     ...[...p3dParts(architectureData), ...p3dRefs(architectureData)].filter(p => (asm.items || []).some(it => it.part === p.id))].forEach(p => {
+    const legend = [];
+    if (asm.plate) legend.push({label: '天板', color: asm.plate.color || '#8fa3b8', off: hidden.has('plate')});
+    [...p3dParts(architectureData), ...p3dRefs(architectureData)].forEach(p => {
+      const i = (asm.items || []).findIndex(it => it.part === p.id);
+      if (i >= 0) legend.push({label: p.label, color: p.color, off: hidden.has('i' + i)});
+    });
+    legend.forEach(p => {
       const w = 17 + g.measureText(p.label).width;
       if (x > 20 && x + w > cv.width - 20) { x = 20; y += 20; }
+      g.globalAlpha = p.off ? 0.32 : 1;
       g.fillStyle = p.color; g.fillRect(x, y, 12, 12);
       g.fillStyle = '#cfe0f2'; g.fillText(p.label, x + 17, y + 11);
+      g.globalAlpha = 1;
       x += 13 + w;
     });
   }
@@ -3868,9 +3888,31 @@ function initPrint3d() {
     if (L.part !== id) L.pan = [0, 0, 0];
     L.part = id;
     body.querySelectorAll('[data-p3d-live]').forEach(b => b.classList.toggle('active', b.dataset.p3dLive === id));
+    // 組み立て図では各部品の表示・非表示を切り替えるボタンを出す
+    const tog = body.querySelector('#p3d_toggles');
+    if (tog) {
+      const av = p3dAsmView(architectureData, id);
+      if (!av) tog.innerHTML = '';
+      else {
+        const hidden = p3dAsmHidden(id, av);
+        const all = [...parts, ...p3dRefs(architectureData)];
+        const btn = (k, label, color) => `<button class="p3dtog${hidden.has(k) ? '' : ' active'}" data-p3d-tog="${k}"><span class="swatch" style="background:${esc(color || '#35d6ff')}"></span>${esc(label)}</button>`;
+        tog.innerHTML = '<span class="p3dtoglbl">表示:</span>' +
+          (av.plate ? btn('plate', '天板', av.plate.color || '#8fa3b8') : '') +
+          (av.items || []).map((it, i) => { const p = all.find(x => x.id === it.part); return p ? btn('i' + i, p.label, p.color) : ''; }).join('');
+      }
+    }
     redraw();
   };
   body.querySelectorAll('[data-p3d-live]').forEach(b => b.addEventListener('click', () => select(b.dataset.p3dLive)));
+  body.querySelector('#p3d_toggles')?.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-p3d-tog]'); if (!b) return;
+    const av = p3dAsmView(architectureData, L.part); if (!av) return;
+    const hidden = p3dAsmHidden(L.part, av);
+    const k = b.dataset.p3dTog;
+    if (hidden.has(k)) { hidden.delete(k); b.classList.add('active'); } else { hidden.add(k); b.classList.remove('active'); }
+    redraw();
+  });
   body.querySelectorAll('.p3dpart .p3dviewbox').forEach(box => box.addEventListener('click', () => box.closest('.p3dpart').classList.toggle('wide')));
   const reset = () => { L.az = P3D_HOME.az; L.el = P3D_HOME.el; L.zoom = 1; L.pan = [0, 0, 0]; redraw(); };
   const zoom = f => { L.zoom = Math.min(6, Math.max(0.3, L.zoom * f)); redraw(); };
@@ -3950,6 +3992,7 @@ function renderPrint3d(a) {
     `<h3>三面図・立体図</h3><div class="note">座標は天板と同じ（前 = +Y = LiDAR・カメラ側、右 = +X = USB 側、上 = +Z）。前後バンパーは印刷の向き（上面が下）で描いています。図をクリックすると大きく表示します。</div><div class="p3dgrid">${cards}</div>` +
     `<div class="p3dlive"><h3>立体図（回して見る）</h3><div class="p3dparts">${asms.map(v => `<button data-p3d-live="${esc(v.id)}">${esc(v.label || '組み立て図')}</button>`).join('')}${parts.map(x => `<button data-p3d-live="${esc(x.id)}">${esc(x.label)}</button>`).join('')}` +
     `<button data-p3d-zoom="in" title="拡大">＋</button><button data-p3d-zoom="out" title="縮小">−</button><button data-p3d-reset>向き・位置を戻す</button></div>` +
+    `<div id="p3d_toggles" class="p3dtoggles"></div>` +
     `<canvas id="p3d_canvas" class="p3dcanvas" width="1200" height="640"></canvas><div class="note">ドラッグで回転（押した所を中心に回ります）、右ドラッグ・ホイールを押したままドラッグ（または Shift ＋ドラッグ）で注視点の移動、ホイールで拡大・縮小、ダブルクリックで最初の向きと位置に戻ります。${asms.filter(v => v.note).map(v => `「${esc(v.label || '組み立て図')}」は${esc(v.note)}。`).join('')}</div></div>` +
     `<h3>印刷設定（目安）</h3>${aboutTable(['項目', '設定'], (p.settings || []).map(x => [esc(x.name), esc(x.value)]))}` +
     `<h3>ネジ・固定具</h3>${aboutTable(['場所', 'ネジ', '穴の形'], (p.screws || []).map(x => [esc(x.place), esc(x.screw), esc(x.hole)]))}` +
