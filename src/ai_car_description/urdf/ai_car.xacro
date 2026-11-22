@@ -20,7 +20,7 @@
   <xacro:property name="laser_x" value="0.043"/>   <!-- LiDAR の回転中心: 天板の中心から前 43 mm・左 8 mm -->
   <xacro:property name="laser_y" value="0.008"/>
   <xacro:property name="laser_yaw_deg" value="-176.2"/>  <!-- 前方カメラの正面に合わせた LiDAR の向き（dashboard.yaml の scan_angle_offset_deg と同じ） -->
-  <xacro:property name="laser_h" value="0.175"/>   <!-- 光の高さ（床から）。取付面 162 mm + ヘッド内の発光部（推定） -->
+  <xacro:property name="laser_h" value="0.159"/>   <!-- 光の高さ（床から）。C1 取付面 129 mm + 発光部 29.8 mm（README 実測） -->
   <xacro:property name="camera_x" value="0.106"/>  <!-- Camera Module 3 Wide のレンズの先: LiDAR の回転中心の真ん前 63 mm -->
   <xacro:property name="camera_y" value="0.008"/>
   <xacro:property name="camera_h" value="0.100"/>  <!-- レンズの高さ（床から。天板の上 28.1 mm） -->

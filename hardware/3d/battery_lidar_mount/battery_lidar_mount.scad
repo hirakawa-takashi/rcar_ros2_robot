@@ -240,7 +240,8 @@ tof_face_t = 2;
 
 // ---- ふた + LiDAR 台 ----
 lid_t = 4;
-lidar_tower_h = 48;     // LiDAR 取付面より下に出ている部分（約 26.5 mm）をかわし、ヘッドをカバーの上面（82.4 mm）より上に出す高さ
+lidar_tower_h = 15;     // LiDAR 取付柱の高さ。C1 は取付面より下に出る所がないので、光の高さ（取付面 +29.8 mm）が
+                        // カバーの上面（82.4 mm）より約 5 mm 上になるところまで下げる（取付面 57.4 mm、ヘッドは下端が開口内に入る）
 lidar_tower_d = 8.5;
 lidar_floor = a1m8 ? 4 : 5;  // 柱の上端に残す厚さ。LiDAR 底面の M2.5 ねじ穴へ、ふたの裏から柱の中を通したネジで留める
                              // C1 は M2.5 x 8 mm で 3 mm 入る（C1 のデータシート: 4 mm より深く入れない）
@@ -259,10 +260,10 @@ c1_h = 41.3;
 c1_cable_front = true;  // ケーブルの出口を前（+Y）に向ける（0° が後ろ向き。scan_angle_offset_deg −176.2° で実測した向き）
 lidar_dx = lipo ? 9.25 : -8;          // 左へ寄せる（ROS の TF と dashboard.yaml のカメラとの位置の差に反映済み。動かすときは両方を直す）
 lidar_cx = box_cx + lidar_dx;
-lidar_motor_d = 32;     // 取付面より下に出るモーター（回転中心から 45.5 mm、取付面から 26.5 mm 下まで）
-lidar_motor_off = 45.5;
-lidar_below = 26.5;
-lidar_core_below = 8;   // ヘッドの下の基板部（約 60 x 60 mm）が取付面から下に出る量（図からの読み取り）
+lidar_motor_d = 32;     // A1M8: 取付面より下に出るモーター（回転中心から 45.5 mm、取付面から 26.5 mm 下まで）
+lidar_motor_off = 45.5; // A1M8 用（C1 では使わない。C1 は取付面より下に出る所がない）
+lidar_below = a1m8 ? 26.5 : 0;
+lidar_core_below = a1m8 ? 8 : 0;   // A1M8: ヘッドの下の基板部（約 60 x 60 mm）が取付面から下に出る量（図からの読み取り）
 lidar_cy = box_cy + (lidar_motor_front ? -7 : 7);
 
 function lidar_hole(p) = lidar_motor_front
@@ -270,7 +271,8 @@ function lidar_hole(p) = lidar_motor_front
     : [lidar_cx + p[0], lidar_cy + p[1]];
 
 scam_cx = lidar_cx;                         // 左右のレンズの真ん中を LiDAR の回転中心にそろえる
-scam_z1 = box_h + lid_t + lidar_tower_h - lidar_below - scam_usb_room;  // 基板の上端（組み立ての Z）
+scam_z1 = lipo ? box_h + lid_t + 6.5   // リポ形（C1）: カメラの高さは固定（カバーの穴とレンズの位置を変えない）
+              : box_h + lid_t + lidar_tower_h - lidar_below - scam_usb_room;  // 基板の上端（組み立ての Z）
 scam_z0 = scam_z1 - scam_board[1];          // 基板の下端。ふたの上面より下（箱の前）
 scam_mnt_y0 = box_y0 + box_y + 2;           // 板の裏（ふたの前端の面に当てる）
 scam_back_y = scam_mnt_y0 + scam_mnt_t + scam_so;  // 基板の裏
@@ -945,9 +947,10 @@ cov_oz = cov_top + cov_t;
 
 // LiDAR を真上へ抜くための外形（A1M8 のヘッド、柱 4 本、前のモーター側）。C1 の柱（43 mm 角）もこの中に入るので、カバーは A1M8 のときのまま
 module cover_lidar_cut() {
+    // C1 ではベース（55.6 mm 角、角の半径約 39.3 mm）がカバーの面を横切るので、開口は角に約 1.7 mm の隙間を取る
     hull() {
-        translate([lidar_cx, lidar_cy]) circle(r = 38);
-        for (p = a1m8_holes_rel) translate([lidar_cx + p[0], lidar_cy - p[1]]) circle(r = 8);
+        translate([lidar_cx, lidar_cy]) circle(r = a1m8 ? 38 : 41);
+        for (p = a1m8 ? a1m8_holes_rel : lidar_holes_rel) translate([lidar_cx + p[0], lidar_cy - p[1]]) circle(r = 8);
         translate([lidar_cx, lidar_cy + 47]) circle(r = 16);
     }
 }
@@ -1293,7 +1296,7 @@ echo(box_outer = [box_x, box_y, box_h], interior = [in_x - end_fill, in_y, in_z]
      tof_center_z = flange_t - tof_drop, tof_tilt = tof_tilt,
      screw_mode = screw_mode, tap_d = [tap_d(2), tap_d(2.5), tap_d(3)], insert_d = [insert_d(2), insert_d(2.5), insert_d(3)],
      bat_disp_rect = disp_rect(),
-     lidar_tower_x_max = lidar_cx + max([for (p = lidar_holes_rel) p[0]]) + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + lidar_motor_d / 2,
+     lidar_tower_x_max = lidar_cx + max([for (p = lidar_holes_rel) p[0]]) + lidar_tower_d / 2, lidar_motor_x_max = lidar_cx + (a1m8 ? lidar_motor_d : c1_base) / 2,
      lidar_motor_bottom_z = box_h + lid_t + lidar_tower_h - lidar_below, lid_top_z = box_h + lid_t,
      motor_recess = [for (p = motor_scr_pts) [p[0] - recess_clr, p[1] - recess_clr, p[0] + motor_scr_sq + recess_clr, p[1] + motor_scr_sq + recess_clr]], recess_t = recess_t,
      lid_screw_head_x_min = boss_pts[1][0] - head_d(3) / 2,
