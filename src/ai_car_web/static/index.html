@@ -63,6 +63,7 @@
          pointer-events: none; }
   .map { width: 100%; aspect-ratio: 1 / 1; background: #11161d; border-radius: 6px;
          display: block; margin-bottom: 8px; }
+  #scan_map { touch-action: pan-x pan-y; }  /* 片指スクロールは残し、ブラウザのピンチズームだけ止めて自前のピンチにする */
   .card.full { grid-column: 1 / -1; }
   .jcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
   @media (min-width: 900px) { .card.wide .jcols { grid-template-columns: repeat(2, 1fr); } }
@@ -476,7 +477,7 @@
 
   <div class="card wide">
     <h2>LiDAR (/scan) <span class="badge" id="s_link">-</span></h2>
-    <div class="mapwrap"><canvas class="map" id="scan_map" width="480" height="480" title="マウスホイールで表示範囲を拡大・縮小（0.5〜12 m）"></canvas></div>
+    <div class="mapwrap"><canvas class="map" id="scan_map" width="480" height="480" title="マウスホイール・2 本指ピンチで表示範囲を拡大・縮小（0.5〜12 m）"></canvas></div>
     <table>
       <tr><td class="k">点数</td><td class="v" id="s_count">-</td></tr>
       <tr><td class="k">正面距離 [m]</td><td class="v" id="s_front">-</td></tr>
@@ -1276,12 +1277,28 @@ function bandColor(bands, dist) {
 
 const SCAN_RANGE_M = 3;  // LiDAR 点群の表示範囲 [m]（初期値）
 let scanRangeM = SCAN_RANGE_M;
-const SCAN_RANGE_STEP = 0.5, SCAN_RANGE_MIN = 0.5, SCAN_RANGE_MAX = 12;  // ホイールの拡大縮小
-document.getElementById('scan_map').addEventListener('wheel', e => {
+const SCAN_RANGE_STEP = 0.5, SCAN_RANGE_MIN = 0.5, SCAN_RANGE_MAX = 12;  // ホイール・ピンチの拡大縮小
+const scanMapEl = document.getElementById('scan_map');
+const scanRangeSet = r => {
+  scanRangeM = Math.min(SCAN_RANGE_MAX, Math.max(SCAN_RANGE_MIN, Math.round(r * 2) / 2));
+};
+scanMapEl.addEventListener('wheel', e => {
   e.preventDefault();
-  scanRangeM = Math.min(SCAN_RANGE_MAX, Math.max(SCAN_RANGE_MIN,
-    Math.round((scanRangeM + (e.deltaY > 0 ? SCAN_RANGE_STEP : -SCAN_RANGE_STEP)) * 2) / 2));
+  scanRangeSet(scanRangeM + (e.deltaY > 0 ? SCAN_RANGE_STEP : -SCAN_RANGE_STEP));
 }, { passive: false });
+// スマホ・タブレットの 2 本指ピンチでも拡大・縮小
+let scanPinch = null;
+const pinchDist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+scanMapEl.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) { scanPinch = { d: pinchDist(e.touches), r: scanRangeM }; e.preventDefault(); }
+}, { passive: false });
+scanMapEl.addEventListener('touchmove', e => {
+  if (scanPinch && e.touches.length === 2) {
+    e.preventDefault();
+    scanRangeSet(scanPinch.r * scanPinch.d / pinchDist(e.touches));
+  }
+}, { passive: false });
+scanMapEl.addEventListener('touchend', e => { if (e.touches.length < 2) scanPinch = null; });
 
 // 車体の上から見た形 [m]。原点は LiDAR の回転中心、x は前、y は左。
 // battery_lidar_mount.scad と ai_car.xacro の値: 天板 200 x 154 mm（中心は LiDAR から後ろ 43 mm・右 8 mm）、
