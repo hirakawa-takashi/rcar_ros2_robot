@@ -61,6 +61,7 @@ GHOSTS = {
     "cio_bat": ("batteries();", "cio"),
     "cc": ("cc_ghost();", "cio"),
     "lipo": ("lipo_ghost();", "lipo"),
+    "sw2": ("sw2_ghost();", "lipo"),
     # リポを前から差し込む通り道（前へ 180 mm 引き出すまで）
     "lipo_path": ("hull() { lipo_ghost(); translate([0, 180, 0]) lipo_ghost(); }", "lipo"),
     "heads": ("screw_heads();", None),

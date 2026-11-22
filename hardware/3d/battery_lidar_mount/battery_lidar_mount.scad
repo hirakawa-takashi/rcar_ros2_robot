@@ -1,21 +1,20 @@
-// AI-CAR バッテリー 2 個 + RPLIDAR C1 マウント
+// AI-CAR 3S リポ 1 個 + RPLIDAR C1 マウント（最終版。CIO 2 個・PD トリガーの形は -D 'power="cio"' で旧部品を出せる）
 // 座標: 天板 154 x 200 mm の左下角が原点。X = 横幅方向、Y = 前後方向（Y=200 側が前 / LiDAR 側）
 // 天板の穴位置は Y 方向に対称なので、前後どちら向きでも同じ穴に合う。
 //
-// 出力: openscad -D 'part="box"' -o box.stl battery_lidar_mount.scad
-//       openscad -D 'part="lid"' -o lid.stl battery_lidar_mount.scad
-//       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad
-//       openscad -D 'part="cam_mount"' -o cam_mount.stl battery_lidar_mount.scad（カメラの板。裏を下にした向き）
-//       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個印刷）
-//       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き）
-//       openscad -D 'part="cc_holder"' -o cc_holder.stl battery_lidar_mount.scad（CC スイッチの箱と IMU の台、床を下にした向き）
-//       openscad -D 'part="cc_spacer"' -o cc_spacer.stl battery_lidar_mount.scad（CC スイッチの箱の下に入れる筒 2 個）
-// リポ 1 個の形（予定）: -D 'power="lipo"' を足す。part="lipo_tray"（リポの台 + IMU の台）、box / lid / cam_mount は *_lipo.stl に出す
+// 出力（リポの形・最終版）:
+//       openscad -D 'part="lipo_tray"' -o lipo_tray.stl battery_lidar_mount.scad（リポの台 + IMU の台）
+//       openscad -D 'part="box"' -o box_lipo.stl battery_lidar_mount.scad（電源箱。中は DROK・ヒューズ・WAGO、左の端の壁に電源スイッチ 2 個）
+//       openscad -D 'part="lid"' -o lid_lipo.stl battery_lidar_mount.scad（ふた + C1 の柱）
+//       openscad -D 'part="cam_mount"' -o cam_mount_lipo.stl battery_lidar_mount.scad（カメラの板。裏を下にした向き）
+//       openscad -D 'part="pi_base"' -o pi_base.stl battery_lidar_mount.scad（使い回し）
+//       openscad -D 'part="bumper"' -o bumper.stl battery_lidar_mount.scad（前後共通、2 個。使い回し）
+//       openscad -D 'part="cover"' -o cover.stl battery_lidar_mount.scad（上面カバー、上面を下にした向き。左の壁にスイッチ用の切り欠き）
 
 part = "assembly"; // "box" | "lid" | "pi_base" | "cam_mount" | "bumper" | "cover" | "cc_holder" | "cc_spacer" | "lipo_tray" | "assembly"
 show_cables = false;  // 組立図に配線経路の目安を描く
 show_cover = false;   // 組立図に上面カバーを描く
-power = "cio";        // "cio"（いまの CIO 2 個）| "lipo"（3S リポ 1 個を天板の右はしに置く予定の形）
+power = "lipo";       // "lipo"（3S リポ 1 個を天板の右はしに置く最終版）| "cio"（以前の CIO 2 個の形）
 lipo = power == "lipo";
 lidar_model = "c1";   // "c1"（いまの RPLIDAR C1）| "a1m8"（前の RPLIDAR A1M8）
 a1m8 = lidar_model == "a1m8";
@@ -330,6 +329,7 @@ module tie_mount() {
 tie_pts_box = lipo ? [[13, 128], [13, 168]] : [[13, 128], [13, 168], [134, 108]];  // 左の 2 個はモーターのネジのくぼみの前後
 
 // DROK 降圧コンバーター（12V → 5.2V、B09JKHD3SH）。取付穴がないので、箱の後ろの壁に立てて結束バンドで留める
+// リポの形では箱の中の床に寝かせる（後ろの寄り。USB-A の口は基板の短辺、後ろの壁の穴から出す）
 drok_board = [63, 27, 1.6];   // 商品画像の寸法
 drok_h = 13;                  // 基板の裏から部品の頂点まで（推定）
 drok_gap = 3;                 // 基板の裏と壁のすき間（裏のピンの逃げ）
@@ -338,6 +338,28 @@ drok_z0 = flange_t + 2.5;     // 基板の下端。フランジとの間に結�
 drok_by = box_y0 - drok_gap;  // 基板の裏面
 drok_tie_x = box_cx - 6;      // 通気スロットの間
 drok_rib_x = [box_cx - 18, box_cx + 18];
+
+// リポの形: DROK を箱の中に寝かせる位置（基板の長辺を前後、短辺を左右、USB-A の端を後ろの壁へ）
+drok_in_x = [59.5, 86.5];     // 基板の左右（後ろの寄り、スイッチの逃げより右。USB-A の中心は X 73 = 通気スロットのあいだ）
+drok_in_y0 = 116.5;           // 基板の後ろの端（後ろの壁の内側に沿わせ、USB-A の口を壁の穴に近づける）
+drok_pad_t = 3;               // 床の上の台の高さ（基板の裏のピンの逃げ）
+drok_usb = [15, 9];           // USB-A の口のための後ろの壁の穴（幅・高さ。仮。実物で確かめる）
+drok_usb_z0 = 9;              // 穴の下端の高さ（台 + 基板の上の口に合わせる。仮）
+drok_clip = [3, 3, 11];       // 基板の前の隅を押さえる爪（幅・奥行き・高さ）
+// 後ろの壁の下の線の出口（モーターの線・センサーの線がラズパイ側へ出る切り欠き）
+drok_wire_x = [40, 58];       // 切り欠きの左右
+drok_wire_z = [floor_t, 13];  // 切り欠きの上下
+
+// ---- 電源スイッチ（ミニロッカー 2 ピン、配線済み 12V 20A）: 箱の左の端の壁に 2 個 ----
+// カバーの左の壁の切り欠きから指で押す。穴のまわりは薄くしてスナップインで留める
+sw2_cut = [19.2, 13];        // ロッカーのパネル穴（高さ・幅。KCD1 系の代表的な寸法。届いたら実測して直す）
+sw2_wall = 1.8;              // 穴のまわりに残す壁の厚さ（スナップインできる厚さ）
+sw2_ys = [130, 156];         // 2 個の穴の中心の Y（後ろがラズパイ側、前がモーター側）
+sw2_zc = 24;                 // 穴の中心の高さ
+sw2_pocket = 3;              // 穴のまわりを薄くする範囲（各方向に足す幅）
+// カバーの左の壁の切り欠き（Y0, Y1, Z0, Z1）。穴とそのまわりが見える大きさ
+cov_sw2 = [sw2_ys[0] - sw2_cut[1] / 2 - 5, sw2_ys[1] + sw2_cut[1] / 2 + 5,
+           sw2_zc - sw2_cut[0] / 2 - 5, sw2_zc + sw2_cut[0] / 2 + 5];
 
 module drok_holder() {
     x0 = drok_cx - drok_board[0] / 2;
@@ -354,6 +376,18 @@ module drok_holder() {
         }
         translate([drok_tie_x - tie_w / 2, box_y0 - tie_h, drok_z0 - 1]) cube([tie_w, tie_h + 0.01, drok_board[1] + 2]);
     }
+}
+
+// リポの形: DROK を箱の中に寝かせる台と前の隅の爪（基板は後ろの壁に沿わせ、USB-A の端は壁の穴へ）
+module drok_in_mount() {
+    y1 = drok_in_y0 + drok_board[0];
+    translate([drok_in_x[0] - 1, box_y0 + wall_y, floor_t - 0.01])
+        cube([drok_in_x[1] - drok_in_x[0] + 2, y1 + 0.5 - box_y0 - wall_y, drok_pad_t + 0.01]);
+    for (x = [drok_in_x[0] - 1, drok_in_x[1] - drok_clip[0] + 1])
+        translate([x, y1, floor_t - 0.01]) {
+            cube([drok_clip[0], drok_clip[1], drok_clip[2] + 0.01]);
+            translate([0, -2, drok_pad_t + drok_board[2] + 0.4]) cube([drok_clip[0], 2, 1]);
+        }
 }
 
 // ふた固定用のボス。boss_open のものは上下だけ残し、上の部分を壁の端と外側に広くつなぐ
@@ -414,7 +448,7 @@ module box() {
             for (i = [0 : len(boss_pts) - 1]) boss_body(i);
             motor_recess_pad(lipo ? [motor_scr_pts[2]] : [motor_scr_pts[2], motor_scr_pts[3]]);
             for (p = tie_pts_box) translate([p[0], p[1], flange_t - 0.01]) tie_mount();
-            drok_holder();
+            if (!lipo) drok_holder();
         }
         // バッテリー収納部
         translate([in_x0, box_y0 + wall_y, floor_t]) cube([in_x - end_fill, in_y, in_z + 1]);
@@ -424,18 +458,37 @@ module box() {
             translate([ox, box_y0 + wall_y, floor_t]) cube([wall + 2, in_y, in_z + 1]);
             for (i = [0 : len(boss_pts) - 1]) boss_body(i);
         }
-        // 反対側の端: 押し出し用の窓
-        cx = open_end == "right" ? box_x0 - 1 : box_x0 + box_x - wall - end_fill - 1;
-        translate([cx, box_cy - 20, floor_t + 4]) cube([wall + end_fill + 2, 40, in_z - 8]);
-        // 固定用ストラップのスロット（上下バッテリーの境目の高さ、開口側寄り）
-        sx = open_end == "right" ? box_x0 + box_x - wall - 12 : box_x0 + wall + 12 - strap_len;
-        for (y = [box_y0 - 1, box_y0 + box_y - wall_y - 1])
-            translate([sx, y, floor_t + bat_z - strap_w / 2 + 0.5]) cube([strap_len, wall_y + 2, strap_w]);
-        // 通気スロット（長辺）
-        for (i = [-2 : 2])
+        // 反対側の端: 押し出し用の窓（リポの形では要らない。左の端の壁は電源スイッチの場所）
+        if (!lipo) {
+            cx = open_end == "right" ? box_x0 - 1 : box_x0 + box_x - wall - end_fill - 1;
+            translate([cx, box_cy - 20, floor_t + 4]) cube([wall + end_fill + 2, 40, in_z - 8]);
+        }
+        // 固定用ストラップのスロット（上下バッテリーの境目の高さ、開口側寄り）。リポの形では要らない
+        if (!lipo) {
+            sx = open_end == "right" ? box_x0 + box_x - wall - 12 : box_x0 + wall + 12 - strap_len;
+            for (y = [box_y0 - 1, box_y0 + box_y - wall_y - 1])
+                translate([sx, y, floor_t + bat_z - strap_w / 2 + 0.5]) cube([strap_len, wall_y + 2, strap_w]);
+        }
+        // 通気スロット（長辺。リポの形では DROK の USB-A の穴の所を抜く）
+        for (i = lipo ? [-2, -1, 0, 2] : [-2 : 2])
             translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall_y + 2, in_z - 12]);
-        // 床の肉抜き
-        translate([box_x0 + wall + 12, box_y0 + wall_y + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
+        // 床の肉抜き。リポの形では床は中実にして、中の部品（ヒューズ・WAGO・INA226）を面ファスナーで留めやすくする
+        if (!lipo)
+            translate([box_x0 + wall + 12, box_y0 + wall_y + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
+        if (lipo) {
+            // 電源スイッチの穴 2 個（左の端の壁。中側のまわりを薄くしてスナップイン）
+            for (y = sw2_ys) {
+                translate([box_x0 - 1, y - sw2_cut[1] / 2, sw2_zc - sw2_cut[0] / 2])
+                    cube([wall + end_fill + 2, sw2_cut[1], sw2_cut[0]]);
+                translate([in_x0 - (wall + end_fill - sw2_wall), y - sw2_cut[1] / 2 - sw2_pocket, sw2_zc - sw2_cut[0] / 2 - sw2_pocket])
+                    cube([wall + end_fill - sw2_wall + 1, sw2_cut[1] + 2 * sw2_pocket, sw2_cut[0] + 2 * sw2_pocket]);
+            }
+            // DROK の USB-A の口（後ろの壁）と線の出口（後ろの壁の下の切り欠き）
+            let (u = drok_usb) translate([(drok_in_x[0] + drok_in_x[1]) / 2 - u[0] / 2, box_y0 - 1, drok_usb_z0])
+                cube([u[0], wall_y + 2, u[1]]);
+            translate([drok_wire_x[0], box_y0 - 1, drok_wire_z[0] - 0.01])
+                cube([drok_wire_x[1] - drok_wire_x[0], wall_y + 2, drok_wire_z[1] - drok_wire_z[0] + 0.01]);
+        }
         // 天板への取付穴
         for (p = mount_holes) translate([p[0], p[1], -1]) cylinder(d = mount_hole_d, h = flange_t + 2);
         // ふた固定用の下穴
@@ -443,6 +496,8 @@ module box() {
         motor_recess();
         wcam_back_relief(0);
     }
+    // リポの形: DROK の台は中の空間を抜いたあとに足す
+    if (lipo) drok_in_mount();
 }
 
 module lid() {
@@ -467,9 +522,11 @@ module lid() {
         }
         scam_lid_post_cut();
         wcam_back_relief(box_h);
-        // バッテリーの残量表示の窓
-        d = disp_rect();
-        translate([d[0] - disp_lid_m, d[1] - disp_lid_m, -1]) cube([d[2] - d[0] + 2 * disp_lid_m, d[3] - d[1] + 2 * disp_lid_m, lid_t + 2]);
+        // バッテリーの残量表示の窓（リポの形では要らない）
+        if (!lipo) {
+            d = disp_rect();
+            translate([d[0] - disp_lid_m, d[1] - disp_lid_m, -1]) cube([d[2] - d[0] + 2 * disp_lid_m, d[3] - d[1] + 2 * disp_lid_m, lid_t + 2]);
+        }
     }
 }
 
@@ -658,9 +715,25 @@ module wcam_ghost() {
 }
 
 module drok_ghost() {
-    x0 = drok_cx - drok_board[0] / 2;
-    color("darkgreen") translate([x0, drok_by - drok_board[2], drok_z0]) cube([drok_board[0], drok_board[2], drok_board[1]]);
-    color("silver") translate([x0 + 2, drok_by - drok_h, drok_z0 + 2]) cube([drok_board[0] - 4, drok_h - drok_board[2], drok_board[1] - 4]);
+    if (lipo) {
+        // リポの形: 箱の中の台に寝かせる（USB-A の端は後ろの壁の穴へ）
+        color("darkgreen") translate([drok_in_x[0], drok_in_y0, floor_t + drok_pad_t]) cube([drok_in_x[1] - drok_in_x[0], drok_board[0], drok_board[2]]);
+        color("silver") translate([drok_in_x[0] + 2, drok_in_y0 + 2, floor_t + drok_pad_t + drok_board[2]]) cube([drok_in_x[1] - drok_in_x[0] - 4, drok_board[0] - 4, drok_h - drok_board[2]]);
+    } else {
+        x0 = drok_cx - drok_board[0] / 2;
+        color("darkgreen") translate([x0, drok_by - drok_board[2], drok_z0]) cube([drok_board[0], drok_board[2], drok_board[1]]);
+        color("silver") translate([x0 + 2, drok_by - drok_h, drok_z0 + 2]) cube([drok_board[0] - 4, drok_h - drok_board[2], drok_board[1] - 4]);
+    }
+}
+
+// 電源スイッチ（ミニロッカー）の形。ボディ + 端子は箱の中へ、ボタンは左の壁の穴から外へ出る
+module sw2_ghost() {
+    if (lipo) for (y = sw2_ys)
+        translate([in_x0, y, sw2_zc]) {
+            color("black") translate([box_x0 - in_x0 - 1, -sw2_cut[1] / 2 + 1, -sw2_cut[0] / 2 + 1]) cube([1.5, sw2_cut[1] - 2, sw2_cut[0] - 2]);  // ボタン面
+            color("dimgray") translate([0, -7.5, -8]) cube([13, 15, 16]);                                                                        // ボディ
+            color("silver") translate([13, -6, -5]) cube([8, 12, 10]);                                                                           // 端子 + はんだ部の逃げ
+        }
 }
 
 module plate() {
@@ -957,8 +1030,8 @@ module cover() {
         hull() for (d = [[cov_ox1 - cov_edge - (plate_w - 1), 0], [cov_ox1 - (plate_w - 1) + 0.01, cov_edge + 0.01]])
             cover_chg_profile() translate([0, 0, d[0]]) linear_extrude(0.01)
                 offset(delta = d[1]) offset(r = 4) offset(delta = -4) square([cov_chg[3] - cov_chg[2], cov_chg[1] - cov_chg[0]]);
-        // バッテリーの残量表示の窓（上面。縁は面取り）
-        let (d = disp_rect(), m = disp_cov_m) {
+        // バッテリーの残量表示の窓（上面。縁は面取り。リポの形では要らない）
+        if (!lipo) let (d = disp_rect(), m = disp_cov_m) {
             translate([d[0] - m, d[1] - m, cov_top - 1]) cube([d[2] - d[0] + 2 * m, d[3] - d[1] + 2 * m, cov_t + 2]);
             hull() {
                 translate([d[0] - m, d[1] - m, cov_oz - cov_edge]) cube([d[2] - d[0] + 2 * m, d[3] - d[1] + 2 * m, 0.01]);
@@ -975,10 +1048,17 @@ module cover() {
             y = cov_vent[2] + j * 5.2;
             if (x <= cov_vent[1] && y <= cov_vent[3]) translate([x, y, cov_top - 1]) cylinder(r = 2.4, h = cov_t + 2, $fn = 6);
         }
-        // CC スイッチのボタンの切り欠き（右の壁。下の端から開いているので、カバーを真上から被せられる）と文字
-        for (i = [0, 1]) {
+        // CC スイッチのボタンの切り欠き（右の壁。下の端から開いているので、カバーを真上から被せられる）と文字。リポの形では要らない
+        if (!lipo) for (i = [0, 1]) {
             translate([plate_w - 1, cc_sw_y[i] - cc_slot / 2, -plate_t - 5]) cube([cov_t + cov_clr + 3, cc_slot, cc_pk_top + 0.6 + plate_t + 5]);
             translate([cov_ox1 - 0.6, cc_sw_y[i], cc_pk_top + 4.5]) rotate([90, 0, 90]) linear_extrude(1)
+                text(i == 0 ? "Pi" : "M", size = 4, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+        }
+        // 電源スイッチの切り欠き（左の壁。箱の左の端の壁のスイッチに指が届く）と文字
+        if (lipo) {
+            hull() for (y = [cov_sw2[0] + 3, cov_sw2[1] - 3], z = [cov_sw2[2] + 3, cov_sw2[3] - 3])
+                translate([cov_ox0 - 2, y, z]) rotate([0, 90, 0]) cylinder(r = 3, h = cov_t + cov_clr + 2.5);
+            for (i = [0, 1]) translate([cov_ox0 + 0.6, sw2_ys[i], cov_sw2[3] + 4.5]) rotate([90, 0, -90]) linear_extrude(1)
                 text(i == 0 ? "Pi" : "M", size = 4, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
         }
         // Pi の電源ボタン（左の壁）
@@ -1169,6 +1249,7 @@ else {
     pi_ghost();
     camera_ghost();
     drok_ghost();
+    sw2_ghost();
     sensor_ghost();
     if (show_cables) cable_ghost();
     color("dimgray") both_bumpers();
