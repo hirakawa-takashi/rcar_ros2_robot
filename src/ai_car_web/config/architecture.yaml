@@ -253,6 +253,7 @@ print3d:
         - DROK 降圧コンバーターは床の台（高さ 3 mm）に寝かせ、前の隅 2 か所の爪で押さえる（ネジなし）。USB-A 出力は後ろの壁の穴から出す
         - 電源スイッチ（ミニロッカー 2 ピン）は左の端の壁の穴（13 × 19.2 mm、内側を 1.8 mm の薄さにしたスナップイン）に 2 個。後ろ側が Pi 用、前側がモーター用。カバーの左の切り欠きから外から押せる
         - 後ろの壁の下の切り欠き（18 × 8 mm）はモーターの線・センサーの線の出口
+        - 後ろの壁の開口は USB-A の穴と線の出口だけ（通気スロットは v2.10.10 で全廃。DROK が熱くなるようなら壁ではなくふた側に通気口を足す）
       mount: 天板の前側の左の 2 穴（X 11 / Y 189・X 9 / Y 110 mm）に留める（右の 2 穴はリポの台が使う）
     - id: lid_lipo
       label: ふた + LiDAR 台
@@ -350,6 +351,7 @@ print3d:
     - {file: cam_nut_relief.png, label: ふた・箱の前の面のカメラのナットの逃げ穴（M2 × 10 とナットを入れた状態）}
     - {file: lidar_c1.png, label: RPLIDAR C1 の柱（43 mm 角、後ろ斜めから）}
     - {file: drok_inside.png, label: 箱の中の DROK の台と左の壁のスイッチ（ふたを外して）}
+    - {file: rearwall_box.png, label: 箱の後ろの壁（穴は USB-A の口と線の出口の 2 つだけ。v2.10.10 で通気スロットを全廃）}
     - {file: bumper_under.png, label: バンパーを下から}
     - {file: bumper_spring.png, label: バンパーの板ばねとストッパー}
     - {file: bumper_hook.png, label: バンパーの爪（横から見た断面）}
