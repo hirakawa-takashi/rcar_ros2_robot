@@ -3105,13 +3105,21 @@ function powerColor(power) {
     power?.startsWith('3V3') ? '#b4d455' : '#687383';
 }
 function renderHardware(a) {
-  const h = a.hardware || {}, devices = h.devices || [], center = [600, 280];
+  const h = a.hardware || {}, devices = h.devices || [], center = [600, 290];
+  // 左列=入力（USB）・上=拡張と電源・右列=駆動・下=センサー（I2C/GPIO）で、線が交差しないよう体系立てて配置
   const positions = {
-    ai_hat: [300, 100], battery_pi: [800, 95], battery_motor: [1060, 95],
-    lidar: [90, 110], camera: [90, 280], gamepad: [90, 450],
-    motor_hat: [1050, 200], motors: [1050, 360],
-    imu: [340, 460], tof: [600, 480], drok: [520, 95],
+    lidar: [140, 105], camera: [140, 290], gamepad: [140, 475],
+    ai_hat: [330, 90], battery_pi: [610, 90], drok: [880, 90], battery_motor: [1100, 90],
+    motor_hat: [1100, 265], motors: [1100, 445],
+    imu: [430, 505], tof: [790, 505],
   };
+  const groups = [
+    [140, 58, '入力（USB・無線）'],
+    [330, 48, '拡張（HAT）'],
+    [865, 48, '電源'],
+    [1100, 200, '駆動（モーター）'],
+    [610, 560, 'センサー（I2C / GPIO）'],
+  ];
   const box = (d, x, y) => {
     const textWidth = t => [...String(t || '')].reduce((n, c) => n + (c.charCodeAt(0) > 0xff ? 13 : 7.5), 0);
     const w = Math.max(150, textWidth(d.label) + 20, textWidth(d.sub) * 0.8 + 20), hh = 58;
@@ -3130,7 +3138,10 @@ function renderHardware(a) {
     ai_hat: 'PCIe / GPIO', lidar: 'USB', camera: 'USB',
     gamepad: 'USB', imu: 'I2C', motor_hat: 'I2C 0x60', tof: 'I2C', drok: 'USB 5V',
   }[id] || '');
-  let svg = '<svg class="aboutsvg" viewBox="0 0 1200 560"><defs><filter id="hwshadow"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".5"/></filter></defs>';
+  let svg = '<svg class="aboutsvg" viewBox="0 0 1240 600"><defs><filter id="hwshadow"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".5"/></filter></defs>';
+  groups.forEach(([gx, gy, gl]) => {
+    svg += `<text x="${gx}" y="${gy}" fill="#5c6b82" text-anchor="middle" font-size="12" font-weight="bold">${gl}</text>`;
+  });
   devices.forEach(d => {
     const p = positions[d.id] || center;
     if (d.id === 'motors' && byId.motor_hat) {
@@ -3144,9 +3155,9 @@ function renderHardware(a) {
       svg += edge(center[0], center[1], p[0], p[1], powerColor(d.power), busLabel(d.id));
     }
   });
-  svg += `<rect x="470" y="235" width="260" height="90" rx="12" fill="#1d3b63" stroke="#64b5f6" stroke-width="2" filter="url(#hwshadow)"/>`;
-  svg += `<text x="600" y="274" fill="#e8eaed" text-anchor="middle" font-size="18" font-weight="bold">${esc(h.center?.label || 'Raspberry Pi 5')}</text>`;
-  svg += `<text x="600" y="298" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(h.center?.sub || '')}</text>`;
+  svg += `<rect x="470" y="245" width="260" height="90" rx="12" fill="#1d3b63" stroke="#64b5f6" stroke-width="2" filter="url(#hwshadow)"/>`;
+  svg += `<text x="600" y="284" fill="#e8eaed" text-anchor="middle" font-size="18" font-weight="bold">${esc(h.center?.label || 'Raspberry Pi 5')}</text>`;
+  svg += `<text x="600" y="308" fill="#9fb0c7" text-anchor="middle" font-size="12">${esc(h.center?.sub || '')}</text>`;
   devices.forEach(d => { const p = positions[d.id]; if (p) svg += box(d, p[0], p[1]); });
   svg += '</svg>';
   const rows = devices.map(d => [esc(d.label), esc(d.bus || '-'), `<span class="pwrtxt" style="color:${powerColor(d.power)}">${esc(d.power || '-')}</span>`]);
