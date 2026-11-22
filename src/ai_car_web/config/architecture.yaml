@@ -126,36 +126,35 @@ hardware:
       - 線の色は 赤 = 12V、オレンジ = 5V
       - 箱の下の「入」「出」は、その部品の端子の形。オス = 差しこむ側（プラグ）、メス = 差しこまれる側（口・ジャック）
     systems:
-      - title: ラズパイ側（リポ 3S → ヒューズ 5A → スイッチ → DROK → Raspberry Pi 5）
+      - title: "リポ 3S 1 個 → WAGO A・B で 2 系統に分ける（ラズパイ側: ヒューズ 5A → スイッチ → DROK で 5.2V。モーター側: 図の下の線で分岐 → ヒューズ 7.5A → スイッチ → Motor HAT）"
+        wide: 1800
+        bypass: {from: 2, to: 7, power: 12V, label: "⑦ モーター側はここから（WAGO A・B → ヒューズ 7.5A。ラズパイ側と同じ WAGO から分ける。Raspberry Pi 5 のカードとはつながない）"}
         parts:
           - {label: リポバッテリー, sub: 3S 11.1V 10000mAh / 170×47×31 mm・580 g, out: XT60 / （放電の口）}
           - {label: XT60 線つき, sub: Amass 5 ペアのピン側 1 本 / 太い線 14AWG, in: XT60, out: ＋ 赤・− 黒}
           - {label: WAGO A・B, sub: ＋を 2 つに分ける A・−をまとめる B / WAGO 221, in: ＋ 赤・− 黒, out: ＋ ×2・−}
-          - {label: ヒューズ 5A, sub: 平型（ミニ）ヒューズ / 線つきホルダー（エーモン 3367）, in: ＋ 赤, out: ＋ 赤}
-          - {label: スイッチ（ラズパイ）, sub: ミニロッカー 2 ピン / 配線済み 12V 20A, in: ＋ 赤, out: ＋ 赤}
+          - {label: ヒューズ 5A, sub: ラズパイ側 / 平型（ミニ）ヒューズ / 線つきホルダー（エーモン 3367）, in: ＋ 赤, out: ＋ 赤}
+          - {label: スイッチ（ラズパイ）, sub: ミニロッカー 2 ピン / 配線済み 12V 20A / 箱の左の壁・後ろ側, in: ＋ 赤, out: ＋ 赤}
           - {label: DROK 降圧コンバーター, sub: 9〜36V → 5.2V / 5A（いまのもの）, in: VIN+・VIN− ねじ端子台（基板の裏に印字）, out: USB-A メス}
           - {label: Raspberry Pi 5, sub: 電源の USB-C 口 / PD なし・3 A と見る, in: USB-C メス}
-        wires:
-          - {power: 12V, joint: リポの XT60 → XT60 線つきの XT60, desc: "リポ側はソケット（穴が 2 つ）と確認済み（2026-11-22）→ 線つきはピンが出ている側を使う。電圧（3 セルの合計）は 12.6V（満充電）→ 11.1V → 9.9V（ここで止める）"}
-          - {power: 12V, joint: XT60 線の＋（赤）→ WAGO A、−（黒）→ WAGO B, desc: "皮を 11 mm むいて奥までさしレバーを下げる。WAGO A で＋をラズパイ側とモーター側に分け、WAGO B に−をまとめる"}
-          - {power: 12V, joint: WAGO A → ヒューズ → スイッチ → WAGO D, desc: "ヒューズは＋の線だけに入れる（線つきホルダー）。DROK に流れる電気は 3A くらい（ラズパイ 約 6〜10W）。切る前にラズパイをシャットダウンする"}
-          - {power: 12V, joint: WAGO D → DROK の VIN+、WAGO B → DROK の VIN−, desc: "＋と−を逆にしない。DROK の VIN+・VIN− ねじ端子台に 18AWG でつなぐ（基板の裏に印字。DC ジャック・丸プラグは使わない）"}
-          - {power: 5V, joint: DROK の USB-A 口 ← USB-A → USB-C ケーブル → ラズパイの USB-C 口, desc: "PD のやりとりはないので、ラズパイは「3 A の電源」と見る（usb_max_current_enable=1 で USB 機器に 1.6 A まで）。AI HAT+・カメラ・LiDAR・IMU・落下防止センサー・エンコーダーの電気もここから"}
-        notes:
-          - DROK の USB-A（出力）に 12V を入れない
-          - リポには、前のモバイルバッテリー（CIO SMARTCOBY）のような守る回路がない。1 つのセルでも 3.3V より下まで使うとこわれる。電圧センサー（INA226）は 3 セルの合計しか測れないので、1 セルずつはバランスの口にさすブザー（3.5V で鳴る）で見張り、INA226 の 9.9V は最後の守りにする
-      - title: モーター側（ラズパイ側と同じ WAGO A・B から分ける → ヒューズ 7.5A → スイッチ → Motor HAT）
-        parts:
-          - {label: WAGO A・B, sub: 上のラズパイ側と同じ / ＋ A・− B, out: ＋ 赤・− 黒}
-          - {label: ヒューズ 7.5A, sub: 平型（ミニ）ヒューズ / 線つきホルダー（エーモン 3367）, in: ＋ 赤, out: ＋ 赤}
-          - {label: スイッチ（モーター）, sub: ミニロッカー 2 ピン / 配線済み 12V 20A, in: ＋ 赤, out: ＋ 赤}
+          - {label: ヒューズ 7.5A, sub: モーター側 / 平型（ミニ）ヒューズ / 線つきホルダー（エーモン 3367）, in: ＋ 赤, out: ＋ 赤}
+          - {label: スイッチ（モーター）, sub: ミニロッカー 2 ピン / 配線済み 12V 20A / 箱の左の壁・前側, in: ＋ 赤, out: ＋ 赤}
           - {label: Adafruit Motor HAT, sub: 4.5〜13.5V まで / （12.6V は入る）, in: 電源の端子台 / ＋・−（ねじ）, out: M1〜M4 の端子台}
           - {label: モーター ×4, sub: 520 エンコーダー付き / M1〜M4, in: モーター線 / 黒 Motor+・赤 Motor−}
         wires:
-          - {power: 12V, joint: WAGO A → ヒューズ → スイッチ → WAGO F, desc: "ヒューズは＋の線だけ（線つきホルダー）。ラズパイを動かしたまま、モーターだけ止められる"}
+          - {power: 12V, joint: リポの XT60 → XT60 線つきの XT60, desc: "リポ側はソケット（穴が 2 つ）と確認済み（2026-11-22）→ 線つきはピンが出ている側を使う。電圧（3 セルの合計）は 12.6V（満充電）→ 11.1V → 9.9V（ここで止める）"}
+          - {power: 12V, joint: XT60 線の＋（赤）→ WAGO A、−（黒）→ WAGO B, desc: "皮を 11 mm むいて奥までさしレバーを下げる。WAGO A で＋をラズパイ側とモーター側に分け、WAGO B に−をまとめる"}
+          - {power: 12V, joint: WAGO A → ヒューズ 5A（ラズパイ側）, desc: "ヒューズは＋の線だけに入れる（線つきホルダー）。DROK に流れる電気は 3A くらい（ラズパイ 約 6〜10W）"}
+          - {power: 12V, joint: ヒューズ 5A → スイッチ（ラズパイ）→ WAGO D, desc: "スイッチは箱の左の壁の後ろ側の穴。切る前にラズパイをシャットダウンする"}
+          - {power: 12V, joint: WAGO D → DROK の VIN+、WAGO B → DROK の VIN−, desc: "＋と−を逆にしない。DROK の VIN+・VIN− ねじ端子台に 18AWG でつなぐ（基板の裏に印字。DC ジャック・丸プラグは使わない）"}
+          - {power: 5V, joint: DROK の USB-A 口 ← USB-A → USB-C ケーブル → ラズパイの USB-C 口, desc: "PD のやりとりはないので、ラズパイは「3 A の電源」と見る（usb_max_current_enable=1 で USB 機器に 1.6 A まで）。AI HAT+・カメラ・LiDAR・IMU・落下防止センサー・エンコーダーの電気もここから"}
+          - {power: 12V, noline: true, joint: （分岐・下の線）WAGO A・B → ヒューズ 7.5A（モーター側）, desc: "図の下を回る線。Raspberry Pi 5 のカードとはつながない。モーター側はラズパイ側と同じ WAGO A・B から始まる"}
+          - {power: 12V, joint: ヒューズ 7.5A → スイッチ（モーター）→ WAGO F, desc: "ヒューズは＋の線だけ（線つきホルダー）。スイッチは箱の左の壁の前側の穴。ラズパイを動かしたまま、モーターだけ止められる"}
           - {power: 12V, joint: WAGO F → Motor HAT の端子台 ＋、WAGO B → Motor HAT の端子台 −, desc: "＋と−を逆にしない。電池が減ると電圧が 12.6V → 9.9V に下がるので、同じ PWM でも空に近いと 2 割くらい遅くなる"}
           - {power: 12V, joint: Motor HAT の M1〜M4 の端子台 → 各モーター, desc: "黒 = Motor+、赤 = Motor−（6 本の線の内わけは「配線詳細」の Motor HAT の図）。速さは PWM（電気を細かく入れたり切ったり）で変える"}
         notes:
+          - DROK の USB-A（出力）に 12V を入れない
+          - リポには、前のモバイルバッテリー（CIO SMARTCOBY）のような守る回路がない。1 つのセルでも 3.3V より下まで使うとこわれる。電圧センサー（INA226）は 3 セルの合計しか測れないので、1 セルずつはバランスの口にさすブザー（3.5V で鳴る）で見張り、INA226 の 9.9V は最後の守りにする
           - 電圧センサー INA226（I2C 0x40。いまの 0x29・0x30・0x31・0x60・0x70 と重ならない）は、電圧だけ測る。VBUS・IN+・IN− を、ラズパイ側のスイッチのあとの＋（DROK の＋と同じ所）につなぎ、大きな電気はセンサーに通さない。センサーの電気（3V3）は pin 17、GND は pin 14、SDA・SCL は pin 3・5（I2C バス 1）。GND はリポの−にはつながない（ラズパイの GND は DROK と Motor HAT を通してもうリポの−につながっているので、両方につなぐと DROK の−の線がぬけたとき細い線に約 3A 流れる）
           - VBUS の線は細いジャンパー線にしない（ショートしたとき 5A ヒューズが切れるまで大きな電気が流れる）。18AWG にする
           - リポ 1 個では DROK の−と Motor HAT の−が同じ所につながり、Motor HAT はラズパイの GND ともつながっている。DROK の−の線がぬけるとラズパイの電気が Motor HAT の端子台とラズパイの GND ピンを通るので、DROK と Motor HAT の−の線は、ぬけないことを確かめる

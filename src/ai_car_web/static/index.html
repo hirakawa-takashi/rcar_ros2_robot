@@ -3136,7 +3136,7 @@ function powerWiringHtml(pw) {
   const fit = (t, size, w) => Math.max(8, Math.min(size, size * (w - 12) / Math.max(1, textW(t, size))));
   const systems = pw.systems.map(sys => {
     const parts = sys.parts || [], wires = sys.wires || [], plan = sys.state === 'plan';
-    const W = 1200, gap = 52, n = parts.length, bw = (W - 40 - gap * (n - 1)) / n, top = 34;
+    const W = sys.wide || 1200, gap = 52, n = parts.length, bw = (W - 40 - gap * (n - 1)) / n, top = 34;
     const lines = t => t ? String(t).split(' / ') : [];
     const termRows = Math.max(0, ...parts.map(p => Math.max(lines(p.in).length, 1) + Math.max(lines(p.out).length, 1)));
     const subRows = Math.max(1, ...parts.map(p => lines(p.sub).length));
@@ -3169,7 +3169,7 @@ function powerWiringHtml(pw) {
         });
       }
       const w = wires[i];
-      if (i < n - 1 && w) {
+      if (i < n - 1 && w && !w.noline) {
         const x1 = x + bw, x2 = x1 + gap, y = top + bh / 2, color = powerColor(w.power);
         svg += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="4"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
           `<circle cx="${(x1 + x2) / 2}" cy="${y - 22}" r="11" fill="#11161d" stroke="${color}"/>` +
