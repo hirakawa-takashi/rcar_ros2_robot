@@ -3136,49 +3136,69 @@ function powerWiringHtml(pw) {
   const fit = (t, size, w) => Math.max(8, Math.min(size, size * (w - 12) / Math.max(1, textW(t, size))));
   const systems = pw.systems.map(sys => {
     const parts = sys.parts || [], wires = sys.wires || [], plan = sys.state === 'plan';
+    const parts2 = sys.parts2 || [], wires2 = sys.wires2 || [];
+    const off = sys.row2_offset || 0, from = sys.row2_from || 0;
     const W = sys.wide || 1200, gap = 52, n = parts.length, bw = (W - 40 - gap * (n - 1)) / n, top = 34;
     const lines = t => t ? String(t).split(' / ') : [];
     const termRows = Math.max(0, ...parts.map(p => Math.max(lines(p.in).length, 1) + Math.max(lines(p.out).length, 1)));
     const subRows = Math.max(1, ...parts.map(p => lines(p.sub).length));
     const termTop = 46 + 16 * subRows, bh = termRows ? termTop + 10 + 15 * termRows + 4 : 92;
-    const by = sys.bypass, H = top + bh + (by ? 70 : 30);
+    const cx = i => 20 + i * (bw + gap) + bw / 2, x = i => 20 + i * (bw + gap);
+    const rowgap = 70, y2 = top + bh + rowgap, by = sys.bypass;
+    const H = top + bh + (parts2.length ? rowgap + bh : 30) + (by ? 70 : 0);
     let svg = `<svg class="aboutsvg" viewBox="0 0 ${W} ${H}">`;
+    const cardSvg = (p, x, y) => {
+      const c = x + bw / 2, subs = String(p.sub || '').split(' / ');
+      let s = `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="10" fill="#1e232b" stroke="${plan ? '#f0b44c' : '#3a4657'}" stroke-width="2"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
+        `<text x="${c}" y="${y + 30}" fill="#e8eaed" text-anchor="middle" font-size="${fit(p.label, 14, bw)}" font-weight="bold">${esc(p.label)}</text>` +
+        subs.map((t, j) => `<text x="${c}" y="${y + 54 + 16 * j}" fill="#9fb0c7" text-anchor="middle" font-size="${fit(t, 11, bw)}">${esc(t)}</text>`).join('');
+      if (termRows) {
+        let ty = y + termTop + 10;
+        s += `<line x1="${x + 8}" y1="${y + termTop - 4}" x2="${x + bw - 8}" y2="${y + termTop - 4}" stroke="#3a4657"/>`;
+        [['入', p.in, '#8fc8ff'], ['出', p.out, '#ffc27a']].forEach(([tag, val, color]) => {
+          const ls = lines(val);
+          if (!ls.length) { ty += 15; return; }
+          ls.forEach((t, j) => {
+            const st = (j ? '　 ' : `${tag} `) + t;
+            s += `<text x="${x + 8}" y="${ty}" fill="${color}" font-size="${fit(st, 11, bw - 4)}">${esc(st)}</text>`;
+            ty += 15;
+          });
+        });
+      }
+      return s;
+    };
+    const connSvg = (x1, x2, y, w, ni) => {
+      const color = powerColor(w.power);
+      return `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="4"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
+        `<circle cx="${(x1 + x2) / 2}" cy="${y - 22}" r="11" fill="#11161d" stroke="${color}"/>` +
+        `<text x="${(x1 + x2) / 2}" y="${y - 17}" fill="#e8eaed" text-anchor="middle" font-size="13">${num(ni)}</text>` +
+        `<text x="${(x1 + x2) / 2}" y="${y + 22}" fill="${color}" text-anchor="middle" font-size="11">${esc(w.power || '')}</text>`;
+    };
     if (by) {
-      const cx = i => 20 + i * (bw + gap) + bw / 2, x1 = cx(by.from), x2 = cx(by.to), y0 = top + bh, y1 = y0 + 30;
+      const x1 = cx(by.from), x2 = cx(by.to), y0 = top + bh + (parts2.length ? rowgap + bh : 0), y1 = y0 + 30;
       const color = powerColor(by.power);
       svg += `<path d="M${x1} ${y0} V${y1} H${x2} V${y0}" fill="none" stroke="${color}" stroke-width="4"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
         `<text x="${(x1 + x2) / 2}" y="${y1 + 20}" fill="${color}" text-anchor="middle" font-size="${fit(by.label, 12, x2 - x1 + bw)}">${esc(by.label)}</text>`;
     }
     parts.forEach((p, i) => {
-      const x = 20 + i * (bw + gap), cx = x + bw / 2;
-      const subs = String(p.sub || '').split(' / ');
-      svg += `<rect x="${x}" y="${top}" width="${bw}" height="${bh}" rx="10" fill="#1e232b" stroke="${plan ? '#f0b44c' : '#3a4657'}" stroke-width="2"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
-        `<text x="${cx}" y="${top + 30}" fill="#e8eaed" text-anchor="middle" font-size="${fit(p.label, 14, bw)}" font-weight="bold">${esc(p.label)}</text>` +
-        subs.map((t, j) => `<text x="${cx}" y="${top + 54 + 16 * j}" fill="#9fb0c7" text-anchor="middle" font-size="${fit(t, 11, bw)}">${esc(t)}</text>`).join('');
-      if (termRows) {
-        let ty = top + termTop + 10;
-        svg += `<line x1="${x + 8}" y1="${top + termTop - 4}" x2="${x + bw - 8}" y2="${top + termTop - 4}" stroke="#3a4657"/>`;
-        [['入', p.in, '#8fc8ff'], ['出', p.out, '#ffc27a']].forEach(([tag, val, color]) => {
-          const ls = lines(val);
-          if (!ls.length) { ty += 15; return; }
-          ls.forEach((t, j) => {
-            const s = (j ? '　 ' : `${tag} `) + t;
-            svg += `<text x="${x + 8}" y="${ty}" fill="${color}" font-size="${fit(s, 11, bw - 4)}">${esc(s)}</text>`;
-            ty += 15;
-          });
-        });
-      }
+      svg += cardSvg(p, x(i), top);
       const w = wires[i];
-      if (i < n - 1 && w && !w.noline) {
-        const x1 = x + bw, x2 = x1 + gap, y = top + bh / 2, color = powerColor(w.power);
-        svg += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="4"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
-          `<circle cx="${(x1 + x2) / 2}" cy="${y - 22}" r="11" fill="#11161d" stroke="${color}"/>` +
-          `<text x="${(x1 + x2) / 2}" y="${y - 17}" fill="#e8eaed" text-anchor="middle" font-size="13">${num(i)}</text>` +
-          `<text x="${(x1 + x2) / 2}" y="${y + 22}" fill="${color}" text-anchor="middle" font-size="11">${esc(w.power || '')}</text>`;
-      }
+      if (i < n - 1 && w && !w.noline) svg += connSvg(x(i) + bw, x(i) + bw + gap, top + bh / 2, w, i);
     });
+    if (parts2.length) {
+      const w0 = wires2[0] || {}, x1 = cx(from), x2 = x(off), y = y2 + bh / 2, color = powerColor(w0.power);
+      svg += `<path d="M${x1} ${top + bh} V${y} H${x2}" fill="none" stroke="${color}" stroke-width="4"${plan ? ' stroke-dasharray="7 5"' : ''}/>` +
+        `<circle cx="${(x1 + x2) / 2}" cy="${y - 22}" r="11" fill="#11161d" stroke="${color}"/>` +
+        `<text x="${(x1 + x2) / 2}" y="${y - 17}" fill="#e8eaed" text-anchor="middle" font-size="13">${num(wires.length)}</text>` +
+        `<text x="${(x1 + x2) / 2}" y="${y + 22}" fill="${color}" text-anchor="middle" font-size="11">${esc(w0.power || '')}</text>`;
+      parts2.forEach((p, j) => {
+        svg += cardSvg(p, x(off + j), y2);
+        const w = wires2[j + 1];
+        if (j < parts2.length - 1 && w) svg += connSvg(x(off + j) + bw, x(off + j) + bw + gap, y, w, wires.length + j + 1);
+      });
+    }
     svg += '</svg>';
-    const rows = wires.map((w, i) => [num(i), esc(w.joint || ''),
+    const rows = [...wires, ...wires2].map((w, i) => [num(i), esc(w.joint || ''),
       `<span class="pwrtxt" style="color:${powerColor(w.power)}">${esc(w.power || '-')}</span>`, esc(w.desc || '')]);
     return `<h4>${esc(sys.title || '')}</h4>${svg}${aboutTable(['番号', 'つなぎ目（端子の形）', '電気', '説明'], rows)}` +
       ((sys.notes || []).length ? `<p><b>注意</b></p>${aboutList(sys.notes)}` : '');
