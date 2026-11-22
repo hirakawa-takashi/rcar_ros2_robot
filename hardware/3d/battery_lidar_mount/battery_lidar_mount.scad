@@ -469,9 +469,10 @@ module box() {
             for (y = [box_y0 - 1, box_y0 + box_y - wall_y - 1])
                 translate([sx, y, floor_t + bat_z - strap_w / 2 + 0.5]) cube([strap_len, wall_y + 2, strap_w]);
         }
-        // 通気スロット（長辺。リポの形では DROK の USB-A の穴の所を抜く）
-        for (i = lipo ? [-2, -1, 0, 2] : [-2 : 2])
-            translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall_y + 2, in_z - 12]);
+        // 通気スロット（長辺。リポの形では要らない — 後ろの壁の穴は USB-A の口と線の出口だけにする）
+        if (!lipo)
+            for (i = [-2 : 2])
+                translate([box_cx + i * 12 - 2.5, box_y0 - 1, floor_t + 6]) cube([5, wall_y + 2, in_z - 12]);
         // 床の肉抜き。リポの形では床は中実にして、中の部品（ヒューズ・WAGO・INA226）を面ファスナーで留めやすくする
         if (!lipo)
             translate([box_x0 + wall + 12, box_y0 + wall_y + 10, -1]) cube([in_x - 24, in_y - 20, floor_t + 2]);
