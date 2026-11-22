@@ -1,5 +1,7 @@
 # AI-CAR ロボット開発プロジェクト - 実装概要
 
+> **この文書は開発初期の計画時点のスナップショットです。**「未実装機能」に挙がっているノードは現在すべて実装済みで、LiDAR も RPLIDAR C1 に交換済みです。現在の構成は `src/ai_car_web/config/architecture.yaml`（ダッシュボードの「プロジェクト説明」）・`README.md`・`PROJECT_STATUS.md` を参照してください。
+
 ## プロジェクト概要
 - **プロジェクト名**: AI-CAR ロボット開発プロジェクト
 - **実行環境**: Raspberry Pi 5
